@@ -1,0 +1,100 @@
+{
+  "index_patterns": ["app-log-otel-span-*"],
+  "template": {
+    "settings": {
+      "index.refresh_interval": "5s",
+      "index.number_of_shards": 1,
+      "index.number_of_replicas": 1,
+      "mapping.total_fields.limit": 2000
+    },
+    "mappings": {
+      "dynamic": false,
+      "properties": {
+        "traceId": { "type": "keyword" },
+        "spanId":  { "type": "keyword" },
+        "parentSpanId": { "type": "keyword" },
+        "traceState": { "type": "keyword" },
+        "traceFlags": { "type": "integer" },
+        "name": { "type": "keyword" },
+        "kind": { "type": "keyword" },
+        "startTimeUnixNano": { "type": "long" },
+        "endTimeUnixNano":   { "type": "long" },
+        "startTime": { "type": "date_nanos" },
+        "endTime":   { "type": "date_nanos" },
+        "durationNano": { "type": "long" },
+        "droppedAttributesCount": { "type": "integer" },
+        "droppedEventsCount":     { "type": "integer" },
+        "droppedLinksCount":      { "type": "integer" },
+        "status": {
+          "properties": {
+            "code":    { "type": "keyword" },
+            "message": { "type": "keyword", "ignore_above": 1024 }
+          }
+        },
+        "schemaUrl": { "type": "keyword" },
+        "resource": {
+          "properties": {
+            "service": {
+              "properties": {
+                "name":        { "type": "keyword" },
+                "namespace":   { "type": "keyword" },
+                "instance": { "properties": { "id": { "type": "keyword" } } },
+                "version":     { "type": "keyword" }
+              }
+            },
+            "telemetry": {
+              "properties": {
+                "sdk": {
+                  "properties": {
+                    "name":     { "type": "keyword" },
+                    "version":  { "type": "keyword" },
+                    "language": { "type": "keyword" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "resourceSchemaUrl": { "type": "keyword" },
+        "attributes": { "type": "object", "enabled": false },
+        "attributes_map": { "type": "flattened" },
+        "events": {
+          "type": "nested",
+          "dynamic": false,
+          "properties": {
+            "name":         { "type": "keyword" },
+            "timeUnixNano": { "type": "long" },
+            "time":         { "type": "date_nanos" },
+            "droppedAttributesCount": { "type": "integer" },
+            "attributes":   { "type": "object", "enabled": false },
+            "attributes_map": { "type": "flattened" }
+          }
+        },
+        "links": {
+          "type": "nested",
+          "dynamic": false,
+          "properties": {
+            "traceId": { "type": "keyword" },
+            "spanId":  { "type": "keyword" },
+            "traceState": { "type": "keyword" },
+            "droppedAttributesCount": { "type": "integer" },
+            "attributes":   { "type": "object", "enabled": false },
+            "attributes_map": { "type": "object", "dynamic": true }
+          }
+        }
+      },
+      "dynamic_templates": [
+        { "attr_long":   { "path_match": "attributes_map.*.i", "mapping": { "type": "long"    } } },
+        { "attr_double": { "path_match": "attributes_map.*.f", "mapping": { "type": "double"  } } },
+        { "attr_bool":   { "path_match": "attributes_map.*.b", "mapping": { "type": "boolean" } } },
+        { "attr_kw":     { "path_match": "attributes_map.*.s", "mapping": { "type": "keyword", "ignore_above": 1024 } } },
+        { "ev_long":     { "path_match": "events.*.attributes_map.*.i", "mapping": { "type": "long"    } } },
+        { "ev_double":   { "path_match": "events.*.attributes_map.*.f", "mapping": { "type": "double"  } } },
+        { "ev_bool":     { "path_match": "events.*.attributes_map.*.b", "mapping": { "type": "boolean" } } },
+        { "ev_kw":       { "path_match": "events.*.attributes_map.*.s", "mapping": { "type": "keyword", "ignore_above": 1024 } } }
+      ]
+    }
+  },
+  "priority": 100,
+  "version": 2
+}

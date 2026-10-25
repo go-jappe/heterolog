@@ -1,0 +1,60 @@
+{
+  "description": "OTLP span -> indexable fields for app-log-otel-span-*",
+  "processors": [
+    {
+      "script": {
+        "description": "time fields: start/end ISO8601 for date_nanos, duration",
+        "lang": "painless",
+        "source": "// helper: to ISO8601 with nanos (truncate to millis to be safe with date_nanos parsing)\nString toIsoFromNanos(def nanos) {\n  if (nanos == null) return null;\n  long ms = (long)(nanos / 1_000_000L);\n  return Instant.ofEpochMilli(ms).toString(); // e.g. 2025-11-09T00:00:00Z\n}\n\n// start/end\nif (ctx.containsKey('startTimeUnixNano') && ctx.startTimeUnixNano != null) {\n  ctx.startTime = toIsoFromNanos(ctx.startTimeUnixNano);\n}\nif (ctx.containsKey('endTimeUnixNano') && ctx.endTimeUnixNano != null) {\n  ctx.endTime = toIsoFromNanos(ctx.endTimeUnixNano);\n}\n\n// duration\nif (!ctx.containsKey('durationNano') || ctx.durationNano == null) {\n  if (ctx.containsKey('startTimeUnixNano') && ctx.containsKey('endTimeUnixNano')\n      && ctx.startTimeUnixNano != null && ctx.endTimeUnixNano != null) {\n    ctx.durationNano = (long)(ctx.endTimeUnixNano - ctx.startTimeUnixNano);\n  }\n}\n\n// ensure containers\nif (!ctx.containsKey('attributes_map')) ctx.attributes_map = new HashMap();\nif (!ctx.containsKey('resource')) ctx.resource = new HashMap();\nif (!ctx.resource.containsKey('service')) ctx.resource.service = new HashMap();\nif (!ctx.resource.service.containsKey('instance')) ctx.resource.service.instance = new HashMap();\nif (!ctx.resource.containsKey('telemetry')) ctx.resource.telemetry = new HashMap();\nif (!ctx.resource.telemetry.containsKey('sdk')) ctx.resource.telemetry.sdk = new HashMap();"
+      }
+    },
+    {
+      "script": {
+        "description": "attributes -> attributes_map (.i/.f/.b/.s); supports OTLP array or plain map",
+        "lang": "painless",
+        "source": "void putTyped(def dest, String k, def v) {\n  if (v == null) return;\n  if (v instanceof Boolean) { dest[k + '.b'] = v; return; }\n  if (v instanceof Number) {\n    if (v instanceof Float || v instanceof Double || v instanceof BigDecimal) {\n      dest[k + '.f'] = v;\n    } else {\n      dest[k + '.i'] = (v.longValue());\n    }\n    return;\n  }\n  dest[k + '.s'] = v.toString();\n}\n\nvoid foldOtlpArray(def src, def dest) {\n  for (def a : src) {\n    if (a == null || !a.containsKey('key') || !a.containsKey('value')) continue;\n    String k = a.key;\n    def val = a.value;\n\n    if (val.containsKey('stringValue')) { putTyped(dest, k, val.stringValue); continue; }\n    if (val.containsKey('boolValue')) { putTyped(dest, k, val.boolValue); continue; }\n    if (val.containsKey('intValue')) { putTyped(dest, k, val.intValue); continue; }\n    if (val.containsKey('doubleValue')) { putTyped(dest, k, val.doubleValue); continue; }\n    if (val.containsKey('arrayValue') || val.containsKey('kvlistValue')) { putTyped(dest, k, val.toString()); }\n  }\n}\n\nvoid foldMap(def src, def dest) {\n  for (def e : src.entrySet()) {\n    putTyped(dest, e.getKey(), e.getValue());\n  }\n}\n\nif (ctx.containsKey('attributes') && ctx.attributes != null) {\n  def am = ctx.attributes_map;\n  if (ctx.attributes instanceof List) {\n    foldOtlpArray(ctx.attributes, am);\n  } else if (ctx.attributes instanceof Map) {\n    foldMap(ctx.attributes, am);\n  }\n}"
+      }
+    },
+    {
+      "foreach": {
+        "field": "events",
+        "processor": {
+          "script": {
+            "description": "events[*]: timeUnixNano -> time (ISO); attributes -> attributes_map",
+            "lang": "painless",
+            "source": "def item = ctx._ingest._value;\n\nString toIsoFromNanos(def nanos) {\n  if (nanos == null) return null;\n  long ms = (long)(nanos / 1_000_000L);\n  return Instant.ofEpochMilli(ms).toString();\n}\n\nvoid putTyped(def dest, String k, def v) {\n  if (v == null) return;\n  if (v instanceof Boolean) { dest[k + '.b'] = v; return; }\n  if (v instanceof Number) {\n    if (v instanceof Float || v instanceof Double || v instanceof BigDecimal) {\n      dest[k + '.f'] = v;\n    } else {\n      dest[k + '.i'] = (v.longValue());\n    }\n    return;\n  }\n  dest[k + '.s'] = v.toString();\n}\n\nvoid foldOtlpArray(def src, def dest) {\n  for (def a : src) {\n    if (a == null || !a.containsKey('key') || !a.containsKey('value')) continue;\n    String k = a.key;\n    def val = a.value;\n\n    if (val.containsKey('stringValue')) { putTyped(dest, k, val.stringValue); continue; }\n    if (val.containsKey('boolValue')) { putTyped(dest, k, val.boolValue); continue; }\n    if (val.containsKey('intValue')) { putTyped(dest, k, val.intValue); continue; }\n    if (val.containsKey('doubleValue')) { putTyped(dest, k, val.doubleValue); continue; }\n    if (val.containsKey('arrayValue') || val.containsKey('kvlistValue')) { putTyped(dest, k, val.toString()); }\n  }\n}\n\nvoid foldMap(def src, def dest) {\n  for (def e : src.entrySet()) {\n    putTyped(dest, e.getKey(), e.getValue());\n  }\n}\n\nif (item.containsKey('timeUnixNano') && item.timeUnixNano != null) {\n  item.time = toIsoFromNanos(item.timeUnixNano);\n}\n\nif (!item.containsKey('attributes_map')) item.attributes_map = new HashMap();\n\nif (item.containsKey('attributes') && item.attributes != null) {\n  if (item.attributes instanceof List) {\n    foldOtlpArray(item.attributes, item.attributes_map);\n  } else if (item.attributes instanceof Map) {\n    foldMap(item.attributes, item.attributes_map);\n  }\n}"
+          }
+        },
+        "ignore_missing": true
+      }
+    },
+    {
+      "foreach": {
+        "field": "links",
+        "processor": {
+          "script": {
+            "description": "links[*]: attributes -> attributes_map (linksはobject/dynamic:true)",
+            "lang": "painless",
+            "source": "def item = ctx._ingest._value;\n\nvoid putTyped(def dest, String k, def v) {\n  if (v == null) return;\n  if (v instanceof Boolean) { dest[k + '.b'] = v; return; }\n  if (v instanceof Number) {\n    if (v instanceof Float || v instanceof Double || v instanceof BigDecimal) {\n      dest[k + '.f'] = v;\n    } else {\n      dest[k + '.i'] = (v.longValue());\n    }\n    return;\n  }\n  dest[k + '.s'] = v.toString();\n}\n\nvoid foldOtlpArray(def src, def dest) {\n  for (def a : src) {\n    if (a == null || !a.containsKey('key') || !a.containsKey('value')) continue;\n    String k = a.key;\n    def val = a.value;\n\n    if (val.containsKey('stringValue')) { putTyped(dest, k, val.stringValue); continue; }\n    if (val.containsKey('boolValue')) { putTyped(dest, k, val.boolValue); continue; }\n    if (val.containsKey('intValue')) { putTyped(dest, k, val.intValue); continue; }\n    if (val.containsKey('doubleValue')) { putTyped(dest, k, val.doubleValue); continue; }\n    if (val.containsKey('arrayValue') || val.containsKey('kvlistValue')) { putTyped(dest, k, val.toString()); }\n  }\n}\n\nvoid foldMap(def src, def dest) {\n  for (def e : src.entrySet()) {\n    putTyped(dest, e.getKey(), e.getValue());\n  }\n}\n\nif (!item.containsKey('attributes_map')) item.attributes_map = new HashMap();\n\nif (item.containsKey('attributes') && item.attributes != null) {\n  if (item.attributes instanceof List) {\n    foldOtlpArray(item.attributes, item.attributes_map);\n  } else if (item.attributes instanceof Map) {\n    foldMap(item.attributes, item.attributes_map);\n  }\n}"
+          }
+        },
+        "ignore_missing": true
+      }
+    },
+    {
+      "script": {
+        "description": "resource.attributes -> resource.service.*, resource.telemetry.sdk.*",
+        "lang": "painless",
+        "source": "def r = ctx.resource;\ndef targetKeys = new HashMap();\ntargetKeys.put('service.name', 'service.name');\ntargetKeys.put('service.namespace', 'service.namespace');\ntargetKeys.put('service.instance.id', 'service.instance.id');\ntargetKeys.put('service.version', 'service.version');\ntargetKeys.put('telemetry.sdk.name', 'telemetry.sdk.name');\ntargetKeys.put('telemetry.sdk.version', 'telemetry.sdk.version');\ntargetKeys.put('telemetry.sdk.language', 'telemetry.sdk.language');\n\ndef kv = new HashMap();\nif (r.containsKey('attributes') && r.attributes != null) {\n  if (r.attributes instanceof List) {\n    for (def a : r.attributes) {\n      if (a == null || !a.containsKey('key') || !a.containsKey('value')) continue;\n      String k = a.key;\n      def val = a.value;\n      def outVal = null;\n      if (val.containsKey('stringValue')) outVal = val.stringValue;\n      else if (val.containsKey('boolValue')) outVal = val.boolValue;\n      else if (val.containsKey('intValue')) outVal = val.intValue;\n      else if (val.containsKey('doubleValue')) outVal = val.doubleValue;\n      else outVal = val.toString();\n      kv.put(k, outVal);\n    }\n  } else if (r.attributes instanceof Map) {\n    for (def e : r.attributes.entrySet()) {\n      kv.put(e.getKey(), e.getValue());\n    }\n  }\n}\n\ndef s = r.service; def inst = r.service.instance; def sdk = r.telemetry.sdk;\nif (kv.containsKey('service.name')) s.name = kv.get('service.name');\nif (kv.containsKey('service.namespace')) s.namespace = kv.get('service.namespace');\nif (kv.containsKey('service.instance.id')) inst.id = kv.get('service.instance.id');\nif (kv.containsKey('service.version')) s.version = kv.get('service.version');\nif (kv.containsKey('telemetry.sdk.name')) sdk.name = kv.get('telemetry.sdk.name');\nif (kv.containsKey('telemetry.sdk.version')) sdk.version = kv.get('telemetry.sdk.version');\nif (kv.containsKey('telemetry.sdk.language')) sdk.language = kv.get('telemetry.sdk.language');"
+      }
+    }
+  ],
+  "on_failure": [
+    {
+      "set": {
+        "field": "ingest_error",
+        "value": "{{ _ingest.on_failure_message }}"
+      }
+    }
+  ]
+}

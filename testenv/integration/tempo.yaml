@@ -1,0 +1,26 @@
+# 結合テスト専用のGrafana Tempo設定です（start-services.shがcontainerへ複製します）。
+# OTLP gRPCだけを受信し、traceはcontainer内の一時領域に保存してcontainerと一緒に破棄します。
+server:
+  http_listen_port: 3200
+  log_level: info
+
+# CIから匿名の利用状況を送信しません。
+usage_report:
+  reporting_enabled: false
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          # container外へportを公開するため、全interfaceで待ち受けます。
+          endpoint: 0.0.0.0:4317
+
+storage:
+  trace:
+    backend: local
+    # imageは非root利用者で動くため、書き込める/tmpの下を使います。
+    wal:
+      path: /tmp/tempo/wal
+    local:
+      path: /tmp/tempo/blocks

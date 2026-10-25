@@ -1,0 +1,29 @@
+# 結合テスト専用のOpenTelemetry Collector設定です（start-services.shがcontainerへ複製します）。
+# OTLP gRPCで受信したspanを、同じdocker networkのTempo（alias: tempo）へ転送します。
+# debug exporterは受信件数をcontainer logへ出し、失敗時の診断に使います。
+extensions:
+  health_check:
+    # start-services.shが準備完了を確認します。
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        # container外へportを公開するため、全interfaceで待ち受けます。
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/tempo, debug]

@@ -1,0 +1,192 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./...
+      - run: go vet ./...
+      # Windows VMでの試験結果を集計するscriptの自己試験です。合成したlogだけを使います。
+      - name: PowerShell summarizer self-tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./testenv/windows/summarize-all-package-results_test.ps1 -OutputDirectory "$env:RUNNER_TEMP/summary-all-package-self-test"
+          ./testenv/windows/summarize-results_test.ps1 -OutputDirectory "$env:RUNNER_TEMP/summary-self-test"
+      - name: Race tests for logging, tracing, and spool persistence
+        if: runner.os == 'Linux'
+        run: >-
+          go test -race . ./internal/application/logging ./internal/application/trace/tracer
+          ./internal/infrastructure/logger/multi ./internal/infrastructure/logger/slack
+          ./internal/infrastructure/logger/opensearch ./internal/infrastructure/fsstore/spool/...
+          ./internal/infrastructure/spool/log/...
+
+  # macOSの一時directoryは/var → /private/varのsymlinkを経由します。同じ条件をLinuxで再現し、
+  # 入力pathと実体のpathが異なる場合の比較・識別を試験します。
+  symlinked-tmpdir:
+    name: test (ubuntu-latest, symlinked TMPDIR)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Tests with TMPDIR behind a symlink
+        run: |
+          mkdir "$RUNNER_TEMP/private-var"
+          ln -s private-var "$RUNNER_TEMP/var"
+          TMPDIR="$RUNNER_TEMP/var" go test ./...
+
+  # Linuxで大小文字を区別しない実際のfilesystemをloop deviceでmountして試験します。ext4のcasefold属性を
+  # 付けたdirectoryを試験の一時directoryにして全packageを実行し、FAT（vfat）とexFATのmountを判定する試験と、
+  # vfat上の一時directoryでだけ動くfile loggerの試験を実行します。mountにはrunnerのsudoを使います。
+  # t.TempDirはGOTMPDIRを設定していればTMPDIRより優先するため、go test -execで試験processへ両方を渡し、
+  # go自身のbuild用一時directoryは通常のdiskのままにします。
+  case-insensitive-tmpdir:
+    name: test (ubuntu-latest, case-insensitive TMPDIR)
+    runs-on: ubuntu-latest
+    env:
+      CASEFOLD_TMPDIR: /mnt/casefold/tmp
+      VFAT_TMPDIR: /mnt/vfat/tmp
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Mount case-insensitive filesystems
+        id: mount
+        run: |
+          set -euo pipefail
+          if ! command -v mkfs.vfat >/dev/null || ! command -v mkfs.exfat >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq dosfstools
+            sudo apt-get install -y -qq exfatprogs || echo "::notice::exfatprogs is unavailable"
+          fi
+          # casefold機能付きのext4を作り、試験の一時directoryにするdirectoryへcasefold属性（F）を付けます。
+          # 属性は子directoryへ引き継がれるため、各試験の一時directoryも大小文字を区別しません。
+          # 設定例（.env.example）のままfile loggerの出力を確かめる試験は、HETEROLOG_MIN_AVAILABLE_DISK_SPACE_GB
+          # （1GB）以上の空きを前提にします。sparse fileなので、diskは書き込んだ分だけ使います。
+          truncate -s 16G "$RUNNER_TEMP/casefold.img"
+          mkfs.ext4 -q -F -O casefold "$RUNNER_TEMP/casefold.img"
+          sudo mkdir -p /mnt/casefold
+          sudo mount -o loop "$RUNNER_TEMP/casefold.img" /mnt/casefold
+          sudo chown "$(id -u):$(id -g)" /mnt/casefold
+          mkdir "$CASEFOLD_TMPDIR"
+          chattr +F "$CASEFOLD_TMPDIR"
+          lsattr -d "$CASEFOLD_TMPDIR"
+          available=$(df -B1 --output=avail "$CASEFOLD_TMPDIR" | tail -n 1 | tr -d ' ')
+          if [ "$available" -lt $((1 * 1024 * 1024 * 1024)) ]; then
+            echo "::error::$CASEFOLD_TMPDIR has $available bytes available, below HETEROLOG_MIN_AVAILABLE_DISK_SPACE_GB=1 of .env.example"
+            exit 1
+          fi
+          # vfatは現在のuserでmountします。判定は/proc/self/mountinfoのfilesystemとmount optionを読みます。
+          truncate -s 512M "$RUNNER_TEMP/vfat.img"
+          mkfs.vfat -F 32 "$RUNNER_TEMP/vfat.img" >/dev/null
+          sudo mkdir -p /mnt/vfat
+          sudo mount -o "loop,uid=$(id -u),gid=$(id -g),fmask=0077,dmask=0077" "$RUNNER_TEMP/vfat.img" /mnt/vfat
+          mkdir "$VFAT_TMPDIR"
+          # exFATはkernelとtoolが揃うrunnerだけで追加し、揃わなければvfatだけで判定を確かめます。
+          sudo mkdir -p /mnt/exfat
+          if command -v mkfs.exfat >/dev/null &&
+            truncate -s 512M "$RUNNER_TEMP/exfat.img" &&
+            mkfs.exfat "$RUNNER_TEMP/exfat.img" >/dev/null &&
+            sudo mount -o "loop,uid=$(id -u),gid=$(id -g),fmask=0077,dmask=0077" "$RUNNER_TEMP/exfat.img" /mnt/exfat; then
+            echo "exFAT is mounted"
+          else
+            echo "::notice::exFAT could not be mounted on this runner; only vfat is checked"
+          fi
+          # 用意したdirectoryが実際に大小文字を区別しないことを、別表記で同じfileを開けるかで確かめます。
+          for dir in "$CASEFOLD_TMPDIR" "$VFAT_TMPDIR"; do
+            touch "$dir/Probe.log"
+            test -e "$dir/PROBE.LOG"
+            rm "$dir/Probe.log"
+          done
+          grep -E ' /mnt/(casefold|vfat|exfat) ' /proc/self/mountinfo
+      - name: Tests with GOTMPDIR and TMPDIR on an ext4 casefold directory
+        run: go test -count=1 -exec "env GOTMPDIR=$CASEFOLD_TMPDIR TMPDIR=$CASEFOLD_TMPDIR" ./...
+      - name: Real case-insensitive filesystems run the case tests instead of skipping them
+        if: ${{ !cancelled() && steps.mount.outcome == 'success' }}
+        run: |
+          set -uo pipefail
+          # 実際のfilesystemを判定する試験と、大小文字を区別しない一時directoryでだけ動く試験が、
+          # skipせずに実行されたことを確かめます。失敗やskipがあっても残りを実行し、最後にまとめて失敗にします。
+          status=0
+          run_without_skip() {
+            local tmpdir=$1 pattern=$2 package=$3 log
+            log=$(mktemp)
+            if ! go test -count=1 -v -exec "env GOTMPDIR=$tmpdir TMPDIR=$tmpdir" -run "$pattern" "$package" | tee "$log"; then
+              echo "::error::$package failed a case test with the temporary directory on $tmpdir"
+              status=1
+            fi
+            if grep -q -- '--- SKIP' "$log"; then
+              echo "::error::$package skipped a case test with the temporary directory on $tmpdir"
+              status=1
+            fi
+          }
+          file_tests='^(TestCompressedArchiveGroupsPathIdentityPreservesUploadPath|TestFileLoggerCaseInsensitiveTargetCaseRestartPreservesGenerationsAndRetriesArchive|TestLoggerSetPathIdentityRejectsCaseAliasedFilePrefixes)$'
+          run_without_skip "$CASEFOLD_TMPDIR" '^TestLinuxDirectoryCaseDetectsAvailableCaseInsensitiveFilesystems$' ./pkg/path/pathidentity
+          run_without_skip "$CASEFOLD_TMPDIR" "$file_tests" ./internal/infrastructure/logger/file
+          run_without_skip "$VFAT_TMPDIR" "$file_tests" ./internal/infrastructure/logger/file
+          exit "$status"
+
+  # opt-inの結合テストを、testenv/integration/start-services.shが起動する使い捨てのlocal
+  # container（OpenSearch・Loki・ClickHouse・Tempo・OpenTelemetry Collector）に対して実行します。
+  # 宛先は127.0.0.1だけのCI専用設定testenv/integration/ci.envで、secretは使いません。
+  integration:
+    name: integration (ubuntu-latest, live backends)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # go testは各packageのdirectoryで試験を実行するため、絶対pathで指定します。
+      HETEROLOG_INTEGRATION_ENV_PATH: ${{ github.workspace }}/testenv/integration/ci.env
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Start backend containers
+        id: services
+        run: bash testenv/integration/start-services.sh
+      # 各stepはopt-inの変数を設定し、対象の試験だけをgo test -count=1で実行して、
+      # すべてPASSしたかを確認します。前のstepが失敗しても続け、起動に失敗した場合は実行しません。
+      - name: Live tests (OpenSearch logger)
+        if: ${{ !cancelled() && steps.services.outcome == 'success' }}
+        run: bash testenv/integration/run-live-tests.sh opensearch
+      - name: Live tests (pkg/opensearch client)
+        if: ${{ !cancelled() && steps.services.outcome == 'success' }}
+        run: bash testenv/integration/run-live-tests.sh opensearch-client
+      - name: Live tests (Loki)
+        if: ${{ !cancelled() && steps.services.outcome == 'success' }}
+        run: bash testenv/integration/run-live-tests.sh loki
+      - name: Live tests (ClickHouse)
+        if: ${{ !cancelled() && steps.services.outcome == 'success' }}
+        run: bash testenv/integration/run-live-tests.sh clickhouse
+      - name: Live tests (Tempo and OpenTelemetry Collector)
+        if: ${{ !cancelled() && steps.services.outcome == 'success' }}
+        run: bash testenv/integration/run-live-tests.sh tracing
+      # 起動に失敗した場合はstart-services.shが診断情報を表示済みです。
+      - name: Container diagnostics
+        if: ${{ failure() && steps.services.outcome == 'success' }}
+        run: bash testenv/integration/collect-diagnostics.sh
+      - name: Stop backend containers
+        if: always()
+        run: bash testenv/integration/stop-services.sh

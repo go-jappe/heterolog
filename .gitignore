@@ -1,0 +1,25 @@
+# Local configuration and credentials
+/.env
+/.env.*
+!/.env.example
+/.aws/
+/.agents/
+/.codex/
+/.vscode/
+/.claude/
+.DS_Store
+
+# Build and test output
+/main
+/log-recovery
+/log-recovery.exe
+/bin/
+/dist/
+*.test
+*.test.exe
+*.prof
+coverage.out
+coverage.html
+fixture-storage/
+/error_logs/
+/logs/

@@ -1,0 +1,170 @@
+停止中アプリケーションのログを手動で復旧する
+
+このCLIは、アプリケーションと同じ.env設定を読み込み、選択したloggerの
+ログファイルに対する復旧処理を実行します。既定では1回実行して終了し、
+--retryを指定した場合は失敗した処理を時間を置いて再試行します。
+通常のアプリケーション起動とは独立したコマンドです。
+
+実行前の停止確認
+
+対象directoryを共有するアプリケーションをすべて停止してください。
+他のlog-recoveryコマンドとも同時に実行しないでください。
+--application-stoppedは利用者が停止を確認したことを示す必須flagです。
+processの自動検出や、別processとの排他を保証するflagではありません。
+
+ビルドと実行例
+
+  go build -o log-recovery ./cmd/log-recovery
+  ./log-recovery --help
+  ./log-recovery --target service --application-stopped --env-file .env
+
+FileLoggerがfilesystemへ直接書いたログ系列を復旧する例:
+
+  ./log-recovery --target service --application-stopped --env-file .env --logger sync --scope file-logger
+
+非同期loggerのログbackend送信失敗archiveを復旧し、結果をJSONで出力する例:
+
+  ./log-recovery --target service --application-stopped --env-file .env --logger async --scope log-backend-failure-archive --json
+
+失敗した処理を5秒間隔で再試行し、完了まで状況を表示する例:
+
+  ./log-recovery --target service --application-stopped --env-file .env --retry
+
+再試行までの時間を変更し、進捗と最終JSON結果を別ファイルへ出す例:
+
+  ./log-recovery --target service --application-stopped --env-file .env --retry --retry-interval 10s --json > recovery-result.json 2> recovery-progress.txt
+
+flagと設定の対応
+
+  --target service
+    アプリケーションのtarget。必須です。
+
+  --application-stopped
+    対象directoryを共有する全アプリケーション・復旧CLIの停止確認。必須です。
+
+  --env-file PATH
+    PATHの環境設定ファイルを読み込みます。プロセスの環境変数は変更しません。
+    省略時はHETEROLOG_ENV_PATH、または通常の.env読込規則を使用します。
+    通常のアプリケーションと同様、既に設定された環境変数が.envより優先されます。
+    明示したファイルを読めない場合は失敗します。
+    読み込んだ設定は--targetを反映した後にアプリケーションと同じ設定全体の検証（config.ValidateApplicationConfig）を受けます。
+    不整合があれば復旧を始める前に設定error（終了code 1、invalid config: ...）で終了し、保存先には触れません。
+
+  --logger sync|async|delivery
+    復旧対象として使用するlogger設定。既定値はsyncです。
+    複数のloggerを処理する場合は、同じdirectoryを共有しないかを確認した上で、
+    loggerごとに順番に実行してください。
+
+  --scope file-logger|log-backend-failure-archive|all
+    file-loggerはFileLoggerがfilesystemへ直接書いたdefault/error/debugと、
+    設定された専用internalログの系列です。.logとその圧縮済みファイルを含みます。
+    log-backend-failure-archiveはOpenSearch/Loki/CloudWatch Logs/ClickHouseへの通常ログ送信に
+    失敗したログをfilesystemのretryable/permanentへ保存するJSONL archiveの系列です。
+    .jsonlとその圧縮済みファイルを含みます。backendからログを取得する処理ではありません。
+    allは両方を選択します。既定値はallです。
+    圧縮ログのobject storage upload失敗を保存したarchiveは、この復旧対象に含みません。
+    結果のscopeも同じ生成元の名前を使い、専用internalログはfile-logger/internal、
+    backend別のarchiveはlog-backend-failure-archive/opensearchなどと表示します。
+
+  --json
+    directoryごとの走査件数、圧縮・受付・削除の対象ファイル、
+    delete-pending復旧、失敗したファイルのpathと理由、警告、errorを
+    JSONで標準出力へ出します。省略時はdirectoryごとの件数、失敗したファイルの
+    pathと理由、警告・errorを表示します。
+    accepted_filesやaccepted件数は、upload成功、またはupload失敗後に設定された
+    全durable退避先が受け付けたファイルです。remoteへのupload成功だけを示す値ではありません。
+    一部の宛先だけで受付が完了したファイルも含むため、全宛先へのupload完了も保証しません。
+    failed_filesやerrorも確認してください。
+    --retryの進捗は標準error出力に表示するため、標準出力には最終JSONだけが出ます。
+
+  --retry
+    失敗した復旧処理を、すべて完了するまで再試行します。通常の停止要求後も、
+    受理済みの復旧とcheckpoint保存は継続し、その完了を待ちます。
+    checkpointの状態と処理済みの結果を同じ実行内で保持し、残った処理を再開します。
+    復旧対象の準備・走査で失敗した場合も再試行します。設定自体の不正や読込失敗は
+    再試行せず終了するため、設定を直してCLIを再実行してください。
+    対象scope、処理件数、失敗理由、次回再試行までの時間、終了待機を標準error出力へ表示します。
+
+  --retry-interval DURATION
+    再試行までの待機時間です。既定値は5sです。10sや1mなど、0より大きい値を指定します。
+    --retryを指定したときだけ使用でき、--retryなしでの指定は引数エラーになります。
+
+  --help
+    設定ファイルを読み込まず、復旧処理も実行せず、使い方を表示します。
+
+処理範囲とcheckpoint
+
+圧縮形式、object storage宛先、checkpoint、upload後のファイル保持・削除などは、
+選択したloggerの現在の設定に従います。現在の設定と既存のcursorを使って処理するため、
+過去の任意の宛先へ送信するコマンドではありません。
+停止済みのdirectoryを対象にするため、最新のログファイルも処理対象に含めます。
+圧縮の有効・無効は現在の設定に従い、無効な圧縮を強制的に有効にしません。
+
+既存のcursorやdestination keyを強制resetする機能はありません。
+新しいupload宛先の登録境界も通常の処理と同じです。追加した宛先のために
+過去の全archiveを強制的に送り直す操作は行いません。
+宛先を登録する前から存在したarchiveは、その宛先へ送信せず、送信済みとしても
+扱いません。宛先の登録を理由に削除することはありません。ただし、登録時点の
+現在のrotation期間に属する最新の未圧縮ログは、まだ追記される可能性があるため
+登録後の送信対象に含めます。過去の期間の未圧縮ログは、最新の世代でも対象外です。
+upload後に削除するのは、有効な宛先の少なくとも一つへ送信・退避し、残りの有効な宛先でも
+送信不要と確認できた圧縮ファイルだけです。どの有効な宛先へも送信・退避していない
+archiveは、通常のアプリケーションでは保持期間・世代数・容量の設定に従って削除されます。
+このCLIはそれらのpurgeを行わないため、復旧後もそのまま残ります。
+
+HETEROLOG_ENABLE_ARCHIVE_CHECKPOINT_AUTO_RECOVERYの設定も尊重します。
+有効時に、復旧条件を満たす欠落checkpointを作り直した場合は、既存archiveが
+再uploadされることがあります。無効時の欠落checkpointなど、復旧できない状態は
+errorとして報告します。既存checkpointの進捗を任意に消去する操作は行いません。
+
+復旧で最新のログファイルまで送信・削除した後にアプリケーションを再起動しても、
+writerはcheckpointに記録済みの世代番号を再利用せず、その後の番号から書き込みます。
+新しいログが送信済みの世代と同じ名前になり、送信されないまま削除されたり、
+object storageの同じobjectを上書きしたりすることはありません。
+
+一巡だけの手動復旧では、checkpoint保存に失敗したまま受付済みの圧縮ファイルを削除せず、
+保持して非zeroの終了codeを返します。CLI終了後に非同期でcheckpointを復旧する
+処理は残りません。原因を修正して再実行すると、進捗を保存できなかったファイルが
+再uploadされる場合があります。
+
+保存期限・容量制限によるarchiveのpurgeは行いません。
+record spoolと圧縮ログupload用spoolのreplayは、どちらも対象外です。
+.preservedファイルの処理も行いません。
+JSONLのfailure archiveから元のログbackendへrecordを再送する機能もありません。
+復旧後のupload設定に従うファイル削除と、既存のdelete-pendingの完了は対象です。
+--retryを省略すると復旧の走査を1回実行して終了します。errorが残った場合は
+原因を確認し、必要に応じて再度実行してください。--retryも通常の周期runnerや
+spool再送を起動する指定ではなく、今回の復旧で残った処理だけを再試行する指定です。
+retryモードではcheckpoint保存の復旧も同じStoreを維持して続けます。
+
+元ログと同じ世代の圧縮ファイルが残っている場合は、組み込みの圧縮形式
+（gzip・zstd・lz4・xz）なら最後まで展開し、元ログと内容が一致することを確認してから
+元ログを削除します。圧縮ファイルが完全でも内容が異なる場合は、元ログを削除せずに
+ログdirectoryの.preservedへ退避し、退避先を含むerrorとして報告します。圧縮ファイルは
+その世代のファイルとして残します。破損した圧縮ファイルは削除し、残した元ログを
+再実行や--retryの次の処理で再圧縮します。新しく圧縮する場合も、組み込みの圧縮形式では
+一時ファイルを展開して元ログと内容が一致することを確認してから公開し、一致しなければ
+公開せず元ログも削除しません。
+
+停止要求と終了待機
+
+Ctrl+CまたはSIGTERMの1回目で通常の終了を要求します。retryモードは新しい処理の
+受付を止め、受理済みの復旧処理とcheckpoint保存が完了してから終了します。
+終了待機中も状況と失敗理由を表示します。失敗が続く場合、通常終了に時間制限はありません。
+保存済みspoolの未送信データをすべて送るまで待つことはありません。
+
+同じsignalをもう一度送ると、通常の終了待機を打ち切る強制終了要求になります。
+復旧の待機・再試行を止め、途中結果と残ったerrorを報告します。未保存のメモリ状態は
+次の起動に引き継げないため、再実行時にuploadを再び試す場合があります。
+実行中のOS file I/Oは強制中断できない場合があり、打ち切り要求後もその終了を待つ場合があります。
+signalの受付側はprocessを直ちに終了せず、CLIの終了処理を通して結果を出します。
+
+終了code
+
+  0   成功、またはhelp表示。
+  1   設定・復旧・結果出力の失敗。一部のdirectoryだけ完了した場合も含みます。
+  2   引数の不備、targetの不正、停止確認flagの不足。
+  130 SIGINT/SIGTERMなどによる終了要求。安全な終了待機を終えた場合と、打ち切った場合を含みます。
+
+errorは結果にも含め、処理全体のerrorは標準error出力にも表示します。
+自動実行で終了codeを判定する場合は、go runではなくビルド済みコマンドを使用してください。
