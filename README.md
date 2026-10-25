@@ -1,12 +1,52 @@
 # heterolog
 
-複数の出力先、ファイルローテーション、失敗ログの永続化・再送を備えるGoログライブラリです。標準の `log/slog` からも利用できます。Go 1.27.3以降が必要です。
+[日本語版](README.ja.md)
 
-モジュールパスは `github.com/go-jappe/heterolog` で、`go get github.com/go-jappe/heterolog` で追加できます。ライセンスは [MIT License](LICENSE) です。
+heterolog is a Go logging library that writes to several destinations at once, rotates and compresses log files, and keeps and replays logs that could not be delivered. It can also be used through the standard `log/slog` package.
 
-## 利用例
+- Module path: `github.com/go-jappe/heterolog`
+- Requires Go 1.27.3 or later
+- License: [MIT License](LICENSE)
 
-このチェックアウト内では、次のサンプルを実行できます。
+The other documents in this repository, including the comments in `.env.example`, are written in Japanese.
+
+## Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Writing logs](#writing-logs)
+- [Loggers and shutdown](#loggers-and-shutdown)
+- [Configuration](#configuration)
+- [Log files](#log-files)
+- [Failure handling and replay](#failure-handling-and-replay)
+- [Destination notes](#destination-notes)
+- [Log recovery CLI](#log-recovery-cli)
+- [Testing](#testing)
+- [Design decisions](#design-decisions)
+- [License](#license)
+
+## Features
+
+- Destinations: stdout, file, Slack, OpenSearch, Loki, CloudWatch Logs, and ClickHouse, several at once.
+- Three loggers: synchronous (returns errors), asynchronous best effort, and delivery (reports the result for each destination).
+- A `log/slog` handler.
+- Log file rotation, compression (gzip, zstd, lz4, xz), and upload to object storage (S3) with upload checkpoints.
+- Logs that could not be delivered are kept in a spool or a failure archive and replayed. `Retry-After` is honored, also across restarts.
+- Overload protection with a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
+- Configuration in code, or from `HETEROLOG_` environment variables with `LoadEnvConfig`.
+- A CLI that recovers log files of a stopped application.
+- Tested on Linux, Windows, and macOS, including case-insensitive file systems.
+
+## Installation
+
+```sh
+go get github.com/go-jappe/heterolog
+```
+
+## Quick start
+
+In a checkout of this repository, you can run the following example:
 
 ```sh
 go run ./examples/slog
@@ -42,184 +82,402 @@ func main() {
 }
 ```
 
-既定ではINFO以上を標準出力へ、WARN以上を標準エラーへ記録します。日時はUTCです。グローバルな `slog` ロガーを変更したい場合は、アプリケーション側で `slog.SetDefault(logger)` を呼びます。
+By default, INFO and higher are written to stdout and WARN and higher to stderr. Timestamps are in UTC. To replace the global `slog` logger, call `slog.SetDefault(logger)` in your application.
 
-通常のAPIからはログ処理のエラーを受け取れます。
+## Writing logs
+
+### Errors from logging calls
+
+The regular API returns errors from log processing.
 
 ```go
 jobID := heterolog.MustFieldKey("job_id")
 err := runtime.Info(ctx, "job completed", jobID.Int(42))
 ```
 
-`Any(key, value)` は生成時に値をJSONとして保持します。JSON化できない値や、配列・objectの入れ子が `MaxFieldNestingDepth`（9000段）を超える値は、生成時に `ErrFieldValueNotJSON` を返します。この上限は、spoolや各出力先の形式が外側に加える階層を含めても保存・再送できる深さです。slogの属性にも同じ上限を適用し、超えた記録は出力せず `Handle` がエラーを返します。`ErrFieldValueNotJSON` のerrorは、JSON化できなかった理由（`MarshalJSON` が返したerrorなど）を表示文にだけ含みます。記録しようとした値を保持し得るため、その理由のerrorは `errors.Is`・`errors.As` で取り出せません。
+### Field values
 
-`request_id`、`trace_id`、`span_id` は文字列の場合にログのメタデータとして扱います。数値・真偽値・オブジェクトなどは型を保って通常の構造化フィールドへ保存します。同じキーを複数回指定した場合は最後の値だけを使い、その値の型で分類します。これらの規則は `slog` のトップレベル属性にも適用されます。
+- `Any(key, value)` keeps the value as JSON when the field is created.
+- A value that cannot be converted to JSON, or whose arrays and objects are nested deeper than `MaxFieldNestingDepth` (9000 levels), makes field creation return `ErrFieldValueNotJSON`. This limit is the depth that can still be stored and replayed after the spool and each destination's format add their own outer levels.
+- The same limit applies to slog attributes. A record that exceeds it is not written, and `Handle` returns an error.
+- An `ErrFieldValueNotJSON` error includes the reason the value could not be converted (such as the error returned by `MarshalJSON`) in its message only. Because that reason can contain the value being logged, it cannot be retrieved with `errors.Is` or `errors.As`.
 
-`ErrorWithStack(ctx, message, err, fields...)` は、呼び出し時のアプリケーションのスタックを記録します。非同期処理でも呼び出し元を保持し、各出力先の `ErrorTraceDepth` に従って表示します。深度0では呼び出し位置だけ、深度Nではそこから親Nフレームまでを表示します。デバッグモードでは `ErrorTraceDepthDebugMode` を使います。`err` に `nil` を渡した場合も拒否せず、エラー情報のないERRORログとしてスタックとともに記録します。
+### Metadata keys
 
-`slog.Logger` は `Handler.Handle` の戻り値を呼出側へ返しません。呼出時のエラーを確認するには通常のAPI、宛先別の送達状況を確認するには `NewDelivery` を使います。通常APIの成功はバッファへの受理を表す場合があり、最終的な配送成功を保証しません。
+- `request_id`, `trace_id`, and `span_id` are treated as log metadata when their values are strings.
+- Numbers, booleans, objects, and other values keep their type and are stored as regular structured fields.
+- When the same key is given more than once, only the last value is used, and it is classified by its type.
+- These rules also apply to top-level `slog` attributes.
 
-送達結果は、送信先での成功が確認できた場合は `DeliverySucceeded`、明示的な拒否は `DeliveryFailed`、送信前の入力検証などによる拒否は `DeliveryRejected`、応答の欠落・解析失敗などで成否を確認できない場合は `DeliveryUnconfirmed`、送信キューへの受理だけを報告する場合は `DeliveryEnqueued` です。ClickHouseはバッチ挿入を前提とするため、Delivery APIでも送信完了を待たず、キューへ受理した時点で `DeliveryEnqueued` を返します。実際の送信は件数・バイト数・`FlushInterval` の到達時または `Close` で行い、その成否は返したreportへ反映されません。`HasTargetFailure()` は失敗確定・送信前拒否だけを数えるため、成功未確認も含めて停止判断する場合は `HasUnregisteredTarget()` を使います。`DeliveryEnqueued` は成功未確認として扱うため、ClickHouseを宛先に含むreportの `HasUnregisteredTarget()` は `true` になります。退避先への保存成功は送信先での成功とは独立しています。送信先の結果が一件もないreportは、`Error()` が `ErrNoDeliveryTargets` を返すのと同じく `HasTargetFailure()`・`HasAnyFailure()` も `true` です。出力先が一つもない設定は構築時に拒否するため、このreportは内部の不整合でのみ生じます。宛先別の結果の `Backend` は、送信先が返した結果か、loggerが代わりに作った結果（handlerのpanic・期限切れ、`Close` 開始後や一件の上限超過による送信前の拒否）かにかかわらず、`pkg/logger.LogOutputDestination` の名前（`stdout`・`file`・`slack`・`opensearch`・`loki`・`cloudwatchlogs`・`clickhouse`）です。
+### Stack traces
 
-配送ハンドラーのpanicを回復した場合も、配送結果が返らなかった宛先は `DeliveryUnconfirmed` です。他の宛先の確定済み結果は保持します。CloudWatch Logsの送信エラーは、戻り値のerrorと宛先別の `Err` に元の原因を保持し、`errors.Is`／`errors.As` で判別できます。
+- `ErrorWithStack(ctx, message, err, fields...)` records the application's stack at the call.
+- The caller is kept even when the log is processed asynchronously, and the stack is shown according to each destination's `ErrorTraceDepth`. Depth 0 shows only the call site; depth N shows N parent frames above it. Debug mode uses `ErrorTraceDepthDebugMode`.
+- A `nil` `err` is not rejected; the log is recorded as an ERROR log without error details, together with the stack.
 
-OpenSearch・Loki・ClickHouse・CloudWatch Logsの通常APIで送信に失敗したログを退避できなかった場合（退避先が未設定の場合を含む）、戻り値のerrorには退避処理のエラーに加えて送信先の元の原因も含まれ、`errors.Is`／`errors.As` で判別できます。ClickHouseでは、そのflushを実行したログ呼出しまたは `Close` が返します。
+### Using slog
 
-送信に失敗したログを保存先（spool・failure archive）の過負荷によりoverload policyの `drop`（既定）で破棄した場合、通常APIは `heterolog.ErrLogDropped` を包んだerrorを返し、`errors.Is(err, heterolog.ErrLogDropped)` で判定できます。送信先の元の原因も同じerrorに含まれます。バッファへ受理済みのログを後のflushで破棄した場合は、そのflushを実行したログ呼出しまたは `Close` が返します。`degrade` で退避できた場合はerrorを返しません。非同期APIのログ呼出しはerrorを返しません（`Close` の最終flushで破棄した場合は `Close` が返します）。Delivery APIでは `DeliveryReport.HasDrop()` で確認します。破棄件数は `logger_failure_overload_drop_total` でも観測できます。
-
-## 設定と終了処理
-
-| API | 用途 |
-| --- | --- |
-| `DefaultConfig` / `New` | 同期API。処理結果をerrorとして返す（過負荷によるdropは `ErrLogDropped`） |
-| `DefaultAsyncConfig` / `NewAsync` | 非同期のbest effort記録 |
-| `DefaultDeliveryConfig` / `NewDelivery` | 宛先ごとの送達結果を返す（ClickHouseはキューへの受理を `DeliveryEnqueued` として返す） |
-| `NewSlogHandler` | 同期Loggerを `slog.Handler` として利用 |
-| `DefaultSpoolConfig` / `WithSpool` | 永続化した失敗ログの再送ワーカー設定 |
-| `Close` / `Shutdown(ctx)` | 受理済み処理の終了・バッファflush・リソース解放 |
-| `ForceClose` | 復旧処理などへ強制停止を要求 |
-
-`Config`、`AsyncConfig`、`DeliveryConfig` は `pkg/logger` の公開設定型です。出力先にはstdout、file、Slack、OpenSearch、Loki、CloudWatch Logs、ClickHouseを指定できます。各設定の詳細は `go doc github.com/go-jappe/heterolog/pkg/logger` で確認できます。spoolを使うsync/async構成では `WithSpool` も渡してください。通常出力が一つもない設定は、`New`・`NewAsync`・`NewDelivery` が構築前に `pkg/logger` の `ErrNoActiveLogOutput`（`errors.Is` で判定可能）を含むエラーで拒否します。`LogOutputDestinations` が空の場合はnon-nilのbackend設定がすべて通常出力になり、内部ログ専用の保存先やclient設定だけでは出力先になりません。構築時の設定エラーは `errors.Is`・`errors.As` で判別できます。`New`・`NewAsync`・`NewDelivery` の引数の不備は、nilのcontextが `ErrNilContext`、0以下の `Timeout` と `NewAsync` の0以下の `MaxParallel` が `pkg/logger.ConfigFieldError`（`Field` は `heterolog.ConfigFieldTimeout`・`heterolog.ConfigFieldMaxParallel`、種類は `ErrNonPositiveSetting`）、`NewDelivery` へ渡した `WithSpool` が `ErrDeliverySpoolUnsupported`、`WithCloudWatchLogsStreamRouting` の未対応の値が `ErrInvalidStreamRouting`（`*InvalidStreamRoutingError`）です。終了済みのcontextはそのerror（`context.Canceled` など）を返します。内部ログの通知先（`OnErrorConfig` など）に選んだ出力先の設定から通知専用の書き込み先を作れない場合（不正な `TimeZone`、空の `LogLineDateFormat` など）は `ErrInvalidNotificationTarget`（`*NotificationTargetError`。`Source` はloggerの種類、`Backend` は通知先、`Err` は原因）です。表示設定やbackend設定値（buffer・送信上限・retry設定など）の不正は `pkg/logger.ConfigFieldError`（`Source`・`Backend`・`Field`、値を伴う検証では `Value`・`Limit`）で、種類は `ErrNonPositiveSetting` などのsentinelを `errors.Is` で判定できます。client設定の不正は `Field` が `ConfigFieldClient`、種類が `ErrInvalidClientConfig` で、理由は各backend package（例: `pkg/loki.ErrEndpointRequired`）のsentinelとして `errors.Is` で判別できます。endpointをURLとして解析できない場合も、エラーの文面とerror treeの `*url.Error` には、URLのuser info（ユーザー名・パスワード）を `xxxxx` に置き換えたURLだけを含めます。解決できないhandler selectorは `pkg/logger.HandlerSelectorError` です。Slackの `Intervals` の不正な要素は、`errors.As` で取り出せる `pkg/logger.SlackIntervalError` の `Index` で位置を特定できます。fileへの書き込み時の空き容量不足への方針は、方針が `drop`・`degrade` 以外なら `pkg/fsstore.ErrUnsupportedOverloadPolicy`、`degrade` の退避先が `stdout` 以外なら `pkg/fsstore.ErrUnsupportedSpillDestination` を `errors.Is` で判別できます。
-
-内部ログの通知先（`HandlerConfig` の `OnErrorConfig`・`OnWarnConfig`・`OnInfoConfig`・`OnDebugConfig`）には、通知専用の書き込み経路を使います。`file` を選んだ場合はfileロガーへ内部ログを通知しない経路で書き込み、`stdout`・`slack`・`opensearch`・`loki`・`cloudwatchlogs`・`clickhouse` は通常の出力とは別に作る通知専用のロガーを使います。これらの書き込みで起きた失敗は通知せず、失敗ごとに標準のloggerへ一行出力します。通知先に選んだ出力先の設定は、通知の初回ではなく `New`・`NewAsync`・`NewDelivery` の構築時に、保存先を作る前に検証します。通知専用の書き込み先を作れない設定は構築時の設定エラー（`ErrInvalidNotificationTarget`）になり、通知の時点で通知を捨てることはありません。通知先に選んでいない出力先の設定は、この検証の対象にしません。`file` の通知先は、時刻表示の設定（timezone・日時の書式）を構築時に検証し、誤りは構築時の設定エラーにします。ログfileは最初の通知で作成し、作成に失敗した通知は失敗ごとに標準のloggerへ一行出力して、次の通知で作成を再試行します。そのため、出力先に自分自身を通知先として選んでも（例: fileロガーの `OnErrorConfig` に `file`）、通知が繰り返されることはありません。また、仮に通知の処理の中から同じロガーへの通常の書き込みが起きた場合も、その書き込みで生じた遅延・失敗・過負荷などの内部ログは通知先を再び呼ばず、そのロガーの出力（fileは同じログファイル、stdoutは標準出力・標準エラー、Slack・OpenSearch・Loki・CloudWatch Logs・ClickHouseは同じ送信先）へ直接書き込みます。この直接の書き込みにもそのロガーのlog levelを適用し（fileは過負荷時の処置も適用します）、その失敗は通知しません。送信をまとめるロガーとSlackロガーは内部ログの通知を排他の解放後に行い、非同期API（`NewAsync`）は実行枠がすべて使用中でも通知の中からの書き込みを待たせずに処理するため、通知の中から同じロガーへ書き込んでも停止しません。
-
-CloudWatch Logsのstream分割後の名前は、実際に使う通常出力・内部ログの設定を検証します。出力先として選択していないbase設定や、内部ログ専用設定で置き換えたbase設定は検証対象から除きます。
-
-fileのローテーション先を開けなかった場合、その書き込みはエラーを返します。既存ログを保持し、障害解消後の次の書き込みでローテーションを再試行します。ローテーション前のファイルを閉じる処理がエラーを返した場合も、その書き込みはエラーを返します。そのファイルは再利用せず、次の書き込みで新しいファイルを開いてローテーションを完了します。
-
-fileのローテーション処理は標準出力へ診断文字列を直接書き込みません。ファイルだけを出力先に選んだ場合も、通常API・非同期API・Delivery APIでこの規則は共通です。
-
-保存先パスに含まれる有効な空白は、そのまま扱います。保存先の所有権も実際のパスで判定し、同じディレクトリや親子ディレクトリを別のロガーが同時に所有する構成は拒否します。
-
-ログファイル名の照合は、保存先ディレクトリのファイルシステムが大小文字を区別するかに従います。Windowsと、macOSの大小文字を区別しないボリューム、Linuxで大小文字を区別しないと確認できたディレクトリでは、prefix・target・拡張子の大小文字だけが異なる名前を同じファイルとして扱い、ローテーション時の世代番号の選択、圧縮・アップロード・削除対象の検出、アップロード記録（checkpoint）の系列の識別に使います。failure archiveなどの保存先パスにtarget名を付けるとき、既存の階層に同じ名前があるかは各階層のディレクトリの大小文字の規則で判定します。大小文字を区別しないボリュームでは、大小文字だけが異なる名前も同じディレクトリとみなし、targetを二重に付けません。
-
-Linuxでは、casefold属性を持つディレクトリ（ext4・F2FS・tmpfsのcasefold）と、FAT（vfat・msdos）・exFATのファイルシステム上のディレクトリを、大小文字を区別しないと判定します。FAT・exFATは、大小文字を区別するマウントオプション（vfatの `check=s`〔strict〕、msdosの `nocase`、Linux 5.4〜5.6のstaging exFATドライバーの `namecase=1`）を指定していないことを `/proc/self/mountinfo` で確認できた場合だけ区別しないと判定し、確認できない場合は区別するものとして扱います。判定はファイルシステムの種類・属性・マウント情報を読み取るだけで、確認用のファイルは作成しません。ext4・F2FS・tmpfs上の読み取り権限のないディレクトリは、casefold属性を確認できないため大小文字を区別するものとして扱います。マウントやcasefold属性の変更は、反映までに最大2秒かかることがあります。SMB/CIFS・NFS・NTFS（ntfs3・ntfs-3g）・FUSE（exfat-fuseを含む）・9p（WSL2のWindowsドライブなど）・ZFSなどは、大小文字の扱いがサーバーやマウントオプションによって変わり外から確認できないため、大小文字を区別するものとして扱います。これらのマウントが大小文字を区別しない場合は、大小文字だけが異なる設定を使わないでください。
-
-macOSは、拡張属性を保存できないファイルシステム（FAT32・ExFATなど）では、ファイルやディレクトリの拡張属性を同じディレクトリの `._` + 名前のファイル（AppleDouble）に保存します。macOSでは、同じディレクトリに対応する名前のファイルやディレクトリがある `._` のファイルを、ログ・spool・failure archiveのファイルとして扱わず、容量の計算や送信・削除の対象から除きます。対応する名前がない `._` のファイルは、通常のファイルとして扱います。macOS 26のExFATは既存のファイルを置換しないrenameに対応していないため、spoolとfailure archiveの保存先には使えません。その場合の保存は、既存のファイルを上書きせずにエラーになります。
-
-通常ログと内部ログの圧縮ログ名の衝突検証では、元ログの保存先またはアップロード失敗時の退避先のいずれかが大小文字を区別しない場合、大小文字だけが異なる名前も衝突として拒否します。
-
-ログファイルの保持世代数（`HETEROLOG_MAX_LOG_FILE_BACKUPS` など）は、ファイル名の日付と番号で決まる世代単位で数えます。同じ世代の未圧縮ファイルと圧縮ファイルは、圧縮形式の変更前に作られたものも含めて一世代として数え、上限を超えた古い世代のファイルはまとめて削除します。書き込み中のファイルや送信・退避が未完了のファイルなど、削除できないファイルは世代数に含めません。Deliveryのrunnerモードで `LifecycleRunnerSettings` に指定する `MaxFileBackups`・`MaxFileAge`・`MaxDirSize` は、通常のfile loggerと同じ下限（世代数2以上・日数1以上・容量10MB以上かつファイル最大サイズ以上）で検証します。error・debugの分離を無効にした場合も、不正な値ではロガーの構築に失敗します。
-
-圧縮済みファイルを復旧に使う前に、内容の完全性を検証します。XZでは各ストリームのindex・footerとブロックの終端位置まで確認し、途中切れの圧縮ファイルが残っていても元ログを保持して再圧縮できるようにします。元ログと同じ世代の圧縮済みファイルが残っている場合、組み込みの圧縮形式（gzip・zstd・lz4・xz）では最後まで展開しながら元ログと内容が一致することも確認し、一致した場合だけ元ログを削除します。圧縮済みファイルが完全でも内容が異なる場合は、元ログを削除せずログディレクトリの `.preserved` へ退避してエラーとして通知し、圧縮済みファイルはその世代のファイルとして扱います。独自codec（`CompressionCodec`）の圧縮済みファイルは、展開に使えるmethodを持っていても内容を比較せず、codec自身の完全性検証だけを行います。新しく圧縮する場合も、組み込みの圧縮形式では公開前の一時ファイルを最後まで展開して元ログと内容が一致することを確認し、一致しなければ圧縮ファイルを公開せず元ログも削除しません（元ログは次の処理で再圧縮します）。独自codecでは従来どおりcodec自身の完全性検証だけを行います。ローテーション直後の圧縮や中断した処理の再開で破損した圧縮済みファイルを見つけた場合も、元ログを残して削除し元ログから再圧縮するため、終了処理が同じ失敗の再試行を待ち続けることはありません。
-
-POSIX環境の圧縮出力は、圧縮元のファイル権限より広くならないように作成します。既存の一時出力やumaskによる追加の制限も保持します。Windowsでは圧縮データを書き込む前に、現在のユーザー・SYSTEM・Administratorsだけにアクセスを許可する既存のprivate-file方針を適用します。
-
-失敗ログのspool（OpenSearch・Loki・ClickHouse・CloudWatch Logs）は、spoolのルートと配下のディレクトリを所有者だけがアクセスできる0700で作成し、spoolファイルを0600で保存します。umaskによる追加の制限は保持します。以前のバージョンが広い権限で作成した既存のディレクトリも、ルートから保存先までのgroup・otherの権限を外します。ルートより上位にある利用者のディレクトリは変更しません。ルートより上位で不足するディレクトリは、object storageのspoolなど他の保存先と共有するため、以前と同じ0755（umaskを適用）で作成します。Windowsでは、新しく作成するディレクトリに現在のユーザー・SYSTEM・Administratorsだけを許可するACLを設定し、spoolファイルは作成時からこのACLを継承します。既存ディレクトリのACLは変更しないため、以前のバージョンが作成したspoolディレクトリのACLは必要に応じて見直してください。
-
-ログファイルのobject storage uploadに宛先を追加した場合、追加前から存在したログファイルはその宛先へ送信せず、送信済みとしても扱いません。ただし、追加時点で現在のローテーション期間に書き込み中の最新ファイル（未圧縮）は、その後も追記されるため、追加した宛先の送信対象に含めます。過去の期間の未圧縮ファイルは、最新のファイルでも追加前のファイルと同じく対象外です。宛先の追加を理由に削除することはなく、通常の保持期間・世代数・容量の設定に従って削除されます。upload後に圧縮ファイルを削除するのは、有効な宛先の少なくとも一つへ送信（失敗時は指定した全退避先へ保存）し、残りの有効な宛先でも送信済みか追加前の対象外と確認できた場合だけです。fileArchiveのobject storage送信では、古い世代の送信が完了するまで新しい世代を待機させ、古い世代の完了記録が進んだ時点で直ちに送信します。
-
-ログファイルのwriter（通常・Delivery・backend送信失敗のfileArchive）は起動時、保存先に残るファイルに加えて、同じ系列のcheckpointに記録された世代（送信・退避の完了位置と送信途中の記録）も使用済みとして扱い、その後の番号から書き込みます。手動復旧で最新のファイルまで送信・削除した後に再起動した場合や、ログ保存先だけが失われた場合も、新しいログが送信済みの世代と同じ名前になって送信されないまま削除されたり、object storageの同じobjectを上書きしたりすることはありません。システム時計が記録済みの期間より前へ戻った場合は、記録済みの期間を続けて書き込みます。
-
-Slackの `MaxRestThreshold` はログ到着の休止時間です。この時間を超えてログが届くと、待機中のログとともに即時送信を予約します。送信中の通知がある場合は、その完了を待ちます。
-
-`pkg/logger` の `SlackLoggerConfig`・`DeliverySlackLoggerConfig` の `HTTPClient` には、Slack APIの呼び出しに使う `*http.Client`（プロキシや独自のtransportを使う場合など）を指定できます。nilの場合は `net/http` の既定のtransportを使います。指定したクライアントはロガーの構築時にコピーし、`Transport`・`Jar`・`CheckRedirect` を引き継ぎます。元のクライアントは変更せず、構築後に変更しても反映しません。タイムアウトには各設定の `Timeout`（正の値が必須）を使い、元のクライアントの `Timeout` より優先します。同じSlack設定を使う内部ログの送信にも同じクライアントを使います。環境設定からは指定できないため、環境設定で有効にしたSlack出力は既定のtransportを使います。
-
-Slackバックエンドは、配送用contextが送信開始前に終了した場合を `DeliveryRejected`、送信後の通信障害や不完全な応答を `DeliveryUnconfirmed` として返します。公開Delivery APIは呼び出し元のキャンセルから独立した配送期限を使います。成功判定には応答本文全体の検証を行います。Slackには失敗ログの永続保存・quarantine機能がないため、Deliveryの成否不明ログを保存する場合は呼び出し側で扱います。通常・非同期のSlack送信では、応答本文の検証に失敗して成否を確認できないバッチも再送します。欠落より重複を優先するため、同じ通知が重複して投稿される場合があります。
-
-`pkg/clickhouse` の `InsertDeduplicationToken` は前後の空白を含めてそのまま送信します。空文字だけが未指定扱いです。同じトークンは再送を同一INSERTとして扱わせるために使い、別のINSERTには別の値を指定してください。
-
-`pkg/objectstorage/uploader.NewUploadInput` の保存名は前後の空白も含めて保持し、空文字だけを拒否します。S3へのアップロードは空ファイルにも対応します。S3のリージョンは前後の空白だけを除いた値で署名し、大文字小文字は変更しません。宛先IDでは大文字小文字だけが異なるリージョンを同じ保存先として扱います。S3のエンドポイントにはクエリ（`?` だけの空クエリを含む）とフラグメントを指定できません。
-
-CloudWatch Logsの容量制限はJSON送信後のメッセージ長とイベントごとの付加サイズ（26バイト）で判定し、1件のメッセージは1,048,550バイトまで送信します。超えたログは、同じ送信単位の他のログを止めずにそのログだけを送信対象から除外します。Lokiの行上限は送信後の文字列のUTF-8バイト数で判定します。不正なUTF-8はGoのJSON変換に従って置換され、その置換後の長さで分割・除外を行います。
-
-CloudWatch Logsの送信先URLを省略すると、リージョンに応じた標準エンドポイントを使います。中国リージョンでは `amazonaws.com.cn` を使い、URLを明示した場合はその指定を優先します。
-
-CloudWatch Logsのストリーム自動作成では、ログ送信が未作成ストリームへの送信として拒否された後、作成中にキャンセルされても未受理のログは再送対象として保存します。作成APIの恒久的な拒否は配送不能として扱い、作成後にログを再送して結果が不明になった場合はquarantineへ隔離します。
-
-CloudWatch Logsの認証情報取得や署名で失敗し、ログのHTTP要求が未送信と確認できる場合も再送対象として保持します。元の原因は `errors.Is`／`errors.As` で取得できます。
-
-OpenSearchの単一文書送信では、インデックス名を一つのURLパス要素としてエンコードします。`<logs-{now/d}>` の日付計算式やタイムゾーン指定に含まれる特殊文字も保持します。
-
-LokiとCloudWatch Logsの送信先URLは、末尾の通常の `/` を除く際にも `%2F` などのエスケープ表現を保持します。エンコードされた `/` をパス区切りに変換しません。
-
-Loki、ClickHouse、VictoriaMetricsへの送信では、POSTの本文を失うリダイレクトを停止し、エラーを返します。307・308によるPOSTと本文を保った転送は、HTTPクライアントのリダイレクト設定に従います。S3へのアップロードは署名済みのPUTを一回だけ送信し、301・302・303・307・308を含むリダイレクトを追従せず、HTTPステータスのエラーとして返します。渡したHTTPクライアントのリダイレクト設定は変更しません。リダイレクトは宛先・設定の誤りで配送不能が確定した失敗（permanent）として扱い、圧縮ログはfileArchiveの `permanent`・spoolの `dead` に保持して自動再送しません。S3がbucketのDNS更新中に返す `307 TemporaryRedirect` だけは一時的な失敗として再送します。
-
-`pkg/victoriametrics` の `SendAsync` は、受理するメトリクスとラベルを複製します。呼び出しから戻った後は入力を再利用できます。`WithHTTPClient` に渡したクライアントの設定は変更せず、同期・非同期とも各HTTP要求に `WithTimeout` を適用します。再送にも毎回同じ期限を使い、0は期限なしを表します。
+- `slog.Logger` does not return the result of `Handler.Handle` to the caller. Use the regular API to check errors from a call, and `NewDelivery` to check delivery for each destination.
+- A successful call of the regular API can mean that the log was accepted into a buffer; it does not guarantee final delivery.
+- `slog` and each backend have their own level filters. To write DEBUG logs, set both:
 
 ```go
 cfg := heterolog.DefaultConfig()
 cfg.Stdout.RuntimeConfig.LogLevel = heterolog.LevelDebug
 runtime, err := heterolog.New(ctx, cfg)
-// errを確認してから使用する
+// Check err before using runtime.
 logger := slog.New(heterolog.NewSlogHandler(runtime, &slog.HandlerOptions{
     Level: slog.LevelDebug,
     AddSource: true,
 }))
 ```
 
-`slog` と各バックエンドにそれぞれレベルフィルターがあります。DEBUGを出力する場合は両方を設定します。`WithAttrs`、`WithGroup`、`LogValuer`、`LevelVar`、`ReplaceAttr` に対応しています。slog属性はJSON相当の値に正規化して構造化フィールドへ保存します。同じキーが重複する場合は後の値を採用します。`ReplaceAttr` によるメッセージの置換・削除はバックエンドの本文にも反映します。削除した本文は空文字、文字列以外へ変換した本文はJSON表現になります。配送レベルと発生時刻は元Recordの値を保ちます。
+- `WithAttrs`, `WithGroup`, `LogValuer`, `LevelVar`, and `ReplaceAttr` are supported.
+- slog attributes are normalized to JSON-equivalent values and stored as structured fields. When a key appears more than once, the later value is used.
+- Replacing or removing the message with `ReplaceAttr` also changes the message sent to backends. A removed message becomes an empty string, and a message replaced by a non-string value becomes its JSON representation. The level and time of the original record are kept.
 
-importや `New` は `.env` 読込、シグナル登録、グローバルロガーやOpenTelemetry providerの変更を行いません。設定はコードから明示的に渡します（環境変数と環境設定ファイルから作る場合は、次の `LoadEnvConfig` を明示的に呼びます）。作成後は、そのロガーが使う設定を変更しないでください。`New`・`NewAsync`・`NewDelivery` に渡したcontextのキャンセルと期限は構築処理だけに適用します。構築後にcontextが終了しても、バッファの定期送信は `Close` / `Shutdown` まで継続します。
+## Loggers and shutdown
 
-`WithMemoryPressureMonitor` に渡す監視器は、呼出側で起動・停止します。`NewMemoryPressureMonitor(provider, policy, pollInterval)` は、`pkg/memorypressure` の `Provider` と `CriticalPolicy` から監視器を作ります。`Start(ctx)` は一度取得してから戻り、以降は `pollInterval` ごとに取得し、`ctx` の終了で停止します。判定は `memorypressure.CriticalState` と同じで、信頼できる観測が `CriticalRatio` または `MinAvailableBytes` に達した状態が `ConsecutiveCriticalHits` 回（0と1は初回）続くとcriticalです。providerがnil、取得間隔が0以下、どちらの閾値も無効、1を超える `CriticalRatio`、負の連続回数は生成時にエラーになります。生成時の入力エラーは `errors.Is(err, heterolog.ErrInvalidMemoryPressureMonitor)` で判別できます。監視器は、spoolの `UseMemoryPressureForOverload` を有効にした出力先の過負荷判定に使われます。過負荷と判定した場合はoverload policyに従い、`drop` では保存せずに破棄して通常APIへ `ErrLogDropped` を返します。`pkg/memorypressure` のLinux providerは、所属するcgroup v2と参照可能な親階層の上限を確認します。使用率が最大の階層を主観測、残量が最小の階層を `CgroupLimit` として保持し、判定では両方を確認します。有限の上限だけが読めた場合は、使用量不明として保持します。名前空間の外など参照できない祖先の制約は取得できません。
+### APIs
 
-アプリケーション終了時は必ず `Close` または `Shutdown` を呼びます。`Shutdown` のcontextが終了すると、その呼出しの待機だけを終了し、後処理は継続します。再度 `Close` / `Shutdown` で終了を待てます。spool内の未送信データは次回の再送用に残る場合があります。独立した `Flush` APIはありません。ログファイルの圧縮・アップロードの失敗が続く間、`Close` はその処理が完了するまで戻りません。終了までの時間に上限が必要な場合は、`Shutdown(ctx)` の期限で待機を打ち切り、必要に応じて `ForceClose` で後処理を停止してください。`Close`／`Shutdown` は、受理済みの送信と、その送信で発生した内部ログの通知（`OnErrorConfig` などで選んだ通知先への書き込み）が終わるまで待ちます。件数・バイト数の閾値によってログ呼出しの中で始まったflushも含みます。
+| API | Purpose |
+| --- | --- |
+| `DefaultConfig` / `New` | Synchronous API. Returns processing results as errors (a drop caused by overload is `ErrLogDropped`) |
+| `DefaultAsyncConfig` / `NewAsync` | Asynchronous best-effort logging |
+| `DefaultDeliveryConfig` / `NewDelivery` | Returns the delivery result for each destination (ClickHouse reports acceptance into its queue as `DeliveryEnqueued`) |
+| `NewSlogHandler` | Uses a synchronous logger as a `slog.Handler` |
+| `DefaultSpoolConfig` / `WithSpool` | Settings for the workers that replay persisted failed logs |
+| `Close` / `Shutdown(ctx)` | Finishes accepted work, flushes buffers, and releases resources |
+| `ForceClose` | Requests recovery and other background work to stop |
 
-出力先の終了処理でpanicを回復した場合も、他の出力先の終了処理を続け、未完了の終了処理を再試行します。終了済みの出力先を再度閉じることはありません。
+### Delivery reports
 
-失敗ログのspool（OpenSearch・Loki・ClickHouse・CloudWatch Logs）への保存と再送は、通常送信とspool再送で同じ規則に従います。408・429・5xx、接続失敗やタイムアウトなどの既知の通信障害、circuit breakerによる送信抑止、Lokiの260は一時的な障害として自動再送します。応答の欠落・解析失敗、送信中の中断、分類不能の送信エラーは結果を確認できないため `quarantine` へ隔離し、内容と配送状況を確認するまで自動再送しません。HTTP 413などのサイズ超過と、OpenSearchのmapping・解析エラーやClickHouseの値の解析・型変換エラーなどログの内容による拒否は、複数件の送信なら分割または一件ずつ再送して原因のログを特定し、一件でも拒否されたログを `quarantine` に保存します。Lokiの400は有効なstreamを一部受理した可能性があるため、分割せずに送信したログを `quarantine` に保存します。認証・権限の拒否、存在しないtable・index・stream、SQLや設定の誤りなど、ログの内容に依存しない宛先・設定の不備は配送不能として `dead` に保存します。CloudWatch Logsが受付期間外として個別に拒否したイベントは、未来すぎるものを再送対象、古すぎるもの・保持期間外のものを `dead` に保存します。再送時は、以前の試行が受理されていた場合に重複配送が起こり得ます。circuit breakerが送信を再開できるか確かめる試行では、送信先の応答を確認できた場合だけ送信抑止を解除し、clientが応答もエラーも返さなかった場合は結果不明として送信抑止を続けます。再送時にspoolのrecordを復元・検証できない場合は `quarantine` へ隔離します。このときのerrorは種類（sentinel）とfield名で判定できますが、保存された値は `errors.As` で取り出せるerror（原因やfield）に含めません。
+Each destination in a report has one of these statuses:
 
-OpenSearch・Loki・ClickHouse・CloudWatch Logsの送信先が再送可能な失敗とともに `Retry-After` を返した場合は、応答を受け取った時刻から指定時間が経つまで、その出力先へspoolから再送しません。指定はspool再送で受け取った場合も通常送信で受け取った場合も出力先全体の待機期限として記録し、期限を持たない古いログも含め、その出力先のログを期限まで送りません。通常送信で受け取った指定は、失敗したログをspoolへ保存する時点（過負荷で `drop`・`degrade` してspoolへ保存しない場合も含みます）で記録するため、稼働中のrunnerも次の周期から適用します。spool再送で受け取った場合は、同じ再送で未送信だったログも送りません。新しい指定は、記録済みのより後の期限を短縮しません。他の出力先の再送と、spoolの保持期間・容量による削除や後処理の再試行は続けます。待機時間の上限は既定で1時間で、backend別の `Worker.MaxRetryAfter`（環境変数 `HETEROLOG_OPENSEARCH_SPOOL_RUNNER_MAX_RETRY_AFTER_SECOND` などの `*_SPOOL_RUNNER_MAX_RETRY_AFTER_SECOND`）で変更できます。より長い指定は上限までに短縮し、内部ログへ警告します。指定が再送の周期より短い場合は従来どおりの周期で再送します。一回の送信の中で行うclient retryは、通常送信・spool再送ともに `MaxDelay` まで待機します。
+| Status | Meaning |
+| --- | --- |
+| `DeliverySucceeded` | The destination confirmed success |
+| `DeliveryFailed` | The destination explicitly rejected the log |
+| `DeliveryRejected` | The log was rejected before sending, for example by input validation |
+| `DeliveryUnconfirmed` | The result cannot be confirmed, for example because the response was missing or could not be parsed |
+| `DeliveryEnqueued` | Only acceptance into the send queue is reported |
 
-この待機期限はspoolディレクトリ（`<SpoolPath>/<Target>/spool/<Dir>`）内の `.retry-after/<backend名>.json`（例: `opensearch.json`）に保存し、再起動後は最初の再送より前に読み込みます。そのため再起動後も、ログを読み込む順序にかかわらず期限まで再送しません。指定時刻は再送待ちのログにも保存し、期限の記録を保存できなかった場合は、そのログを読み込んだ時点で期限を復元します。読み込んだ時点から上限より先の時刻を保存したログ・待機期限は上限までに短縮して内部ログへ警告し、短縮した期限も保存するため、再起動しても待機は延びません。期限を過ぎた記録は削除します（上限までに短縮したログの元の時刻が過ぎるまでは、短縮済みであることを示すために残します）。保存の途中で停止した場合に残る一時ファイル（`.<backend名>.json.<数字>.tmp`）は、次回の読み込み時に削除します。記録を読み込めない場合や内容が壊れている場合は、内部ログへ警告したうえで記録がないものとして再送を続け、次の `Retry-After` で置き換えます。記録の保存に失敗した場合は内部ログへ警告し（失敗が続く間は一度だけ）、プロセス内では期限まで待機しながら、期限が来るまで保存を再試行します。再試行の間隔は再送の周期から始めて失敗のたびに倍にし、最大1分です。保存できないまま再起動した場合は、期限を引き継げない場合があります。
+- ClickHouse is designed for batch inserts, so even the delivery API returns `DeliveryEnqueued` as soon as the log is accepted into the queue, without waiting for the send. The send happens when the count, size, or `FlushInterval` threshold is reached, or at `Close`, and its result is not reflected in the returned report.
+- `HasTargetFailure()` counts only confirmed failures and rejections before sending. To stop on unconfirmed results as well, use `HasUnregisteredTarget()`. `DeliveryEnqueued` is treated as unconfirmed, so `HasUnregisteredTarget()` is `true` for a report that includes ClickHouse.
+- Saving a log to fallback storage is independent of success at the destination.
+- For a report without any destination result, `HasTargetFailure()` and `HasAnyFailure()` are `true`, just as `Error()` returns `ErrNoDeliveryTargets`. A configuration without outputs is rejected at construction, so such a report can only come from an internal inconsistency.
+- The `Backend` of a destination result is the name of a `pkg/logger.LogOutputDestination` (`stdout`, `file`, `slack`, `opensearch`, `loki`, `cloudwatchlogs`, `clickhouse`), whether the destination returned the result or the logger created it on its behalf (a handler panic or deadline, or a rejection before sending because `Close` had started or a single entry exceeded the limit).
+- When a panic in a delivery handler is recovered, destinations that did not return a result are `DeliveryUnconfirmed`. Confirmed results of other destinations are kept.
+- CloudWatch Logs send errors keep the original cause in the returned error and in the destination's `Err`, and can be identified with `errors.Is` and `errors.As`.
 
-圧縮ログファイルをobject storageへ再送するspoolは、保存時と同じ宛先・保存名へファイルを送り直すため、分類不能の送信エラーやアップロード処理のpanicでも `quarantine` へ移さず、再送待ちに戻して自動再送します。`dead` へ移すのは、送信先の応答から恒久的な拒否と判定できた場合だけです。
+### Errors and dropped logs
 
-圧縮ログファイルの送信先が `Retry-After` を返した場合は、その宛先のファイルだけを指定時刻まで送信せず、他の宛先の再送は続けます。spoolへ保存する前の通常のuploadが一時的な失敗とともに受け取った指定も、ファイルをspoolへ保存する時点でその宛先の待機期限として記録するため、稼働中の再送処理も次の周期から、期限までその宛先のファイルを送信しません。新しい指定は、記録済みのより後の期限を短縮しません。待機時間の上限は既定で1時間で、`HETEROLOG_OBJECT_STORAGE_COMPRESSED_LOG_FILE_UPLOAD_FAILURE_SPOOL_MAX_RETRY_AFTER_SECOND`（Delivery loggerは `DELIVERY_` で始まる同名の設定）で変更でき、より長い指定は上限までに短縮して警告を通知します。待機期限は宛先別のspoolディレクトリ内の `.retry-after/<宛先ID>.json`（`<SpoolPath>/<Target>/spool/objectstorage/<service>/<logger契約>/<宛先ID>/.retry-after/<宛先ID>.json`）に保存し、再起動後はその宛先へ最初に送信する前に読み込んで、期限までその宛先のファイルを送信しません。宛先IDは宛先別のspool・file archiveのディレクトリと `.retry-after/<宛先ID>.json` の名前に使うため、英小文字・数字で始まり、英小文字・数字・ハイフン・アンダースコアだけからなる128文字以下で、Windowsの予約デバイス名（`con`・`prn`・`aux`・`nul`・`com0`〜`com9`・`lpt0`〜`lpt9`）でない値に限ります。S3の宛先ID（`s3-` に続くSHA-256の16進数64文字）は常にこの規則を満たします。upload失敗時の保存先（spoolまたはfile archive）を使う構成で規則に合わない宛先IDがあると、どの保存先も作成せずに、ロガーの構築時に設定エラーを返します。読み込んだ時点から上限より先の時刻は上限までに短縮して保存し直し、警告を通知するため、再起動しても待機は延びません。期限を過ぎた記録と、保存の途中で停止した場合に残る一時ファイル（`.<宛先ID>.json.<数字>.tmp`）は削除します。記録を読み込めない場合や内容が壊れている場合は警告を通知したうえで記録がないものとして再送を続け、次の `Retry-After` で置き換えます。記録の保存に失敗した場合は警告を通知し（失敗が続く間は一度だけ）、プロセス内では期限まで待機しながら、期限が来るまで保存を再試行します。再試行の間隔は再送の周期から始めて失敗のたびに倍にし、最大1分です。保存できないまま再起動した場合は、期限を引き継げない場合があります。
+- With the regular API of OpenSearch, Loki, ClickHouse, and CloudWatch Logs, when a log that failed to send could not be persisted (including when no fallback is configured), the returned error contains both the persistence error and the destination's original cause, which can be identified with `errors.Is` and `errors.As`. For ClickHouse, the error is returned by the logging call that ran the flush, or by `Close`.
+- When a log that failed to send is discarded because its storage (spool or failure archive) is overloaded and the overload policy is `drop` (the default), the regular API returns an error that wraps `heterolog.ErrLogDropped`; check it with `errors.Is(err, heterolog.ErrLogDropped)`. The same error also contains the destination's original cause.
+- When a buffered log is discarded by a later flush, the logging call that ran the flush, or `Close`, returns the error.
+- When the log is saved by `degrade`, no error is returned.
+- Logging calls of the asynchronous API do not return errors. If logs are discarded in the final flush of `Close`, `Close` returns the error.
+- With the delivery API, check `DeliveryReport.HasDrop()`.
+- The number of discarded logs can also be observed with the `logger_failure_overload_drop_total` metric.
 
-OpenSearchとClickHouseのspool復元はJSON数値の精度を保持します。大きな整数や高精度の小数を再送のために `float64` へ変換せず、保存済みのdocument IDや重複排除tokenも維持します。
+### Shutdown
 
-fileArchiveへの追記が途中で失敗した場合は、その追記を始める前の位置まで戻します。復旧できない間は後続の保存・ローテーションを止めてエラーを返し、次回保存時に復旧を再試行します。再起動時に既存ファイルの末尾が不完全だった場合は、内容を保持したままオープンを拒否するため、ファイルの確認・修復が必要です。
+- Always call `Close` or `Shutdown` when the application exits.
+- When the context of `Shutdown` ends, only that call stops waiting; the cleanup continues. Call `Close` or `Shutdown` again to wait for it to finish.
+- Unsent data in the spool may remain for the next replay. There is no separate `Flush` API.
+- While compression or upload of log files keeps failing, `Close` does not return until that work completes. If you need an upper bound on shutdown time, stop waiting with the deadline of `Shutdown(ctx)`, and stop the cleanup with `ForceClose` if needed.
+- `Close` and `Shutdown` wait for accepted sends and for the internal log notifications they cause (writes to the targets selected with `OnErrorConfig` and the like), including flushes that started inside logging calls because a count or size threshold was reached.
+- When a panic is recovered while closing a destination, the other destinations are still closed, and incomplete closing is retried. A destination that is already closed is not closed again.
 
-OpenSearch、Loki、ClickHouse、CloudWatch Logsの通常送信で期限切れやキャンセルが起きても、失敗ログの保存は独立した期限で試みます。通常送信・spool再送ともに、送信中に呼び出し元の期限切れ・キャンセルで結果が不明になったログは `quarantine`、まだ送信していないログは再送対象として扱い、成功が確定したログは再投入しません。明示的な応答が得られた場合は、その結果を維持します。CloudWatch Logsでは、途中の退避が失敗しても送信contextが有効なら後続の送信・退避を続け、各処理のエラーをまとめて返します。
+## Configuration
 
-HTTP応答のステータスと `Retry-After` は、応答本文に含まれる通信障害らしい語句によって上書きしません。`Retry-After` が待機時間として表せないほど大きい場合も即時再送にはせず、最大値として扱ったうえで `MaxDelay` などの待機上限を適用します。接続のリセット・中断・拒否は、OSごとに異なるエラーメッセージではなくエラー番号で判定するため、Windowsでも一時的な切断として再試行します。バックエンド固有のエラー種別は、各サービスの再送規則に従って判定します。
+### Configuration types
 
-HTTP拒否応答を受け取った後、次の送信までの待機中にキャンセルされた場合は、確定した応答情報とキャンセル原因を両方保持します。503などの一時的な拒否は再送対象として保存し、送信中の中断など結果が不明なログはquarantineへ隔離します。
+- `Config`, `AsyncConfig`, and `DeliveryConfig` are the public configuration types of `pkg/logger`. The destinations are stdout, file, Slack, OpenSearch, Loki, CloudWatch Logs, and ClickHouse. See `go doc github.com/go-jappe/heterolog/pkg/logger` for the details of each setting.
+- For synchronous and asynchronous configurations that use a spool, also pass `WithSpool`.
+- A configuration without any regular output is rejected by `New`, `NewAsync`, and `NewDelivery` before construction, with an error that contains `ErrNoActiveLogOutput` of `pkg/logger` (check it with `errors.Is`).
+- When `LogOutputDestinations` is empty, every non-nil backend configuration becomes a regular output. Storage or client settings used only for internal logs do not make a destination an output.
 
-`must_fit` のタイムアウト予算検証では、LokiとClickHouseの通常retryでも `Retry-After` による待機を `MaxDelay` まで含めます。環境設定でloggerやclientのtimeout・retry設定を省略した場合の既定値は `.env.example` の値と同じで、既定の `must_fit` を満たします（通常・非同期loggerは18秒、Deliveryは12秒、OpenSearchのclientは1秒、Loki・ClickHouse・CloudWatch Logsのclientは2秒）。環境設定から読み込む復旧CLIは、復旧を始める前にこの予算を含む設定全体を検証し、満たさない設定は設定エラーで終了します。
+### Construction errors
 
-OpenSearchのingest pipelineが正常に破棄したログの `noop` 応答は、処理完了として扱います。同じバッチの他のログは、それぞれの応答に従って配送結果を判定します。
+Configuration errors at construction can be identified with `errors.Is` and `errors.As`:
 
-`done`・`dead`・`quarantine` への保存後に元の `processing` ファイルの削除が失敗しても、再起動時に保存内容を照合し、単一の状態に全件が保存済みと確認できれば元ファイルだけを削除します。一部だけの保存、複数状態への分割、内容の不一致はファイルを保持してエラーを返し、自動再送を止めます。この確認に必要な保存ファイルは、対応する元ファイルが残る間、保存期間・容量による削除から保護されます。
+- A nil context: `ErrNilContext`.
+- A `Timeout` of 0 or less, and a `MaxParallel` of 0 or less for `NewAsync`: `pkg/logger.ConfigFieldError` with `Field` set to `heterolog.ConfigFieldTimeout` or `heterolog.ConfigFieldMaxParallel` and the kind `ErrNonPositiveSetting`.
+- `WithSpool` passed to `NewDelivery`: `ErrDeliverySpoolUnsupported`.
+- An unsupported value of `WithCloudWatchLogsStreamRouting`: `ErrInvalidStreamRouting` (`*InvalidStreamRoutingError`).
+- A context that has already ended: its error, such as `context.Canceled`.
+- A destination selected as an internal log notification target (`OnErrorConfig` and the like) whose settings cannot create a notification writer (an invalid `TimeZone`, an empty `LogLineDateFormat`, and so on): `ErrInvalidNotificationTarget` (`*NotificationTargetError`, where `Source` is the kind of logger, `Backend` is the target, and `Err` is the cause).
+- Invalid presentation settings or backend values (buffers, send limits, retry settings, and so on): `pkg/logger.ConfigFieldError` with `Source`, `Backend`, and `Field` (and `Value` and `Limit` for checks against a value). The kind is a sentinel such as `ErrNonPositiveSetting` that can be checked with `errors.Is`.
+- Invalid client settings: `Field` is `ConfigFieldClient` and the kind is `ErrInvalidClientConfig`. The reason is a sentinel of each backend package (for example, `pkg/loki.ErrEndpointRequired`) that can be checked with `errors.Is`.
+- An endpoint that cannot be parsed as a URL: the error message and the `*url.Error` in the error tree contain only the URL with its user info (user name and password) replaced by `xxxxx`.
+- A handler selector that cannot be resolved: `pkg/logger.HandlerSelectorError`.
+- An invalid element of Slack's `Intervals`: its position is in `Index` of `pkg/logger.SlackIntervalError`, which can be retrieved with `errors.As`.
+- The policy for running out of disk space while writing a file: a policy other than `drop` or `degrade` is `pkg/fsstore.ErrUnsupportedOverloadPolicy`, and a `degrade` destination other than `stdout` is `pkg/fsstore.ErrUnsupportedSpillDestination` (check them with `errors.Is`).
 
-再送結果の保存も、ファイルと保存先ディレクトリを同期してから完了とします。公開後の同期失敗では保存済みファイルと元の `processing` を保持し、再試行時に内容を照合して同期をやり直します。既存の結果を上書きせず、最初の確定時刻を保持します。
+### Side effects and contexts
 
-spoolの後処理に失敗した場合、状態遷移の `RetryDelay` は失敗が判明した時点から数えます。ファイル操作に時間がかかった場合も、次の再試行まで設定した待機時間を確保します。
+- Importing the package or calling `New` does not load `.env` files, install signal handlers, or change the global logger or OpenTelemetry providers. Configuration is passed explicitly in code (to build loggers from environment variables and an env file, call `LoadEnvConfig` explicitly, as described below).
+- Do not change the configuration a logger uses after creating the logger.
+- The cancellation and deadline of the context passed to `New`, `NewAsync`, and `NewDelivery` apply only to construction. Periodic sending of buffers continues after the context ends, until `Close` or `Shutdown`.
 
-通常ログのspoolは、ファイルと保存先ディレクトリの同期が確認できてから保存成功を返します。公開後の同期に失敗した場合も、保存したファイルは保持します。このエラーを受けて同じログを再度保存すると、欠落を避けるため別ファイルに保存され、重複が生じる場合があります。
+### Configuring from environment variables
 
-spool・fileArchive・checkpointの保存先ディレクトリを新しく作成した場合も、親ディレクトリの同期を確認してから成功を返します。親の同期に失敗した場合は `ErrDurabilityUnconfirmed` を返し、同じプロセスでその親に依存する保存先を準備するたびに同期を再試行します。成功するまでは、作成済みのディレクトリでも同じエラーを返します。
-
-spoolの容量統計は `StatsScanInterval` が0以下でも更新します。初回は同期して走査し、以降は非同期の再走査結果を容量判定に反映します。`MaxCallsSinceScan=0` は呼び出し回数による更新だけを無効にします。
-
-## 環境変数・環境設定ファイルからの構築
-
-`LoadEnvConfig` は、`HETEROLOG_` で始まる環境変数と、引数で指定した環境設定ファイルから設定を読み込みます。設定のキーは、既定値として参照するAWSの標準の変数（`AWS_ACCESS_KEY_ID` など）を除き、すべて `HETEROLOG_` で始まるため、アプリケーション自身の設定と同じ環境変数やファイルに置けます。項目と既定値は [.env.example](.env.example) のとおりで、何も設定しなければ、3種類のロガーとも標準出力だけに記録します。復旧CLIも同じキーを読みます。
+`LoadEnvConfig` reads settings from environment variables that start with `HETEROLOG_` and from the env file given as its argument. Except for the AWS standard variables used as defaults (such as `AWS_ACCESS_KEY_ID`), every key starts with `HETEROLOG_`, so the settings can share the environment variables and file with the application's own settings. The keys and their defaults are listed in [.env.example](.env.example). With no settings, all three loggers write to stdout only. The recovery CLI reads the same keys.
 
 ```go
-env, err := heterolog.LoadEnvConfig(".env") // ""なら環境変数だけを読む
+env, err := heterolog.LoadEnvConfig(".env") // "" reads only environment variables
 if err != nil {
     log.Fatal(err)
 }
-runtime, err := env.New(ctx) // NewAsync・NewDeliveryも同じ
+runtime, err := env.New(ctx) // NewAsync and NewDelivery work the same way
 if err != nil {
     log.Fatal(err)
 }
 defer runtime.Close()
 ```
 
-- プロセスの環境変数は変更しません。同じキーが環境変数とファイルの両方にある場合は、環境変数の値を使います。
-- 指定したファイル以外は読みません（`HETEROLOG_ENV_PATH` と現在のディレクトリの `.env` も読みません）。
-- 有効にしたロガーの設定と、ロガー間の整合性（保存先の重複など）を読み込み時に検証し、見つかった問題をまとめて返します。`errors.As` で `EnvFileError`・`InvalidEnvironmentValueError`・`RenamedEnvironmentKeyError`・`pkg/env` の `VariableError` を取り出すと、問題のキーを特定できます。
-- 設定を変えてから作る場合は、`cfg, opts, err := env.Config()`（`AsyncConfig`・`DeliveryConfig` も同様）で取り出し、`heterolog.New(ctx, cfg, opts...)` に渡します。`opts` には、環境設定から読んだspoolの再送設定とCloudWatch Logsのstream分割が入ります。
-- `HETEROLOG_ENABLE_LOGGING=false` などで無効にしたロガーは作れず、`ErrEnvLoggerDisabled` を返します。
-- トレース（`WithObservers`）とメモリ逼迫の監視器（`WithMemoryPressureMonitor`）は環境設定から作りません。`env.New(ctx, opts...)` のように追加のoptionとして渡します。
+- The process environment is not modified. When a key is in both the environment and the file, the environment value is used.
+- No other file is read (neither `HETEROLOG_ENV_PATH` nor `.env` in the current directory).
+- The settings of the enabled loggers and their consistency with each other (such as shared storage directories) are checked when loading, and all problems found are returned together. Use `errors.As` with `EnvFileError`, `InvalidEnvironmentValueError`, `RenamedEnvironmentKeyError`, or `VariableError` of `pkg/env` to identify the key.
+- To adjust the settings before constructing a logger, get them with `cfg, opts, err := env.Config()` (or `AsyncConfig` and `DeliveryConfig`) and pass them to `heterolog.New(ctx, cfg, opts...)`. `opts` carries the spool replay settings and CloudWatch Logs stream routing read from the environment.
+- A logger disabled with `HETEROLOG_ENABLE_LOGGING=false` or the like cannot be constructed, and `ErrEnvLoggerDisabled` is returned.
+- Tracing (`WithObservers`) and the memory pressure monitor (`WithMemoryPressureMonitor`) are not created from the environment. Pass them as additional options, as in `env.New(ctx, opts...)`.
 
-## ログ復旧CLI
+### Memory pressure monitor
 
-ライブラリに加えて、停止中のアプリケーションのログファイルを復旧するCLIを同梱しています。
+- The caller starts and stops the monitor passed to `WithMemoryPressureMonitor`.
+- `NewMemoryPressureMonitor(provider, policy, pollInterval)` creates a monitor from a `Provider` and a `CriticalPolicy` of `pkg/memorypressure`.
+- `Start(ctx)` reads once before returning, then reads every `pollInterval`, and stops when `ctx` ends.
+- The evaluation is the same as `memorypressure.CriticalState`: the state is critical when reliable observations reach `CriticalRatio` or `MinAvailableBytes` `ConsecutiveCriticalHits` times in a row (0 and 1 mean the first time).
+- A nil provider, a poll interval of 0 or less, a policy that enables neither threshold, a `CriticalRatio` above 1, or a negative count is an error at creation. Input errors at creation can be identified with `errors.Is(err, heterolog.ErrInvalidMemoryPressureMonitor)`.
+- The monitor is used for the overload decision of destinations whose spool enables `UseMemoryPressureForOverload`. When it reports overload, the overload policy applies; with `drop`, the log is discarded without being saved, and the regular API returns `ErrLogDropped`.
+- The Linux provider of `pkg/memorypressure` checks the limits of its cgroup v2 and of the parent levels it can read. It keeps the level with the highest usage as the main observation and the level with the least remaining memory as `CgroupLimit`, and checks both. When only a finite limit can be read, the usage is kept as unknown. Limits of ancestors it cannot read, such as those outside its namespace, cannot be obtained.
+
+### Internal log notifications
+
+- Notification targets (`OnErrorConfig`, `OnWarnConfig`, `OnInfoConfig`, and `OnDebugConfig` of `HandlerConfig`) use write paths dedicated to notifications.
+  - `file` writes through a path that does not notify the file logger's internal logs.
+  - `stdout`, `slack`, `opensearch`, `loki`, `cloudwatchlogs`, and `clickhouse` use notification loggers created separately from the regular outputs.
+  - Failures of these writes are not notified; each failure is written as one line to the standard logger.
+- The settings of a destination selected as a notification target are checked when `New`, `NewAsync`, or `NewDelivery` constructs the logger, before any storage is created, not at the first notification.
+  - Settings that cannot create a notification writer are a configuration error at construction (`ErrInvalidNotificationTarget`); a notification is never discarded at the time it is sent.
+  - The settings of destinations that are not selected as notification targets are not part of this check.
+  - For a `file` target, the time display settings (time zone and date format) are checked at construction, and errors are configuration errors at construction.
+- The log file of a `file` target is created at the first notification. When creation fails, each failed notification is written as one line to the standard logger, and creation is retried at the next notification.
+- Notifications do not loop, even when a logger selects itself as a target (for example, `file` in the `OnErrorConfig` of a file logger).
+- Even if a regular write to the same logger happens inside the processing of a notification, the internal logs of that write (delays, failures, overload, and so on) do not call the notification target again. They are written directly to the output of that logger: the same log file for file, stdout or stderr for stdout, and the same destination for Slack, OpenSearch, Loki, CloudWatch Logs, and ClickHouse. These direct writes still use the logger's log level (file also applies its overload handling), and their failures are not notified.
+- Batching loggers and the Slack logger send internal log notifications after releasing their locks, and the asynchronous API (`NewAsync`) processes writes from inside a notification without waiting even when all of its slots are busy, so writing to the same logger from a notification does not hang.
+
+## Log files
+
+### Rotation
+
+- If the file to rotate to cannot be opened, that write returns an error. Existing logs are kept, and rotation is retried at the next write after the problem is resolved.
+- If closing the file before rotation returns an error, that write also returns an error. That file is not reused, and the next write opens a new file to complete the rotation.
+- Rotation does not write diagnostic strings directly to stdout. This holds even when file is the only output, and it is the same for the regular, asynchronous, and delivery APIs.
+
+### Storage paths and ownership
+
+- Valid whitespace in storage paths is kept as is.
+- Ownership of storage is decided on the actual paths. A configuration in which different loggers own the same directory, or a directory and its parent, at the same time is rejected.
+
+### Case sensitivity
+
+- Matching of log file names follows whether the file system of the storage directory is case-sensitive.
+- On Windows, on case-insensitive macOS volumes, and in Linux directories confirmed to be case-insensitive, names that differ only in the case of the prefix, target, or extension are treated as the same file. This is used to choose generation numbers at rotation, to find files to compress, upload, and delete, and to identify the series of upload records (checkpoints).
+- When a target name is added to a storage path such as a failure archive, whether a level already has the same name is decided by the case rule of each directory. On a case-insensitive volume, names that differ only in case are the same directory, and the target is not added twice.
+- On Linux, these directories are treated as case-insensitive:
+  - Directories with the casefold attribute (casefold of ext4, F2FS, and tmpfs).
+  - Directories on FAT (vfat, msdos) and exFAT file systems, but only when `/proc/self/mountinfo` confirms that no case-sensitive mount option is set (`check=s` [strict] of vfat, `nocase` of msdos, `namecase=1` of the staging exFAT driver of Linux 5.4 to 5.6). When this cannot be confirmed, they are treated as case-sensitive.
+- The detection only reads the file system type, attributes, and mount information; it creates no files to probe.
+- A directory on ext4, F2FS, or tmpfs that cannot be read is treated as case-sensitive, because its casefold attribute cannot be checked.
+- Changes of mounts or casefold attributes may take up to 2 seconds to take effect.
+- SMB/CIFS, NFS, NTFS (ntfs3, ntfs-3g), FUSE (including exfat-fuse), 9p (such as Windows drives in WSL2), ZFS, and similar file systems are treated as case-sensitive, because their handling of case depends on the server or mount options and cannot be checked from outside. If such a mount is case-insensitive, do not use settings that differ only in case.
+- When checking compressed log names of regular and internal logs for collisions, names that differ only in case are rejected as collisions if either the storage of the original logs or the fallback storage for failed uploads is case-insensitive.
+
+### macOS AppleDouble files
+
+- On file systems that cannot store extended attributes (such as FAT32 and ExFAT), macOS stores the extended attributes of a file or directory in a file named `._` + the name in the same directory (AppleDouble).
+- On macOS, a `._` file whose counterpart name exists in the same directory is not treated as a log, spool, or failure archive file, and is excluded from size calculations, sending, and deletion. A `._` file without a counterpart is treated as a regular file.
+- ExFAT on macOS 26 does not support renaming without replacing an existing file, so it cannot be used for the storage of spools and failure archives. Saving there fails with an error without overwriting existing files.
+
+### Retention
+
+- The number of kept generations (such as `HETEROLOG_MAX_LOG_FILE_BACKUPS`) is counted in generations, which are determined by the date and number in the file name.
+- Uncompressed and compressed files of the same generation, including those created before the compression format was changed, count as one generation, and all files of older generations beyond the limit are deleted together.
+- Files that cannot be deleted, such as a file being written or a file whose sending or fallback is not finished, are not counted.
+- In the runner mode of the delivery logger, `MaxFileBackups`, `MaxFileAge`, and `MaxDirSize` given in `LifecycleRunnerSettings` are checked with the same lower bounds as the regular file logger (at least 2 generations, at least 1 day, and at least 10 MB and at least the maximum file size). Invalid values make logger construction fail even when error and debug separation is disabled.
+
+### Compression
+
+- Compressed files are checked for integrity before they are used for recovery. For XZ, the index and footer of each stream and the end positions of blocks are checked, so the original log is kept and can be compressed again even if a truncated compressed file remains.
+- When a compressed file of the same generation as an original log remains, for the built-in formats (gzip, zstd, lz4, xz) it is decompressed to the end and compared with the original log, and the original log is deleted only when they match.
+- When a compressed file is complete but its content differs, the original log is not deleted; it is moved to `.preserved` in the log directory and reported as an error, and the compressed file is treated as the file of that generation.
+- Compressed files of a custom codec (`CompressionCodec`) are not compared even when the codec has a method for decompression; only the codec's own integrity check runs.
+- When compressing anew with a built-in format, the temporary file is decompressed to the end before it is published and compared with the original log. If they do not match, the compressed file is not published and the original log is not deleted (it is compressed again in the next run). A custom codec still uses only its own integrity check.
+- When a damaged compressed file is found while compressing right after rotation or resuming interrupted work, the original log is kept, the damaged file is deleted, and the original log is compressed again, so shutdown never keeps waiting for the same failure to be retried.
+- On POSIX systems, compressed output is created with permissions no broader than those of the source file. Existing temporary outputs and additional restrictions from the umask are kept.
+- On Windows, before compressed data is written, the existing private-file policy is applied, which allows access only to the current user, SYSTEM, and Administrators.
+
+### Uploading to object storage
+
+- When a destination is added to the object storage upload of log files, log files that existed before the destination was added are not sent to it and are not treated as sent.
+- The exception is the newest file being written in the current rotation period (uncompressed): it keeps growing after the destination is added, so it is included for the new destination. Uncompressed files of past periods are excluded like other files from before the addition, even if they are the newest.
+- Adding a destination is never a reason to delete files; they are deleted by the usual retention period, generation count, and size settings.
+- A compressed file is deleted after upload only when it has been sent to at least one enabled destination (or, on failure, saved to every specified fallback), and every other enabled destination is confirmed to have it sent or to have excluded it as a file from before the addition.
+- For object storage sending of a failure archive (fileArchive), newer generations wait until the sending of older generations completes, and are sent as soon as the completion record of an older generation advances.
+
+### Restarts
+
+- At startup, log file writers (regular, delivery, and the fileArchive for backend send failures) treat as used not only the files left in storage but also the generations recorded in the checkpoints of the same series (completion positions of sending and fallback, and records of sending in progress), and write from the following numbers.
+- So even after a restart that follows manual recovery up to the newest file, or after only the log storage was lost, new logs never get the same name as a generation already sent, which would get them deleted without being sent or make them overwrite the same object in object storage.
+- When the system clock goes back before a recorded period, writing continues in the recorded period.
+
+## Failure handling and replay
+
+### Spool permissions
+
+- The spool for failed logs (OpenSearch, Loki, ClickHouse, CloudWatch Logs) creates its root and the directories below it with 0700, accessible only to the owner, and saves spool files with 0600. Additional restrictions from the umask are kept.
+- Existing directories created by older versions with broader permissions also lose their group and other permissions, from the root down to the storage directory. The user's directories above the root are not changed.
+- Missing directories above the root are created with 0755 (with the umask applied) as before, because they are shared with other storage such as the object storage spool.
+- On Windows, newly created directories get an ACL that allows only the current user, SYSTEM, and Administrators, and spool files inherit this ACL when created. The ACLs of existing directories are not changed, so review the ACLs of spool directories created by older versions if needed.
+
+### How failures are classified
+
+Saving to the spool (OpenSearch, Loki, ClickHouse, CloudWatch Logs) and replaying from it follow the same rules for regular sending and spool replay:
+
+- Temporary failures are replayed automatically: 408, 429, 5xx, known network failures such as connection failures and timeouts, sends suppressed by the circuit breaker, and Loki's 260.
+- When the result cannot be confirmed (a missing or unparseable response, an interruption during sending, a send error that cannot be classified), the log is moved to `quarantine` and is not replayed automatically until its content and delivery status have been checked.
+- Size errors such as HTTP 413, and rejections caused by the content of a log (such as OpenSearch mapping and parsing errors, or ClickHouse value parsing and type conversion errors), are handled by splitting a multi-entry send or resending entries one by one to find the logs that cause them; every log rejected on its own is saved to `quarantine`.
+- Loki's 400 may mean that valid streams were partly accepted, so the logs sent are saved to `quarantine` without splitting.
+- Problems with the destination or configuration that do not depend on the log content (rejected authentication or permissions, a missing table, index, or stream, wrong SQL or settings) make the logs undeliverable, and they are saved to `dead`.
+- Events that CloudWatch Logs rejects individually as outside the accepted period are replayed if they are too far in the future, and saved to `dead` if they are too old or outside the retention period.
+- Replaying can deliver a log twice if an earlier attempt was accepted.
+- When the circuit breaker tries whether it can resume sending, it lifts the suppression only when a response from the destination is confirmed. If the client returns neither a response nor an error, the result is unknown and sending stays suppressed.
+- When a spool record cannot be restored or validated at replay, it is moved to `quarantine`. The error can be identified by its kind (sentinel) and field name, but the stored value is not included in errors that can be retrieved with `errors.As` (causes or fields).
+
+### Retry-After
+
+- When an OpenSearch, Loki, ClickHouse, or CloudWatch Logs destination returns `Retry-After` with a retryable failure, the spool does not replay to that destination until the given time has passed since the response was received.
+- The value, whether received during spool replay or regular sending, is recorded as a waiting deadline for the whole destination, and none of that destination's logs, including older logs without a deadline, are sent before it.
+- A value received during regular sending is recorded when the failed log is saved to the spool (including when the log is not saved to the spool because of a `drop` or `degrade` on overload), so a running runner applies it from its next cycle.
+- A value received during spool replay also stops the logs of the same replay that were not sent yet.
+- A new value does not shorten a later deadline already recorded.
+- Replay to other destinations, deletion of spool files by retention period and size, and retries of post-processing continue.
+- The maximum wait is 1 hour by default and can be changed with `Worker.MaxRetryAfter` for each backend (environment variables `*_SPOOL_RUNNER_MAX_RETRY_AFTER_SECOND`, such as `HETEROLOG_OPENSEARCH_SPOOL_RUNNER_MAX_RETRY_AFTER_SECOND`). A longer value is shortened to the maximum, with a warning to the internal log.
+- If the value is shorter than the replay cycle, replay happens at the usual cycle.
+- Client retries within a single send wait up to `MaxDelay`, for both regular sending and spool replay.
+
+How the deadline survives restarts:
+
+- The deadline is saved as `.retry-after/<backend name>.json` (for example, `opensearch.json`) in the spool directory (`<SpoolPath>/<Target>/spool/<Dir>`) and loaded before the first replay after a restart, so the destination is not replayed before the deadline regardless of the order in which logs are loaded.
+- The given time is also saved in the logs waiting for replay. If the deadline could not be saved, it is restored when such a log is loaded.
+- A log or deadline whose saved time is further away than the maximum at loading is shortened to the maximum, with a warning to the internal log. The shortened deadline is saved too, so restarts do not extend the wait.
+- Records past their deadline are deleted (a record shortened to the maximum is kept until its original time passes, to show that it was shortened).
+- Temporary files left by a stop in the middle of saving (`.<backend name>.json.<digits>.tmp`) are deleted at the next load.
+- When a record cannot be read or its content is broken, a warning is written to the internal log, replay continues as if there were no record, and the next `Retry-After` replaces it.
+- When saving a record fails, a warning is written to the internal log (only once while failures continue), and the process waits until the deadline while retrying the save until the deadline arrives. The retry interval starts at the replay cycle and doubles at each failure, up to 1 minute. If the process restarts before the record could be saved, the deadline may not be carried over.
+
+### Compressed log uploads
+
+- The spool that resends compressed log files to object storage sends the file again to the same destination and object name as when it was saved. So even for send errors that cannot be classified and for panics in the upload, the file is not moved to `quarantine`; it is returned to waiting and resent automatically. It is moved to `dead` only when the destination's response shows a permanent rejection.
+- When the destination of compressed log files returns `Retry-After`, only the files for that destination wait until the given time; resending to other destinations continues.
+- A value received with a temporary failure by a regular upload before the file is saved to the spool is also recorded as that destination's waiting deadline when the file is saved, so a running resend process applies it from its next cycle and does not send files to that destination before the deadline.
+- A new value does not shorten a later deadline already recorded.
+- The maximum wait is 1 hour by default and can be changed with `HETEROLOG_OBJECT_STORAGE_COMPRESSED_LOG_FILE_UPLOAD_FAILURE_SPOOL_MAX_RETRY_AFTER_SECOND` (the setting of the same name starting with `DELIVERY_` for the delivery logger). A longer value is shortened to the maximum, with a warning.
+- The deadline is saved as `.retry-after/<destination ID>.json` in the spool directory of the destination (`<SpoolPath>/<Target>/spool/objectstorage/<service>/<logger contract>/<destination ID>/.retry-after/<destination ID>.json`) and loaded before the first send to that destination after a restart, so files for that destination are not sent before the deadline.
+- The destination ID is used for the names of the per-destination spool and file archive directories and of `.retry-after/<destination ID>.json`, so it must start with a lowercase letter or digit, consist only of lowercase letters, digits, hyphens, and underscores, be at most 128 characters long, and not be a reserved Windows device name (`con`, `prn`, `aux`, `nul`, `com0` to `com9`, `lpt0` to `lpt9`). S3 destination IDs (`s3-` followed by 64 hexadecimal digits of SHA-256) always follow this rule.
+- In a configuration that uses storage for failed uploads (a spool or a file archive), a destination ID that breaks the rule makes logger construction return a configuration error without creating any storage.
+- A time further away than the maximum at loading is shortened to the maximum and saved again, with a warning, so restarts do not extend the wait.
+- Records past their deadline and temporary files left by a stop in the middle of saving (`.<destination ID>.json.<digits>.tmp`) are deleted.
+- When a record cannot be read or its content is broken, a warning is reported, resending continues as if there were no record, and the next `Retry-After` replaces it.
+- When saving a record fails, a warning is reported (only once while failures continue), and the process waits until the deadline while retrying the save until the deadline arrives. The retry interval starts at the resend cycle and doubles at each failure, up to 1 minute. If the process restarts before the record could be saved, the deadline may not be carried over.
+
+### Durability and cancellation
+
+- Restoring the OpenSearch and ClickHouse spools keeps the precision of JSON numbers. Large integers and high-precision decimals are not converted to `float64` for replay, and saved document IDs and deduplication tokens are kept.
+- When appending to a fileArchive fails in the middle, the file is rolled back to the position before the append. While it cannot be recovered, later saves and rotation stop with an error, and recovery is retried at the next save. If the end of an existing file is incomplete at a restart, opening it is refused with its content kept, so the file needs to be checked and repaired.
+- When regular sending to OpenSearch, Loki, ClickHouse, or CloudWatch Logs times out or is canceled, saving the failed logs is still attempted with its own deadline.
+- For both regular sending and spool replay, logs whose result became unknown because the caller's deadline or cancellation interrupted the send go to `quarantine`, logs not sent yet are kept for replay, and logs whose success is confirmed are not added again. When an explicit response was received, its result is kept.
+- With CloudWatch Logs, even if saving a failed batch fails in the middle, later sends and saves continue while the send context is valid, and the errors of each step are returned together.
+- The status and `Retry-After` of an HTTP response are not overridden by words in the response body that look like a network failure.
+- A `Retry-After` too large to be represented as a wait does not cause an immediate resend; it is treated as the maximum value, and then wait limits such as `MaxDelay` apply.
+- Connection resets, aborts, and refusals are detected by error number, not by error messages that differ between operating systems, so they are retried as temporary disconnections on Windows too.
+- Backend-specific error types are classified by the retry rules of each service.
+- When a send is canceled while waiting for the next attempt after an HTTP rejection, both the confirmed response and the cause of the cancellation are kept. Temporary rejections such as 503 are saved for replay, and logs with an unknown result, such as those interrupted during sending, go to quarantine.
+- When an OpenSearch ingest pipeline intentionally drops a log and responds with `noop`, the log is treated as processed. The other logs of the same batch are judged by their own responses.
+- When deleting the original `processing` file fails after saving to `done`, `dead`, or `quarantine`, the saved content is compared at the next start, and only the original file is deleted if every entry is confirmed saved in a single state. A partial save, a split across several states, or mismatching content keeps the file, returns an error, and stops automatic replay. The saved files needed for this check are protected from deletion by retention period and size while their original file remains.
+- Saving replay results is complete only after the file and its storage directory are synced. If syncing fails after publishing, the saved file and the original `processing` file are kept, and at the retry the content is compared and the sync is redone. Existing results are not overwritten, and the time of the first confirmation is kept.
+- When post-processing of the spool fails, the `RetryDelay` of the state transition is counted from when the failure was found, so the configured wait before the next retry is kept even when a file operation took a long time.
+- The spool for regular logs reports a successful save only after the file and its storage directory are confirmed to be synced. If syncing fails after publishing, the saved file is kept. Saving the same log again after this error stores it in another file to avoid losing it, so it may be duplicated.
+- When the storage directory of a spool, fileArchive, or checkpoint is newly created, success is reported only after the parent directory is confirmed to be synced. If syncing the parent fails, `ErrDurabilityUnconfirmed` is returned, and the sync is retried each time the same process prepares storage that depends on that parent. Until it succeeds, the same error is returned even for directories already created.
+- The spool's size statistics are updated even when `StatsScanInterval` is 0 or less. The first scan runs synchronously, and later results of asynchronous rescans are used for the size decision. `MaxCallsSinceScan=0` disables only the update based on the number of calls.
+
+### Timeout budget
+
+- The timeout budget check of `must_fit` includes waits for `Retry-After` up to `MaxDelay`, also for regular retries of Loki and ClickHouse.
+- When timeout and retry settings of loggers and clients are omitted in the environment configuration, the defaults are the same as the values in `.env.example` and satisfy the default `must_fit` (18 seconds for the regular and asynchronous loggers, 12 seconds for the delivery logger, 1 second for the OpenSearch client, and 2 seconds for the Loki, ClickHouse, and CloudWatch Logs clients).
+- The recovery CLI, which reads the environment configuration, checks the whole configuration including this budget before starting recovery, and exits with a configuration error if it is not satisfied.
+
+## Destination notes
+
+### Slack
+
+- `MaxRestThreshold` is the idle time between arriving logs. When a log arrives after this time has passed, an immediate send is scheduled together with the waiting logs. If a notification is being sent, it waits for that send to complete.
+- The `HTTPClient` of `SlackLoggerConfig` and `DeliverySlackLoggerConfig` in `pkg/logger` accepts the `*http.Client` used to call the Slack API (for example, to use a proxy or a custom transport). When it is nil, the default transport of `net/http` is used.
+  - The given client is copied at construction, keeping `Transport`, `Jar`, and `CheckRedirect`. The original client is not modified, and changes after construction are not reflected.
+  - The timeout is the `Timeout` of each configuration (it must be positive), which takes precedence over the `Timeout` of the original client.
+  - The same client is used for internal logs sent with the same Slack settings.
+  - It cannot be set from the environment configuration, so Slack output enabled there uses the default transport.
+- The Slack backend reports `DeliveryRejected` when the delivery context ended before sending, and `DeliveryUnconfirmed` for network failures after sending or incomplete responses.
+- The public delivery API uses a delivery deadline that is independent of the caller's cancellation.
+- Success is decided by validating the whole response body.
+- Slack has no durable storage or quarantine for failed logs, so if you need to keep logs with an unconfirmed delivery result, handle that in the caller.
+- For regular and asynchronous Slack sending, batches whose response body could not be validated, and whose result is therefore unknown, are resent as well. Duplicates are preferred over losses, so the same notification may be posted twice.
+
+### CloudWatch Logs
+
+- Stream names after routing (splitting into streams) are checked for the regular and internal log settings actually used. Base settings not selected as outputs, and base settings replaced by settings dedicated to internal logs, are excluded from the check.
+- The size limit is decided by the message length after JSON encoding plus the per-event overhead (26 bytes), and a single message is sent up to 1,048,550 bytes. A log that exceeds the limit is excluded from sending without stopping the other logs of the same batch.
+- When the endpoint URL is omitted, the standard endpoint of the region is used. China regions use `amazonaws.com.cn`. An explicit URL takes precedence.
+- With automatic stream creation, when a send is rejected because the stream does not exist, logs that were not accepted are saved for replay even if creation is canceled. A permanent rejection by the create API is treated as undeliverable, and if the result of resending after creation is unknown, the logs go to quarantine.
+- When obtaining credentials or signing fails and the HTTP request of the logs is confirmed not to have been sent, the logs are kept for replay. The original cause can be retrieved with `errors.Is` and `errors.As`.
+
+### Loki
+
+- The line limit is decided by the UTF-8 byte length of the string as sent. Invalid UTF-8 is replaced as Go's JSON encoding does, and splitting and exclusion use the length after replacement.
+
+### OpenSearch
+
+- When sending a single document, the index name is encoded as a single URL path element. Special characters in date math such as `<logs-{now/d}>` and in time zone specifications are kept.
+
+### Endpoint URLs and redirects
+
+- When the trailing `/` of a Loki or CloudWatch Logs endpoint URL is removed, escaped forms such as `%2F` are kept; an encoded `/` is not turned into a path separator.
+- Sending to Loki, ClickHouse, and VictoriaMetrics stops with an error at redirects that would lose the POST body. 307 and 308 redirects that keep the POST and its body follow the redirect settings of the HTTP client.
+- Uploading to S3 sends the signed PUT only once and does not follow redirects, including 301, 302, 303, 307, and 308; they are returned as HTTP status errors. The redirect settings of the given HTTP client are not changed.
+- A redirect is treated as a permanent failure caused by a wrong destination or setting, so compressed logs are kept in the fileArchive `permanent` or the spool `dead` and are not resent automatically. Only the `307 TemporaryRedirect` that S3 returns while the DNS of a bucket is being updated is treated as a temporary failure and resent.
+
+### ClickHouse
+
+- `InsertDeduplicationToken` of `pkg/clickhouse` is sent as is, including leading and trailing whitespace. Only an empty string means it is not set. Use the same token so that a resend is treated as the same INSERT, and use different values for different INSERTs.
+
+### S3 and object storage
+
+- The object name of `pkg/objectstorage/uploader.NewUploadInput` keeps leading and trailing whitespace; only an empty name is rejected.
+- Upload to S3 supports empty files.
+- The S3 region is signed with only its leading and trailing whitespace removed; its case is not changed. Destination IDs treat regions that differ only in case as the same destination.
+- An S3 endpoint cannot contain a query (including an empty query that is just `?`) or a fragment.
+
+### VictoriaMetrics
+
+- `SendAsync` of `pkg/victoriametrics` copies the metrics and labels it accepts, so the inputs can be reused after it returns.
+- The settings of the client passed to `WithHTTPClient` are not changed. `WithTimeout` applies to each HTTP request, for both synchronous and asynchronous sending, and each resend uses the same deadline again. 0 means no deadline.
+
+## Log recovery CLI
+
+In addition to the library, a CLI that recovers the log files of a stopped application is included.
 
 ```sh
 go build -o log-recovery ./cmd/log-recovery
@@ -227,9 +485,19 @@ go build -o log-recovery ./cmd/log-recovery
 ./log-recovery --target my-service --application-stopped --env-file /path/to/logging.env
 ```
 
-`--target` はログ生成時と同じ識別子にします。英数字で始まる英数字・ハイフン・アンダースコア・ドットを使用でき、パス区切りやWindowsの予約名は使用できません。CLIの環境設定項目は [.env.example](.env.example)、復旧対象や操作手順は [手動ログ復旧](docs/manual-log-recovery.txt) を参照してください。CLIは明示した環境設定を読み込みます。読み込んだ設定には `--target` を反映した後、アプリケーションの設定全体の検証（保存先ディレクトリの重複と所有権、upload対象、failure storeの構成、timeout階層（`must_fit` など）、memory healthの閾値）を行います。不整合がある場合は復旧処理を始める前に設定エラー（`invalid config: ...`、終了コード1）で終了し、保存先のディレクトリやファイルを作成・変更しません。認証情報を含み得る値（`*_HEADERS`・`HETEROLOG_OTEL_SPAN_HEADERS` のHTTP header、`*_S3_DESTINATIONS` の一覧）が不正な場合、設定エラーはkeyと種類だけを示し、値は表示文にも `errors.As` で取り出せるerrorにも含めません。環境設定で `HETEROLOG_LOG_TYPE`・`HETEROLOG_ASYNC_LOG_TYPE`・`HETEROLOG_DELIVERY_LOG_TYPE` を省略または空にした場合、出力先は通常・非同期・Deliveryとも標準出力だけです。fileやSlackなどは明示した場合だけ有効になり、Slackのトークンなど必要な認証情報がなければ設定エラーになります。fileのログを復旧する場合は、ログ生成時と同じ出力先（例: `HETEROLOG_LOG_TYPE=file`）を指定してください。環境設定から読み込む場合も、`HETEROLOG_ENABLE_LOCAL_TIME_LOG` を指定しなければUTCで記録します。spoolのdead・quarantineと、圧縮ログupload失敗の保存先（retryable・permanent・dead・quarantine）は、環境設定で削除を有効にしない限り自動削除しません。backend送信失敗のfileArchive（retryable・permanent）も、既定では保持世代数・保持日数・ディレクトリ容量の上限（`HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_BACKUPS`・`HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_AGE`・`HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_DIR_SIZE_MB`）がすべて0（上限なし）で、自動削除しません。0以外を指定した条件だけで古いファイルを削除し、指定できる値は世代数2以上・日数1以上・容量10MB以上かつファイル最大サイズ以上です。コードから設定する `durable.FileArchiveConfig` の `MaxFileBackups`・`MaxFileAge`・`MaxDirSize` も0は上限なしです。以前の既定（60世代・60日・2048MB）で自動削除を続ける場合は、これらの値を明示してください。上限なしでもディスクを使い切らないよう、空き容量が `HETEROLOG_MIN_AVAILABLE_DISK_SPACE_GB` を下回る間は新しい失敗をfileArchiveへ保存せず、`*_DURABLE_FILE_ARCHIVE_OVERLOAD_POLICY`（`drop`=破棄、`degrade`=標準出力へ退避）に従って処理します。fileArchiveを使う場合、この閾値は0にできません。
+- `--target` must be the same identifier used when the logs were written. It can contain letters, digits, hyphens, underscores, and dots, must start with a letter or digit, and cannot contain path separators or be a reserved Windows name.
+- See [.env.example](.env.example) for the settings the CLI reads, and [manual log recovery](docs/manual-log-recovery.txt) for what is recovered and how to operate it.
+- The CLI loads the environment configuration it is given. After applying `--target`, it checks the whole application configuration: duplicated storage directories and their ownership, upload targets, the composition of failure stores, the timeout hierarchy (`must_fit` and so on), and the memory health thresholds. If anything is inconsistent, it exits with a configuration error (`invalid config: ...`, exit code 1) before starting recovery, without creating or changing any storage directory or file.
+- When a value that may contain credentials (HTTP headers of `*_HEADERS` and `HETEROLOG_OTEL_SPAN_HEADERS`, the list of `*_S3_DESTINATIONS`) is invalid, the configuration error shows only the key and the kind of problem. The value is included neither in the message nor in errors that can be retrieved with `errors.As`.
+- When `HETEROLOG_LOG_TYPE`, `HETEROLOG_ASYNC_LOG_TYPE`, and `HETEROLOG_DELIVERY_LOG_TYPE` are omitted or empty in the environment configuration, the regular, asynchronous, and delivery loggers write only to stdout. File, Slack, and the other destinations are enabled only when given explicitly, and missing credentials such as a Slack token are a configuration error.
+- To recover file logs, give the same outputs as when the logs were written (for example, `HETEROLOG_LOG_TYPE=file`).
+- When loading from the environment configuration, logs are also recorded in UTC unless `HETEROLOG_ENABLE_LOCAL_TIME_LOG` is set.
+- The spool's `dead` and `quarantine`, and the storage for failed compressed log uploads (`retryable`, `permanent`, `dead`, `quarantine`), are not deleted automatically unless deletion is enabled in the environment configuration.
+- The fileArchive for backend send failures (`retryable`, `permanent`) is not deleted automatically by default either: the limits on kept generations, age, and directory size (`HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_BACKUPS`, `HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_AGE`, `HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_DIR_SIZE_MB`) are all 0 (unlimited). Old files are deleted only by the conditions set to a non-zero value, and the allowed values are at least 2 generations, at least 1 day, and at least 10 MB and at least the maximum file size.
+- `MaxFileBackups`, `MaxFileAge`, and `MaxDirSize` of `durable.FileArchiveConfig` set in code also mean unlimited when 0. To keep deleting automatically with the previous defaults (60 generations, 60 days, 2048 MB), set these values explicitly.
+- So that the disk is not filled even without limits, new failures are not saved to the fileArchive while the free space is below `HETEROLOG_MIN_AVAILABLE_DISK_SPACE_GB`; they are handled by `*_DURABLE_FILE_ARCHIVE_OVERLOAD_POLICY` (`drop` discards them, `degrade` saves them to stdout). When a fileArchive is used, this threshold cannot be 0.
 
-## テスト
+## Testing
 
 ```sh
 go test ./...
@@ -237,26 +505,92 @@ go vet ./...
 go test -race . ./internal/application/logging ./internal/infrastructure/logger/multi
 ```
 
-通常のテストは公開設定例から作るダミー設定とローカルHTTPサーバーを使い、開発者の `.env` を必要としません。設定例の値のままfile loggerの出力を確かめる試験は、一時ディレクトリのファイルシステムに `HETEROLOG_MIN_AVAILABLE_DISK_SPACE_GB`（設定例では1GB）以上の空き容量を必要とし、不足する場合は空き容量の不足を示して失敗します。実サービスに接続する結合テストは個別の環境変数で明示的に有効化します。Windows/macOS/LinuxのCIと、CIの `go test ./...` と同じ全packageをWindows VMで実行する手順を含む、Windows固有の追加試験手順を [testenv/windows](testenv/windows/README.md) に用意しています。macOSの実機で、大小文字を区別するAPFS・ExFAT・FAT32のdisk imageを一時ディレクトリにする試験と、Docker上の結合試験を実行する手順を [testenv/macos](testenv/macos/README.md) に用意しています。CIのLinuxでは、macOSと同じく一時ディレクトリがsymlinkを経由する条件（`TMPDIR` をsymlinkの下に置く）でも全体を試験します。
+- The regular tests use a dummy configuration generated from the public configuration example and local HTTP servers, and do not need a developer's `.env`.
+- Tests that check the output of the file logger with the values of the configuration example need at least `HETEROLOG_MIN_AVAILABLE_DISK_SPACE_GB` (1 GB in the example) of free space on the file system of the temporary directory, and fail with a message about the missing space otherwise.
+- Integration tests that connect to real services are enabled explicitly with individual environment variables.
+- [testenv/windows](testenv/windows/README.md) describes additional Windows-specific test procedures, including the CI on Windows, macOS, and Linux and the procedure to run all packages, the same as `go test ./...` in CI, on a Windows VM.
+- [testenv/macos](testenv/macos/README.md) describes how to run, on a real macOS machine, the tests with case-sensitive APFS, ExFAT, and FAT32 disk images as the temporary directory, and the integration tests on Docker.
+- CI on Linux also runs the whole suite with a temporary directory reached through a symbolic link (`TMPDIR` under a symlink), as on macOS.
 
-Linuxで大文字小文字を区別しないファイルシステム（ext4・F2FS・tmpfsのcasefold、FAT）の判定の処理そのものは、ファイルシステムの種類・casefoldの属性・mount optionを差し替える試験で毎回確かめています。実際のcasefoldディレクトリやFATのmountで判定を確かめる試験（`pkg/path/pathidentity` の `TestLinuxDirectoryCaseDetectsAvailableCaseInsensitiveFilesystems`）と、一時ディレクトリが大文字小文字を区別しない場合だけ動くfile loggerの試験は、それらを用意できない環境ではskipします。CIの `test (ubuntu-latest, case-insensitive TMPDIR)` jobは、loop mountしたext4のcasefoldディレクトリを一時ディレクトリにして全テストを実行し、vfat（runnerが対応していればexFATも）のmountの判定と、vfat上の一時ディレクトリでのfile loggerの試験も実行します。このjobでは、これらの試験がskipされると失敗にします。
+Case-insensitive file systems on Linux:
 
-実サービスの試験では、試験用の宛先と認証情報を書いた専用の環境設定ファイルを用意し、試験ごとのopt-in変数とともに `HETEROLOG_INTEGRATION_ENV_PATH` で指定します。`go test` は各packageのディレクトリで試験を実行するため、絶対パスで指定してください。`pkg/opensearch` の試験も、接続先の `HETEROLOG_OPENSEARCH_ENDPOINT`、認証方式の `HETEROLOG_OPENSEARCH_AUTH_TYPE`（認証なしは `none`、Basic認証では `basic` と `HETEROLOG_OPENSEARCH_USERNAME` / `HETEROLOG_OPENSEARCH_PASSWORD`）、書き込むindexの `OPENSEARCH_TEST_INDEX`（`app-log` で始まる名前。省略時は `app-log-test-index`）をこのファイルだけから読み、プロセスの環境変数で指定した値は使いません。使い捨てのコンテナに対してすべての結合テストを実行するCI用の設定と手順は [testenv/integration](testenv/integration/README.md) にあります。
+- The detection of case-insensitive file systems on Linux (casefold of ext4, F2FS, and tmpfs, and FAT) is checked in every run by tests that replace the file system type, the casefold attribute, and the mount options.
+- The test that checks detection on real casefold directories and FAT mounts (`TestLinuxDirectoryCaseDetectsAvailableCaseInsensitiveFilesystems` of `pkg/path/pathidentity`), and the file logger tests that run only when the temporary directory is case-insensitive, are skipped in environments that cannot provide them.
+- The CI job `test (ubuntu-latest, case-insensitive TMPDIR)` runs all tests with a loop-mounted ext4 casefold directory as the temporary directory, and also runs the detection on vfat mounts (and exFAT when the runner supports it) and the file logger tests in a temporary directory on vfat. This job fails if these tests are skipped.
+
+Integration tests with real services:
+
+- Prepare a dedicated environment file with the test destinations and credentials, and give it with `HETEROLOG_INTEGRATION_ENV_PATH` together with each test's opt-in variable. `go test` runs tests in each package's directory, so give an absolute path.
+- The tests of `pkg/opensearch` also read only from this file, not from the process environment: the endpoint `HETEROLOG_OPENSEARCH_ENDPOINT`, the authentication method `HETEROLOG_OPENSEARCH_AUTH_TYPE` (`none` for no authentication; `basic` with `HETEROLOG_OPENSEARCH_USERNAME` and `HETEROLOG_OPENSEARCH_PASSWORD` for basic authentication), and the index to write to, `OPENSEARCH_TEST_INDEX` (a name starting with `app-log`; `app-log-test-index` when omitted).
+- The configuration and procedure for running all integration tests against disposable containers in CI are in [testenv/integration](testenv/integration/README.md).
 
 ```sh
 OPENSEARCH_INTEGRATION_TEST=true HETEROLOG_INTEGRATION_ENV_PATH=/path/to/integration.env \
   go test ./pkg/opensearch -count=1
 ```
 
-結合テストは既定でTLS証明書を検証します。自己署名証明書を使う試験環境だけ、専用ファイルに `HETEROLOG_OPENSEARCH_SKIP_VERIFY_SSL=true` を指定してください。`.env.example` ではこの値が `true` のため、`.env.example` を基に専用ファイルを作り証明書を検証する場合は `false` にしてください。
-
-loggerの結合テストも同じ専用ファイルを使います。`.env.example` を基に試験用ファイルを用意し、対象の `HETEROLOG_OPENSEARCH_ENDPOINT`、`HETEROLOG_LOKI_ENDPOINT` または `HETEROLOG_CLICKHOUSE_ENDPOINT` を明示します。試験はERRORログのsampling率を1へ上書きするため、専用ファイルのsampling設定は結果に影響しません。OpenSearchのBasic認証では、専用ファイルに `HETEROLOG_OPENSEARCH_USERNAME` / `HETEROLOG_OPENSEARCH_PASSWORD` を指定します。認証情報は補完しないため、未指定のままOpenSearchを使うと設定エラーになります。認証なしの接続先では `HETEROLOG_OPENSEARCH_AUTH_TYPE=none` を指定してください。
+- Integration tests verify TLS certificates by default. Only for test environments with self-signed certificates, set `HETEROLOG_OPENSEARCH_SKIP_VERIFY_SSL=true` in the dedicated file. This value is `true` in `.env.example`, so set it to `false` when you create the dedicated file from `.env.example` and want certificates verified.
+- The logger integration tests use the same dedicated file. Prepare a test file based on `.env.example` and set the target `HETEROLOG_OPENSEARCH_ENDPOINT`, `HETEROLOG_LOKI_ENDPOINT`, or `HETEROLOG_CLICKHOUSE_ENDPOINT` explicitly.
+- The tests override the sampling rate of ERROR logs to 1, so the sampling settings of the dedicated file do not affect the results.
+- For OpenSearch basic authentication, set `HETEROLOG_OPENSEARCH_USERNAME` and `HETEROLOG_OPENSEARCH_PASSWORD` in the dedicated file. Credentials are not filled in, so using OpenSearch without them is a configuration error. For an endpoint without authentication, set `HETEROLOG_OPENSEARCH_AUTH_TYPE=none`.
 
 ```sh
 OPENSEARCH_INTEGRATION_TEST=true HETEROLOG_INTEGRATION_ENV_PATH=/path/to/integration.env \
   go test ./internal/infrastructure/logger -count=1
 ```
 
-Loki / ClickHouseはそれぞれ `LOKI_INTEGRATION_TEST=true` / `CLICKHOUSE_INTEGRATION_TEST=true` で有効化します。file loggerのTempo / OpenTelemetry Collector試験は `TEMPO_INTEGRATION_TEST=true` / `OTEL_COLLECTOR_INTEGRATION_TEST=true` と同じ専用ファイルを使用します。`HETEROLOG_ENV_PATH` だけでは実サービスの試験は開始しません。
+- Loki and ClickHouse are enabled with `LOKI_INTEGRATION_TEST=true` and `CLICKHOUSE_INTEGRATION_TEST=true`. The Tempo and OpenTelemetry Collector tests of the file logger use `TEMPO_INTEGRATION_TEST=true` and `OTEL_COLLECTOR_INTEGRATION_TEST=true` with the same dedicated file. `HETEROLOG_ENV_PATH` alone does not start tests against real services.
+- While integration tests run, the settings of this library that are not in the dedicated file (the keys of `.env.example`, `HETEROLOG_ENV_PATH`, and `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, and `AWS_REGION`, which are used as defaults) are removed from the process environment. The runtime environment, such as `PATH`, `HOME`, `TMP`/`TEMP`/`TMPDIR`, `SystemRoot`, and proxy and certificate settings, is used as is.
 
-結合テストの実行中は、専用ファイルにない本ライブラリの設定項目（`.env.example` の項目、`HETEROLOG_ENV_PATH`、既定値として参照する `AWS_ACCESS_KEY_ID`・`AWS_SECRET_ACCESS_KEY`・`AWS_SESSION_TOKEN`・`AWS_REGION`）をプロセスの環境変数から外します。`PATH`、`HOME`、`TMP`／`TEMP`／`TMPDIR`、`SystemRoot`、プロキシや証明書の設定などの実行環境はそのまま使います。
+## Design decisions
+
+### Delivering logs from the application itself
+
+heterolog sends logs from the application directly to each destination, instead of relying on a separate log shipper (an agent or sidecar that reads log files and forwards them).
+
+- Fewer moving parts: there is no extra process to deploy, size, monitor, and upgrade next to each application, and no intermediate file or socket between the application and the destination that can fill up or stall.
+- The application learns the outcome: the synchronous API returns an error when a log could not be recorded or kept, and the delivery API reports the result for each destination. With a shipper, the application only knows that it wrote to a local file.
+- Durability does not depend on an agent: logs that cannot be delivered are written to a local spool or failure archive and replayed by the library, which covers what an agent's disk buffer usually provides.
+- It fits Go programs that are themselves agents, daemons, or command-line tools, where running another agent next to them is awkward.
+
+The trade-off is that delivery uses the application's own CPU, memory, and network, and changing destinations means restarting the application with new settings. When many programs written in different languages share a host, or when routing must be changed centrally, a dedicated shipper can still be the better choice.
+
+### Three loggers, and keeping logs that failed
+
+Logs differ in how much the caller needs to know about them, so heterolog has three loggers instead of one logger with options:
+
+- `New` is synchronous and returns an error when a log could not be written or kept. It is for logs that must not be lost silently.
+- `NewAsync` is best effort: it does not make the caller wait for delivery and reports no per-call errors. It is for high-volume logs.
+- `NewDelivery` returns a report for each destination that separates confirmed success, failure, rejection before sending, an unknown outcome, and queuing. It is for callers that decide what to do next based on where a log arrived.
+- Each type states its guarantee in its method signatures (a logging call of the synchronous logger returns an error, one of the asynchronous logger returns nothing, and one of the delivery logger returns a report), so the code shows which guarantee it relies on.
+
+A log that cannot be delivered is kept, not discarded:
+
+- Temporary failures go to the spool and are replayed. `Retry-After` is honored and survives restarts, so a recovering destination is not flooded.
+- When the outcome is unknown, for example because the connection broke after sending, the log goes to `quarantine` instead of being resent automatically: resending could deliver it twice, and deleting it could lose it, so a person decides.
+- Logs rejected because of their content are isolated one by one, by splitting batches, so that one bad entry does not block the others. Failures caused by the destination or the configuration, such as rejected authentication or a missing table, go to `dead`.
+- When the choice is between a duplicate and a loss, heterolog prefers the duplicate.
+
+Kept failures are not deleted by default. They may be the only copy of a log, so deleting them should be an explicit decision, and retention limits are opt-in. Filling the disk is prevented instead by the free space threshold (`HETEROLOG_MIN_AVAILABLE_DISK_SPACE_GB`): below it, new failures are dropped (reported as `ErrLogDropped`) or degraded to stdout, as configured.
+
+### Configuration
+
+- Configuration is explicit. Importing the package or constructing a logger has no side effects: it does not load env files, install signal handlers, or replace the global slog logger or OpenTelemetry providers. A library should not change the state of the application that uses it.
+- Reading the environment is opt-in. `LoadEnvConfig` reads only when it is called and only the file it is given, and never modifies the process environment. A variable set in the environment overrides the file, as most dotenv tools do.
+- Every key starts with `HETEROLOG_`, so the settings can live in the same environment and `.env` file as the application's own settings without colliding.
+- With no settings, every logger writes only to stdout, so heterolog works without any configuration or external service. Other destinations are enabled only when they are selected, and missing credentials are reported as errors instead of being filled in.
+- Settings are checked when they are loaded or when a logger is constructed, and all problems are reported together, so a wrong setting fails at startup instead of at the first log or the first failure.
+- Configuration errors do not include values that may contain credentials, such as HTTP headers, lists of S3 destinations, and the user info of URLs.
+- Defaults follow the platform: timestamps are in UTC, and on Linux and other Unix systems, storage defaults to the user's state directory (`$XDG_STATE_HOME`, or `~/.local/state`) when the process does not run as root, so a regular user can enable file output without extra settings.
+
+### Testing on real systems
+
+- The parts most likely to lose or duplicate logs depend on the operating system and the file system: case sensitivity of names, renaming without replacement, syncing directories, file permissions and Windows ACLs, symbolic links in temporary directories, and macOS AppleDouble files. Replaced inputs alone do not reproduce these behaviors, so besides unit tests, the suite runs on real file systems.
+- CI runs the whole suite on Linux, Windows, and macOS, plus Linux jobs with a temporary directory reached through a symbolic link and with a case-insensitive temporary directory (ext4 casefold and vfat), and integration tests against OpenSearch, Loki, ClickHouse, Tempo, and the OpenTelemetry Collector in containers.
+- In the jobs that exist to cover such a condition, a test that is skipped counts as a failure, so the coverage cannot disappear silently.
+- Beyond CI, the whole suite has been run on a Windows virtual machine, as a regular user and as an administrator, and on a real macOS machine with case-sensitive APFS, ExFAT, and FAT32 disk images. The results are recorded in [testenv](testenv).
+- Timing-dependent behavior is tested with virtual time (`testing/synctest`) where possible.
+
+## License
+
+[MIT License](LICENSE)
