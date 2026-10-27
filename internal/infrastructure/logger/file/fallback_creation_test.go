@@ -63,7 +63,7 @@ type fileNotificationTargetForTest struct {
 
 // 内部ログの通知先としてのfile（LoggerSet・DeliveryLoggerSetのfallback handler）は、fallbackだけで
 // 使う構成でもfileを開かずに済むよう、roleのloggerを最初の通知で作ります。作成はdirectoryやfileの
-// 状態に依存して実行時に失敗し得ます。失敗した通知は黙って捨てず、READMEのとおり失敗ごとに
+// 状態に依存して実行時に失敗し得ます。失敗した通知は黙って捨てず、docs/reference.ja.mdのとおり失敗ごとに
 // 標準loggerへ一行出力し、作成は次の通知で再試行します。失敗を記憶して再試行しない退行や、
 // 出力を一度に抑える退行を検出します。
 func TestFileNotificationTargetReportsEachCreationFailureAndRetries(t *testing.T) {
@@ -126,7 +126,7 @@ func TestFileNotificationTargetReportsEachCreationFailureAndRetries(t *testing.T
 			for i := range failedNotifications {
 				notificationTarget.notify(fmt.Sprintf("notification while the directory is obstructed %d", i))
 			}
-			// 失敗ごとに標準loggerへ一行出力することはREADMEに書かれた出力の要件のため、行の数と、
+			// 失敗ごとに標準loggerへ一行出力することはdocs/reference.ja.mdに書かれた出力の要件のため、行の数と、
 			// 各行が作成失敗の書式の文言を含むことを確認します。
 			lines := standardLogLines()
 			require.Len(t, lines, failedNotifications, "every failed notification must print one standard logger line: %q", lines)

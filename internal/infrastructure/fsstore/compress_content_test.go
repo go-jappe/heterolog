@@ -255,7 +255,7 @@ func TestVerifyCompressedFileMatchesSourceComparesOnlyBuiltInCodecs(t *testing.T
 	writeCompressedForContentTest(t, pkgfsstore.CompressGzip, compressedPath, []byte("other records\n"))
 
 	require.ErrorIs(t, VerifyCompressedFileMatchesSource(compressedPath, builtIn, sourcePath), ErrCompressedContentMismatch)
-	// 独自codecは展開に使えるmethodを持っていても、README・公開APIの契約どおり完全性だけを検証します。
+	// 独自codecは展開に使えるmethodを持っていても、docs/reference.ja.md・公開APIの契約どおり完全性だけを検証します。
 	custom := decodingCustomCompressionCodec{CompressionCodec: builtIn}
 	require.NoError(t, VerifyCompressedFileMatchesSource(compressedPath, custom, sourcePath))
 	require.NoError(t, VerifyExistingCompressedFileMatchesSource(sourcePath, compressedPath, custom))

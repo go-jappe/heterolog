@@ -902,7 +902,7 @@ func mountInfoLineForPathForTest(mountInfo, path string) (line, mountPoint strin
 }
 
 // process全体で使う判定は、大小文字を区別するという判定と読み取ったmountinfoを最大2秒だけ
-// 再利用し（README）、期限を壁時計で判定します。試験で差し替える判定ではなく、本番の判定の設定を
+// 再利用し（docs/reference.ja.md）、期限を壁時計で判定します。試験で差し替える判定ではなく、本番の判定の設定を
 // 確かめます。
 func TestFilesystemDirectoryCaseUsesDocumentedReuseSettings(t *testing.T) {
 	directoryCase := filesystemDirectoryCase

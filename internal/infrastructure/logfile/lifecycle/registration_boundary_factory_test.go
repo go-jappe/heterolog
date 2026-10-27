@@ -107,7 +107,7 @@ func TestLogFileFactoryRegistrationLeavesPastPeriodLatestRawOutOfScope(t *testin
 }
 
 // 構築時刻が属するrotation期間の最新rawは、writerがまだ追記し得るため新しい宛先の送信対象に
-// 残します（README「宛先を追加した場合」）。本番のfactoryが登録境界をこの期間より後ろへずらすと、
+// 残します（docs/reference.ja.md「object storageへのアップロード」）。本番のfactoryが登録境界をこの期間より後ろへずらすと、
 // 追加した宛先へこの世代が届かなくなります。rotation後に全宛先へ送信することも確認します。
 func TestLogFileFactoryRegistrationKeepsCurrentPeriodLatestRawPending(t *testing.T) {
 	ctx := context.Background()

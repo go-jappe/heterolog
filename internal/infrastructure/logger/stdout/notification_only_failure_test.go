@@ -19,8 +19,8 @@ import (
 )
 
 // 内部ログの通知先として作るstdout handler（通知専用instance）は通知先を持たないため、自身の
-// 書き込みの失敗を通知せず、失敗ごとに一行、標準loggerへ残します（README「通知専用の書き込みで
-// 起きた失敗は通知せず、標準のloggerへ出力します」）。process全体で一度だけの診断ではありません。
+// 書き込みの失敗を通知せず、失敗ごとに一行、標準loggerへ残します（docs/reference.ja.mdの
+// 「内部ログの通知」）。process全体で一度だけの診断ではありません。
 // 標準出力・標準エラー・標準loggerを置き換えるため、t.Parallelを使いません。
 func TestNotificationOnlyStdoutHandlersWriteEachFailureToStandardLog(t *testing.T) {
 	const failures = 3
