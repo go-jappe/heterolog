@@ -94,7 +94,7 @@ func main() {
 }
 ```
 
-By default, INFO and higher are written to stdout and WARN and higher to stderr, with timestamps in UTC. To use it as the global logger, call `slog.SetDefault(logger)`. `slog` and each output filter by level separately, so to write DEBUG logs, lower both levels (see [Using slog](docs/reference.md#using-slog)).
+By default, INFO logs are written to standard output and WARN and ERROR logs to standard error, with timestamps in UTC. To use it as the global logger, call `slog.SetDefault(logger)`. `slog` and each output filter by level separately, so to write DEBUG logs, lower both levels (see [Using slog](docs/reference.md#using-slog)).
 
 ## Sending logs to several destinations
 
@@ -105,13 +105,6 @@ The quickest way is an env file that `LoadEnvConfig` reads. This one writes to s
 HETEROLOG_TARGET=my-service
 HETEROLOG_LOG_TYPE=stdout,file,loki
 HETEROLOG_LOKI_ENDPOINT=http://loki.example.internal:3100
-
-# Record every log at INFO and above in the file and in Loki.
-# Without these lines, the file gets only WARN and above, and Loki only a sample (see below).
-HETEROLOG_FILE_LOG_LEVEL=INFO
-HETEROLOG_ENABLE_LOG_FILE_SAMPLING=false
-HETEROLOG_LOKI_LOG_LEVEL=INFO
-HETEROLOG_ENABLE_LOG_LOKI_SAMPLING=false
 ```
 
 ```go
@@ -137,17 +130,16 @@ logger.InfoContext(ctx, "service started")
 
 ### Default levels and sampling
 
-Unless you set them, the regular and asynchronous loggers use these levels and sampling for each output:
+Unless you set them, every output records INFO and above, except Slack, which is meant for notifications and records ERROR and above. Sampling is off, so every log at or above the level is kept:
 
-| Output | Level | Logs kept |
+| Output | Level | Sampling |
 | --- | --- | --- |
-| stdout | INFO | all |
-| file | WARN | all |
-| Slack | ERROR | all |
-| OpenSearch, Loki, CloudWatch Logs, ClickHouse | DEBUG | every ERROR log, 1 in 10 WARN and DEBUG logs, and 1 in 1,000 INFO logs |
+| Slack | ERROR | off |
+| stdout, file, OpenSearch, Loki, CloudWatch Logs, ClickHouse | INFO | off |
 
-- For OpenSearch, Loki, CloudWatch Logs, and ClickHouse, logs that carry a request ID (`heterolog.WithRequestID`, or a string `request_id` attribute in slog) are kept or skipped by request instead: every WARN, INFO, and DEBUG log of 1 in 10 requests is kept, so the logs of a kept request are complete.
-- To keep every log, set the level of the output and turn its sampling off, as in the example above. The keys are `HETEROLOG_<OUTPUT>_LOG_LEVEL` and `HETEROLOG_ENABLE_LOG_<OUTPUT>_SAMPLING`, where `<OUTPUT>` is `STDOUT`, `FILE`, `SLACK`, `OPENSEARCH`, `LOKI`, `CLOUDWATCH`, or `CLICKHOUSE`; the asynchronous logger has its own keys with `ASYNC_` in the name. The level and sampling can also be [changed while running](#changing-the-level-and-sampling-while-running).
+- The keys are `HETEROLOG_<OUTPUT>_LOG_LEVEL` for the level and `HETEROLOG_ENABLE_LOG_<OUTPUT>_SAMPLING` for sampling, where `<OUTPUT>` is `STDOUT`, `FILE`, `SLACK`, `OPENSEARCH`, `LOKI`, `CLOUDWATCH`, or `CLICKHOUSE`. The asynchronous logger has its own keys with `ASYNC_` in the name.
+- With sampling on, a rate of N keeps 1 in N logs of that level, and logs that carry a request ID (`heterolog.WithRequestID`, or a string `request_id` attribute in slog) can be kept or skipped by request instead, so the logs of a kept request are complete. Set the rates when you turn sampling on: rates you leave out keep their defaults, such as 1 in 1,000 INFO logs for OpenSearch, Loki, CloudWatch Logs, and ClickHouse.
+- The level and sampling can also be [changed while running](#changing-the-level-and-sampling-while-running).
 - The delivery logger does not sample, and only its Slack output filters by level (ERROR).
 
 ### Configuring in code
@@ -246,7 +238,7 @@ curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
 
 # Keep 1 in 10 INFO logs in the log file
 curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
-  -d '{"loggers":{"app":{"outputs":{"file":{"sampling":{"enabled":true,"debug_rate":1,"info_rate":10,"warn_rate":1,"error_rate":1}}}}}}' \
+  -d '{"loggers":{"app":{"outputs":{"file":{"sampling":{"enabled":true,"by_request_id":false,"debug_rate":1,"info_rate":10,"warn_rate":1,"error_rate":1}}}}}}' \
   http://127.0.0.1:9100/settings
 ```
 
@@ -260,7 +252,7 @@ Every request returns the settings of every logger. For example, this is the std
         "stdout": {
           "level": "DEBUG",
           "sampling": {
-            "enabled": true,
+            "enabled": false,
             "by_request_id": true,
             "request_id_rate": 10,
             "debug_rate": 1,
@@ -349,6 +341,7 @@ Kept failures are not deleted by default. They may be the only copy of a log, so
 - Reading the environment is opt-in. `LoadEnvConfig` reads only when it is called and only the file it is given, and never modifies the process environment. A variable set in the environment overrides the file, as most dotenv tools do.
 - Every key starts with `HETEROLOG_`, so the settings can live in the same environment and `.env` file as the application's own settings without colliding.
 - With no settings, every logger writes only to stdout, so heterolog works without any configuration or external service. Other destinations are enabled only when they are selected, and missing credentials are reported as errors instead of being filled in.
+- Sampling is opt-in. By default, every output records every log at INFO and above (Slack, which is meant for notifications, at ERROR and above), so no log at or above the level is skipped unless you turn sampling on.
 - Settings are checked when they are loaded or when a logger is constructed, and all problems are reported together, so a wrong setting fails at startup instead of at the first log or the first failure.
 - Only the level and sampling can change while running. The outputs read them for every entry, so a change needs neither rebuilding loggers nor interrupting logging; changing destinations or storage would. The HTTP API needs a token, listens only on 127.0.0.1 unless TLS is configured, and its changes do not survive a restart, so a temporary change, such as switching to DEBUG during an investigation, cannot stay by accident.
 - Configuration errors do not include values that may contain credentials, such as HTTP headers, lists of S3 destinations, and the user info of URLs.

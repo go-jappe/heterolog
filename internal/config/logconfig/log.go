@@ -16,13 +16,16 @@ const (
 	// デフォルトロギングレベル
 	// envファイルにLOG_LEVELの設定値がなければこの値を使用する
 	// .envファイルには 'DEBUG' 'INFO' 'WARN' 'ERROR' のいずれかの値を設定してください
-	DefaultFileLogLevel           = logger.LogLevelWarn
+	// 既定では、通知に使うSlackだけERROR以上を、ほかの出力先はINFO以上を記録します。
+	// サンプリングも既定では無効にし、レベルを満たすログをすべて記録します（各出力先の
+	// DefaultIs...SamplingEnabled）。割合の既定値は、サンプリングを有効にした場合に使います。
+	DefaultFileLogLevel           = logger.LogLevelInfo
 	DefaultStdoutLogLevel         = logger.LogLevelInfo
 	DefaultSlackLogLevel          = logger.LogLevelError
-	DefaultOpenSearchLogLevel     = logger.LogLevelDebug
-	DefaultLokiLogLevel           = logger.LogLevelDebug
-	DefaultCloudWatchLogsLogLevel = logger.LogLevelDebug
-	DefaultClickHouseLogLevel     = logger.LogLevelDebug
+	DefaultOpenSearchLogLevel     = logger.LogLevelInfo
+	DefaultLokiLogLevel           = logger.LogLevelInfo
+	DefaultCloudWatchLogsLogLevel = logger.LogLevelInfo
+	DefaultClickHouseLogLevel     = logger.LogLevelInfo
 
 	// この項目はログファイル設定 ログファイルの保存先がfileの場合に使用します
 	DefaultMaxLogFileSizeMB = 50                                   // MB単位のデフォルトログサイズ .envで指定が無い場合に当値を適用する
@@ -129,7 +132,7 @@ const (
 	DefaultLokiFlushInterval            = 5 * time.Second
 	DefaultLokiNoBulkFlushModeEnabled   = false
 	DefaultLokiPushLatencyEnabled       = true
-	DefaultIsLogLokiSamplingEnabled     = true
+	DefaultIsLogLokiSamplingEnabled     = false
 	DefaultEnableLokiLoggingByRequestID = true
 	DefaultLokiLoggingByRequestIDRate   = 10
 	DefaultLogLokiSamplingDebugRate     = 10
@@ -146,7 +149,7 @@ const (
 	DefaultCloudWatchLogsFlushInterval            = 5 * time.Second
 	DefaultCloudWatchLogsNoBulkFlushModeEnabled   = false
 	DefaultCloudWatchLogsPutLatencyEnabled        = true
-	DefaultIsLogCloudWatchLogsSamplingEnabled     = true
+	DefaultIsLogCloudWatchLogsSamplingEnabled     = false
 	DefaultEnableCloudWatchLogsLoggingByRequestID = true
 	DefaultCloudWatchLogsLoggingByRequestIDRate   = 10
 	DefaultLogCloudWatchLogsSamplingDebugRate     = 10
@@ -167,7 +170,7 @@ const (
 	DefaultClickHouseMaxInsertRequestBytes    = 16 * 1024 * 1024
 	DefaultClickHouseFlushInterval            = 5 * time.Second
 	DefaultClickHouseInsertLatencyEnabled     = true
-	DefaultIsLogClickHouseSamplingEnabled     = true
+	DefaultIsLogClickHouseSamplingEnabled     = false
 	DefaultEnableClickHouseLoggingByRequestID = true
 	DefaultClickHouseLoggingByRequestIDRate   = 10
 	DefaultLogClickHouseSamplingDebugRate     = 10
@@ -186,7 +189,7 @@ const (
 	DefaultTimeZone           = "UTC"
 
 	// ログサンプリング　ファイル
-	DefaultIsLogFileSamplingEnabled     = true
+	DefaultIsLogFileSamplingEnabled     = false
 	DefaultEnableFileLoggingByRequestID = true
 	DefaultFileLoggingByRequestIDRate   = 10
 	// request idでサンプリングしない場合はすべてレベル別のレーティングでサンプリングを行う
@@ -196,7 +199,7 @@ const (
 	DefaultLogFileSamplingErrorRate = 1
 
 	// ログサンプリング　slack
-	DefaultIsLogSlackSamplingEnabled     = true
+	DefaultIsLogSlackSamplingEnabled     = false
 	DefaultEnableSlackLoggingByRequestID = true
 	DefaultSlackLoggingByRequestIDRate   = 10
 	DefaultLogSlackSamplingDebugRate     = 10 // 1ならば　1/1の割合。slackはエラー通知のみなので1でもいいのでは？
@@ -205,7 +208,7 @@ const (
 	DefaultLogSlackSamplingErrorRate     = 1
 
 	// ログサンプリング　標準出力・標準エラー出力
-	DefaultIsLogStdoutSamplingEnabled     = true
+	DefaultIsLogStdoutSamplingEnabled     = false
 	DefaultEnableStdoutLoggingByRequestID = true
 	DefaultStdoutLoggingByRequestIDRate   = 10
 	DefaultLogStdoutSamplingDebugRate     = 1
@@ -214,7 +217,7 @@ const (
 	DefaultLogStdoutSamplingErrorRate     = 1
 
 	// ログサンプリング　opensearch
-	DefaultIsLogOpenSearchSamplingEnabled     = true
+	DefaultIsLogOpenSearchSamplingEnabled     = false
 	DefaultEnableOpenSearchLoggingByRequestID = true
 	DefaultOpenSearchLoggingByRequestIDRate   = 10
 	DefaultLogOpenSearchSamplingDebugRate     = 10 // 1ならば　1/1の割合。slackはエラー通知のみなので1でもいいのでは？

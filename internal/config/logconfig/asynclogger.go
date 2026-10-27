@@ -9,7 +9,7 @@ import (
 
 // 非同期ベストエフォート型ログ固有設定
 const (
-	DefaultAsyncFileLogLevel = logger.LogLevelWarn
+	DefaultAsyncFileLogLevel = logger.LogLevelInfo
 	// この項目はログファイル設定 非同期ログファイルの保存先がfileの場合に使用します
 	DefaultMaxAsyncLogFileSizeMB = 25                                   // MB単位のデフォルトログサイズ .envで指定が無い場合に当値を適用する
 	DefaultMaxAsycLogFileSize    = DefaultMaxLogFileSizeMB * BytesPerMB // バイト単位のデフォルトログサイズ
@@ -43,7 +43,7 @@ const (
 	DefaultWriteAsyncFileLoggerLatencyEnabled = true // FileLoggerのファイル操作周りのレイテンシーを記録するか
 
 	// ログサンプリング　ファイル
-	DefaultIsAsyncLogFileSamplingEnabled     = true
+	DefaultIsAsyncLogFileSamplingEnabled     = false
 	DefaultEnableAsyncFileLoggingByRequestID = true
 	DefaultAsyncFileLoggingByRequestIDRate   = 10
 	// request idでサンプリングしない場合はすべてレベル別のレーティングでサンプリングを行う

@@ -51,7 +51,7 @@ func TestLoadConfigMapsLokiSettingsFromMatchingEnvContract(t *testing.T) {
 	base := loggerContractTestBaseEnv("loki")
 	// 各行は既定値と異なる値にし、全てのkeyが読込結果に現れるようにします。
 	contractLines := []string{
-		"HETEROLOG_LOKI_LOG_LEVEL=INFO",
+		"HETEROLOG_LOKI_LOG_LEVEL=WARN",
 		"HETEROLOG_LOKI_FLUSH_INTERVAL_SECOND=31",
 		"HETEROLOG_MAX_LOKI_PUSH_ENTRIES=32",
 		"HETEROLOG_LOKI_BUFFER_FLUSH_BYTES=3201",
@@ -59,7 +59,7 @@ func TestLoadConfigMapsLokiSettingsFromMatchingEnvContract(t *testing.T) {
 		"HETEROLOG_MAX_LOKI_LINE_BYTES=3301",
 		"HETEROLOG_MAX_LOKI_PUSH_REQUEST_BYTES=3302",
 		"HETEROLOG_ENABLE_LOKI_NO_BULK_FLUSH_MODE=true",
-		"HETEROLOG_ENABLE_LOG_LOKI_SAMPLING=false",
+		"HETEROLOG_ENABLE_LOG_LOKI_SAMPLING=true",
 		"HETEROLOG_ENABLE_LOGGING_LOKI_BY_REQUEST_ID=false",
 		"HETEROLOG_LOG_LOKI_REQUEST_ID_RATE=33",
 		"HETEROLOG_LOG_LOKI_DEBUG_RATE=34",
@@ -90,7 +90,7 @@ func TestLoadConfigMapsLokiSettingsFromMatchingEnvContract(t *testing.T) {
 		"HETEROLOG_MAX_ASYNC_LOKI_FALLBACK_QUEUE_ENTRIES=520",
 		"HETEROLOG_MAX_ASYNC_LOKI_LINE_BYTES=5301",
 		"HETEROLOG_MAX_ASYNC_LOKI_PUSH_REQUEST_BYTES=5302",
-		"HETEROLOG_ENABLE_ASYNC_LOG_LOKI_SAMPLING=false",
+		"HETEROLOG_ENABLE_ASYNC_LOG_LOKI_SAMPLING=true",
 		"HETEROLOG_ENABLE_ASYNC_LOGGING_LOKI_BY_REQUEST_ID=false",
 		"HETEROLOG_ASYNC_LOG_LOKI_REQUEST_ID_RATE=53",
 		"HETEROLOG_ASYNC_LOG_LOKI_DEBUG_RATE=54",
@@ -149,14 +149,14 @@ func TestLoadConfigMapsLokiSettingsFromMatchingEnvContract(t *testing.T) {
 		t.Fatal("Loki mapper returned a nil logger or client for an enabled LoggerContractKind")
 	}
 
-	assertLokiMappedContract(t, "sync", syncMapped.Loki.LokiLoggerBaseConfig, syncMapped.Loki.LokiFlushManagerConfig, syncMapped.LokiClient.Endpoint, syncMapped.LokiClient.TenantID, syncMapped.LokiClient.Headers, syncMapped.LokiClient.CompressRequest, syncMapped.Loki.LokiRetryableClientCaseTransportErrorConfig, syncFailureWant, pkglogger.LogLevelInfo, 31*time.Second, 32, 3201, 320, 3301, 3302, false)
+	assertLokiMappedContract(t, "sync", syncMapped.Loki.LokiLoggerBaseConfig, syncMapped.Loki.LokiFlushManagerConfig, syncMapped.LokiClient.Endpoint, syncMapped.LokiClient.TenantID, syncMapped.LokiClient.Headers, syncMapped.LokiClient.CompressRequest, syncMapped.Loki.LokiRetryableClientCaseTransportErrorConfig, syncFailureWant, pkglogger.LogLevelWarn, 31*time.Second, 32, 3201, 320, 3301, 3302, false)
 	assertLokiMappedContract(t, "async", asyncMapped.Loki.LokiLoggerBaseConfig, asyncMapped.Loki.LokiFlushManagerConfig, asyncMapped.LokiClient.Endpoint, asyncMapped.LokiClient.TenantID, asyncMapped.LokiClient.Headers, asyncMapped.LokiClient.CompressRequest, asyncMapped.Loki.LokiRetryableClientCaseTransportErrorConfig, asyncFailureWant, pkglogger.LogLevelError, 51*time.Second, 52, 5201, 520, 5301, 5302, false)
 	assertLokiDeliveryMappedContract(t, deliveryMapped, deliveryFailureWant)
 
 	// 最後のadapter境界は、DTOの検証とは別に確認します。これにより、LoadConfigとmapperが
 	// どちらも正しくても、fieldを黙って落とすadapterを検出できます。
 	syncLoggerAdapter := lokilogger.NewLokiLoggerConfigAdapter(syncMapped.Loki.LokiLoggerBaseConfig)
-	assertContractValue(t, "sync Loki adapter log level", syncLoggerAdapter.Runtime().LogLevel(), pkglogger.LogLevelInfo)
+	assertContractValue(t, "sync Loki adapter log level", syncLoggerAdapter.Runtime().LogLevel(), pkglogger.LogLevelWarn)
 	assertContractValue(t, "sync Loki adapter max entries", syncLoggerAdapter.MaxEntries(), 32)
 	assertContractValue(t, "sync Loki adapter max line bytes", syncLoggerAdapter.MaxLineBytes(), 3301)
 	assertContractValue(t, "sync Loki adapter max push request bytes", syncLoggerAdapter.MaxPushRequestBytes(), 3302)
@@ -197,7 +197,7 @@ func TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract(t *testing.
 		"HETEROLOG_CLOUDWATCH_BUFFER_FLUSH_BYTES=3201",
 		"HETEROLOG_MAX_CLOUDWATCH_FALLBACK_QUEUE_EVENTS=320",
 		"HETEROLOG_ENABLE_CLOUDWATCH_NO_BULK_FLUSH_MODE=true",
-		"HETEROLOG_ENABLE_LOG_CLOUDWATCH_SAMPLING=false",
+		"HETEROLOG_ENABLE_LOG_CLOUDWATCH_SAMPLING=true",
 		"HETEROLOG_ENABLE_LOGGING_CLOUDWATCH_BY_REQUEST_ID=false",
 		"HETEROLOG_LOG_CLOUDWATCH_REQUEST_ID_RATE=33",
 		"HETEROLOG_LOG_CLOUDWATCH_DEBUG_RATE=34",
@@ -230,7 +230,7 @@ func TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract(t *testing.
 		"HETEROLOG_ASYNC_CLOUDWATCH_BUFFER_FLUSH_MAX_EVENTS=52",
 		"HETEROLOG_ASYNC_CLOUDWATCH_BUFFER_FLUSH_BYTES=5201",
 		"HETEROLOG_MAX_ASYNC_CLOUDWATCH_FALLBACK_QUEUE_EVENTS=520",
-		"HETEROLOG_ENABLE_ASYNC_LOG_CLOUDWATCH_SAMPLING=false",
+		"HETEROLOG_ENABLE_ASYNC_LOG_CLOUDWATCH_SAMPLING=true",
 		"HETEROLOG_ENABLE_ASYNC_LOGGING_CLOUDWATCH_BY_REQUEST_ID=false",
 		"HETEROLOG_ASYNC_LOG_CLOUDWATCH_REQUEST_ID_RATE=53",
 		"HETEROLOG_ASYNC_LOG_CLOUDWATCH_DEBUG_RATE=54",
@@ -706,7 +706,7 @@ func deliveryFailureSnapshotFromMapped(cfg pkgdurable.DeliveryFailureStoreConfig
 
 func assertLokiLoadedContracts(t *testing.T, cfg AppConfig, syncWant, asyncWant fullFailureSnapshot, deliveryWant deliveryFailureSnapshot) {
 	t.Helper()
-	assertContractValue(t, "loaded sync Loki log level", cfg.Logger.LokiConfig.LogLevel, pkglogger.LogLevelInfo)
+	assertContractValue(t, "loaded sync Loki log level", cfg.Logger.LokiConfig.LogLevel, pkglogger.LogLevelWarn)
 	assertContractValue(t, "loaded sync Loki flush interval", cfg.Logger.LokiConfig.FlushInterval, 31*time.Second)
 	assertContractValue(t, "loaded sync Loki max entries", cfg.Logger.LokiConfig.MaxEntries, 32)
 	assertContractValue(t, "loaded sync Loki buffer flush bytes", cfg.Logger.LokiConfig.BufferFlushBytes, 3201)

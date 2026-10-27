@@ -154,7 +154,7 @@ Configuration errors at construction can be identified with `errors.Is` and `err
 
 ### Configuring from environment variables
 
-`LoadEnvConfig` reads settings from environment variables that start with `HETEROLOG_` and from the env file given as its argument. Except for the AWS standard variables used as defaults (such as `AWS_ACCESS_KEY_ID`), every key starts with `HETEROLOG_`, so the settings can share the environment variables and file with the application's own settings. Every key is listed in [.env.example](../.env.example). Its values are a sample configuration and differ from the defaults in places, such as levels and sampling; the default levels and sampling of each output are in [Default levels and sampling](../README.md#default-levels-and-sampling) of the README. With no settings, all three loggers write to stdout only. The recovery CLI reads the same keys.
+`LoadEnvConfig` reads settings from environment variables that start with `HETEROLOG_` and from the env file given as its argument. Except for the AWS standard variables used as defaults (such as `AWS_ACCESS_KEY_ID`), every key starts with `HETEROLOG_`, so the settings can share the environment variables and file with the application's own settings. Every key is listed in [.env.example](../.env.example). Its values are a sample configuration and differ from the defaults in places; the default levels and sampling of each output are in [Default levels and sampling](../README.md#default-levels-and-sampling) of the README. With no settings, all three loggers write to stdout only. The recovery CLI reads the same keys.
 
 An example is in [Sending logs to several destinations](../README.md#sending-logs-to-several-destinations) of the README.
 

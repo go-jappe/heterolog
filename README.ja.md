@@ -94,7 +94,7 @@ func main() {
 }
 ```
 
-既定ではINFO以上を標準出力へ、WARN以上を標準エラーへ記録し、日時はUTCです。グローバルなロガーにする場合は `slog.SetDefault(logger)` を呼びます。`slog` と各出力先はそれぞれ別にレベルで絞り込むため、DEBUGのログを書くには両方のレベルを下げます（[slogの利用](docs/reference.ja.md#slogの利用)を参照）。
+既定では、INFOのログを標準出力へ、WARNとERRORのログを標準エラーへ記録し、日時はUTCです。グローバルなロガーにする場合は `slog.SetDefault(logger)` を呼びます。`slog` と各出力先はそれぞれ別にレベルで絞り込むため、DEBUGのログを書くには両方のレベルを下げます（[slogの利用](docs/reference.ja.md#slogの利用)を参照）。
 
 ## 複数の出力先へ送る
 
@@ -105,13 +105,6 @@ func main() {
 HETEROLOG_TARGET=my-service
 HETEROLOG_LOG_TYPE=stdout,file,loki
 HETEROLOG_LOKI_ENDPOINT=http://loki.example.internal:3100
-
-# INFO以上のすべてのログをファイルとLokiに記録します。
-# これらの行がなければ、ファイルにはWARN以上だけが、Lokiには一部だけが届きます（後述）。
-HETEROLOG_FILE_LOG_LEVEL=INFO
-HETEROLOG_ENABLE_LOG_FILE_SAMPLING=false
-HETEROLOG_LOKI_LOG_LEVEL=INFO
-HETEROLOG_ENABLE_LOG_LOKI_SAMPLING=false
 ```
 
 ```go
@@ -137,17 +130,16 @@ logger.InfoContext(ctx, "service started")
 
 ### 既定のログレベルとサンプリング
 
-設定しなければ、通常と非同期のロガーは、出力先ごとに次のレベルとサンプリングを使います。
+設定しなければ、すべての出力先がINFO以上を記録します。例外は通知に使うSlackで、ERROR以上を記録します。サンプリングはしないため、レベルを満たすログはすべて残ります。
 
-| 出力先 | レベル | 残すログ |
+| 出力先 | レベル | サンプリング |
 | --- | --- | --- |
-| stdout | INFO | すべて |
-| file | WARN | すべて |
-| Slack | ERROR | すべて |
-| OpenSearch・Loki・CloudWatch Logs・ClickHouse | DEBUG | ERRORはすべて、WARNとDEBUGは10件に1件、INFOは1,000件に1件 |
+| Slack | ERROR | なし |
+| stdout・file・OpenSearch・Loki・CloudWatch Logs・ClickHouse | INFO | なし |
 
-- OpenSearch・Loki・CloudWatch Logs・ClickHouseでは、request ID（`heterolog.WithRequestID`、またはslogの文字列の `request_id` 属性）を持つログは、代わりにrequest単位で残すかどうかを決めます。10件のrequestのうち1件について、そのWARN・INFO・DEBUGのログをすべて残すため、残したrequestのログは欠けません。
-- すべてのログを残すには、上の例のように出力先のレベルを設定し、サンプリングを無効にします。キーは `HETEROLOG_<出力先>_LOG_LEVEL` と `HETEROLOG_ENABLE_LOG_<出力先>_SAMPLING` で、`<出力先>` は `STDOUT`・`FILE`・`SLACK`・`OPENSEARCH`・`LOKI`・`CLOUDWATCH`・`CLICKHOUSE` のいずれかです。非同期のロガーには、名前に `ASYNC_` を含む別のキーがあります。レベルとサンプリングは[稼働中にも変えられます](#稼働中にログレベルとサンプリングを変える)。
+- レベルのキーは `HETEROLOG_<出力先>_LOG_LEVEL`、サンプリングのキーは `HETEROLOG_ENABLE_LOG_<出力先>_SAMPLING` で、`<出力先>` は `STDOUT`・`FILE`・`SLACK`・`OPENSEARCH`・`LOKI`・`CLOUDWATCH`・`CLICKHOUSE` のいずれかです。非同期のロガーには、名前に `ASYNC_` を含む別のキーがあります。
+- サンプリングを有効にすると、割合がNのレベルのログをN件に1件残します。request ID（`heterolog.WithRequestID`、またはslogの文字列の `request_id` 属性）を持つログは、代わりにrequest単位で残すかどうかを決められるため、残したrequestのログは欠けません。サンプリングを有効にするときは、割合も設定してください。省略した割合には既定値を使います（例えばOpenSearch・Loki・CloudWatch Logs・ClickHouseのINFOは1,000件に1件）。
+- レベルとサンプリングは[稼働中にも変えられます](#稼働中にログレベルとサンプリングを変える)。
 - Deliveryのロガーはサンプリングせず、レベルで絞り込むのはSlackの出力（ERROR）だけです。
 
 ### コードで設定する
@@ -246,7 +238,7 @@ curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
 
 # ログファイルにはINFOのログを10件に1件だけ残す
 curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
-  -d '{"loggers":{"app":{"outputs":{"file":{"sampling":{"enabled":true,"debug_rate":1,"info_rate":10,"warn_rate":1,"error_rate":1}}}}}}' \
+  -d '{"loggers":{"app":{"outputs":{"file":{"sampling":{"enabled":true,"by_request_id":false,"debug_rate":1,"info_rate":10,"warn_rate":1,"error_rate":1}}}}}}' \
   http://127.0.0.1:9100/settings
 ```
 
@@ -260,7 +252,7 @@ curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
         "stdout": {
           "level": "DEBUG",
           "sampling": {
-            "enabled": true,
+            "enabled": false,
             "by_request_id": true,
             "request_id_rate": 10,
             "debug_rate": 1,
@@ -349,6 +341,7 @@ go vet ./...
 - 環境変数を読むのは、利用者が選んだ場合だけです。`LoadEnvConfig` は呼ばれたときだけ、渡されたファイルだけを読み、プロセスの環境変数を変更しません。多くのdotenvツールと同じく、環境変数に設定した値がファイルより優先されます。
 - すべてのキーが `HETEROLOG_` で始まるため、アプリケーション自身の設定と同じ環境変数や `.env` ファイルに置いても衝突しません。
 - 何も設定しなければ、すべてのロガーは標準出力だけに書きます。そのため、設定も外部サービスもなしで動きます。ほかの出力先は選んだ場合だけ有効になり、足りない認証情報は補わずにエラーとして報告します。
+- サンプリングは、利用者が選んだ場合だけ行います。既定では、すべての出力先がINFO以上のログをすべて記録します（通知に使うSlackはERROR以上）。そのため、サンプリングを有効にしない限り、レベルを満たすログを捨てることはありません。
 - 設定は読み込み時またはロガーの構築時に検証し、すべての問題をまとめて報告します。そのため、誤った設定は最初のログや最初の失敗のときではなく、起動時に失敗します。
 - 稼働中に変えられるのは、ログレベルとサンプリングだけです。出力先はこれらをログごとに読むため、変更にロガーの作り直しも記録の中断も要りません。出力先や保存先の変更には、それが必要になります。HTTP APIはトークンが必要で、TLSを設定しない限り127.0.0.1だけで待ち受け、変更は再起動後に残りません。そのため、調査中にDEBUGへ切り替えるような一時的な変更が、うっかり残り続けることはありません。
 - 設定エラーには、認証情報を含み得る値（HTTP header、S3の宛先の一覧、URLのuser infoなど）を含めません。
