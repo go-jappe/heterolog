@@ -399,7 +399,7 @@ How the deadline survives restarts:
 
 - When the trailing `/` of a Loki or CloudWatch Logs endpoint URL is removed, escaped forms such as `%2F` are kept; an encoded `/` is not turned into a path separator.
 - Sending to Loki, ClickHouse, and VictoriaMetrics stops with an error at redirects that would lose the POST body. 307 and 308 redirects that keep the POST and its body follow the redirect settings of the HTTP client.
-- Uploading to S3 sends the signed PUT only once and does not follow redirects, including 301, 302, 303, 307, and 308; they are returned as HTTP status errors. The redirect settings of the given HTTP client are not changed.
+- Sending to CloudWatch Logs and uploading to S3 send the signed request (a POST to CloudWatch Logs, a PUT to S3) only once and do not follow redirects, including 301, 302, 303, 307, and 308; they are returned as HTTP status errors. The redirect settings of the given HTTP client are not changed.
 - A redirect is treated as a permanent failure caused by a wrong destination or setting, so compressed logs are kept in the fileArchive `permanent` or the spool `dead` and are not resent automatically. Only the `307 TemporaryRedirect` that S3 returns while the DNS of a bucket is being updated is treated as a temporary failure and resent.
 
 ### ClickHouse

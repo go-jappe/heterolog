@@ -199,6 +199,28 @@ func TestClassifyRetryAWSErrorTypeMatrix(t *testing.T) {
 	}
 }
 
+// clientはredirectを追従せず3xxをHTTPStatusErrorとして返します。redirectは宛先・設定の
+// 誤りで、同じ要求を再送しても配送できないため、即時retryもquarantineもせず、配送不能が
+// 確定した失敗として扱います。
+func TestRedirectStatusesArePermanentFailures(t *testing.T) {
+	for _, status := range []int{
+		http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusSeeOther,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect,
+	} {
+		err := &pkgcloudwatchlogs.HTTPStatusError{Code: status, Status: http.StatusText(status), Body: []byte("redirected by gateway")}
+		want := retryable.RetryDecision{Reason: retryable.RetryReasonHTTPStatus, Code: status}
+		if got := ClassifyRetry(context.Background(), err); got != want {
+			t.Fatalf("ClassifyRetry(%d) = %+v, want %+v", status, got, want)
+		}
+		if got := ClassifyDurableRequestFailure(context.Background(), err); got != want {
+			t.Fatalf("ClassifyDurableRequestFailure(%d) = %+v, want %+v", status, got, want)
+		}
+	}
+}
+
 func TestClassifyDurableRequestFailureKeepsKnownInvalidParameter(t *testing.T) {
 	for _, message := range []string{"invalid input", "unexpected EOF", "connection refused"} {
 		err := fmt.Errorf("send failed: %w", &pkgcloudwatchlogs.HTTPStatusError{

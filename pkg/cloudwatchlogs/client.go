@@ -117,7 +117,9 @@ type Config struct {
 	CompressRequest bool
 
 	// HTTPClient is the HTTP client used for API calls. If it is nil, a client
-	// configured with Timeout is created.
+	// configured with Timeout is created. API calls do not follow redirects of
+	// the signed POST and return a 3xx response as an HTTPStatusError. The
+	// CheckRedirect of the original client is not changed.
 	HTTPClient *http.Client
 }
 
@@ -456,7 +458,7 @@ func (c *HTTPClient) doJSON(ctx context.Context, target string, payload any, out
 		return &RequestNotSentError{Operation: target, Err: err}
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doPost(req)
 	if err != nil {
 		return fmt.Errorf("failed to send cloudwatch logs request: %w", err)
 	}
@@ -494,6 +496,18 @@ func (c *HTTPClient) doJSON(ctx context.Context, target string, payload any, out
 		return &ResponseDecodeError{Operation: target, Err: err}
 	}
 	return nil
+}
+
+// doPostは署名済みPOSTを一度だけ送信し、redirectを追従せずにそのresponseを返します。
+// net/httpは301/302/303ではPOSTを本文なしのGETへ変えて追従し、307/308では同じ署名と
+// 本文を別URLへ再送します。PutLogEventsの成功応答は{}のため、追従先の応答を配送の成功と
+// 誤認しないよう、元のhttp.Clientは変更せず、shallow copyだけでredirectを停止します。
+func (c *HTTPClient) doPost(req *http.Request) (*http.Response, error) {
+	httpClient := *c.httpClient
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return httpClient.Do(req)
 }
 
 // prepareRequestBody は必要に応じて JSON 本文を gzip 圧縮します。
