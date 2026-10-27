@@ -89,7 +89,8 @@ func (r *Runtime) OutputSettings() map[pkglogger.LogOutputDestination]pkglogger.
 	return r.outputs.Snapshot()
 }
 
-// UpdateOutputSettingsは、稼働中のloggerの出力先のlevelとsamplingを変えます。すべての
+// UpdateOutputSettingsは、稼働中のloggerの出力先のlevelとsamplingを変えます。各変更は
+// 反映する時点の設定に適用するため、別の項目への同時の変更が互いを打ち消しません。すべての
 // 変更を先に確かめ、一つでも不正な変更があれば、どれも反映しません。loggerが使って
 // いない出力先はpkg/loggerのErrUnknownOutput、不正な値はpkg/loggerの
 // ConfigFieldErrorで報告します。

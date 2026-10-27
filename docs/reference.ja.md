@@ -169,7 +169,7 @@ reportの宛先ごとの結果は、次のいずれかです。
 
 同期・非同期のロガーの出力先ごとのログレベルとサンプリングは、アプリケーションの稼働中に、コードまたはHTTP APIから変更できます。
 
-- コードでは、`runtime.OutputSettings()` が現在の設定を返し、`runtime.UpdateOutputSettings(changes)` が設定を変えます。すべての変更を先に検証し、一つでも不正なら何も反映しません。ロガーが使っていない出力先は `ErrUnknownOutput`、不正な値は `pkg/logger` の `ConfigFieldError` です。
+- コードでは、`runtime.OutputSettings()` が現在の設定を返し、`runtime.UpdateOutputSettings(changes)` が設定を変えます。変更は、指定したレベルとサンプリングの項目だけを変えます（`OutputSettingsChange` と `SamplingChange`）。ほかの項目は反映する時点の値のままなので、コードやHTTP APIからの同時の変更が、互いを打ち消しません。すべての変更を先に検証し、一つでも不正なら何も反映しません。ロガーが使っていない出力先は `ErrUnknownOutput`、不正な値は `pkg/logger` の `ConfigFieldError` です。
 - 変更は次のログから反映します。非同期のロガーは、ログを処理する時点の設定を使います。
 - 変更はメモリ上だけに保持するため、再起動すると設定どおりに戻ります。
 - Deliveryのロガーには、この設定はありません。サンプリングはせず、レベルで絞り込むのはSlackの出力だけで、そのレベルは設定どおりです。内部ログの通知だけに使う出力先は、設定どおりのままです。
@@ -177,7 +177,7 @@ reportの宛先ごとの結果は、次のいずれかです。
 HTTP API（管理用API）は、curlなどのツールから呼べます。
 
 - `NewAdminHandler` は、アプリケーション自身のサーバーに組み込む `http.Handler` を返します。代わりに `StartAdminServer` で専用のサーバーを起動することもできます。
-- `GET /settings` はすべてのロガーの現在の設定を返し、`PATCH /settings` はJSONの本文で指定した項目を変えます。レベルは `DEBUG`・`INFO`・`WARN`・`ERROR`（大文字小文字を区別しません）で、`PATCH` で省略したサンプリングの項目は今の値のままです。
+- `GET /settings` はすべてのロガーの現在の設定を返し、`PATCH /settings` はJSONの本文で指定した項目を変えます。レベルは `DEBUG`・`INFO`・`WARN`・`ERROR`（大文字小文字を区別しません）で、`PATCH` で省略したサンプリングの項目は、別の `PATCH` が同時にほかの項目を変えても、今の値のままです。
 - すべての要求で `Authorization: Bearer <トークン>` が必要です。トークンは32バイト以上（`MinAdminTokenLength`）で、例えば `openssl rand -hex 32` のように無作為に作ります。比較は一定時間で行い、エラーにトークンを含めません。
 - `PATCH` は、すべてのロガーのすべての変更を検証してから反映します。本文は64KiBまでで、未知の項目は拒否します。
 - 変更は、記録のために `OnChange` へ渡します。`OnChange` がない場合は、`log` パッケージの標準のloggerへ一行出力します。

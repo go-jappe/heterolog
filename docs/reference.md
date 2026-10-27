@@ -169,7 +169,7 @@ An example is in [Sending logs to several destinations](../README.md#sending-log
 
 The level and sampling of each output of a synchronous or asynchronous logger can change while the application runs, in code or through an HTTP API.
 
-- In code, `runtime.OutputSettings()` returns the current settings, and `runtime.UpdateOutputSettings(changes)` changes them. All changes are checked first, and none is applied if any is invalid: an output the logger does not use is `ErrUnknownOutput`, and an invalid value is a `ConfigFieldError` of `pkg/logger`.
+- In code, `runtime.OutputSettings()` returns the current settings, and `runtime.UpdateOutputSettings(changes)` changes them. A change sets only the level and the sampling fields it gives (`OutputSettingsChange` with a `SamplingChange`); the others keep the values in effect when the change is applied, so changes made at the same time, in code or through the HTTP API, do not undo each other. All changes are checked first, and none is applied if any is invalid: an output the logger does not use is `ErrUnknownOutput`, and an invalid value is a `ConfigFieldError` of `pkg/logger`.
 - Changes take effect from the next entry. An asynchronous logger uses the settings in effect when it processes an entry.
 - Changes are kept in memory only, so a restart returns to the configured settings.
 - Delivery loggers have no such settings: they do not sample, and only their Slack output filters by level, at its configured level. Outputs used only for internal log notifications keep their configured settings.
@@ -177,7 +177,7 @@ The level and sampling of each output of a synchronous or asynchronous logger ca
 The HTTP API (admin API) can be called with tools such as curl:
 
 - `NewAdminHandler` returns an `http.Handler` to mount on your own server. `StartAdminServer` starts a dedicated server instead.
-- `GET /settings` returns the current settings of every logger, and `PATCH /settings` changes the fields given in the JSON body. Levels are `DEBUG`, `INFO`, `WARN`, and `ERROR` (case-insensitive), and sampling fields omitted in a `PATCH` keep their values.
+- `GET /settings` returns the current settings of every logger, and `PATCH /settings` changes the fields given in the JSON body. Levels are `DEBUG`, `INFO`, `WARN`, and `ERROR` (case-insensitive), and sampling fields omitted in a `PATCH` keep their values, also when another `PATCH` changes other fields at the same time.
 - Every request must send `Authorization: Bearer <token>`. The token must be at least 32 bytes (`MinAdminTokenLength`); generate it randomly, for example with `openssl rand -hex 32`. It is compared in constant time, and errors never contain it.
 - A `PATCH` checks every change of every logger before applying any of them. The body is limited to 64 KiB, and unknown fields are rejected.
 - Each change is passed to `OnChange` for audit logs. Without `OnChange`, it is written as one line to the standard logger of the `log` package.

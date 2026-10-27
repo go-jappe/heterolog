@@ -19,7 +19,8 @@ type Registry struct {
 	// labelは、errorに含めるloggerの種類です。
 	label string
 	// muは変更を直列化し、一回の変更の全項目を反映してから次の変更が今の値を検証するように
-	// します。
+	// します。変更で指定していない項目は、muの中で読んだ今の値を使うため、同時の変更が
+	// 互いを打ち消しません。
 	mu      sync.Mutex
 	outputs map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings
 }
@@ -82,15 +83,28 @@ func (r *Registry) Update(changes map[pkglogger.LogOutputDestination]pkglogger.O
 	return nil
 }
 
-// applyは、currentにchangeを適用した設定を返します。
+// applyは、currentにchangeを適用した設定を返します。changeで指定していないsamplingの
+// 項目は、currentの値のままです。
 func apply(current pkglogger.OutputSettings, change pkglogger.OutputSettingsChange) pkglogger.OutputSettings {
 	if change.Level != nil {
 		current.Level = *change.Level
 	}
-	if change.Sampling != nil {
-		current.Sampling = *change.Sampling
+	if s := change.Sampling; s != nil {
+		setIfPresent(&current.Sampling.IsSamplingEnabled, s.IsSamplingEnabled)
+		setIfPresent(&current.Sampling.EnableLoggingByRequestID, s.EnableLoggingByRequestID)
+		setIfPresent(&current.Sampling.LoggingByRequestIDRate, s.LoggingByRequestIDRate)
+		setIfPresent(&current.Sampling.SamplingDebugRate, s.SamplingDebugRate)
+		setIfPresent(&current.Sampling.SamplingInfoRate, s.SamplingInfoRate)
+		setIfPresent(&current.Sampling.SamplingWarnRate, s.SamplingWarnRate)
+		setIfPresent(&current.Sampling.SamplingErrorRate, s.SamplingErrorRate)
 	}
 	return current
+}
+
+func setIfPresent[T any](target *T, value *T) {
+	if value != nil {
+		*target = *value
+	}
 }
 
 // validateは、出力先の設定がpkg/loggerの規則を満たすかを確かめます。sourceはerrorに

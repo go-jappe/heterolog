@@ -151,7 +151,7 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON: the body must contain a single JSON object")
 		return
 	}
-	changes, err := newChanges(h.service.Settings(), patch)
+	changes, err := newChanges(patch)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -167,10 +167,11 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newSettingsDocument(h.service.Settings()))
 }
 
-// newChangesは、PATCHの文書を変更へ変換します。文書で省略したsamplingの項目は、
-// currentの今の値のままにします。loggerや出力先の有無は、Service.Updateが確かめます。
+// newChangesは、PATCHの文書を変更へ変換します。文書で省略したsamplingの項目は変更に
+// 含めず、反映する時点の値のままにします。今の値をここで読んで補うと、同時のPATCHが
+// 互いの変更を古い値で上書きするためです。loggerや出力先の有無は、Service.Updateが
+// 確かめます。
 func newChanges(
-	current map[string]map[pkglogger.LogOutputDestination]pkglogger.OutputSettings,
 	patch patchDocument,
 ) (map[string]map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange, error) {
 	changes := make(map[string]map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange, len(patch.Loggers))
@@ -187,27 +188,21 @@ func newChanges(
 				change.Level = &level
 			}
 			if s := p.Sampling; s != nil {
-				sampling := current[name][output].Sampling
-				setIfPresent(&sampling.IsSamplingEnabled, s.Enabled)
-				setIfPresent(&sampling.EnableLoggingByRequestID, s.ByRequestID)
-				setIfPresent(&sampling.LoggingByRequestIDRate, s.RequestIDRate)
-				setIfPresent(&sampling.SamplingDebugRate, s.DebugRate)
-				setIfPresent(&sampling.SamplingInfoRate, s.InfoRate)
-				setIfPresent(&sampling.SamplingWarnRate, s.WarnRate)
-				setIfPresent(&sampling.SamplingErrorRate, s.ErrorRate)
-				change.Sampling = &sampling
+				change.Sampling = &pkglogger.SamplingChange{
+					IsSamplingEnabled:        s.Enabled,
+					EnableLoggingByRequestID: s.ByRequestID,
+					LoggingByRequestIDRate:   s.RequestIDRate,
+					SamplingDebugRate:        s.DebugRate,
+					SamplingInfoRate:         s.InfoRate,
+					SamplingWarnRate:         s.WarnRate,
+					SamplingErrorRate:        s.ErrorRate,
+				}
 			}
 			outputs[output] = change
 		}
 		changes[name] = outputs
 	}
 	return changes, nil
-}
-
-func setIfPresent[T any](target *T, value *T) {
-	if value != nil {
-		*target = *value
-	}
 }
 
 // statusOfは、Service.Updateのerrorに対応する状態codeを返します。

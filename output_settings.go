@@ -14,9 +14,13 @@ type SamplingConfig = pkglogger.SamplingConfig
 // runs: its Level, the lowest severity it records, and its Sampling.
 type OutputSettings = pkglogger.OutputSettings
 
-// OutputSettingsChange changes the Level or Sampling of one output. A nil
-// field keeps the current value.
+// OutputSettingsChange changes the Level or some Sampling fields of one output.
+// A nil field keeps the current value.
 type OutputSettingsChange = pkglogger.OutputSettingsChange
+
+// SamplingChange changes the fields of the sampling settings of one output that
+// it sets. A nil field keeps the current value. See pkg/logger.
+type SamplingChange = pkglogger.SamplingChange
 
 // ErrUnknownOutput reports that UpdateOutputSettings named an output that the
 // logger does not use.
@@ -29,11 +33,13 @@ func (r *Runtime) OutputSettings() map[LogOutputDestination]OutputSettings {
 }
 
 // UpdateOutputSettings changes the level and sampling of outputs while the
-// logger runs. It checks every change first and applies none of them when any
-// is invalid; an output the logger does not use is reported as
-// ErrUnknownOutput, and an invalid value as a pkg/logger ConfigFieldError.
-// Changes take effect from the next entry and are not kept after the process
-// exits.
+// logger runs. It applies each change to the settings current when it runs, so
+// changes to different fields made at the same time, for example through the
+// admin API, do not undo each other. It checks every change first and applies
+// none of them when any is invalid; an output the logger does not use is
+// reported as ErrUnknownOutput, and an invalid value as a pkg/logger
+// ConfigFieldError. Changes take effect from the next entry and are not kept
+// after the process exits.
 func (r *Runtime) UpdateOutputSettings(changes map[LogOutputDestination]OutputSettingsChange) error {
 	return r.impl().UpdateOutputSettings(changes)
 }

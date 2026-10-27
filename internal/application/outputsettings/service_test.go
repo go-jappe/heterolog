@@ -38,6 +38,8 @@ func newControllerForTest(t *testing.T) registryController {
 
 func level(l pkglogger.LogLevel) *pkglogger.LogLevel { return &l }
 
+func ptr[T any](v T) *T { return &v }
+
 func TestNewServiceRequiresALogger(t *testing.T) {
 	if _, err := NewService(nil); !errors.Is(err, ErrNoLoggers) {
 		t.Errorf("NewService(nil) error = %v, want ErrNoLoggers", err)
@@ -86,7 +88,7 @@ func TestServiceUpdateAppliesNothingWhenAnyChangeIsInvalid(t *testing.T) {
 		}, pkglogger.ErrInvalidLogLevel},
 		{"invalid sampling", map[string]map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 			"a": {pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevelDebug)}},
-			"b": {pkglogger.LogOutputStdout: {Sampling: &pkglogger.SamplingConfig{IsSamplingEnabled: true}}},
+			"b": {pkglogger.LogOutputStdout: {Sampling: &pkglogger.SamplingChange{IsSamplingEnabled: ptr(true)}}},
 		}, pkglogger.ErrInvalidSamplingRate},
 		{"unknown logger", map[string]map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 			"a":       {pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevelDebug)}},

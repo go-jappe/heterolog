@@ -2,6 +2,7 @@ package outputsettings
 
 import (
 	"errors"
+	"sync"
 	"testing"
 
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -23,7 +24,9 @@ func TestRegistryUpdateChangesTheLiveSettings(t *testing.T) {
 	registry, live := newRegistryForTest(t)
 	sampling := pkglogger.SamplingConfig{IsSamplingEnabled: true, SamplingDebugRate: 1, SamplingInfoRate: 5, SamplingWarnRate: 1, SamplingErrorRate: 1}
 	if err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
-		pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevelDebug), Sampling: &sampling},
+		pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevelDebug), Sampling: &pkglogger.SamplingChange{
+			IsSamplingEnabled: ptr(true), SamplingDebugRate: ptr(1), SamplingInfoRate: ptr(5), SamplingWarnRate: ptr(1), SamplingErrorRate: ptr(1),
+		}},
 	}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -44,6 +47,65 @@ func TestRegistryUpdateChangesTheLiveSettings(t *testing.T) {
 	}
 }
 
+// samplingの変更は指定した項目だけを変え、ほかの項目は反映する時点の値のままです。
+func TestRegistryUpdateChangesOnlyTheSamplingFieldsItSets(t *testing.T) {
+	registry, live := newRegistryForTest(t)
+	for _, change := range []pkglogger.SamplingChange{
+		{IsSamplingEnabled: ptr(true), EnableLoggingByRequestID: ptr(true), LoggingByRequestIDRate: ptr(3),
+			SamplingDebugRate: ptr(1), SamplingInfoRate: ptr(1), SamplingWarnRate: ptr(1), SamplingErrorRate: ptr(1)},
+		{SamplingInfoRate: ptr(10)},
+		{SamplingWarnRate: ptr(20)},
+	} {
+		if err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+			pkglogger.LogOutputStdout: {Sampling: &change},
+		}); err != nil {
+			t.Fatalf("Update(%+v): %v", change, err)
+		}
+	}
+	want := pkglogger.SamplingConfig{IsSamplingEnabled: true, EnableLoggingByRequestID: true, LoggingByRequestIDRate: 3,
+		SamplingDebugRate: 1, SamplingInfoRate: 10, SamplingWarnRate: 20, SamplingErrorRate: 1}
+	if got := live.Sampling(); got != want || live.Level() != pkglogger.LogLevelInfo {
+		t.Errorf("LiveSettings = %v, %+v; want INFO with %+v", live.Level(), got, want)
+	}
+}
+
+// 別の項目を変える同時のUpdateは、どれも反映され、互いを打ち消しません。
+func TestRegistryConcurrentUpdatesOfDifferentSamplingFieldsAllApply(t *testing.T) {
+	registry, live := newRegistryForTest(t)
+	changes := []pkglogger.SamplingChange{
+		{SamplingDebugRate: ptr(2)},
+		{SamplingInfoRate: ptr(3)},
+		{SamplingWarnRate: ptr(4)},
+		{SamplingErrorRate: ptr(5)},
+		{LoggingByRequestIDRate: ptr(6)},
+	}
+	start := make(chan struct{})
+	errs := make(chan error, len(changes))
+	var wg sync.WaitGroup
+	for _, change := range changes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs <- registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+				pkglogger.LogOutputStdout: {Sampling: &change},
+			})
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+	}
+	want := pkglogger.SamplingConfig{SamplingDebugRate: 2, SamplingInfoRate: 3, SamplingWarnRate: 4, SamplingErrorRate: 5, LoggingByRequestIDRate: 6}
+	if got := live.Sampling(); got != want {
+		t.Errorf("Sampling() = %+v, want every concurrent change %+v", got, want)
+	}
+}
+
 // 一つでも不正な変更があれば、どの変更も反映しません。
 func TestRegistryUpdateAppliesNothingWhenAChangeIsInvalid(t *testing.T) {
 	registry, live := newRegistryForTest(t)
@@ -60,7 +122,7 @@ func TestRegistryUpdateAppliesNothingWhenAChangeIsInvalid(t *testing.T) {
 			pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevel(42))},
 		}, pkglogger.ErrInvalidLogLevel},
 		{"invalid sampling rate", map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
-			pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevelDebug), Sampling: &pkglogger.SamplingConfig{IsSamplingEnabled: true}},
+			pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevelDebug), Sampling: &pkglogger.SamplingChange{IsSamplingEnabled: ptr(true)}},
 		}, pkglogger.ErrInvalidSamplingRate},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

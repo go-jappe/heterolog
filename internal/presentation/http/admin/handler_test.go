@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/outputsettings"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
@@ -141,6 +143,55 @@ func TestHandlerReadsAndChangesSettings(t *testing.T) {
 		changes[0].Before.Level != pkglogger.LogLevelInfo || changes[0].After.Level != pkglogger.LogLevelDebug ||
 		changes[1].Before.Sampling.SamplingInfoRate != 10 || changes[1].After.Sampling.SamplingInfoRate != 20 {
 		t.Errorf("OnChange calls = %+v, want the two changes with their before and after settings", changes)
+	}
+}
+
+// slowReadControllerは、設定を読んだ後に少し待つControllerです。同時の2つのPATCHが、
+// どちらかが反映される前に、どちらも元の設定を読む順番を作ります。
+type slowReadController struct {
+	controllerForTest
+	delay time.Duration
+}
+
+func (c slowReadController) OutputSettings() map[pkglogger.LogOutputDestination]pkglogger.OutputSettings {
+	settings := c.controllerForTest.OutputSettings()
+	time.Sleep(c.delay)
+	return settings
+}
+
+// 同じ出力先のsamplingの別の項目を同時にPATCHしても、どちらの変更も残ります。受け口が
+// 今の値を読んで補ったsampling設定全体で置き換えると、後から反映したPATCHが、先の
+// PATCHの変更を古い値へ戻します。
+func TestConcurrentPatchesOfDifferentSamplingFieldsBothApply(t *testing.T) {
+	controller := newControllerForTest(t)
+	handler, err := NewHandler(pkgadmin.HandlerConfig{
+		Token:    tokenForTest,
+		Loggers:  map[string]pkglogger.SettingsController{"app": slowReadController{controllerForTest: controller, delay: 20 * time.Millisecond}},
+		OnChange: func(pkgadmin.Change) {},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodies := []string{
+		`{"loggers":{"app":{"outputs":{"stdout":{"sampling":{"info_rate":10}}}}}}`,
+		`{"loggers":{"app":{"outputs":{"stdout":{"sampling":{"warn_rate":20}}}}}}`,
+	}
+	statuses := make([]int, len(bodies))
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i, body := range bodies {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			statuses[i], _ = requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest, body)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if got := stdoutSettings(controller).Sampling; statuses[0] != http.StatusOK || statuses[1] != http.StatusOK ||
+		got.SamplingInfoRate != 10 || got.SamplingWarnRate != 20 {
+		t.Fatalf("PATCH statuses = %v, stdout sampling = %+v; want both 200 with info_rate 10 and warn_rate 20", statuses, got)
 	}
 }
 

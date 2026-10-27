@@ -131,11 +131,13 @@ func TestUpdateOutputSettingsChangesSampling(t *testing.T) {
 			t.Fatal(err)
 		}
 		// INFOの割合を最大にすると、1件だけ記録される確率は無視できるほど小さくなります。
-		sampled := pkglogger.SamplingConfig{
-			IsSamplingEnabled: true, SamplingDebugRate: 1, SamplingInfoRate: 1<<31 - 1, SamplingWarnRate: 1, SamplingErrorRate: 1,
-		}
+		// 既定で有効なrequest IDでの選択は無効にし、INFOの割合だけで決まるようにします。
+		on, off, one, maxRate := true, false, 1, 1<<31-1
 		if err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
-			pkglogger.LogOutputStdout: {Sampling: &sampled},
+			pkglogger.LogOutputStdout: {Sampling: &pkglogger.SamplingChange{
+				IsSamplingEnabled: &on, EnableLoggingByRequestID: &off,
+				SamplingDebugRate: &one, SamplingInfoRate: &maxRate, SamplingWarnRate: &one, SamplingErrorRate: &one,
+			}},
 		}); err != nil {
 			t.Fatalf("UpdateOutputSettings(sampling on): %v", err)
 		}
@@ -143,7 +145,7 @@ func TestUpdateOutputSettingsChangesSampling(t *testing.T) {
 			t.Errorf("Info: %v", err)
 		}
 		if err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
-			pkglogger.LogOutputStdout: {Sampling: &pkglogger.SamplingConfig{}},
+			pkglogger.LogOutputStdout: {Sampling: &pkglogger.SamplingChange{IsSamplingEnabled: &off}},
 		}); err != nil {
 			t.Fatalf("UpdateOutputSettings(sampling off): %v", err)
 		}
