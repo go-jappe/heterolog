@@ -363,9 +363,6 @@ const (
 	// entries. Applying the policy is reported as EvacuationSucceeded, so use
 	// DeliveryReport.HasDrop to detect discarded entries.
 	EvacuationDropped EvacuationKind = "dropped"
-	// EvacuationRejected is not reported by the loggers of this module at
-	// present.
-	EvacuationRejected EvacuationKind = "rejected"
 )
 
 func (k EvacuationKind) String() string {
