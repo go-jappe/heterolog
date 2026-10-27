@@ -47,8 +47,8 @@ func TestTerminalRetentionPreservesPendingProcessingEvidence(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, before, actual)
 				require.FileExists(t, processingPath)
-				// Once recovery has removed the source, the saved result follows
-				// ordinary retention again rather than leaking forever.
+				// recoveryが元fileを削除した後は、保存した結果は永久に残り続けず、
+				// 再び通常のretentionに従います。
 				require.NoError(t, os.Remove(processingPath))
 				require.Equal(t, 1, purge().DeletedFileCount())
 				require.NoFileExists(t, protected)

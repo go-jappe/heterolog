@@ -5,8 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // ReentryGuardは、一つのlogger instanceが内部ログ通知の中から再び書き込まれた場合を
@@ -196,12 +196,12 @@ type DirectInternalLogFunc func(context.Context, *logging.LogEntry)
 // ctxがDeferNotificationsのcontextなら、判定と通知を保留の実行時まで遅らせます。
 // 書き込み処理の中から同期的に呼ばれる通知と、background処理の通知の両方で使えます。
 func (g *ReentryGuard) CallErrorHandler(
-	handler func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter),
+	handler func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter),
 	ctx context.Context,
 	err error,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	direct DirectInternalLogFunc,
 ) {
 	if handler == nil {
@@ -216,11 +216,11 @@ func (g *ReentryGuard) CallErrorHandler(
 
 // CallWarnHandlerは、CallErrorHandlerと同じ規則でOnWarnへ通知します。
 func (g *ReentryGuard) CallWarnHandler(
-	handler func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter),
+	handler func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter),
 	ctx context.Context,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	direct DirectInternalLogFunc,
 ) {
 	if handler == nil {
@@ -234,11 +234,11 @@ func (g *ReentryGuard) CallWarnHandler(
 
 // CallInfoHandlerは、CallErrorHandlerと同じ規則でOnInfoへ通知します。
 func (g *ReentryGuard) CallInfoHandler(
-	handler func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter),
+	handler func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter),
 	ctx context.Context,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	direct DirectInternalLogFunc,
 ) {
 	if handler == nil {
@@ -252,11 +252,11 @@ func (g *ReentryGuard) CallInfoHandler(
 
 // CallDebugHandlerは、CallErrorHandlerと同じ規則でOnDebugへ通知します。
 func (g *ReentryGuard) CallDebugHandler(
-	handler func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter),
+	handler func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter),
 	ctx context.Context,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	isDebugMode bool,
 	direct DirectInternalLogFunc,
 ) {

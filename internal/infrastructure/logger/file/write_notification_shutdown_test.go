@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestFileLoggerShutdownRetainsAcceptedWriteUntilItsNotificationReturns(t *testing.T) {
@@ -29,7 +29,7 @@ func TestFileLoggerShutdownRetainsAcceptedWriteUntilItsNotificationReturns(t *te
 				entered, release := make(chan struct{}), make(chan struct{})
 				unblock := sync.OnceFunc(func() { close(release) })
 				defer unblock()
-				logger.OnDebug = func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {
+				logger.OnDebug = func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 					close(entered)
 					<-release
 				}
@@ -44,8 +44,8 @@ func TestFileLoggerShutdownRetainsAcceptedWriteUntilItsNotificationReturns(t *te
 				require.Empty(t, closed, "normal Close must include the accepted write's internal notification")
 				require.NotNil(t, logger.Fsstore.File)
 				if force {
-					require.ErrorIs(t, logger.ForceClose(), shutdown.ErrForcedClose)
-					require.ErrorIs(t, receiveForTest(t, closed, "Close result"), shutdown.ErrForcedClose)
+					require.ErrorIs(t, logger.ForceClose(), pkgshutdown.ErrForcedClose)
+					require.ErrorIs(t, receiveForTest(t, closed, "Close result"), pkgshutdown.ErrForcedClose)
 					synctest.Wait()
 					require.NotNil(t, logger.Fsstore.File, "force releases callers, not resources still owned by an accepted write")
 					select {

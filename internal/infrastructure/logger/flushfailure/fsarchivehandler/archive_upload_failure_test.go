@@ -27,6 +27,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
 	s3uploader "github.com/go-jappe/heterolog/pkg/objectstorage/uploader/s3"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // category別prefixから異なる宛先IDを作り、通常ログと同じ退避処理へ接続することを
@@ -41,7 +42,7 @@ func TestFailureArchiveInlineUploadFailureIsArchivedAndSourceRemoved(t *testing.
 	errorsReported := make(chan error, 4)
 	pipeline := newTestArchiveHandler(t, time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC), func(cfg *testArchiveConfig) {
 		configureFailureArchiveManagedUploadTest(t, cfg, server.URL, false)
-	}, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	}, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		errorsReported <- err
 	}})
 	handler := pipeline.handler

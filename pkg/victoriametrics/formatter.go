@@ -6,21 +6,22 @@ import (
 	"strings"
 )
 
-// MetricFormatter はPrometheusフォーマットへの変換を行うインターフェース
+// MetricFormatter is the interface for converting metrics to the Prometheus
+// format.
 type MetricFormatter interface {
 	Format(metrics []Metric) (string, error)
 }
 
-// Metric はPrometheusメトリクスを表す構造体
+// Metric is a struct that represents a Prometheus metric.
 type Metric struct {
-	Name   string            // メトリクス名
-	Labels map[string]string // ラベル(key-value)
-	Value  float64           // 値
+	Name   string            // metric name
+	Labels map[string]string // labels (key-value)
+	Value  float64           // value
 }
 
-// Validate はメトリクスの妥当性を検証する
-// 不正の種類はErrEmptyMetricName、ErrInvalidMetricName、ErrInvalidLabelNameと
-// errors.Isで判別できます。
+// Validate checks whether the metric is valid. Use errors.Is with
+// ErrEmptyMetricName, ErrInvalidMetricName or ErrInvalidLabelName to identify
+// the kind of problem.
 func (m *Metric) Validate() error {
 	if m.Name == "" {
 		return ErrEmptyMetricName
@@ -41,17 +42,17 @@ func (m *Metric) Validate() error {
 	return nil
 }
 
-// PrometheusTextFormatter はPrometheusのテキスト形式でメトリクスをフォーマットする
+// PrometheusTextFormatter formats metrics in the Prometheus text format.
 type PrometheusTextFormatter struct {
 	// 将来の拡張のためのフィールドを追加可能
 }
 
-// NewPrometheusTextFormatter は新しいPrometheusTextFormatterを作成する
+// NewPrometheusTextFormatter creates a new PrometheusTextFormatter.
 func NewPrometheusTextFormatter() *PrometheusTextFormatter {
 	return &PrometheusTextFormatter{}
 }
 
-// Format はメトリクスをPrometheusのテキスト形式に変換する
+// Format converts metrics to the Prometheus text format.
 func (f *PrometheusTextFormatter) Format(metrics []Metric) (string, error) {
 	if len(metrics) == 0 {
 		return "", nil
@@ -62,9 +63,9 @@ func (f *PrometheusTextFormatter) Format(metrics []Metric) (string, error) {
 	var sb strings.Builder
 	sb.Grow(estimatedSize)
 
-	for _, metric := range metrics {
+	for index, metric := range metrics {
 		if err := metric.Validate(); err != nil {
-			return "", fmt.Errorf("invalid metric at index: %w", err)
+			return "", fmt.Errorf("invalid metric at index %d: %w", index, err)
 		}
 
 		line, err := f.formatMetricLine(metric)
@@ -178,8 +179,9 @@ func isAlphaNumeric(r rune) bool {
 	return isLetter(r) || (r >= '0' && r <= '9')
 }
 
-// FormatPrometheusText は後方互換性のために残された関数
-// Deprecated: 代わりにNewPrometheusTextFormatter().Format()を使用してください
+// FormatPrometheusText is kept for backward compatibility.
+//
+// Deprecated: Use NewPrometheusTextFormatter().Format() instead.
 func FormatPrometheusText(metrics []Metric) string {
 	formatter := NewPrometheusTextFormatter()
 	result, err := formatter.Format(metrics)

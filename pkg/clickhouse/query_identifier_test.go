@@ -9,8 +9,8 @@ import (
 )
 
 func TestClientInsertPreservesQuotedIdentifiersOnWire(t *testing.T) {
-	// Expectations are SQL literals, independent of the production quoting
-	// helper. Backslash+n must name those two characters, not a newline.
+	// 期待値は、本番のquoting helperに依存しないSQL literalです。backslash+nは改行ではなく、
+	// その2文字を表す必要があります。
 	for _, tc := range []struct{ name, database, table, wantTarget string }{
 		{"plain", "logs_db", "app_logs", "`logs_db`.`app_logs`"},
 		{"table backslash", "", `logs\n2026`, "`logs\\\\n2026`"},

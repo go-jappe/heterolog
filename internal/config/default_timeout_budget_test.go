@@ -175,22 +175,22 @@ func TestTimeoutBudgetDefaultsMatchPublicEnvExample(t *testing.T) {
 			prefix: "", timeout: sync.Timeout, policy: sync.TimeoutBudgetPolicy,
 			backends: map[string]retryDefaults{
 				"OPENSEARCH": {
-					sync.OpenSearchConfig.OpenSearchRetryAbleClientConfig.RetryClientMode, sync.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxAttempts,
+					sync.OpenSearchConfig.OpenSearchRetryAbleClientConfig.RetryClientMode, sync.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxRetries,
 					sync.OpenSearchConfig.OpenSearchRetryAbleClientConfig.BaseDelay, sync.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxDelay,
 					cfg.OpenSearchClient.Timeout,
 				},
 				"LOKI": {
-					sync.LokiConfig.LokiRetryAbleClientConfig.RetryClientMode, sync.LokiConfig.LokiRetryAbleClientConfig.MaxAttempts,
+					sync.LokiConfig.LokiRetryAbleClientConfig.RetryClientMode, sync.LokiConfig.LokiRetryAbleClientConfig.MaxRetries,
 					sync.LokiConfig.LokiRetryAbleClientConfig.BaseDelay, sync.LokiConfig.LokiRetryAbleClientConfig.MaxDelay,
 					cfg.LokiClient.Timeout,
 				},
 				"CLICKHOUSE": {
-					sync.ClickHouseConfig.ClickHouseRetryAbleClientConfig.RetryClientMode, sync.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxAttempts,
+					sync.ClickHouseConfig.ClickHouseRetryAbleClientConfig.RetryClientMode, sync.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxRetries,
 					sync.ClickHouseConfig.ClickHouseRetryAbleClientConfig.BaseDelay, sync.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxDelay,
 					cfg.ClickHouseClient.Timeout,
 				},
 				"CLOUDWATCH": {
-					sync.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.RetryClientMode, sync.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxAttempts,
+					sync.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.RetryClientMode, sync.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxRetries,
 					sync.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.BaseDelay, sync.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxDelay,
 					cfg.CloudWatchLogsClient.Timeout,
 				},
@@ -200,22 +200,22 @@ func TestTimeoutBudgetDefaultsMatchPublicEnvExample(t *testing.T) {
 			prefix: "ASYNC_", timeout: async.Timeout, policy: async.TimeoutBudgetPolicy,
 			backends: map[string]retryDefaults{
 				"OPENSEARCH": {
-					async.OpenSearchConfig.OpenSearchRetryAbleClientConfig.RetryClientMode, async.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxAttempts,
+					async.OpenSearchConfig.OpenSearchRetryAbleClientConfig.RetryClientMode, async.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxRetries,
 					async.OpenSearchConfig.OpenSearchRetryAbleClientConfig.BaseDelay, async.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxDelay,
 					cfg.AsyncOpenSearchClient.Timeout,
 				},
 				"LOKI": {
-					async.LokiConfig.LokiRetryAbleClientConfig.RetryClientMode, async.LokiConfig.LokiRetryAbleClientConfig.MaxAttempts,
+					async.LokiConfig.LokiRetryAbleClientConfig.RetryClientMode, async.LokiConfig.LokiRetryAbleClientConfig.MaxRetries,
 					async.LokiConfig.LokiRetryAbleClientConfig.BaseDelay, async.LokiConfig.LokiRetryAbleClientConfig.MaxDelay,
 					cfg.AsyncLokiClient.Timeout,
 				},
 				"CLICKHOUSE": {
-					async.ClickHouseConfig.ClickHouseRetryAbleClientConfig.RetryClientMode, async.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxAttempts,
+					async.ClickHouseConfig.ClickHouseRetryAbleClientConfig.RetryClientMode, async.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxRetries,
 					async.ClickHouseConfig.ClickHouseRetryAbleClientConfig.BaseDelay, async.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxDelay,
 					cfg.AsyncClickHouseClient.Timeout,
 				},
 				"CLOUDWATCH": {
-					async.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.RetryClientMode, async.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxAttempts,
+					async.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.RetryClientMode, async.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxRetries,
 					async.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.BaseDelay, async.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxDelay,
 					cfg.AsyncCloudWatchLogsClient.Timeout,
 				},
@@ -226,26 +226,26 @@ func TestTimeoutBudgetDefaultsMatchPublicEnvExample(t *testing.T) {
 			backends: map[string]retryDefaults{
 				"OPENSEARCH": {
 					delivery.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig.RetryClientMode,
-					delivery.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxAttempts,
+					delivery.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxRetries,
 					delivery.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig.BaseDelay,
 					delivery.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxDelay,
 					cfg.DeliveryOpenSearchClient.Timeout,
 				},
 				"LOKI": {
-					delivery.DeliveryLokiConfig.LokiRetryAbleClientConfig.RetryClientMode, delivery.DeliveryLokiConfig.LokiRetryAbleClientConfig.MaxAttempts,
+					delivery.DeliveryLokiConfig.LokiRetryAbleClientConfig.RetryClientMode, delivery.DeliveryLokiConfig.LokiRetryAbleClientConfig.MaxRetries,
 					delivery.DeliveryLokiConfig.LokiRetryAbleClientConfig.BaseDelay, delivery.DeliveryLokiConfig.LokiRetryAbleClientConfig.MaxDelay,
 					cfg.DeliveryLokiClient.Timeout,
 				},
 				"CLICKHOUSE": {
 					delivery.DeliveryClickHouseConfig.ClickHouseRetryAbleClientConfig.RetryClientMode,
-					delivery.DeliveryClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxAttempts,
+					delivery.DeliveryClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxRetries,
 					delivery.DeliveryClickHouseConfig.ClickHouseRetryAbleClientConfig.BaseDelay,
 					delivery.DeliveryClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxDelay,
 					cfg.DeliveryClickHouseClient.Timeout,
 				},
 				"CLOUDWATCH": {
 					delivery.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.RetryClientMode,
-					delivery.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxAttempts,
+					delivery.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxRetries,
 					delivery.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.BaseDelay,
 					delivery.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxDelay,
 					cfg.DeliveryCloudWatchLogsClient.Timeout,
@@ -286,8 +286,8 @@ func TestTimeoutBudgetDefaultsMatchPublicEnvExample(t *testing.T) {
 				time.Duration(exampleInt(t, "HETEROLOG_"+p+backend+"_TIMEOUT_SECOND"))*time.Second)
 			requireDefault(t, "HETEROLOG_"+p+backend+"_RETRY_CLIENT_MODE", got.mode,
 				pkglogger.RetryClientMode(exampleValue(t, "HETEROLOG_"+p+backend+"_RETRY_CLIENT_MODE")))
-			requireDefault(t, "HETEROLOG_MAX_"+p+backend+"_RETRYABLE_CLIENT_ATTEMPTS", got.attempts,
-				exampleInt(t, "HETEROLOG_MAX_"+p+backend+"_RETRYABLE_CLIENT_ATTEMPTS"))
+			requireDefault(t, "HETEROLOG_MAX_"+p+backend+"_RETRYABLE_CLIENT_RETRIES", got.attempts,
+				exampleInt(t, "HETEROLOG_MAX_"+p+backend+"_RETRYABLE_CLIENT_RETRIES"))
 			requireDefault(t, "HETEROLOG_"+p+backend+"_RETRYABLE_CLIENT_MILLISECOND", got.base,
 				time.Duration(exampleInt(t, "HETEROLOG_"+p+backend+"_RETRYABLE_CLIENT_MILLISECOND"))*time.Millisecond)
 			requireDefault(t, "HETEROLOG_MAX_"+p+backend+"_RETRYABLE_CLIENT_DELAY_MILLISECOND", got.max,

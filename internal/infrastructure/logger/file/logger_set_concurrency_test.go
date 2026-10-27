@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
@@ -268,7 +267,7 @@ func TestLoggerSetCloseIncludesUnpublishedColdRole(t *testing.T) {
 		require.ErrorIs(t, err, ErrLoggerSetClosed)
 		require.ErrorIs(t, errorLogger.HandleLogEntry(ctx, &logging.LogEntry{
 			Level: pkglogger.LogLevelError, Message: "write after owner close",
-		}), applogging.ErrLoggerClosed)
+		}), pkglogger.ErrLoggerClosed)
 		// 未公開だったroleのfile/tokenも閉じた後なら、次のownerがdirectoryを取得できます。
 		replacement, err := NewLoggerSet(NewConfigAdapter(cfg), nil, nil)
 		require.NoError(t, err)

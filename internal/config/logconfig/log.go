@@ -4,7 +4,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/config/failure"
 	"github.com/go-jappe/heterolog/internal/config/internalerror"
 	"github.com/go-jappe/heterolog/internal/config/timeoutbudget"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	"github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
@@ -96,9 +96,9 @@ const (
 	DefaultErrorTraceDepthDebugMode = 10
 
 	// opensearch
-	// BulkResponse 内の retryable item を送信する総試行回数（初回を含む）。
-	MaxOpenSearchLoggerRetryAttempts = 3
-	// 現行の OpenSearch flush manager は bulk item retry 間で待機しないため、この値は予約値です。
+	// BulkResponse 内の retryable item を、初回の送信に加えて再送する回数。初回と合わせて最大3回送ります。
+	MaxOpenSearchLoggerItemRetries = 2
+	// retryable item を再送する前に待つ時間。
 	OpenSearchRetryWaitTime = 1000 * time.Millisecond
 	// opensearch flush送信可否
 	DefaultNoBulkFlushModeEnabled = false
@@ -393,9 +393,10 @@ type DeliveryClickHouseConfig struct {
 type OpenSearchRetryAbleClientConfig struct {
 	RetryClientMode logger.RetryClientMode
 
-	// MaxAttempts は「最大試行回数」です（初回含む）。
-	// 例: 1 = リトライなし、3 = 最大3回（初回 + 2リトライ）
-	MaxAttempts int
+	// MaxRetries は、初回の送信に加える再試行の回数です。
+	// 例: 0 = リトライなし、2 = 最大3回（初回 + 2リトライ）。負の値は、pkg/loggerの設定へ
+	// 変換した後の検証でerrorになります。
+	MaxRetries int
 
 	// BaseDelay はリトライごとに加算されるバックオフの基準遅延です。
 	BaseDelay time.Duration
@@ -407,25 +408,28 @@ type OpenSearchRetryAbleClientConfig struct {
 type LokiRetryAbleClientConfig struct {
 	RetryClientMode logger.RetryClientMode
 
-	MaxAttempts int
-	BaseDelay   time.Duration
-	MaxDelay    time.Duration
+	// MaxRetriesは、初回の送信に加える再試行の回数です。0なら再試行しません。
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
 }
 
 type CloudWatchLogsRetryAbleClientConfig struct {
 	RetryClientMode logger.RetryClientMode
 
-	MaxAttempts int
-	BaseDelay   time.Duration
-	MaxDelay    time.Duration
+	// MaxRetriesは、初回の送信に加える再試行の回数です。0なら再試行しません。
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
 }
 
 type ClickHouseRetryAbleClientConfig struct {
 	RetryClientMode logger.RetryClientMode
 
-	MaxAttempts int
-	BaseDelay   time.Duration
-	MaxDelay    time.Duration
+	// MaxRetriesは、初回の送信に加える再試行の回数です。0なら再試行しません。
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
 }
 
 type OpenSearchLoggerBaseConfig struct {
@@ -441,7 +445,7 @@ type OpenSearchLoggerBaseConfig struct {
 	PostWarnThresholdDuration  time.Duration
 	PostErrorThresholdDuration time.Duration
 	IndexLatencyEnabled        bool
-	MaxRetryAttempts           int           // BulkResponse 内の retryable item を送信する総試行回数（初回を含む）
+	MaxItemRetries             int           // BulkResponse 内の retryable item を、初回の送信に加えて再送する回数
 	RetryWaitTime              time.Duration // retryableなBulk itemを次に送信するまでの待機時間
 	HandlerConfig              internalerror.RoutingConfig
 }
@@ -569,7 +573,7 @@ type CloudWatchLogsFlushManagerConfig struct {
 	LogStreamName string
 	// LogStreamRoutingGranularityは基準stream名をevent発生日時で分割するapplication側の
 	// routing policyです。CloudWatch Logs APIへ直接渡す設定ではありません。
-	LogStreamRoutingGranularity streamrouting.Granularity
+	LogStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting
 	FailureHandlerConfig        failure.FailureHandlerConfig
 }
 
@@ -580,7 +584,7 @@ type DeliveryCloudWatchLogsFlushManagerConfig struct {
 	LogGroupName  string
 	LogStreamName string
 	// LogStreamRoutingGranularityの契約は通常CloudWatchLogsFlushManagerConfigと同じです。
-	LogStreamRoutingGranularity streamrouting.Granularity
+	LogStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting
 	PostWarnThresholdDuration   time.Duration
 	PostErrorThresholdDuration  time.Duration
 	PutLatencyEnabled           bool
@@ -603,7 +607,7 @@ type DeliveryClickHouseFlushManagerConfig struct {
 type FileSystemStoreConfig struct {
 	MaxFileSize                  uint64
 	LogDir                       string // 通常ログのサブディレクトリ名。既定値・継承適用後、使用時は空文字不可。
-	ErrorLogDir                  string // ex.)/var/log/{appname}/{dirCaseErrorFile}/
+	ErrorLogDir                  string // 例: /var/log/{appname}/{dirCaseErrorFile}/
 	DebugLogDir                  string // directory分離がfalseなら無視し、trueなら空でない値が必要です。
 	IsSeparateDebugLogDirEnabled bool   // DEBUGファイル分離とは独立したdirectory選択です。
 	IsSeparateErrorLogsEnabled   bool
@@ -628,7 +632,7 @@ type FileSystemStoreConfig struct {
 	CompressWarnThresholdDuration      time.Duration
 	CompressErrorThresholdDuration     time.Duration
 	WriteFileLatencyEnabled            bool
-	MaxWriteAttempts                   int
+	MaxWriteRetries                    int
 	FileOperationRetryWaitTime         time.Duration
 	OverloadConfig                     FileOverLoadPolicyConfig
 	ObjectStorageUploadConfig          objectstorage.LogFileUploadConfig
@@ -647,7 +651,7 @@ type DeliveryFileSystemStoreConfig struct {
 	ErrorPurge                   *fsstore.FilePurgeConfig
 	DebugPurge                   *fsstore.FilePurgeConfig
 	LogDir                       string // 通常ログのサブディレクトリ名。既定値・継承適用後、使用時は空文字不可。
-	ErrorLogDir                  string // ex.)/var/log/{appname}/{dirCaseErrorFile}/
+	ErrorLogDir                  string // 例: /var/log/{appname}/{dirCaseErrorFile}/
 	DebugLogDir                  string // directory分離がfalseなら無視し、trueなら空でない値が必要です。
 	IsSeparateDebugLogDirEnabled bool   // DEBUGファイル分離とは独立したdirectory選択です。
 	IsSeparateErrorLogsEnabled   bool
@@ -664,7 +668,7 @@ type DeliveryFileSystemStoreConfig struct {
 	WriteLogFileErrorThresholdDuration time.Duration
 	CompressWarnThresholdDuration      time.Duration
 	CompressErrorThresholdDuration     time.Duration
-	MaxWriteAttempts                   int
+	MaxWriteRetries                    int
 	FileOperationRetryWaitTime         time.Duration
 	ObjectStorageUploadConfig          objectstorage.LogFileUploadConfig
 	LifecycleMode                      fsstore.FileLifecycleMode
@@ -675,7 +679,7 @@ type DeliveryFileSystemStoreConfig struct {
 // FileOverLoadPolicyConfigは通常・asyncのfile書込み時、空き容量が不足した場合の処理です。
 // 判定閾値は共通のMinAvailableDiskSpaceを使い、0なら判定しません。
 type FileOverLoadPolicyConfig struct {
-	OverloadPolicy   durable.OverloadPolicy   // drop or degrade
+	OverloadPolicy   durable.OverloadPolicy   // dropまたはdegrade
 	SpillDestination durable.SpillDestination // degrade時の退避先。現在はstdoutだけに対応します。
 }
 

@@ -33,7 +33,7 @@ type ProcessReport struct {
 	TargetBackendService string
 
 	// Status は、この report 単体で見たときの通常 spool 処理結果を表す。
-	// no_target or skipped or completed or quarantined or failed
+	// no_target、skipped、completed、quarantined、failed のいずれか。
 	Status ProcessStatus
 
 	// SkipReason は、通常の read -> send 処理を開始しなかった理由。
@@ -102,7 +102,7 @@ type ProcessReport struct {
 type ProcessingFileTransitionRetryReport struct {
 	TargetBackendService string
 
-	// no_target or succeeded or failed
+	// no_target、succeeded、failed のいずれか。
 	Status ProcessingFileTransitionRetryStatus
 
 	ProcessingPath string

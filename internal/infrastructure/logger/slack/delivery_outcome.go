@@ -25,9 +25,9 @@ type slackDeliveryError struct {
 func (e *slackDeliveryError) Error() string { return e.err.Error() }
 func (e *slackDeliveryError) Unwrap() error { return e.err }
 
-// postSlackMessage preserves response evidence separately from SDK errors. For
-// example, an HTTP 429 with an invalid Retry-After is a known refusal even when
-// the SDK returns an ordinary number-parsing error rather than RateLimitedError.
+// postSlackMessageは、responseの証拠をSDKのerrorとは別に保持します。たとえば、
+// 不正なRetry-Afterを持つHTTP 429は、SDKがRateLimitedErrorではなく通常の数値parse errorを
+// 返した場合でも、既知の拒否です。
 func postSlackMessage(ctx context.Context, client *slackgo.Client, channel, message string) (string, string, error) {
 	if ctx == nil {
 		ctx = context.Background()

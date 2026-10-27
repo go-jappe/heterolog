@@ -35,6 +35,7 @@ heterologは、複数の出力先へ同時に記録し、ログファイルの�
 - 送れなかったログをspoolまたはfailure archiveに保存して再送します。`Retry-After` には再起動後も従います。
 - 空き容量の閾値、任意のメモリ逼迫の監視器、`drop`・`degrade` の方針による過負荷の保護。
 - コードでの設定、または `LoadEnvConfig` による `HETEROLOG_` 環境変数からの設定。
+- 出力先のログレベルとサンプリングを、稼働中にコードまたはトークンで保護したHTTP APIから変更できます。
 - 停止中のアプリケーションのログファイルを復旧するCLI。
 - Linux・Windows・macOSで、大文字小文字を区別しないファイルシステムも含めて試験しています。
 
@@ -148,7 +149,7 @@ logger := slog.New(heterolog.NewSlogHandler(runtime, &slog.HandlerOptions{
 | `NewSlogHandler` | 同期Loggerを `slog.Handler` として利用 |
 | `DefaultSpoolConfig` / `WithSpool` | 永続化した失敗ログの再送ワーカー設定 |
 | `Close` / `Shutdown(ctx)` | 受理済み処理の終了・バッファflush・リソース解放 |
-| `ForceClose` | 復旧処理などへ強制停止を要求 |
+| `ForceClose` | ログの受付を止め、待機中の `Close`・`Shutdown` を `ErrForcedClose` で解放し、後処理・復旧処理へ停止を要求（完了は待たない） |
 
 ### 送達結果（Delivery report）
 
@@ -217,7 +218,7 @@ reportの宛先ごとの結果は、次のいずれかです。
 
 ### 副作用とcontext
 
-- importや `New` は、`.env` 読込、シグナル登録、グローバルロガーやOpenTelemetry providerの変更を行いません。設定はコードから明示的に渡します（環境変数と環境設定ファイルから作る場合は、後述の `LoadEnvConfig` を明示的に呼びます）。
+- importや `New` は、`.env` 読込、シグナル登録、サーバーの起動、グローバルロガーやOpenTelemetry providerの変更を行いません。設定はコードから明示的に渡します（環境変数と環境設定ファイルから作る場合は、後述の `LoadEnvConfig` を明示的に呼びます）。
 - 作成後は、そのロガーが使う設定を変更しないでください。
 - `New`・`NewAsync`・`NewDelivery` に渡したcontextのキャンセルと期限は、構築処理だけに適用します。構築後にcontextが終了しても、バッファの定期送信は `Close` / `Shutdown` まで継続します。
 
@@ -242,16 +243,88 @@ defer runtime.Close()
 - 有効にしたロガーの設定と、ロガー間の整合性（保存先の重複など）を読み込み時に検証し、見つかった問題をまとめて返します。`errors.As` で `EnvFileError`・`InvalidEnvironmentValueError`・`RenamedEnvironmentKeyError`・`pkg/env` の `VariableError` を取り出すと、問題のキーを特定できます。
 - 設定を変えてからロガーを作る場合は、`cfg, opts, err := env.Config()`（`AsyncConfig`・`DeliveryConfig` も同様）で取り出し、`heterolog.New(ctx, cfg, opts...)` に渡します。`opts` には、環境設定から読んだspoolの再送設定とCloudWatch Logsのstream分割が入ります。
 - `HETEROLOG_ENABLE_LOGGING=false` などで無効にしたロガーは作れず、`ErrEnvLoggerDisabled` を返します。
-- トレース（`WithObservers`）とメモリ逼迫の監視器（`WithMemoryPressureMonitor`）は環境設定から作りません。`env.New(ctx, opts...)` のように追加のoptionとして渡します。
+- トレース（`WithObservers`）は環境設定から作りません。`env.New(ctx, opts...)` のように追加のoptionとして渡します。`HETEROLOG_USE_MEMORY_PRESSURE_*` で有効にしたspoolは、`WithMemoryPressureMonitor` を渡さなければ、`HETEROLOG_MEMORY_CRITICAL_RATIO`・`HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB`・`HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITS` でメモリ逼迫を判定します。
+
+### 稼働中の設定変更
+
+同期・非同期のロガーの出力先ごとのログレベルとサンプリングは、アプリケーションの稼働中に、コードまたはHTTP APIから変更できます。
+
+- コードでは、`runtime.OutputSettings()` が現在の設定を返し、`runtime.UpdateOutputSettings(changes)` が設定を変えます。すべての変更を先に検証し、一つでも不正なら何も反映しません。ロガーが使っていない出力先は `ErrUnknownOutput`、不正な値は `pkg/logger` の `ConfigFieldError` です。
+- 変更は次のログから反映します。非同期のロガーは、ログを処理する時点の設定を使います。
+- 変更はメモリ上だけに保持するため、再起動すると設定どおりに戻ります。
+- Deliveryのロガーには、この設定はありません。サンプリングはせず、レベルで絞り込むのはSlackの出力だけで、そのレベルは設定どおりです。内部ログの通知だけに使う出力先は、設定どおりのままです。
+
+HTTP API（管理用API）は、curlなどのツールから呼べます。
+
+- `NewAdminHandler` は、アプリケーション自身のサーバーに組み込む `http.Handler` を返します。代わりに `StartAdminServer` で専用のサーバーを起動することもできます。
+- `GET /settings` はすべてのロガーの現在の設定を返し、`PATCH /settings` はJSONの本文で指定した項目を変えます。レベルは `DEBUG`・`INFO`・`WARN`・`ERROR`（大文字小文字を区別しません）で、`PATCH` で省略したサンプリングの項目は今の値のままです。
+- すべての要求で `Authorization: Bearer <トークン>` が必要です。トークンは32バイト以上（`MinAdminTokenLength`）で、例えば `openssl rand -hex 32` のように無作為に作ります。比較は一定時間で行い、エラーにトークンを含めません。
+- `PATCH` は、すべてのロガーのすべての変更を検証してから反映します。本文は64KiBまでで、未知の項目は拒否します。
+- 変更は、記録のために `OnChange` へ渡します。`OnChange` がない場合は、`log` パッケージの標準のloggerへ一行出力します。
+- 専用のサーバーは、アドレスのホストが空の場合（例: `:9100`）は127.0.0.1で待ち受けます。ほかのアドレスで待ち受ける場合は、ホストを明示し、TLSの証明書と鍵を設定します。トークンをネットワーク上に平文で流さないためです。
+- 環境設定では、`HETEROLOG_ADMIN_ADDR` でサーバーを有効にし、`HETEROLOG_ADMIN_TOKEN`・`HETEROLOG_ADMIN_TLS_CERT_FILE`・`HETEROLOG_ADMIN_TLS_KEY_FILE` とともに設定します。`LoadEnvConfig` が検証し、`env.AdminServerConfig()` が返します。
+
+```go
+env, err := heterolog.LoadEnvConfig(".env")
+if err != nil {
+    log.Fatal(err)
+}
+runtime, err := env.New(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+defer runtime.Close()
+if adminCfg, ok := env.AdminServerConfig(); ok {
+    admin, err := heterolog.StartAdminServer(adminCfg, map[string]heterolog.SettingsController{"app": runtime})
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer admin.Close()
+}
+```
+
+```sh
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/settings
+
+curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
+  -d '{"loggers":{"app":{"outputs":{"stdout":{"level":"DEBUG"}}}}}' \
+  http://127.0.0.1:9100/settings
+```
+
+どちらの要求も、すべてのロガーの設定を返します。
+
+```json
+{
+  "loggers": {
+    "app": {
+      "outputs": {
+        "stdout": {
+          "level": "DEBUG",
+          "sampling": {
+            "enabled": false,
+            "by_request_id": false,
+            "request_id_rate": 0,
+            "debug_rate": 0,
+            "info_rate": 0,
+            "warn_rate": 0,
+            "error_rate": 0
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 ### メモリ逼迫の監視器
 
 - `WithMemoryPressureMonitor` に渡す監視器は、呼出側で起動・停止します。
+- `WithMemoryPressureMonitor` を渡さない場合は、`UseMemoryPressureForOverload` を有効にした各spoolが自分の監視器を起動します。OSのメモリを1秒ごとに取得し、spoolの `MemoryCriticalRatio`・`MinAvailableMemoryBytes`・`MemoryCriticalConsecutiveHits`（環境設定では `HETEROLOG_MEMORY_CRITICAL_RATIO`・`HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB`・`HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITS`）で判定し、ロガーの終了で停止します。閾値を一つも有効にしない場合や、メモリを取得できない場合は、ロガーの起動がエラーになります。
 - `NewMemoryPressureMonitor(provider, policy, pollInterval)` は、`pkg/memorypressure` の `Provider` と `CriticalPolicy` から監視器を作ります。
 - `Start(ctx)` は一度取得してから戻り、以降は `pollInterval` ごとに取得し、`ctx` の終了で停止します。
 - 判定は `memorypressure.CriticalState` と同じです。信頼できる観測が `CriticalRatio` または `MinAvailableBytes` に達した状態が `ConsecutiveCriticalHits` 回（0と1は初回）続くとcriticalです。
 - providerがnil、取得間隔が0以下、どちらの閾値も無効、1を超える `CriticalRatio`、負の連続回数は、生成時にエラーになります。生成時の入力エラーは `errors.Is(err, heterolog.ErrInvalidMemoryPressureMonitor)` で判別できます。
-- 監視器は、spoolの `UseMemoryPressureForOverload` を有効にした出力先の過負荷判定に使われます。過負荷と判定した場合はoverload policyに従い、`drop` では保存せずに破棄して、通常APIへ `ErrLogDropped` を返します。
+- 渡した監視器もspoolが起動した監視器も、spoolの `UseMemoryPressureForOverload` を有効にした出力先の過負荷判定に使われます。過負荷と判定した場合はoverload policyに従い、`drop` では保存せずに破棄して、通常APIへ `ErrLogDropped` を返します。
 - `pkg/memorypressure` のLinux providerは、所属するcgroup v2と参照可能な親階層の上限を確認します。使用率が最大の階層を主観測、残量が最小の階層を `CgroupLimit` として保持し、判定では両方を確認します。有限の上限だけが読めた場合は、使用量不明として保持します。名前空間の外など参照できない祖先の制約は取得できません。
 
 ### 内部ログの通知
@@ -502,7 +575,7 @@ go build -o log-recovery ./cmd/log-recovery
 ```sh
 go test ./...
 go vet ./...
-go test -race . ./internal/application/logging ./internal/infrastructure/logger/multi
+go test -race . ./internal/application/logging ./internal/application/loggerruntime ./internal/presentation/sloghandler ./internal/infrastructure/logger/multi
 ```
 
 - 通常のテストは、公開設定例から作るダミー設定とローカルHTTPサーバーを使い、開発者の `.env` を必要としません。
@@ -580,8 +653,9 @@ heterologは、別のログ配送ツール（ログファイルを読んで転�
 - すべてのキーが `HETEROLOG_` で始まるため、アプリケーション自身の設定と同じ環境変数や `.env` ファイルに置いても衝突しません。
 - 何も設定しなければ、すべてのロガーは標準出力だけに書きます。そのため、設定も外部サービスもなしで動きます。ほかの出力先は選んだ場合だけ有効になり、足りない認証情報は補わずにエラーとして報告します。
 - 設定は読み込み時またはロガーの構築時に検証し、すべての問題をまとめて報告します。そのため、誤った設定は最初のログや最初の失敗のときではなく、起動時に失敗します。
+- 稼働中に変えられるのは、ログレベルとサンプリングだけです。出力先はこれらをログごとに読むため、変更にロガーの作り直しも記録の中断も要りません。出力先や保存先の変更には、それが必要になります。HTTP APIはトークンが必要で、TLSを設定しない限り127.0.0.1だけで待ち受け、変更は再起動後に残りません。そのため、調査中にDEBUGへ切り替えるような一時的な変更が、うっかり残り続けることはありません。
 - 設定エラーには、認証情報を含み得る値（HTTP header、S3の宛先の一覧、URLのuser infoなど）を含めません。
-- 既定値は環境に合わせています。日時はUTCです。Linuxなどのunix系OSでrootで動かない場合、保存先は利用者のstate directory（`$XDG_STATE_HOME`、未設定なら `~/.local/state`）にするため、一般利用者も追加の設定なしでファイル出力を有効にできます。
+- 既定値は環境に合わせています。日時はUTCです。Linux・BSD・illumos・Solaris・AIXでrootで動かない場合、保存先は利用者のstate directory（`$XDG_STATE_HOME` が絶対パスならそこ、そうでなければ `~/.local/state`）にするため、一般利用者も追加の設定なしでファイル出力を有効にできます。
 
 ### 実際のシステムでの試験
 

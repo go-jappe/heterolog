@@ -2,9 +2,9 @@ package pathidentity
 
 import "golang.org/x/sys/unix"
 
-// Darwin _PC_CASE_SENSITIVE is declared in Apple's public sys/unistd.h:
+// Darwinの_PC_CASE_SENSITIVEは、Appleが公開しているsys/unistd.hで宣言されています:
 // https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/unistd.h
-// Query the filesystem rather than assuming every Unix volume is case-sensitive.
+// すべてのUnixのvolumeが大小文字を区別すると決めつけず、filesystemに問い合わせます。
 func filesystemCaseSensitive(directory string) (bool, error) {
 	const pcCaseSensitive = 11
 	value, err := unix.Pathconf(directory, pcCaseSensitive)

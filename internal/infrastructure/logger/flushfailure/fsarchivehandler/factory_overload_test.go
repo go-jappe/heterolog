@@ -15,6 +15,7 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // degrade policyでは、空き容量が閾値を下回ったrecordをarchiveへ保存せず、設定したstdoutへ退避します。
@@ -138,11 +139,11 @@ func TestNewFailureArchivePipelineValidatesEntireArchiveConfigBeforeOpeningFiles
 
 type archiveFactoryTestMeter struct{}
 
-func (*archiveFactoryTestMeter) Counter(string) observer.Counter {
+func (*archiveFactoryTestMeter) Counter(string) pkgobserver.Counter {
 	return observer.NopCounter{}
 }
 
-func (*archiveFactoryTestMeter) Gauge(string) observer.Gauge {
+func (*archiveFactoryTestMeter) Gauge(string) pkgobserver.Gauge {
 	return observer.NopGauge{}
 }
 

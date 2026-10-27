@@ -58,8 +58,8 @@ func TestPostRedirectsRejectBodyDroppingStatusesAndPreserve307And308(t *testing.
 						response.Header.Set("Retry-After", "2")
 						return response, nil
 					}
-					// A login page also returns 200; reaching it with an empty
-					// GET must never be confused with an accepted log payload.
+					// login pageも200を返します。空のGETでそこへ到達しても、
+					// 受理されたlog payloadと取り違えてはいけません。
 					bodyText := ""
 					if r.Method != http.MethodPost || len(body) == 0 {
 						bodyText = "<html>Sign in</html>"
@@ -218,7 +218,7 @@ func TestPostRedirectGuardDoesNotMutateSharedClientAndRejectsEmptyPOST(t *testin
 				policyCalls++
 				if restorePOST {
 					next.Method = http.MethodPost
-				} // Body remains nil.
+				} // Bodyはnilのままです。
 				return nil
 			}}
 			err := newRedirectTestSend(t, client, false)()
@@ -226,8 +226,8 @@ func TestPostRedirectGuardDoesNotMutateSharedClientAndRejectsEmptyPOST(t *testin
 			if !errors.As(err, &statusErr) || statusErr.Code != http.StatusFound || requests != 1 || policyCalls != 1 {
 				t.Fatalf("send err=%v requests=%d policy calls=%d; bodyless redirected request must be stopped", err, requests, policyCalls)
 			}
-			// Reusing the caller's client directly still follows its original
-			// policy. A library guard left installed on it would block this.
+			// 呼び出し元のclientを直接再利用しても、元のpolicyのまま動作します。
+			// libraryのguardがclientに残っていると、この送信は止められてしまいます。
 			req, err := http.NewRequest(http.MethodPost, "https://logging.test/original", strings.NewReader("other request"))
 			if err != nil {
 				t.Fatal(err)

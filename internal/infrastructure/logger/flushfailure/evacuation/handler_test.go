@@ -113,11 +113,10 @@ func TestStdoutHandlersKeepEachSendResultContiguousAcrossInstances(t *testing.T)
 			done <- secondHandler.Handle(context.Background(), secondResult)
 		}()
 
-		// The first writer call is intentionally blocked. A mutex scoped to one
-		// handler instance would allow the second meta row through here; the
-		// package-wide batch mutex must keep it out until the first batch finishes.
-		// Once every goroutine is blocked, the second handler can only be waiting
-		// for that batch mutex.
+		// 最初のwriter呼び出しは意図的にblockしています。handler instance単位のmutexなら、
+		// ここで2つ目のmeta行が通ってしまいます。package全体のbatch mutexは、最初のbatchが
+		// 終わるまでそれを通してはいけません。すべてのgoroutineがblockした時点で、
+		// 2つ目のhandlerが待っているのは、そのbatch mutexしかありえません。
 		synctest.Wait()
 		select {
 		case <-writer.secondMetaWritten:
@@ -181,8 +180,8 @@ type blockingMetaWriter struct {
 	releaseOnce       sync.Once
 }
 
-// newBlockingMetaWriter returns a writer that blocks the first meta row until releaseFirst.
-// The release is registered with t.Cleanup so a failing assertion cannot leave the write blocked.
+// newBlockingMetaWriterは、releaseFirstまで最初のmeta行をblockするwriterを返します。
+// assertionが失敗しても書き込みがblockされたまま残らないよう、解放をt.Cleanupに登録します。
 func newBlockingMetaWriter(t *testing.T) *blockingMetaWriter {
 	t.Helper()
 	writer := &blockingMetaWriter{
@@ -194,7 +193,7 @@ func newBlockingMetaWriter(t *testing.T) *blockingMetaWriter {
 	return writer
 }
 
-// releaseFirst lets the blocked first meta row finish. It may be called more than once.
+// releaseFirstは、blockされている最初のmeta行の書き込みを完了させます。複数回呼んでも構いません。
 func (w *blockingMetaWriter) releaseFirst() {
 	w.releaseOnce.Do(func() { close(w.releaseFirstMeta) })
 }

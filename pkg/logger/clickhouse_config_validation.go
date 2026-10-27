@@ -42,9 +42,9 @@ func validateDeliveryClickHouseBackendConfig(
 	)
 }
 
-// ValidateClickHouseMaxEntriesは、buffer flushを開始するentry件数の閾値が
-// 正の値であることを検証します。0以下の値はErrNonPositiveSettingを持つ
-// ConfigFieldErrorです。
+// ValidateClickHouseMaxEntries validates that the threshold on the number of
+// entries that starts a buffer flush is positive. A value of 0 or less is
+// reported as a ConfigFieldError with the kind ErrNonPositiveSetting.
 func ValidateClickHouseMaxEntries(maxEntries int) error {
 	if maxEntries <= 0 {
 		return settingError(
@@ -55,10 +55,13 @@ func ValidateClickHouseMaxEntries(maxEntries int) error {
 	return nil
 }
 
-// ValidateClickHouseBatchLimitsはbufferの件数・byte soft threshold、fallback queueの
-// hard上限、一回の物理JSONEachRow INSERT requestを分割するhard limitを検証します。
-// ClickHouse serverやproxyの実効上限との整合は利用者が管理します。
-// 不正な項目はErrNonPositiveSettingまたはErrInconsistentSettingを持つConfigFieldErrorです。
+// ValidateClickHouseBatchLimits validates the soft thresholds on the number of
+// entries and the bytes in the buffer, the hard limit of the fallback queue,
+// and the hard limit at which a single physical JSONEachRow INSERT request is
+// split. Keeping them consistent with the effective limits of the ClickHouse
+// server or proxies is the user's responsibility. An invalid setting is
+// reported as a ConfigFieldError with the kind ErrNonPositiveSetting or
+// ErrInconsistentSetting.
 func ValidateClickHouseBatchLimits(
 	maxEntries int,
 	bufferFlushBytes int,

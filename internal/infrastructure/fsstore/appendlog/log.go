@@ -1,9 +1,9 @@
 package appendlog
 
 import (
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"os"
 	"sync"
 )
@@ -52,8 +52,8 @@ type FileStore struct {
 	OnWarn              logging.LoggerHandlerFunc
 	OnInfo              logging.LoggerHandlerFunc
 	OnDebug             logging.LoggerHandlerFunc
-	Tracer              observer.Tracer // observebility計装用
-	Meter               observer.Meter  // observebility計装用
+	Tracer              pkgobserver.Tracer // observebility計装用
+	Meter               pkgobserver.Meter  // observebility計装用
 }
 
 func (l *FileStore) Close() error {

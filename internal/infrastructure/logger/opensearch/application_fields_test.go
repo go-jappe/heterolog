@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	pkgclock "github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -112,17 +111,17 @@ func TestDeliveryOpenSearchLoggerApplicationFieldsReachPlainAndOtelDocuments(t *
 	}
 }
 
-func openSearchApplicationFields(t *testing.T) []applogging.Field {
+func openSearchApplicationFields(t *testing.T) []pkglogger.Field {
 	t.Helper()
-	contextField, err := applogging.Any("context", map[string]any{"region": "ap-northeast-1"})
+	contextField, err := pkglogger.Any("context", map[string]any{"region": "ap-northeast-1"})
 	require.NoError(t, err)
 
-	return []applogging.Field{
-		applogging.WithRequestID("request-123"),
-		applogging.MustFieldKey("trace_id").String("trace-456"),
-		applogging.MustFieldKey("span_id").String("span-789"),
-		applogging.MustFieldKey("success").Bool(true),
-		applogging.MustFieldKey("attempt").Int(2),
+	return []pkglogger.Field{
+		pkglogger.WithRequestID("request-123"),
+		pkglogger.MustFieldKey("trace_id").String("trace-456"),
+		pkglogger.MustFieldKey("span_id").String("span-789"),
+		pkglogger.MustFieldKey("success").Bool(true),
+		pkglogger.MustFieldKey("attempt").Int(2),
 		contextField,
 	}
 }

@@ -11,12 +11,13 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	loggerhandler "github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestAppendLogMaintenanceResultNotifierNotifiesFailedRunAsErrorAndDebugOnly(t *testing.T) {
@@ -25,8 +26,8 @@ func TestAppendLogMaintenanceResultNotifierNotifiesFailedRunAsErrorAndDebugOnly(
 	levelHandler := func(
 		_ context.Context,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		levels = append(levels, entry.Level)
 		sources = append(sources, entry.Source)
@@ -35,8 +36,8 @@ func TestAppendLogMaintenanceResultNotifierNotifiesFailedRunAsErrorAndDebugOnly(
 		_ context.Context,
 		_ error,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		levels = append(levels, entry.Level)
 		sources = append(sources, entry.Source)
@@ -96,8 +97,8 @@ func TestAppendLogMaintenanceResultNotifierNotifiesRecoveredPendingSourcesAsWarn
 	record := func(
 		_ context.Context,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		levels = append(levels, entry.Level)
 		if entry.Level == pkglogger.LogLevelWarn {
@@ -153,7 +154,7 @@ func TestAppendLogMaintenanceResultNotifierSeparatesCheckpointWarningsFromSaveEr
 		t.Run(test.name, func(t *testing.T) {
 			var entries []*logging.LogEntry
 			var reportedError error
-			record := func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			record := func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				entries = append(entries, entry)
 			}
 			notifier := newAppendLogMaintenanceResultNotifier(
@@ -163,7 +164,7 @@ func TestAppendLogMaintenanceResultNotifierSeparatesCheckpointWarningsFromSaveEr
 				},
 				handlerStruct{
 					OnError: []logging.NamedLoggerErrorHandler{{Name: "stdout", Handler: func(
-						_ context.Context, err error, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter,
+						_ context.Context, err error, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter,
 					) {
 						reportedError = err
 						entries = append(entries, entry)
@@ -271,8 +272,8 @@ func TestAppendLogMaintenanceResultNotifierKeepsPostRemovalErrorSeparate(t *test
 			record := func(
 				_ context.Context,
 				entry *logging.LogEntry,
-				_ observer.Tracer,
-				_ observer.Meter,
+				_ pkgobserver.Tracer,
+				_ pkgobserver.Meter,
 			) {
 				entries = append(entries, entry)
 			}
@@ -289,8 +290,8 @@ func TestAppendLogMaintenanceResultNotifierKeepsPostRemovalErrorSeparate(t *test
 							_ context.Context,
 							err error,
 							entry *logging.LogEntry,
-							_ observer.Tracer,
-							_ observer.Meter,
+							_ pkgobserver.Tracer,
+							_ pkgobserver.Meter,
 						) {
 							gotErr = err
 							entries = append(entries, entry)
@@ -338,7 +339,7 @@ func TestAppendLogMaintenanceResultNotifierWritesToInternalLogFileDestination(t 
 				File: internalLogFile,
 			},
 		},
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		syncInternalLogFileDirectoryScopeLabel,
 		observer.NopTracer{},
@@ -395,8 +396,8 @@ func TestValidateAppendLogMaintenanceResultNotifierSelectorsRejectsQualifiedBack
 					context.Context,
 					error,
 					*logging.LogEntry,
-					observer.Tracer,
-					observer.Meter,
+					pkgobserver.Tracer,
+					pkgobserver.Meter,
 				) {
 				},
 			}},
@@ -421,7 +422,7 @@ func TestDeliveryAppendLogMaintenanceResultNotifierWritesToInternalLogFileDestin
 				File: internalLogFile,
 			},
 		},
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		deliveryInternalLogFileDirectoryScopeLabel,
 		observer.NopTracer{},

@@ -24,7 +24,7 @@ func TestCgroupLimitThresholdsRemainIndependent(t *testing.T) {
 		{"zero value", MemoryLimitUsage{}, .9, 1, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// A known cgroup constraint also works when the primary observation is unknown.
+			// 主観測が不明な場合も、既知のcgroup制約は機能します。
 			p := MemoryPressure{CgroupLimit: tc.limit}
 			if got := MeetsCriticalThresholds(p, tc.ratio, tc.available); got != tc.want {
 				t.Fatalf("MeetsCriticalThresholds(%+v) = %t, want %t", p, got, tc.want)
@@ -39,7 +39,7 @@ func TestCgroupLimitThresholdsRemainIndependent(t *testing.T) {
 // monitor.Last()で確認します。
 func TestCgroupLimitKeepsExistingObservationsAndCountsOnce(t *testing.T) {
 	p := MemoryPressure{CgroupLimit: MemoryLimitUsage{95, 100, true}}
-	// The new zero-value field must not suppress host or Windows process limits.
+	// ゼロ値の新しいfieldが、hostやWindowsのprocess上限を打ち消してはいけません。
 	for _, existing := range []MemoryPressure{
 		{Ratio: .95, Reliable: true},
 		{ProcessLimit: MemoryLimitUsage{95, 100, true}},

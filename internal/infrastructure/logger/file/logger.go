@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
@@ -26,6 +25,7 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgtime "github.com/go-jappe/heterolog/pkg/time"
 )
 
@@ -103,8 +103,8 @@ type FileLogger struct {
 	OnWarn  logging.LoggerHandlerFunc
 	OnInfo  logging.LoggerHandlerFunc
 	OnDebug logging.LoggerHandlerFunc
-	Tracer  observer.Tracer // observebility計装用
-	Meter   observer.Meter  // observebility計装用
+	Tracer  pkgobserver.Tracer // observebility計装用
+	Meter   pkgobserver.Meter  // observebility計装用
 
 	// internalLogReentryは、On*へ渡すcontextへこのFileLoggerの印を付け、通知を実行するgoroutineを
 	// 記録します。通知の中から同じFileLoggerへ書き込んだ場合、その書き込みが同期的に
@@ -158,7 +158,7 @@ func (l *FileLogger) HandleLogEntry(ctx context.Context, entry *logging.LogEntry
 	if err := l.logWithMeta(ctx, entry); err != nil {
 		// Close開始後の拒否はfile operation失敗ではなく、同期Logger契約上の
 		// pre-attempt refusalなので内部errorへ再委譲せず共通causeを維持します。
-		if errors.Is(err, applogging.ErrLoggerClosed) {
+		if errors.Is(err, pkglogger.ErrLoggerClosed) {
 			return err
 		}
 		// overload policyによるdropは、書込み処理の中でOnErrorへ通知済み（再入した
@@ -338,7 +338,7 @@ func (l *FileLogger) writeEntry(
 	// 「書き込み＋リトライ」
 	// retryはsleepを伴うため
 	// ベストエフォートで高並列性を求めるのであれば
-	// MaxWriteAttemptsを1にすること
+	// MaxWriteRetriesを0にすること
 	writtenBytes, err := l.Fsstore.WriteStringWithRetry(
 		ctx,
 		SpanFileWriteIO,
@@ -916,12 +916,12 @@ func (l *FileLogger) closeOwnedFileResource() (resultErr error) {
 // 前に拒否します。これにより、記録対象外のlevelでもClose後に成功扱いしません。
 func (l *FileLogger) rejectIfClosed() error {
 	if l == nil || l.forceRequested() {
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	l.backgroundMu.Lock()
 	defer l.backgroundMu.Unlock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	return nil
 }
@@ -932,12 +932,12 @@ func (l *FileLogger) rejectIfClosed() error {
 // 成功したcallerはerror・panicを含む全経路で予約を一度だけDoneしてください。
 func (l *FileLogger) lockForWrite() error {
 	if l == nil || l.forceRequested() {
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	l.backgroundMu.Lock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
 		l.backgroundMu.Unlock()
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	// Add(1)をCloseのstate遷移およびWait開始と同じmutexで順序付けます。
 	// この予約が残る間、受理済みwriteはClose開始後でもrotation archive childを
@@ -988,8 +988,8 @@ func newFileLoggerBase(
 	loggerType loggerType,
 	handlers InternalHandlers,
 	managedByLoggerSet bool,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	directories loggerDirectoryPaths,
 	providedSpoolRuntimes ...compressedlog.RootRuntimes,
 ) (*FileLogger, error) {

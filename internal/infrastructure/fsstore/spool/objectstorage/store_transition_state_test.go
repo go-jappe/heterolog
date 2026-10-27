@@ -35,7 +35,7 @@ func TestStoreClaimReportsMovedFileAfterDirectorySyncFailure(t *testing.T) {
 	restore()
 	requireMovedCompressedLogFile(t, published.Path, file.Path, content)
 
-	// The returned identity remains usable after restoring directory sync.
+	// directory同期を戻した後も、返されたidentityは引き続き使えます。
 	requeued, err := store.RequeueProcessing(ctx, file)
 	require.NoError(t, err)
 	require.Equal(t, published, requeued)
@@ -83,7 +83,7 @@ func TestStoreProcessingMovesReportMovedFileAfterDirectorySyncFailure(t *testing
 				restore()
 				requireMovedCompressedLogFile(t, processing.Path, moved.Path, content)
 
-				// Continue using the returned identity once sync is available again.
+				// 同期が再び使えるようになったら、返されたidentityを引き続き使います。
 				if state == pkgspool.StateActive {
 					next, claimed, err := store.ClaimOldestActive(ctx)
 					require.NoError(t, err)

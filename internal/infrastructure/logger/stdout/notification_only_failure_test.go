@@ -13,6 +13,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +39,7 @@ func TestNotificationOnlyStdoutHandlersWriteEachFailureToStandardLog(t *testing.
 	}{
 		// INFOの内部ログは標準出力へ、ERRORの内部ログは標準エラーへ書き込みます。
 		{name: "info_to_stdout", failing: "stdout", notify: target.NamedInfoHandler().Handler, level: pkglogger.LogLevelInfo},
-		{name: "error_to_stderr", failing: "stderr", notify: func(ctx context.Context, entry *logging.LogEntry, tracer observer.Tracer, meter observer.Meter) {
+		{name: "error_to_stderr", failing: "stderr", notify: func(ctx context.Context, entry *logging.LogEntry, tracer pkgobserver.Tracer, meter pkgobserver.Meter) {
 			errorHandler(ctx, nil, entry, tracer, meter)
 		}, level: pkglogger.LogLevelError},
 	} {

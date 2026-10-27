@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestFileLoggerForceCloseReleasesWaitersButKeepsActiveResources(t *testing.T) {
@@ -31,12 +31,12 @@ func TestFileLoggerForceCloseReleasesWaitersButKeepsActiveResources(t *testing.T
 		synctest.Wait()
 		require.Empty(t, closed)
 		require.NoError(t, operationContext.Err(), "normal Close must not cancel accepted recovery")
-		require.ErrorIs(t, logger.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, logger.ForceClose(), pkgshutdown.ErrForcedClose)
 		synctest.Wait()
 		require.ErrorIs(t, operationContext.Err(), context.Canceled)
-		require.ErrorIs(t, logger.rejectIfClosed(), applogging.ErrLoggerClosed)
+		require.ErrorIs(t, logger.rejectIfClosed(), pkglogger.ErrLoggerClosed)
 		for range cap(closed) {
-			require.ErrorIs(t, receiveForTest(t, closed, "Close result"), shutdown.ErrForcedClose)
+			require.ErrorIs(t, receiveForTest(t, closed, "Close result"), pkgshutdown.ErrForcedClose)
 		}
 		require.NotNil(t, logger.Fsstore.File)
 		logger.lifecycleGuard.WithProtectedPaths(func(protected map[string]struct{}) {
@@ -47,7 +47,7 @@ func TestFileLoggerForceCloseReleasesWaitersButKeepsActiveResources(t *testing.T
 			t.Fatal("actual shutdown completed while accepted recovery was still running")
 		default:
 		}
-		require.ErrorIs(t, closeBoundedForTest(t, boundedwait.BubbleTimeout, "logger Close", logger), shutdown.ErrForcedClose)
+		require.ErrorIs(t, closeBoundedForTest(t, boundedwait.BubbleTimeout, "logger Close", logger), pkgshutdown.ErrForcedClose)
 		unblock()
 		receiveForTest(t, logger.closeController.Done(), "shutdown worker completion")
 		require.Nil(t, logger.Fsstore.File)
@@ -70,8 +70,8 @@ func TestLoggerSetForceCloseDoesNotCreateLazyRoles(t *testing.T) {
 		closed := make(chan error, 1)
 		go func() { closed <- set.Close() }()
 		synctest.Wait()
-		require.ErrorIs(t, set.ForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, receiveForTest(t, closed, "Close result"), shutdown.ErrForcedClose)
+		require.ErrorIs(t, set.ForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, receiveForTest(t, closed, "Close result"), pkgshutdown.ErrForcedClose)
 		_, err = set.NewDebugFileLogger(context.Background())
 		require.ErrorIs(t, err, ErrLoggerSetClosed)
 		require.Len(t, set.loggers, 1)
@@ -89,9 +89,9 @@ func TestLoggerSetRequestForceCloseLeavesResourceDisposalToOwner(t *testing.T) {
 		require.NoError(t, err)
 		logger, err := set.NewFileLogger(context.Background())
 		require.NoError(t, err)
-		require.ErrorIs(t, set.RequestForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, logger.rejectIfClosed(), applogging.ErrLoggerClosed)
-		require.ErrorIs(t, logger.lockForWrite(), applogging.ErrLoggerClosed)
+		require.ErrorIs(t, set.RequestForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, logger.rejectIfClosed(), pkglogger.ErrLoggerClosed)
+		require.ErrorIs(t, logger.lockForWrite(), pkglogger.ErrLoggerClosed)
 		synctest.Wait()
 		require.NotNil(t, logger.Fsstore.File)
 		require.False(t, set.ShutdownComplete())
@@ -100,7 +100,7 @@ func TestLoggerSetRequestForceCloseLeavesResourceDisposalToOwner(t *testing.T) {
 			t.Fatal("中止要求だけで終了workerを開始しない")
 		default:
 		}
-		require.ErrorIs(t, closeBoundedForTest(t, boundedwait.BubbleTimeout, "set Close", set), shutdown.ErrForcedClose)
+		require.ErrorIs(t, closeBoundedForTest(t, boundedwait.BubbleTimeout, "set Close", set), pkgshutdown.ErrForcedClose)
 		receiveForTest(t, set.ShutdownDone(), "shutdown worker completion")
 		require.Nil(t, logger.Fsstore.File)
 		require.True(t, set.ShutdownComplete())

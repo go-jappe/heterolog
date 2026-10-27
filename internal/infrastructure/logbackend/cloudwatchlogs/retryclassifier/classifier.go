@@ -40,8 +40,8 @@ func ClassifyRetry(ctx context.Context, err error) retryable.RetryDecision {
 		return ClassifyRetry(ctx, prior.current)
 	}
 	if creationErr := autoCreateFailure(err); creationErr != nil {
-		// Classify the failed management operation, rather than the earlier
-		// ResourceNotFound that triggered automatic stream creation.
+		// streamの自動作成のきっかけとなった先のResourceNotFoundではなく、失敗した管理操作を
+		// 分類します。
 		return ClassifyRetry(ctx, creationErr.CreateError)
 	}
 	if unsent := requestNotSentFailure(err); unsent != nil {
@@ -129,9 +129,9 @@ func IsRequestEntityTooLarge(err error) bool {
 	return errors.As(err, &statusErr) && statusErr.StatusCode() == http.StatusRequestEntityTooLarge
 }
 
-// ClassifyDurableRequestOutcome distinguishes credential retrieval and stream
-// creation failures from cancellation of a dispatched PutLogEvents. Only the
-// latter can leave acceptance of the log events uncertain.
+// ClassifyDurableRequestOutcomeは、credentialの取得やstream作成の失敗を、送信済みの
+// PutLogEventsのcancelと区別します。log eventが受理されたかどうかが不確かになり得るのは
+// 後者だけです。
 func ClassifyDurableRequestOutcome(ctx context.Context, err error) retryable.RetryDecision {
 	if prior := priorAttemptFailure(err); prior != nil {
 		return prior.decision
@@ -146,7 +146,7 @@ func ClassifyDurableRequestOutcome(ctx context.Context, err error) retryable.Ret
 }
 
 func requestNotSentFailure(err error) *pkgcloudwatchlogs.RequestNotSentError {
-	// Do not recover one branch of a join that also describes an uncertain send.
+	// 結果が不確かな送信も表すjoinからは、一つの枝だけを取り出しません。
 	for cause := err; cause != nil; cause = errors.Unwrap(cause) {
 		if _, unknown := cause.(*pkgcloudwatchlogs.ResponseDecodeError); unknown {
 			return nil
@@ -162,8 +162,8 @@ func requestNotSentFailure(err error) *pkgcloudwatchlogs.RequestNotSentError {
 }
 
 func autoCreateFailure(err error) *pkgcloudwatchlogs.AutoCreateLogStreamError {
-	// A joined branch may describe a different, uncertain PutLogEvents attempt.
-	// Follow ordinary wrapping only; errors.As would also search such joins.
+	// joinされた枝は、結果が不確かな別のPutLogEventsの試行を表している場合があります。
+	// 通常のwrapだけをたどります。errors.Asでは、そうしたjoinも探索してしまいます。
 	for cause := err; cause != nil; cause = errors.Unwrap(cause) {
 		if creationErr, ok := cause.(*pkgcloudwatchlogs.AutoCreateLogStreamError); ok {
 			if creationErr.CreateError != nil && pkgcloudwatchlogs.IsResourceNotFound(creationErr.PutError) {
@@ -178,15 +178,15 @@ func autoCreateFailure(err error) *pkgcloudwatchlogs.AutoCreateLogStreamError {
 func classifyAutoCreateFailure(err *pkgcloudwatchlogs.AutoCreateLogStreamError) retryable.RetryDecision {
 	decision := ClassifyRetry(context.Background(), err.CreateError)
 	if decision.Code >= 400 && decision.Code <= 599 {
-		// A permanent creation refusal (for example AccessDenied) remains
-		// permanent; a known transient refusal retains its retry policy.
+		// 作成の恒久的な拒否（たとえばAccessDenied）は恒久的なままです。既知の一時的な拒否は、
+		// そのretry policyを保ちます。
 		return decision
 	}
-	// Creation may have succeeded or may succeed later. The log request was
-	// rejected and has not been dispatched again, so replay cannot duplicate it.
-	// Keep the confirmed Put status separately from the original error causes.
+	// 作成はすでに成功したか、後で成功する可能性があります。logのrequestは拒否され、
+	// その後再び送信されていないため、replayしても重複しません。
+	// 確認済みのPutのstatusは、元のerrorの原因とは別に保持します。
 	var putStatus *pkgcloudwatchlogs.HTTPStatusError
-	_ = errors.As(err.PutError, &putStatus) // guaranteed by IsResourceNotFound
+	_ = errors.As(err.PutError, &putStatus) // IsResourceNotFoundで保証されています
 	return retryable.RetryDecision{
 		Retry: true, Reason: retryable.RetryReasonServiceTransient, Code: putStatus.Code,
 	}

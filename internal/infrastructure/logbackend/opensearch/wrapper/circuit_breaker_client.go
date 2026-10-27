@@ -7,6 +7,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/circuitbreaker"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/opensearch/retryclassifier"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/opensearch"
 )
 
@@ -21,16 +22,16 @@ type CircuitBreakerClient struct {
 
 func newCircuitBreakerClient(
 	next opensearch.Client,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *CircuitBreakerClient {
 	return newCircuitBreakerClientWithCircuitBreaker(next, tracer, meter, retryable.NewCircuitBreaker(retryable.CircuitBreakerOptions{}))
 }
 
 func newCircuitBreakerClientWithCircuitBreaker(
 	next opensearch.Client,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	circuitBreaker *retryable.CircuitBreaker,
 ) *CircuitBreakerClient {
 	tracer = observer.EnsureTracer(tracer)

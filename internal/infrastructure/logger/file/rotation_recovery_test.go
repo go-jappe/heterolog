@@ -15,7 +15,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/testutil"
@@ -39,8 +38,8 @@ func TestFileLoggersRecoverAfterRotationOpenFailure(t *testing.T) {
 				writer.guard.WithProtectedPaths(func(paths map[string]struct{}) {
 					require.Contains(t, paths, nextPath)
 				})
-				// Close waits for any inline archive. Its contents must still be the
-				// old generation only; the new active generation must stay raw.
+				// Closeは、inlineのarchiveがあればそれを待ちます。archiveの内容は旧世代だけの
+				// ままでなければならず、新しいactive世代はrawのままでなければなりません。
 				require.NoError(t, writer.close())
 				if kind == "file_inline" {
 					require.NoFileExists(t, oldPath)
@@ -63,7 +62,7 @@ func TestFileLoggersRecoverAfterRotationOpenFailure(t *testing.T) {
 				require.Equal(t, 1, bytes.Count(content, []byte("following record")))
 				require.NotContains(t, string(content), "failed record")
 				require.NoFileExists(t, nextPath+".gz")
-				require.ErrorIs(t, writer.write("after close"), applogging.ErrLoggerClosed)
+				require.ErrorIs(t, writer.write("after close"), pkglogger.ErrLoggerClosed)
 			})
 		}
 	}
@@ -147,7 +146,7 @@ func TestFileLoggersCloseDuringPendingRotationReleasesProtection(t *testing.T) {
 				require.NotContains(t, paths, oldPath)
 			})
 			require.NoError(t, os.Remove(nextPath))
-			require.ErrorIs(t, writer.write("after close"), applogging.ErrLoggerClosed)
+			require.ErrorIs(t, writer.write("after close"), pkglogger.ErrLoggerClosed)
 			require.NoFileExists(t, nextPath)
 			content, err := os.ReadFile(oldPath)
 			require.NoError(t, err)
@@ -172,8 +171,8 @@ func TestFileLoggerPendingRotationReopensSamePathWithoutArchiving(t *testing.T) 
 	want := logger.LogFormatter.Format(entry) + "\n"
 	oldPath := logger.Fsstore.ActiveFilePath
 	oldName := logger.Fsstore.FileName
-	// Force a same-generation reopen through the existing rotation entry point.
-	// The bad directory is removed from the fixture before the next public write.
+	// 既存のrotationの入口を通して、同じ世代のreopenを強制します。
+	// 不正なdirectoryは、次に公開の入口から書き込む前にfixtureから取り除きます。
 	notDirectory := filepath.Join(t.TempDir(), "not-a-directory")
 	require.NoError(t, os.WriteFile(notDirectory, []byte("block child open"), 0o600))
 	logger.Fsstore.FileName.Dir = notDirectory
@@ -200,13 +199,13 @@ type rotationRecoveryWriter struct {
 	setTime     func(time.Time)
 	write       func(string) error
 	close       func() error
-	// waitBackground waits for the background work, such as inline cleanup,
-	// that the logger accepted for the writes so far.
+	// waitBackgroundは、それまでの書き込みについてloggerが受け付けた、
+	// inline cleanupなどのbackground処理を待ちます。
 	waitBackground func()
 }
 
-// Inline cleanup can read the clock after write returns. Keep the same Clock
-// instance throughout the test and synchronize changes to its time.
+// inline cleanupは、writeが戻った後にclockを読むことがあります。test全体で同じClock
+// instanceを使い続け、その時刻の変更を同期します。
 type rotationRecoveryClock struct {
 	mu sync.RWMutex
 	at time.Time
@@ -243,13 +242,13 @@ func newRotationRecoveryWriter(t *testing.T, kind string) rotationRecoveryWriter
 			maxFileSize: cfg.FsstoreConfig.Rotation.MaxFileSize,
 			setTime:     testClock.set,
 			close:       logger.Close,
-			// The delivery file logger starts no background work.
+			// delivery file loggerはbackground処理を開始しません。
 			waitBackground: func() {},
 			write: func(message string) error {
 				report, err := logger.HandleLogEntry(ctx, entry(message))
 				if err == nil {
 					requireDeliverySucceeded(t, report, err)
-				} else if errors.Is(err, applogging.ErrLoggerClosed) {
+				} else if errors.Is(err, pkglogger.ErrLoggerClosed) {
 					requireDeliveryFileClosedRejection(t, report)
 				} else {
 					result := requireSingleDeliveryTarget(t, report)
@@ -283,8 +282,8 @@ func newRotationRecoveryWriter(t *testing.T, kind string) rotationRecoveryWriter
 	return writer
 }
 
-// Use a directory at the next filename to cause a real open error without
-// permission tricks or OS-specific hooks. Removing it restores the filesystem.
+// 次のfilenameの位置にdirectoryを置き、権限の細工やOS固有のhookを使わずに実際のopen errorを
+// 起こします。そのdirectoryを削除すると、filesystemは元に戻ります。
 func failRotationOpen(t *testing.T, writer rotationRecoveryWriter, rotation string) (oldPath, nextPath string, oldContent []byte) {
 	t.Helper()
 	at, err := time.Parse(pkgfsstore.FileDateFormat, writer.store.FileName.Date)
@@ -317,9 +316,9 @@ func failRotationOpen(t *testing.T, writer rotationRecoveryWriter, rotation stri
 	writer.setTime(at)
 	for range 2 {
 		require.Error(t, writer.write("failed record"))
-		// Inline cleanup that the write starts scans the directory and protects the
-		// directory at the next name while it preserves that entry. Wait for it so the
-		// checks below see only what the failed rotation itself left behind.
+		// writeが開始するinline cleanupはdirectoryを走査し、そのentryを保全する間、次の名前に
+		// あるdirectoryを保護します。以下の確認が、失敗したrotation自体が残したものだけを
+		// 見るように、そのcleanupを待ちます。
 		writer.waitBackground()
 		require.Equal(t, oldPath, writer.store.ActiveFilePath)
 		require.Equal(t, oldName, writer.store.FileName)

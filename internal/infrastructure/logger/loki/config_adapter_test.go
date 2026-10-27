@@ -17,7 +17,7 @@ func TestRetryConfigProviderPreservesInvalidModeForChainValidation(t *testing.T)
 		t.Run(string(mode), func(t *testing.T) {
 			provider := NewRetryConfigProvider(&pkglogger.LokiRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: mode,
-				MaxAttempts:     2,
+				MaxRetries:      1,
 				BaseDelay:       time.Millisecond,
 				MaxDelay:        time.Second,
 			})
@@ -50,7 +50,7 @@ func TestNewRetryConfigProviderMapsSelectedClientChain(t *testing.T) {
 
 	cfg := &pkglogger.LokiRetryableClientCaseTransportErrorConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicyWithBreaker,
-		MaxAttempts:     4,
+		MaxRetries:      3,
 		BaseDelay:       25 * time.Millisecond,
 		MaxDelay:        time.Second,
 	}
@@ -61,8 +61,9 @@ func TestNewRetryConfigProviderMapsSelectedClientChain(t *testing.T) {
 	if got := provider.RetryClientSelection(); !got.UseRetryPolicyClient || !got.UseCircuitBreakerClient {
 		t.Fatalf("RetryClientSelection() = %+v, want retry policy with circuit breaker", got)
 	}
-	if got := provider.MaxAttempts(); got != cfg.MaxAttempts {
-		t.Fatalf("MaxAttempts() = %d, want %d", got, cfg.MaxAttempts)
+	// wrapperへは、再試行の回数に初回を足した試行回数を渡します。
+	if got := provider.MaxAttempts(); got != cfg.MaxRetries+1 {
+		t.Fatalf("MaxAttempts() = %d, want %d", got, cfg.MaxRetries+1)
 	}
 }
 

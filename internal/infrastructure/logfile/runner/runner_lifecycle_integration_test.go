@@ -15,10 +15,10 @@ import (
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	loglifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 type panicOnceRunnerUploader struct {
@@ -133,14 +133,14 @@ func TestRunnerForceCloseCancelsAcceptedCycle(t *testing.T) {
 			t.Fatalf("normal cancellation abandoned accepted upload: %v", err)
 		default:
 		}
-		require.ErrorIs(t, runner.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, runner.ForceClose(), pkgshutdown.ErrForcedClose)
 		select {
 		case err := <-done:
 			require.ErrorIs(t, err, context.Canceled)
 		case <-time.After(time.Minute):
 			t.Fatal("force did not cancel accepted upload")
 		}
-		require.ErrorIs(t, boundedwait.CloseInBubble(t, "runner.CloseObjectStorageCompressedLogFileUploadFailureRoutes()", runner.CloseObjectStorageCompressedLogFileUploadFailureRoutes, runner.ForceClose), shutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.CloseInBubble(t, "runner.CloseObjectStorageCompressedLogFileUploadFailureRoutes()", runner.CloseObjectStorageCompressedLogFileUploadFailureRoutes, runner.ForceClose), pkgshutdown.ErrForcedClose)
 	})
 }
 

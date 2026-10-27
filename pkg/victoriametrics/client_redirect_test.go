@@ -115,7 +115,7 @@ func TestMetricRedirectHonorsCallerErrorsAndRejectsEmptyPOST(t *testing.T) {
 				return redirectResponse(r, http.StatusFound), nil
 			}), CheckRedirect: func(r *http.Request, _ []*http.Request) error {
 				callbacks++
-				r.Method = http.MethodPost // Restoring the method alone must not hide the lost body.
+				r.Method = http.MethodPost // methodだけを戻しても、失われたbodyが隠れてはいけません。
 				return policyErr
 			}}
 			err := newRedirectSend(t, httpClient)()
@@ -133,7 +133,7 @@ func TestMetricRedirectHonorsCallerErrorsAndRejectsEmptyPOST(t *testing.T) {
 				t.Fatalf("requests=%d callbacks=%d, want 1 each", requests, callbacks)
 			}
 			if policyErr == nil {
-				// The library's guard must not change requests made directly by the owner.
+				// libraryのguardは、所有者が直接送るrequestを変えてはいけません。
 				req, err := http.NewRequest(http.MethodPost, "http://metrics.invalid/write", strings.NewReader("other payload"))
 				if err != nil {
 					t.Fatal(err)

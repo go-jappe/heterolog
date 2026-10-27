@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
@@ -46,14 +46,14 @@ const spoolFileMode = 0o600
 type SpoolStore struct {
 	clock   clock.Clock
 	Config  SpoolStoreConfigProvider
-	RootDir spool.Dir // 保存先ルートパス ex.) /var/lib/hetelolog/spool/opensearch
+	RootDir spool.Dir // 保存先ルートパス ex.) /var/lib/heterolog/spool/opensearch
 
 	OnError logging.LoggerErrorHandler
 	OnWarn  logging.LoggerHandlerFunc
 	OnInfo  logging.LoggerHandlerFunc
 	OnDebug logging.LoggerHandlerFunc
-	Tracer  observer.Tracer
-	Meter   observer.Meter
+	Tracer  pkgobserver.Tracer
+	Meter   pkgobserver.Meter
 }
 
 func (s *SpoolStore) stateDir(state pkgspool.State) (spool.StateDir, error) {
@@ -76,8 +76,8 @@ func (s *SpoolStore) stateDir(state pkgspool.State) (spool.StateDir, error) {
 func NewSpoolStore(
 	timeSource clock.Clock,
 	cfg SpoolStoreConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*SpoolStore, error) {
 	if timeSource == nil {
 		return nil, errors.New("spool store clock is nil")

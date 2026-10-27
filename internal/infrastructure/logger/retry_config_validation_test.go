@@ -8,16 +8,16 @@ import (
 
 	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
 )
 
 type directRetryConfigValues struct {
-	mode        pkglogger.RetryClientMode
-	maxAttempts int
-	baseDelay   time.Duration
-	maxDelay    time.Duration
+	mode       pkglogger.RetryClientMode
+	maxRetries int
+	baseDelay  time.Duration
+	maxDelay   time.Duration
 }
 
 const (
@@ -42,34 +42,34 @@ func TestDirectLoggerConstructorsRejectInvalidRetryConfigForActiveBackend(t *tes
 		{
 			name: "unknown mode",
 			values: directRetryConfigValues{
-				mode:        pkglogger.RetryClientMode("future-mode"),
-				maxAttempts: 1,
-				baseDelay:   time.Millisecond,
-				maxDelay:    time.Millisecond,
+				mode:       pkglogger.RetryClientMode("future-mode"),
+				maxRetries: 0,
+				baseDelay:  time.Millisecond,
+				maxDelay:   time.Millisecond,
 			},
 			wantErr:   pkglogger.ErrUnsupportedRetryClientMode,
 			wantField: pkglogger.ConfigFieldRetryClientMode,
 			wantValue: pkglogger.RetryClientMode("future-mode"),
 		},
 		{
-			name: "invalid attempts",
+			name: "negative retries",
 			values: directRetryConfigValues{
-				maxAttempts: -1,
-				mode:        pkglogger.RetryClientModeRetry,
-				baseDelay:   time.Millisecond,
-				maxDelay:    time.Millisecond,
+				maxRetries: -1,
+				mode:       pkglogger.RetryClientModeRetry,
+				baseDelay:  time.Millisecond,
+				maxDelay:   time.Millisecond,
 			},
-			wantErr:   pkglogger.ErrNonPositiveSetting,
-			wantField: pkglogger.ConfigFieldRetryMaxAttempts,
+			wantErr:   pkglogger.ErrNegativeSetting,
+			wantField: pkglogger.ConfigFieldRetryMaxRetries,
 			wantValue: -1,
 		},
 		{
 			name: "invalid base delay",
 			values: directRetryConfigValues{
-				mode:        pkglogger.RetryClientModeRetry,
-				maxAttempts: 1,
-				baseDelay:   -time.Millisecond,
-				maxDelay:    time.Millisecond,
+				mode:       pkglogger.RetryClientModeRetry,
+				maxRetries: 0,
+				baseDelay:  -time.Millisecond,
+				maxDelay:   time.Millisecond,
 			},
 			wantErr:   pkglogger.ErrNonPositiveSetting,
 			wantField: pkglogger.ConfigFieldRetryBaseDelay,
@@ -78,10 +78,10 @@ func TestDirectLoggerConstructorsRejectInvalidRetryConfigForActiveBackend(t *tes
 		{
 			name: "invalid max delay",
 			values: directRetryConfigValues{
-				mode:        pkglogger.RetryClientModeRetry,
-				maxAttempts: 1,
-				baseDelay:   time.Millisecond,
-				maxDelay:    -time.Millisecond,
+				mode:       pkglogger.RetryClientModeRetry,
+				maxRetries: 0,
+				baseDelay:  time.Millisecond,
+				maxDelay:   -time.Millisecond,
 			},
 			wantErr:   pkglogger.ErrNonPositiveSetting,
 			wantField: pkglogger.ConfigFieldRetryMaxDelay,
@@ -177,7 +177,7 @@ func constructNormalLoggerWithRetryConfig(
 		cfg, _, _ := newHandlerOnlyLoggerConfig(t, backend)
 		cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{backend}
 		setLoggerRetryConfig(&cfg, backend, values)
-		_, err := NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, tracer, meter)
+		_, err := NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, tracer, meter)
 		return err
 	case "async":
 		base, _, _ := newHandlerOnlyLoggerConfig(t, backend)
@@ -186,7 +186,7 @@ func constructNormalLoggerWithRetryConfig(
 		_, err := NewAsyncLogger(
 			context.Background(),
 			directRetryAsyncConfig(base),
-			streamrouting.None,
+			pkgcloudwatchlogs.StreamRoutingNone,
 			nil,
 			nil,
 			tracer,
@@ -198,7 +198,7 @@ func constructNormalLoggerWithRetryConfig(
 		cfg, _, _ := newHandlerOnlyDeliveryConfig(t, backend)
 		cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{backend}
 		setDeliveryRetryConfig(&cfg, backend, values)
-		_, err := NewDeliveryLogger(context.Background(), cfg, streamrouting.None, tracer, meter)
+		_, err := NewDeliveryLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, tracer, meter)
 		return err
 	default:
 		t.Fatalf("unsupported constructor mode %q", mode)
@@ -365,7 +365,7 @@ func constructLoggerWithRetryConfig(
 			)
 		}
 
-		created, err := NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, tracer, meter)
+		created, err := NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, tracer, meter)
 		if err != nil {
 			return nil, err
 		}
@@ -389,7 +389,7 @@ func constructLoggerWithRetryConfig(
 		}
 		cfg := directRetryAsyncConfig(base)
 
-		created, err := NewAsyncLogger(context.Background(), cfg, streamrouting.None, nil, nil, tracer, meter)
+		created, err := NewAsyncLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, tracer, meter)
 		if err != nil {
 			return nil, err
 		}
@@ -412,7 +412,7 @@ func constructLoggerWithRetryConfig(
 			)
 		}
 
-		created, err := NewDeliveryLogger(context.Background(), cfg, streamrouting.None, tracer, meter)
+		created, err := NewDeliveryLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, tracer, meter)
 		if err != nil {
 			return nil, err
 		}
@@ -451,10 +451,10 @@ func directRetrySourceRouting(selector string) pkgloggerhandler.HandlerConfig {
 
 func validDirectRetryConfig() directRetryConfigValues {
 	return directRetryConfigValues{
-		mode:        pkglogger.RetryClientModeRetryPolicy,
-		maxAttempts: 1,
-		baseDelay:   time.Millisecond,
-		maxDelay:    time.Millisecond,
+		mode:       pkglogger.RetryClientModeRetryPolicy,
+		maxRetries: 0,
+		baseDelay:  time.Millisecond,
+		maxDelay:   time.Millisecond,
 	}
 }
 
@@ -490,7 +490,7 @@ func setLoggerRetryConfig(
 		cfg.OpenSearch.OpenSearchRetryableClientCaseTransportErrorConfig =
 			&pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: values.mode,
-				MaxAttempts:     values.maxAttempts,
+				MaxRetries:      values.maxRetries,
 				BaseDelay:       values.baseDelay,
 				MaxDelay:        values.maxDelay,
 			}
@@ -502,7 +502,7 @@ func setLoggerRetryConfig(
 		cfg.Loki.LokiRetryableClientCaseTransportErrorConfig =
 			&pkglogger.LokiRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: values.mode,
-				MaxAttempts:     values.maxAttempts,
+				MaxRetries:      values.maxRetries,
 				BaseDelay:       values.baseDelay,
 				MaxDelay:        values.maxDelay,
 			}
@@ -513,7 +513,7 @@ func setLoggerRetryConfig(
 		cfg.CloudWatchLogs.CloudWatchLogsRetryableClientCaseTransportErrorConfig =
 			&pkglogger.CloudWatchLogsRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: values.mode,
-				MaxAttempts:     values.maxAttempts,
+				MaxRetries:      values.maxRetries,
 				BaseDelay:       values.baseDelay,
 				MaxDelay:        values.maxDelay,
 			}
@@ -523,7 +523,7 @@ func setLoggerRetryConfig(
 		cfg.ClickHouse.ClickHouseRetryableClientCaseTransportErrorConfig =
 			&pkglogger.ClickHouseRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: values.mode,
-				MaxAttempts:     values.maxAttempts,
+				MaxRetries:      values.maxRetries,
 				BaseDelay:       values.baseDelay,
 				MaxDelay:        values.maxDelay,
 			}
@@ -540,7 +540,7 @@ func setDeliveryRetryConfig(
 		cfg.OpenSearch.OpenSearchRetryableClientCaseTransportErrorConfig =
 			&pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: values.mode,
-				MaxAttempts:     values.maxAttempts,
+				MaxRetries:      values.maxRetries,
 				BaseDelay:       values.baseDelay,
 				MaxDelay:        values.maxDelay,
 			}
@@ -550,7 +550,7 @@ func setDeliveryRetryConfig(
 		cfg.Loki.LokiRetryableClientCaseTransportErrorConfig =
 			&pkglogger.LokiRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: values.mode,
-				MaxAttempts:     values.maxAttempts,
+				MaxRetries:      values.maxRetries,
 				BaseDelay:       values.baseDelay,
 				MaxDelay:        values.maxDelay,
 			}
@@ -558,7 +558,7 @@ func setDeliveryRetryConfig(
 		cfg.CloudWatchLogs.CloudWatchLogsRetryableClientCaseTransportErrorConfig =
 			&pkglogger.CloudWatchLogsRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: values.mode,
-				MaxAttempts:     values.maxAttempts,
+				MaxRetries:      values.maxRetries,
 				BaseDelay:       values.baseDelay,
 				MaxDelay:        values.maxDelay,
 			}
@@ -568,7 +568,7 @@ func setDeliveryRetryConfig(
 		cfg.ClickHouse.ClickHouseRetryableClientCaseTransportErrorConfig =
 			&pkglogger.ClickHouseRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: values.mode,
-				MaxAttempts:     values.maxAttempts,
+				MaxRetries:      values.maxRetries,
 				BaseDelay:       values.baseDelay,
 				MaxDelay:        values.maxDelay,
 			}

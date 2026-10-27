@@ -9,11 +9,10 @@ import (
 	"testing/synctest"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // 通常終了は送信結果の通知も受理済み処理として待ち、通知先が使用中のmanagerを先に閉じません。
@@ -30,7 +29,7 @@ func TestClickHouseLoggerCloseWaitsForTimerErrorNotification(t *testing.T) {
 		logger.mu.Lock()
 		// managerの欠落を検出した実際のOnError経路を、timerから実行します。
 		logger.flushManager = nil
-		logger.OnError = func(ctx context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		logger.OnError = func(ctx context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			if err == nil {
 				t.Error("missing flush manager did not produce an error notification")
 			}
@@ -104,7 +103,7 @@ func TestClickHouseLoggerCloseWaitsForThresholdFlushErrorNotification(t *testing
 		t.Cleanup(func() { _ = logger.Close(context.Background()) })
 		t.Cleanup(releaseNotification)
 		var notificationCtx context.Context
-		logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			notificationCtx = ctx
 			close(entered)
 			<-release
@@ -182,10 +181,10 @@ func TestClickHouseLoggerCloseWaitsForTimerFlushAndSerializesFlushManager(t *tes
 		// 扱われるため、各goroutineが進める所まで進んだ後に、Closeが戻っていないことを確認できます。
 		synctest.Wait()
 
-		if err := handleTestInfo(context.Background(), logger, "after close started"); !errors.Is(err, applogging.ErrLoggerClosed) {
+		if err := handleTestInfo(context.Background(), logger, "after close started"); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("HandleLogEntry() while closing error = %v, want ErrLoggerClosed", err)
 		}
-		if err := handleTestErrorWithStack(context.Background(), logger, "stack without error after close started", nil); !errors.Is(err, applogging.ErrLoggerClosed) {
+		if err := handleTestErrorWithStack(context.Background(), logger, "stack without error after close started", nil); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("HandleLogEntry(stack, nil error) while closing error = %v, want ErrLoggerClosed", err)
 		}
 		if got := lifecycleClickHouseEntryCount(logger); got != queuedBeforeClose {
@@ -255,7 +254,7 @@ func TestClickHouseLoggerCloseJoinsFlushAndManagerErrorsWithoutResendingSnapshot
 		t.Fatalf("entries after failed final flush = %d, want 0", got)
 	}
 
-	if err := handleTestInfo(context.Background(), logger, "rejected while manager close is pending"); !errors.Is(err, applogging.ErrLoggerClosed) {
+	if err := handleTestInfo(context.Background(), logger, "rejected while manager close is pending"); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 		t.Fatalf("HandleLogEntry() while closing error = %v, want ErrLoggerClosed", err)
 	}
 	if got := lifecycleClickHouseEntryCount(logger); got != 0 {
@@ -394,7 +393,7 @@ func TestDeliveryClickHouseLoggerCloseWaitsForBackgroundFlushAndRejectsNewDelive
 		}
 
 		rejectedReport, rejectedErr := handleTestDeliveryInfo(context.Background(), logger, "after delivery close started")
-		if !errors.Is(rejectedErr, applogging.ErrLoggerClosed) {
+		if !errors.Is(rejectedErr, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Delivery HandleLogEntry() while closing error = %v, want ErrLoggerClosed", rejectedErr)
 		}
 		if len(rejectedReport.Targets) != 1 ||
@@ -402,7 +401,7 @@ func TestDeliveryClickHouseLoggerCloseWaitsForBackgroundFlushAndRejectsNewDelive
 			t.Fatalf("Delivery HandleLogEntry() while closing report = %+v, want rejected target", rejectedReport)
 		}
 		stackReport, stackErr := handleTestDeliveryErrorWithStack(context.Background(), logger, "stack without error after close started", nil)
-		if !errors.Is(stackErr, applogging.ErrLoggerClosed) {
+		if !errors.Is(stackErr, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Delivery HandleLogEntry(stack, nil error) while closing error = %v, want ErrLoggerClosed", stackErr)
 		}
 		if len(stackReport.Targets) != 1 || stackReport.Targets[0].Status != pkglogger.DeliveryRejected {

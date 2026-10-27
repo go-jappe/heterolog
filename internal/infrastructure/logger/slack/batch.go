@@ -22,7 +22,7 @@ func (s *SlackLogger) stopBatchTimerLocked() {
 }
 
 type slackBatchSchedule struct {
-	timer *time.Timer // mu protects initialization and ownership checks.
+	timer *time.Timer // muが初期化と所有権の確認を保護します。
 }
 
 // scheduleBatchTimerLockedはmuを保持して呼びます。sendはsendMuの下で実行し、

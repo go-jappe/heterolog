@@ -13,7 +13,7 @@ type OpenSearchSpanConfig struct {
 	RecordByTraceIdEnabled bool
 	RecordByTraceIdRate    int
 	SamplingRate           int
-	MaxRetryAttempts       int
+	MaxRetries             int
 	RetryWaitTime          time.Duration
 	OnFallbackLogConfig    []string
 }

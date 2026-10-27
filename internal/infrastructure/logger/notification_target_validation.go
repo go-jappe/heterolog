@@ -2,10 +2,8 @@ package logger
 
 import (
 	"errors"
-	"fmt"
 
 	clickhousewrapper "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/clickhouse/wrapper"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	cloudwatchlogswrapper "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/wrapper"
 	lokiwrapper "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/loki/wrapper"
 	infraopensearch "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/opensearch"
@@ -22,29 +20,6 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
 )
-
-// ErrInvalidNotificationTargetは、内部ログの通知先として選んだbackendの設定から、通知専用の
-// 書き込み先を作れないことを表します。NotificationTargetErrorとして返し、errors.Isで判定できます。
-var ErrInvalidNotificationTarget = errors.New("invalid internal log notification target")
-
-// NotificationTargetErrorは、Sourceのloggerで内部ログの通知先（OnErrorConfig・OnWarnConfig・
-// OnInfoConfig・OnDebugConfig）に選んだBackendの設定から、通知専用の書き込み先を作れないことを
-// 表します。Errは原因です（例: 時刻表示のtimezoneを読み込めない）。通知の初回ではなく
-// loggerの構築時に返すため、通知が黙って捨てられることはありません。
-type NotificationTargetError struct {
-	Source  string
-	Backend pkglogger.LogOutputDestination
-	Err     error
-}
-
-func (e *NotificationTargetError) Error() string {
-	return fmt.Sprintf("%s internal log notification target %s: %v", e.Source, e.Backend, e.Err)
-}
-
-// UnwrapはErrInvalidNotificationTargetと原因を返します。
-func (e *NotificationTargetError) Unwrap() []error {
-	return []error{ErrInvalidNotificationTarget, e.Err}
-}
 
 // effectiveInternalLogConfigは、base設定へinternal log専用の保存先を反映した、内部ログの通知先が
 // 実際に使う設定と、専用の保存先だけを持つ設定を返します。専用の保存先がなければbase設定を
@@ -117,7 +92,7 @@ func (c *notificationTargetChecks) check(backend pkglogger.LogOutputDestination,
 		return
 	}
 	if err := validate(); err != nil {
-		c.errs = append(c.errs, &NotificationTargetError{Source: c.source, Backend: backend, Err: err})
+		c.errs = append(c.errs, &pkglogger.NotificationTargetError{Source: c.source, Backend: backend, Err: err})
 	}
 }
 
@@ -128,7 +103,7 @@ func (c *notificationTargetChecks) check(backend pkglogger.LogOutputDestination,
 func validateLoggerNotificationTargets(
 	sourceLabel string,
 	cfg pkglogger.LoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
 ) error {
 	effective, _ := effectiveInternalLogConfig(cfg)
 	checks := notificationTargetChecks{
@@ -178,7 +153,7 @@ func validateLoggerNotificationTargets(
 func validateDeliveryLoggerNotificationTargets(
 	sourceLabel string,
 	cfg pkglogger.DeliveryLoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
 ) error {
 	effective, _ := effectiveDeliveryInternalLogConfig(cfg)
 	checks := notificationTargetChecks{
@@ -277,7 +252,7 @@ func deliveryLokiNotificationConfig(cfg pkglogger.DeliveryLoggerConfig) (
 // fallback設定です。getDeliveryHandlerと構築時の検証が同じ設定を使います。
 func deliveryCloudWatchLogsNotificationConfig(
 	cfg pkglogger.DeliveryLoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
 ) (
 	cloudwatchlogslogger.CloudWatchLogsConfigProvider,
 	*pkgcloudwatchlogs.Config,

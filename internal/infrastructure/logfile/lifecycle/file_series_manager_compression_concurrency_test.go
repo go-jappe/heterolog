@@ -15,9 +15,9 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestFileSeriesManagerCompressionRetentionDoesNotBlockWriterTransitions(t *testing.T) {
@@ -134,8 +134,8 @@ func TestFileSeriesManagerCompressionRetentionDoesNotBlockWriterTransitions(t *t
 						for _, path := range []string{sourcePath, peerPath} {
 							require.False(t, claimCompressionConcurrencyPath(guard, path), "accepted recovery lost protection for %s", path)
 						}
-						require.ErrorIs(t, manager.ForceClose(), shutdown.ErrForcedClose)
-						require.ErrorIs(t, boundedwait.Close(t, "manager.Close()", manager.Close, boundedwait.ForceCloserOf(manager)), shutdown.ErrForcedClose)
+						require.ErrorIs(t, manager.ForceClose(), pkgshutdown.ErrForcedClose)
+						require.ErrorIs(t, boundedwait.Close(t, "manager.Close()", manager.Close, boundedwait.ForceCloserOf(manager)), pkgshutdown.ErrForcedClose)
 					}
 					for _, path := range []string{sourcePath, peerPath} {
 						require.True(t, claimCompressionConcurrencyPath(guard, path), "completed operation leaked retention for %s", path)

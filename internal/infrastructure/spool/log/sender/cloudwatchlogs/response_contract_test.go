@@ -15,8 +15,8 @@ import (
 	"github.com/go-jappe/heterolog/pkg/spool"
 )
 
-// Exercise the default HTTP transport's gzip decompression and actual client,
-// so a parseable JSON prefix cannot release records after a checksum failure.
+// default HTTP transportのgzip展開と実際のclientを動かし、checksumの失敗後に
+// parseできるJSONの先頭部分でrecordが解放されないことを確認します。
 func TestSpoolSenderVerifiesCompressedResponseBeforeSuccess(t *testing.T) {
 	for _, corrupt := range []bool{false, true} {
 		name := "valid checksum"

@@ -2,14 +2,13 @@ package file
 
 import (
 	"context"
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/field"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
-func (l *FileLogger) InternalDebugEntry(msg string, fields ...applogging.Field) *logging.LogEntry {
+func (l *FileLogger) InternalDebugEntry(msg string, fields ...pkglogger.Field) *logging.LogEntry {
 	ids, extra := field.ResolveIDsAndExtraFields(nil, fields)
 
 	entry := &logging.LogEntry{
@@ -33,7 +32,7 @@ func (l *FileLogger) InternalDebugEntry(msg string, fields ...applogging.Field) 
 	return entry
 }
 
-func (l *FileLogger) InternalDebugEntryWithContext(ctx context.Context, msg string, fields ...applogging.Field) *logging.LogEntry {
+func (l *FileLogger) InternalDebugEntryWithContext(ctx context.Context, msg string, fields ...pkglogger.Field) *logging.LogEntry {
 	ids, extra := field.ResolveIDsAndExtraFields(ctx, fields)
 
 	entry := &logging.LogEntry{
@@ -51,7 +50,7 @@ func (l *FileLogger) InternalDebugEntryWithContext(ctx context.Context, msg stri
 	return entry
 }
 
-func (l *FileLogger) InternalInfoEntry(msg string, fields ...applogging.Field) *logging.LogEntry {
+func (l *FileLogger) InternalInfoEntry(msg string, fields ...pkglogger.Field) *logging.LogEntry {
 	ids, extra := field.ResolveIDsAndExtraFields(nil, fields)
 
 	entry := &logging.LogEntry{
@@ -75,7 +74,7 @@ func (l *FileLogger) InternalInfoEntry(msg string, fields ...applogging.Field) *
 	return entry
 }
 
-func (l *FileLogger) InternalInfoEntryWithContext(ctx context.Context, msg string, fields ...applogging.Field) *logging.LogEntry {
+func (l *FileLogger) InternalInfoEntryWithContext(ctx context.Context, msg string, fields ...pkglogger.Field) *logging.LogEntry {
 	ids, extra := field.ResolveIDsAndExtraFields(ctx, fields)
 
 	entry := &logging.LogEntry{
@@ -93,7 +92,7 @@ func (l *FileLogger) InternalInfoEntryWithContext(ctx context.Context, msg strin
 	return entry
 }
 
-func (l *FileLogger) InternalWarnEntry(msg string, fields ...applogging.Field) *logging.LogEntry {
+func (l *FileLogger) InternalWarnEntry(msg string, fields ...pkglogger.Field) *logging.LogEntry {
 	ids, extra := field.ResolveIDsAndExtraFields(nil, fields)
 
 	entry := &logging.LogEntry{
@@ -117,7 +116,7 @@ func (l *FileLogger) InternalWarnEntry(msg string, fields ...applogging.Field) *
 	return entry
 }
 
-func (l *FileLogger) InternalWarnEntryWithContext(ctx context.Context, msg string, fields ...applogging.Field) *logging.LogEntry {
+func (l *FileLogger) InternalWarnEntryWithContext(ctx context.Context, msg string, fields ...pkglogger.Field) *logging.LogEntry {
 	ids, extra := field.ResolveIDsAndExtraFields(ctx, fields)
 
 	entry := &logging.LogEntry{
@@ -174,16 +173,16 @@ func (l *FileLogger) InternalErrorEntryWithContext(ctx context.Context, msg stri
 }
 
 // スタックトレース付きログ
-func (l *FileLogger) InternalCallerErrorEntry(msg string, err error, fields ...applogging.Field) *logging.LogEntry {
+func (l *FileLogger) InternalCallerErrorEntry(msg string, err error, fields ...pkglogger.Field) *logging.LogEntry {
 	return l.newCallerLogEntry(pkglogger.LogLevelError, msg, err, true, fields...)
 }
 
 // スタックトレース付きログ
-func (l *FileLogger) InternalCallerDebugEntry(msg string, fields ...applogging.Field) *logging.LogEntry {
+func (l *FileLogger) InternalCallerDebugEntry(msg string, fields ...pkglogger.Field) *logging.LogEntry {
 	return l.newCallerLogEntry(pkglogger.LogLevelDebug, msg, nil, true, fields...)
 }
 
-func (l *FileLogger) newCallerLogEntry(level pkglogger.LogLevel, msg string, err error, internal bool, fields ...applogging.Field) *logging.LogEntry {
+func (l *FileLogger) newCallerLogEntry(level pkglogger.LogLevel, msg string, err error, internal bool, fields ...pkglogger.Field) *logging.LogEntry {
 	ids, extra := field.ResolveIDsAndExtraFields(nil, fields)
 	funcName, sourceFiles, lines := logging.CollectCallerDetails(
 		logging.GetCallerDepth(NewStackTraceConfigAdapter(l.config.Runtime().IsDebug(), l.config.LogBody())),

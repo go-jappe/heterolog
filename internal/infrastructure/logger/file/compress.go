@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile/processing"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -38,7 +38,7 @@ func (l *FileLogger) tryCompressOldFile(
 		ctx, span := l.Tracer.StartSpan(ctx, SpanFileCompress)
 		format := l.Fsstore.GetCompressFormat()
 		span.SetAttributes(
-			observer.Attr{
+			pkgobserver.Attr{
 				Key:   "compress.format",
 				Value: string(format),
 			},

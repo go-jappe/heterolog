@@ -56,8 +56,8 @@ func TestCircuitBreakerRequestFailureExcludesOperationDurationFromConsecutiveGap
 		if !requestDecision.AllowRequest || requestDecision.Probe {
 			t.Fatalf("attempt %d request decision = %+v, want normal request", attempt, requestDecision)
 		}
-		// Each PUT itself takes longer than the 15-second consecutive-failure
-		// interval. Only the five-second idle gap before the next PUT counts.
+		// 各PUT自体には、15秒の連続失敗間隔より長い時間がかかります。間隔として数えるのは、
+		// 次のPUTまでの5秒の空き時間だけです。
 		now = now.Add(time.Minute)
 		report := circuitBreaker.RecordRequestFailure(key, decision, requestDecision)
 		if attempt < 3 && (!report.OpenUntil.IsZero() || report.Consecutive != attempt) {

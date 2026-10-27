@@ -41,7 +41,7 @@ func (s *recoveryFaultCheckpointStore) ForceClose() error {
 
 func (s *recoveryFaultCheckpointStore) AdvanceCompletionCursor(ctx context.Context, key checkpointstore.CheckpointKey, ids []objectstorage.DestinationID) (checkpointstore.Checkpoint, error) {
 	if s.failRecord.Load() {
-		// Reject before the underlying store accepts the successes.
+		// 下位のstoreが成功を受理する前に拒否します。
 		return checkpointstore.Checkpoint{}, errRecoveryCheckpoint
 	}
 	return s.Store.AdvanceCompletionCursor(ctx, key, ids)
@@ -172,7 +172,7 @@ func TestLogFileProcessingRecoveryContinuesWithoutNormalRunnerInterval(t *testin
 			_, err := f.lifecycle.RunOnce(context.Background())
 			require.ErrorIs(t, err, errRecoveryCheckpoint)
 			failure.Store(false)
-			// No second RunOnce, write, purge, or 15-minute interval is needed.
+			// 2回目のRunOnce、書き込み、purge、15分のintervalのいずれも必要ありません。
 			require.Eventually(t, func() bool {
 				_, err := os.Stat(f.path)
 				return errors.Is(err, os.ErrNotExist) &&
@@ -239,7 +239,7 @@ func TestCheckpointPreparationRecoveryRegistersFreshObservedGenerations(t *testi
 		return fileCheckpointKey(fileGeneration{Period: f.cursor.Period, Index: index}, true)
 	}
 	require.NoError(t, f.manager.directoryGuard.RunWithLifecycleLock(func() error {
-		// These generations did not exist in the failed preparation's scan.
+		// これらのgenerationは、失敗したpreparationのscanには存在しませんでした。
 		writeFileSeriesCheckpointLog(t, filepath.Dir(f.path), "checkpoint-recovery", f.cursor.Period, 4)
 		writeGzipFile(t, filepath.Join(filepath.Dir(f.path), "checkpoint-recovery_"+f.cursor.Period+"_5.log.gz"), []byte("new compressed generation"))
 		f.manager.directoryGuard.ProtectPaths(owner, protectedPath)
@@ -304,7 +304,7 @@ func TestLogFileProcessingRecoveryRetainsCompletionCursorAfterRemovalAndClose(t 
 	paths := []string{f.raw, f.path}
 	require.True(t, f.manager.directoryGuard.ProtectPathsIfNoOtherOwnerConflict(token, nil, paths))
 	f.manager.directoryGuard.UnprotectPaths(token, paths...)
-	// A normal scan never removes the durable completion position.
+	// 通常のscanが、durableな完了位置を削除することはありません。
 	_, err = f.lifecycle.RunOnce(context.Background())
 	require.NoError(t, err)
 	checkpoint, err := f.store.Load(context.Background(), fileCheckpointKey(f.cursor, true))

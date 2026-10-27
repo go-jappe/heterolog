@@ -5,11 +5,10 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
@@ -30,12 +29,12 @@ func TestDeliveryLoggerSynthesizedResultsNameEveryOutputByLogicalName(t *testing
 	for _, output := range pkglogger.AllLogOutputDestinations() {
 		t.Run(output.String(), func(t *testing.T) {
 			cfg := deliveryBackendNameConfig(t, output)
-			logger, err := NewDeliveryLogger(context.Background(), cfg, streamrouting.None, observer.NopTracer{}, observer.NopMeter{})
+			logger, err := NewDeliveryLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, observer.NopTracer{}, observer.NopMeter{})
 			require.NoError(t, err)
 			require.NoError(t, boundedwait.Close(t, "Delivery logger Close", logger.Close, boundedwait.ForceCloserOf(logger)))
 
 			report, err := logger.Info(context.Background(), "after close")
-			require.ErrorIs(t, err, applogging.ErrLoggerClosed)
+			require.ErrorIs(t, err, pkglogger.ErrLoggerClosed)
 			require.Len(t, report.Targets, 1)
 			require.Equal(t, output.String(), report.Targets[0].Backend)
 			require.Equal(t, pkglogger.DeliveryRejected, report.Targets[0].Status)

@@ -8,8 +8,8 @@ import (
 	"github.com/go-jappe/heterolog/pkg/logger"
 )
 
-// RequestFailureDeliveryStatus describes acceptance evidence, not replay policy.
-// A transport timeout may remain retryable while its delivery is unconfirmed.
+// RequestFailureDeliveryStatusは、replay policyではなく、受理についての証拠を表します。
+// transport timeoutは、deliveryが未確認のままでもretryableであり続けることがあります。
 func RequestFailureDeliveryStatus(dec retryable.RetryDecision) logger.DeliveryStatus {
 	if dec.Reason == retryable.RetryReasonUnknownOutcome {
 		return logger.DeliveryUnconfirmed
@@ -25,9 +25,9 @@ func RequestFailureDeliveryStatus(dec retryable.RetryDecision) logger.DeliverySt
 	}
 }
 
-// TargetDeliveryResult preserves uncertainty even if another input has a known
-// failure. Durable dispositions alone cannot distinguish local rejection from
-// an unknown result, and must not determine the public delivery status.
+// TargetDeliveryResultは、別のinputの失敗が判明していても、不確かさを保ちます。
+// durable dispositionだけではlocal rejectionと結果不明を区別できず、
+// 公開するdelivery statusをdispositionで決めてはいけません。
 func (r SendResult) TargetDeliveryResult(backend string) logger.DeliveryResult {
 	if !r.HasSendFailure() {
 		return logger.DeliveryResult{Backend: backend, Status: logger.DeliverySucceeded}
@@ -53,7 +53,7 @@ func (r SendResult) TargetDeliveryResult(backend string) logger.DeliveryResult {
 		}
 	}
 	if !r.HasFailedRecords() {
-		// An error without per-record evidence cannot establish backend rejection.
+		// record単位の証拠がないerrorだけでは、送信前の拒否（DeliveryRejected）とは確定できません。
 		status = logger.DeliveryUnconfirmed
 	}
 	causes = append(causes, fmt.Errorf("%s delivery %s: %d unresolved record(s)", backend, status, r.FailedCount()))

@@ -16,7 +16,7 @@ import (
 )
 
 func advanceSaveRecovery() {
-	// Let the worker install its timer before advancing the virtual clock.
+	// 仮想時計を進める前に、workerにtimerを設定させます。
 	synctest.Wait()
 	time.Sleep(SaveRecoveryInterval)
 	synctest.Wait()
@@ -167,8 +167,8 @@ func TestSaveRecoveryKeepsNewFailureAtPreviousRecoveryCompletion(t *testing.T) {
 		time.Sleep(SaveRecoveryInterval)
 		boundedwait.ReceiveInBubble(t, firstAttemptStarted, "receive from firstAttemptStarted")
 
-		// Queue another accepted update while the first save still owns the lock.
-		// Ending that recovery must not erase this next registration.
+		// 最初の保存がまだlockを保持している間に、受理済みの更新をもう一つ待機させます。
+		// そのrecoveryの終了によって、この次の登録を消してはいけません。
 		updated := make(chan struct{})
 		go func() {
 			mu.Lock()

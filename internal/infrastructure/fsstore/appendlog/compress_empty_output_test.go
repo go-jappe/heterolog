@@ -12,8 +12,8 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 )
 
-// A faulty compressor can succeed without emitting anything. Zstd's decoder accepts
-// an empty stream, so format verification alone cannot detect the missing records.
+// 不具合のあるcompressorは、何も出力せずに成功することがあります。Zstdのdecoderは
+// 空のstreamを受け付けるため、形式の検証だけでは欠落したrecordを検出できません。
 type emptyOutputCompressionCodec struct{}
 
 func (emptyOutputCompressionCodec) Format() pkgfsstore.CompressFormat { return pkgfsstore.CompressZstd }

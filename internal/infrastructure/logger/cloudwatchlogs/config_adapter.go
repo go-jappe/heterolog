@@ -3,7 +3,6 @@ package cloudwatchlogs
 import (
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/wrapper"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
@@ -19,7 +18,7 @@ import (
 type flushManagerRuntimeConfigAdapter struct {
 	logGroupName                string
 	logStreamName               string
-	logStreamRoutingGranularity streamrouting.Granularity
+	logStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting
 	postWarnThresholdDuration   time.Duration
 	postErrorThresholdDuration  time.Duration
 	putLatencyEnabled           bool
@@ -55,8 +54,10 @@ func NewRetryConfigProvider(
 	return retryConfigAdapter{cfg: *cfg}
 }
 
+// MaxAttemptsは、wrapperが数える初回を含む試行回数です。設定は再試行の回数なので、
+// 初回の1回を足します。負の再試行回数は、adapterを作る前の設定検証で拒否しています。
 func (a retryConfigAdapter) MaxAttempts() int {
-	return a.cfg.MaxAttempts
+	return a.cfg.MaxRetries + 1
 }
 
 func (a retryConfigAdapter) BaseDelay() time.Duration {
@@ -75,7 +76,7 @@ func (a retryConfigAdapter) RetryClientSelection() pkglogger.RetryClientSelectio
 // flush manager用adapterを作ります。
 func NewFlushManagerConfigAdapter(
 	cfg pkglogger.CloudWatchLogsFlushManagerConfig,
-	routingGranularity streamrouting.Granularity,
+	routingGranularity pkgcloudwatchlogs.StreamRouting,
 ) flushManagerConfigAdapter {
 	return flushManagerConfigAdapter{
 		flushManagerRuntimeConfigAdapter: newFlushManagerRuntimeConfigAdapter(
@@ -94,7 +95,7 @@ func NewFlushManagerConfigAdapter(
 // granularityからflush manager用adapterを作ります。
 func NewDeliveryFlushManagerConfigAdapter(
 	cfg pkglogger.DeliveryCloudWatchLogsFlushManagerConfig,
-	routingGranularity streamrouting.Granularity,
+	routingGranularity pkgcloudwatchlogs.StreamRouting,
 ) deliveryFlushManagerConfigAdapter {
 	return deliveryFlushManagerConfigAdapter{
 		flushManagerRuntimeConfigAdapter: newFlushManagerRuntimeConfigAdapter(
@@ -112,7 +113,7 @@ func NewDeliveryFlushManagerConfigAdapter(
 func newFlushManagerRuntimeConfigAdapter(
 	logGroupName string,
 	logStreamName string,
-	logStreamRoutingGranularity streamrouting.Granularity,
+	logStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
 	postWarnThresholdDuration time.Duration,
 	postErrorThresholdDuration time.Duration,
 	putLatencyEnabled bool,
@@ -120,7 +121,7 @@ func newFlushManagerRuntimeConfigAdapter(
 	return flushManagerRuntimeConfigAdapter{
 		logGroupName:                logGroupName,
 		logStreamName:               logStreamName,
-		logStreamRoutingGranularity: streamrouting.Normalize(logStreamRoutingGranularity),
+		logStreamRoutingGranularity: logStreamRoutingGranularity.Normalize(),
 		postWarnThresholdDuration:   postWarnThresholdDuration,
 		postErrorThresholdDuration:  postErrorThresholdDuration,
 		putLatencyEnabled:           putLatencyEnabled,
@@ -131,7 +132,7 @@ func newFlushManagerRuntimeConfigAdapter(
 // client設定、flush manager設定、retry設定へcomposition root向けに分解します。
 func NewCloudWatchLogsLoggerAdapter(
 	cfg pkglogger.LoggerConfig,
-	routingGranularity streamrouting.Granularity,
+	routingGranularity pkgcloudwatchlogs.StreamRouting,
 ) (
 	CloudWatchLogsConfigProvider,
 	*pkgcloudwatchlogs.Config,
@@ -174,7 +175,7 @@ func (a flushManagerRuntimeConfigAdapter) LogStreamName() string {
 }
 
 // LogStreamRoutingGranularityは基準stream名へevent発生日時のsuffixを付けるrouting粒度を返します。
-func (a flushManagerRuntimeConfigAdapter) LogStreamRoutingGranularity() streamrouting.Granularity {
+func (a flushManagerRuntimeConfigAdapter) LogStreamRoutingGranularity() pkgcloudwatchlogs.StreamRouting {
 	return a.logStreamRoutingGranularity
 }
 
@@ -209,7 +210,7 @@ func NewCloudWatchLogsLoggerConfigAdapter(cfg pkglogger.CloudWatchLogsLoggerBase
 		timeConfig:     loggertime.NewTimeConfigAdapter(cfg.TimeConfig),
 		runtimeConfig:  NewRuntimeConfigAdapter(cfg.RuntimeConfig),
 		logBodyConfig:  NewLogBodyConfigAdapter(cfg.LogBodyConfig),
-		samplingConfig: sampling.NewSamplingConfigAdapter(cfg.SamplingConfig),
+		samplingConfig: sampling.NewConfigProvider(cfg.SamplingConfig, cfg.RuntimeConfig.Live),
 		handlerConfig:  handler.NewConfigAdapter(cfg.HandlerConfig),
 	}
 }
@@ -315,6 +316,8 @@ type RuntimeConfigAdapter struct {
 	isDebug  bool
 	target   string
 	logLevel pkglogger.LogLevel
+	// liveを設定した場合は、logLevelの代わりにその現在のlevelを使います。
+	live *pkglogger.LiveSettings
 }
 
 // NewRuntimeConfigAdapter は runtime 設定 adapter を作ります。
@@ -324,6 +327,7 @@ func NewRuntimeConfigAdapter(cfg pkglogger.RuntimeConfig) RuntimeConfigAdapter {
 		isDebug:  cfg.IsDebug,
 		target:   cfg.Target,
 		logLevel: cfg.LogLevel,
+		live:     cfg.Live,
 	}
 }
 
@@ -344,6 +348,9 @@ func (a RuntimeConfigAdapter) Target() string {
 
 // LogLevel は出力対象の最小 level を返します。
 func (a RuntimeConfigAdapter) LogLevel() pkglogger.LogLevel {
+	if a.live != nil {
+		return a.live.Level()
+	}
 	return a.logLevel
 }
 

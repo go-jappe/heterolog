@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type DeliveryLokiLogger struct {
@@ -26,8 +25,8 @@ func NewDeliveryLokiLogger(
 	fmCfg DeliveryLokiFlushManagerConfigProvider,
 	resourceProvider resource.ResourceProvider,
 	failureHandler *flushfailure.ReportingCompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 	opts ...LokiLoggerOption,
 ) (*DeliveryLokiLogger, error) {
@@ -93,7 +92,7 @@ func (l *DeliveryLokiLogger) pushImmediatelyWithReport(
 	l.mu.Lock()
 	if l.closeState != common.LoggerCloseStateOpen {
 		l.mu.Unlock()
-		err := applogging.ErrLoggerClosed
+		err := pkglogger.ErrLoggerClosed
 		return pkglogger.NewTargetDeliveryReport(lokiDeliveryRejectedResult(err)), err
 	}
 	flushManager := l.flushManager

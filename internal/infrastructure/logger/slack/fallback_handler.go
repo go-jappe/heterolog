@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/formatter"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	"github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // SlackのFallBackHandlerはError以外の使用は非推奨 (エラー通知間隔で使用するものを想定)
@@ -84,8 +84,8 @@ func newFallbackHandlerController(adapter SlackLoggerConfigProvider) *fallbackHa
 
 func (h *fallbackHandlerController) acquire(
 	ctx context.Context,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*FallbackLogger, bool) {
 	h.mu.Lock()
 	if h.closing {
@@ -129,8 +129,8 @@ func (h *fallbackHandlerController) release() {
 func (h *fallbackHandlerController) Handle(
 	ctx context.Context,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) {
 	fallbackLogger, ok := h.acquire(ctx, tracer, meter)
 	if !ok {
@@ -147,8 +147,8 @@ func (h *fallbackHandlerController) HandleError(
 	ctx context.Context,
 	_ error,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) {
 	h.Handle(ctx, entry, tracer, meter)
 }
@@ -182,8 +182,8 @@ type FallbackLogger struct {
 func newHandleSlackLogger(
 	ctx context.Context,
 	cfg SlackLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*FallbackLogger, error) {
 	_, span := tracer.StartSpan(ctx, SpanFallbackSlackLoggerCreate)
 	defer span.End()

@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-// The table covers both filesystem behaviors on every CI host, including a
-// sensitive mount under an insensitive ancestor. Platform tests also compare
-// against os.SameFile on the real test volume.
+// この表は、大小文字を区別しない祖先の下にある区別するmountも含め、どのCI hostでも
+// 両方のfilesystemの挙動を扱います。platformごとの試験では、実際の試験用volumeで
+// os.SameFileとの比較も行います。
 func TestCaseKeyFollowsDirectoryRulesWithoutCreatingMissingPaths(t *testing.T) {
 	root := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
 	for _, tc := range []struct {

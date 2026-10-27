@@ -19,6 +19,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/opensearch/errors"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/opaqueid"
 	"github.com/go-jappe/heterolog/pkg/opensearch"
 
@@ -27,7 +28,7 @@ import (
 
 // FlushManager はログエントリのフラッシュを管理するインターフェース
 type FlushManager interface {
-	Flush(ctx context.Context, entries []*logging.LogEntry) error // bulk index
+	Flush(ctx context.Context, entries []*logging.LogEntry) error // bulkでindex
 	Index(ctx context.Context, entry *logging.LogEntry) error     // 1件index
 	IndexWithReport(ctx context.Context, entry *logging.LogEntry) (pkglogger.DeliveryReport, error)
 	FlushWithNoFallback(ctx context.Context, entries []*logging.LogEntry)
@@ -49,8 +50,8 @@ type OpenSearchFlushManager struct {
 	FailureHandler       *flushfailure.CompositeFailureHandler
 	FailureReportHandler *flushfailure.ReportingCompositeFailureHandler
 	resource             resource.ResourceProvider
-	Tracer               observer.Tracer
-	Meter                observer.Meter
+	Tracer               pkgobserver.Tracer
+	Meter                pkgobserver.Meter
 }
 
 // NewOpenSearchFlushManager は新しいOpenSearchFlushManagerを作成します。
@@ -61,8 +62,8 @@ func NewOpenSearchFlushManager(
 	converter LogEntryToDocumentConverter,
 	failureHandler *flushfailure.CompositeFailureHandler,
 	resource resource.ResourceProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*OpenSearchFlushManager, error) {
 	if err := validateOpenSearchBulkFlushManagerConfig(cfg); err != nil {
 		return nil, fmt.Errorf("opensearch bulk flush manager config is invalid: %w", err)
@@ -95,8 +96,8 @@ const (
 )
 
 var (
-	// ErrInvalidMaxRetryAttemptsは、Bulk itemの送信回数（初回を含む）が正の値でないことを表します。
-	ErrInvalidMaxRetryAttempts = stderrors.New("max retry attempts must be greater than zero")
+	// ErrNegativeMaxItemRetriesは、Bulk itemを再送する回数が負であることを表します。
+	ErrNegativeMaxItemRetries = stderrors.New("max item retries must not be negative")
 	// ErrNegativeRetryWaitTimeは、Bulk itemを再送するまでの待機時間が負であることを表します。
 	ErrNegativeRetryWaitTime = stderrors.New("retry wait time must not be negative")
 	// ErrClientNotInitializedは、送信に使うOpenSearch clientが設定されていないことを表します。
@@ -109,8 +110,8 @@ func validateOpenSearchBulkFlushManagerConfig(
 	if cfg == nil {
 		return fmt.Errorf("OpenSearch bulk flush manager config is not initialized")
 	}
-	if maxAttempts := cfg.MaxRetryAttempts(); maxAttempts <= 0 {
-		return fmt.Errorf("%w: %d", ErrInvalidMaxRetryAttempts, maxAttempts)
+	if maxItemRetries := cfg.MaxItemRetries(); maxItemRetries < 0 {
+		return fmt.Errorf("%w: %d", ErrNegativeMaxItemRetries, maxItemRetries)
 	}
 	if retryWaitTime := cfg.RetryWaitTime(); retryWaitTime < 0 {
 		return fmt.Errorf("%w: %s", ErrNegativeRetryWaitTime, retryWaitTime)
@@ -127,8 +128,8 @@ func newDeliveryOpenSearchFlushManager(
 	converter LogEntryToDocumentConverter,
 	failureHandler *flushfailure.ReportingCompositeFailureHandler,
 	resource resource.ResourceProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *OpenSearchFlushManager {
 	var baseHandler *flushfailure.CompositeFailureHandler
 	if failureHandler != nil {
@@ -155,8 +156,8 @@ func newOpenSearchFlushManager(
 	failureHandler *flushfailure.CompositeFailureHandler,
 	failureReportHandler *flushfailure.ReportingCompositeFailureHandler,
 	resource resource.ResourceProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *OpenSearchFlushManager {
 	return &OpenSearchFlushManager{
 		LoggerBase:           loggerBase,
@@ -532,8 +533,8 @@ func (fm *OpenSearchFlushManager) sendDocumentToOpenSearch(
 	if infraopensearch.IsIdempotentCreateConflict(requestDocument, err) {
 		return res, nil
 	}
-	// Custom clients must establish the same request/response correspondence as
-	// the HTTP client before this record can be acknowledged.
+	// custom clientでも、HTTP clientと同じrequestとresponseの対応関係が成り立って
+	// 初めて、このrecordを受理済みにできます。
 	if err == nil && indexRes != nil {
 		if validationErr := indexRes.Validate(requestDocument); validationErr != nil {
 			err = &opensearch.ResponseDecodeError{Operation: "index", Err: validationErr}
@@ -650,13 +651,13 @@ func (fm *OpenSearchFlushManager) sendDocumentsToOpenSearch(
 	// 失敗時はこの request 情報を durable payload として保持する。
 	retryRequests := fm.convertDocumentsToCreateRequests(docs)
 
-	// MaxRetryAttemptsはBulkResponse内でretryableと判定されたitemの総送信試行回数
-	// （初回を含む）です。RetryWaitTimeはitem再送の間隔であり、transport/HTTP levelの
+	// MaxItemRetriesはBulkResponse内でretryableと判定されたitemを初回に加えて再送する回数で、
+	// 送信の試行回数はそれに初回を足した数です。RetryWaitTimeはitem再送の間隔であり、transport/HTTP levelの
 	// retry待機はretryable clientが別途担当します。
 	if fm.bulkRetryConfig == nil {
 		return loggerfailure.SendResult{}, fmt.Errorf("OpenSearch bulk flush manager config is not initialized")
 	}
-	maxAttempts := fm.bulkRetryConfig.MaxRetryAttempts()
+	maxAttempts := fm.bulkRetryConfig.MaxItemRetries() + 1
 	retryWaitTime := fm.bulkRetryConfig.RetryWaitTime()
 
 	meta := fm.newSendMeta(ctx, requestID, len(retryRequests))
@@ -695,8 +696,8 @@ func (fm *OpenSearchFlushManager) sendDocumentsToOpenSearch(
 			sendErrors = append(sendErrors, err)
 		}
 	}
-	// Every planned input now has either a confirmed success or a failure record.
-	// A later request's error must not erase earlier acknowledged successes.
+	// 計画したすべての入力は、この時点で確定した成功か失敗recordのどちらかを持ちます。
+	// 後のrequestのerrorによって、先に確認応答を受けた成功を消してはいけません。
 	if result.FailedCount() < result.Meta.InputCount {
 		result.TerminalError = nil
 	}
@@ -751,8 +752,8 @@ func (fm *OpenSearchFlushManager) sendDocumentRequestsToOpenSearch(
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if attempt > 1 {
 			if err := waitForBulkItemRetry(ctx, retryWaitTime); err != nil {
-				// These records were explicitly rejected by the previous response.
-				// Preserve their known status and IDs when the next attempt is stopped.
+				// これらのrecordは、直前のresponseで明示的に拒否されています。
+				// 次の試行が止められた場合も、判明しているstatusとIDを保持します。
 				result.RetryableRecords = fm.buildFailedRecordsFromBulkFailures(
 					result.Meta.AttemptedAt, "sendDocumentsToOpenSearch", lastRetryFailures,
 				)
@@ -792,9 +793,9 @@ func (fm *OpenSearchFlushManager) sendDocumentRequestsToOpenSearch(
 					maxAttempts,
 					retryWaitTime,
 				)
-				// An unstarted split still has the original request's confirmed
-				// rejection. Preserve that evidence while allowing replay of
-				// the smaller request; cancellation does not make it unknown.
+				// 送信を始めていない分割requestにも、元のrequestが拒否されたという確定した事実が
+				// 残っています。小さくしたrequestの再送を許しつつ、その証拠を保持します。
+				// cancellationによって結果不明にはなりません。
 				rejectedStatus := http.StatusRequestEntityTooLarge
 				var rejectedStatusErr *opensearch.HTTPStatusError
 				if stderrors.As(err, &rejectedStatusErr) {
@@ -955,9 +956,10 @@ func (fm *OpenSearchFlushManager) buildFailedRecordsFromBulkSendError(
 	return records, dec
 }
 
-// A caller cancellation during a client call leaves acceptance uncertain. A
-// client-only timeout retains the existing retry policy, and explicit backend
-// responses keep their own classification even if the caller has since stopped.
+// classifyOpenSearchRequestFailureは、OpenSearchへのrequestの失敗を再試行の判断へ
+// 分類します。client呼び出し中に呼び出し元がcancelすると、受理されたかどうかは不確かです。
+// clientだけのtimeoutは既存のretry方針を保ち、backendの明示的なresponseは、
+// 呼び出し元がその後停止していてもresponse自身の分類を保ちます。
 func classifyOpenSearchRequestFailure(ctx context.Context, err error) retryable.RetryDecision {
 	return retryable.ClassifyDurableRequestOutcome(ctx, err, infraopensearch.ClassifyDurableRequestFailure)
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	infraopensearch "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/opensearch"
 	opensearchwrapper "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/opensearch/wrapper"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
@@ -13,6 +12,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/sampling"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	"github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // newFallbackLoggerはfallback送信用のclient、FlushManager、bufferを構築し、
@@ -23,8 +23,8 @@ func newFallbackLogger(
 	retryCfg opensearchwrapper.RetryConfigProvider,
 	fmCfg OpenSearchFlushManagerRuntimeConfigProvider,
 	resource resource.ResourceProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	opts ...OpenSearchLoggerOption,
 ) (*FallbackLogger, error) {
 	if cfg == nil {

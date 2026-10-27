@@ -1,10 +1,8 @@
 package heterolog
 
 import (
-	"time"
-
+	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
-	"github.com/go-jappe/heterolog/pkg/otel"
 )
 
 // Config configures a synchronous logger. See pkg/logger for backend settings.
@@ -30,50 +28,13 @@ const (
 
 // DefaultConfig returns independent configuration for INFO and higher logs on
 // stdout (WARN and ERROR on stderr). Timestamps use UTC and RFC3339Nano.
-func DefaultConfig() Config {
-	return Config{
-		LogOutputDestinations: pkglogger.LogOutputDestinations{pkglogger.LogOutputStdout},
-		Timeout:               5 * time.Second,
-		MaxLogEntryBytes:      DefaultMaxLogEntryBytes,
-		Stdout: &pkglogger.StdoutLoggerConfig{
-			RuntimeConfig: pkglogger.RuntimeConfig{LogLevel: LevelInfo},
-			TimeConfig:    pkglogger.TimeConfig{TimeZone: "UTC"},
-			LogBodyConfig: pkglogger.LogBodyConfig{
-				LogLineDateFormat:        time.RFC3339Nano,
-				ErrorTraceDepth:          8,
-				ErrorTraceDepthDebugMode: 16,
-			},
-		},
-		Resource: &otel.Resource{},
-	}
-}
+func DefaultConfig() Config { return loggerruntime.DefaultConfig() }
 
 // DefaultAsyncConfig returns stdout configuration with at most 16 parallel
 // backend operations. Logging methods do not return delivery errors.
-func DefaultAsyncConfig() AsyncConfig {
-	cfg := DefaultConfig()
-	return AsyncConfig{
-		LogOutputDestinations: cfg.LogOutputDestinations,
-		Timeout:               cfg.Timeout,
-		MaxLogEntryBytes:      cfg.MaxLogEntryBytes,
-		MaxParallel:           16,
-		Stdout:                cfg.Stdout,
-		Resource:              cfg.Resource,
-	}
-}
+func DefaultAsyncConfig() AsyncConfig { return loggerruntime.DefaultAsyncConfig() }
 
 // DefaultDeliveryConfig returns stdout configuration for reporting delivery.
-// Delivery loggers do not filter severity or sample entries.
-func DefaultDeliveryConfig() DeliveryConfig {
-	cfg := DefaultConfig()
-	return DeliveryConfig{
-		LogOutputDestinations: cfg.LogOutputDestinations,
-		Timeout:               cfg.Timeout,
-		MaxLogEntryBytes:      cfg.MaxLogEntryBytes,
-		Stdout: &pkglogger.DeliveryStdoutLoggerConfig{
-			TimeConfig:    cfg.Stdout.TimeConfig,
-			LogBodyConfig: cfg.Stdout.LogBodyConfig,
-		},
-		Resource: cfg.Resource,
-	}
-}
+// Delivery loggers do not sample entries, and only their Slack output filters
+// severity.
+func DefaultDeliveryConfig() DeliveryConfig { return loggerruntime.DefaultDeliveryConfig() }

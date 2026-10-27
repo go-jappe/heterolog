@@ -2,31 +2,37 @@ package logger
 
 import "strings"
 
-// LoggerContractKindは、applicationへ公開するtop-level MultiLoggerを、呼出方法と
-// 返却結果の契約によってsync、async best-effort、deliveryへ分類します。
-// File、Loki、OpenSearchなどの子Loggerや出力先backendの種類は表しません。
-// 値は診断sourceやprocess-local directory LeaseのScopeLabelを組み立てるcanonical IDです。
-// 人間向けの表示名や、個々のMultiLogger instanceを一意に識別するIDではありません。
+// LoggerContractKind classifies a top-level MultiLogger exposed to the
+// application as sync, async best-effort or delivery, by its contract for how it
+// is called and what it returns. It does not represent the kind of a child
+// Logger, such as File, Loki or OpenSearch, or of an output backend. The value
+// is a canonical ID used to build diagnostic sources and the ScopeLabel of a
+// process-local directory Lease. It is neither a display name for humans nor an
+// ID that uniquely identifies an individual MultiLogger instance.
 type LoggerContractKind string
 
 const (
-	// LoggerContractSyncは、呼出元が各子Loggerの処理完了を待ち、errorを受け取る契約です。
+	// LoggerContractSync is the contract under which the caller waits for each
+	// child Logger to finish its work and receives the errors.
 	LoggerContractSync LoggerContractKind = "logger"
-	// LoggerContractAsyncBestEffortは、child Loggerを別goroutineで実行し、そのerrorを
-	// 呼出元へ返さない契約です。並行数上限を理由にchildを破棄することは表しません。
+	// LoggerContractAsyncBestEffort is the contract that runs child Loggers in
+	// separate goroutines and does not return their errors to the caller. It
+	// does not mean that a child is dropped because of the concurrency limit.
 	LoggerContractAsyncBestEffort LoggerContractKind = "async_logger"
-	// LoggerContractDeliveryは、送信先ごとの送達結果をDeliveryReportで返す契約です。
+	// LoggerContractDelivery is the contract that returns the delivery result
+	// for each destination in a DeliveryReport.
 	LoggerContractDelivery LoggerContractKind = "delivery_logger"
 )
 
-// StringはLoggerContractKindのcanonical IDを返します。
+// String returns the canonical ID of the LoggerContractKind.
 func (k LoggerContractKind) String() string {
 	return string(k)
 }
 
-// DisplayNameは、error messageなど人間が読む文章へ埋め込むcontract名を返します。
-// canonical IDそのものは変更せず、単語の区切りであるunderscoreだけをspaceへ
-// 置き換えるため、表示名を別の定数として二重管理しません。
+// DisplayName returns the contract name to embed in text that humans read, such
+// as error messages. It leaves the canonical ID itself unchanged and only
+// replaces the underscores that separate words with spaces, so display names are
+// not maintained twice as separate constants.
 func (k LoggerContractKind) DisplayName() string {
 	return strings.ReplaceAll(k.String(), "_", " ")
 }

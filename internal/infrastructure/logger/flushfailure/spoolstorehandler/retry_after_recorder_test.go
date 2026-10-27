@@ -16,6 +16,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // recordingRetryAfterRecorderは、送信先全体の待機期限として渡された時刻を記録します。
@@ -286,7 +287,7 @@ func TestHandleFailureWarnsOnceWhenRetryAfterDeadlineIsCapped(t *testing.T) {
 				stdout   bytes.Buffer
 			)
 			handler, recorder := newRetryAfterRecordingHandler(t, now, tt.policy, tt.overloaded, &stdout, InternalLogHandlers{
-				OnWarn: func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				OnWarn: func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					mu.Lock()
 					defer mu.Unlock()
 					warnings = append(warnings, entry)

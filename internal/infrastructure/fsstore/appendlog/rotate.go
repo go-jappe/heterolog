@@ -7,10 +7,10 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 )
 
-// RotationPending reports whether rotation released the previous file handle,
-// including when its Close returned an error, but has not opened its
-// replacement. Callers must hold Mu, as for RotateWithRetry. The old path must
-// remain protected from lifecycle operations until rotation or Close.
+// RotationPendingは、rotationが旧file handleを解放した後、置き換え先をまだ開いていない
+// 状態かを返します。旧handleのCloseがerrorを返した場合も含みます。RotateWithRetryと
+// 同じく、呼び出し元はMuを保持してください。旧pathは、rotationの完了またはCloseまで、
+// lifecycle処理から保護し続ける必要があります。
 func (fs *FileStore) RotationPending() bool {
 	return fs.rotationPendingPath != ""
 }
@@ -64,7 +64,7 @@ func (fs *FileStore) RotateWithRetry(
 	// 旧handleはすでに閉じているため、Windowsでも成功後のarchiveを妨げません。
 	if err := logging.RetryWithLog(
 		func() error { return openActiveFile(ctx) },
-		retry.MaxWriteAttempts(),
+		retry.MaxWriteRetries(),
 		retry.FileOperationRetryWaitTime(),
 		logFunc,
 		entryFactory,

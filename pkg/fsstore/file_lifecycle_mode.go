@@ -6,19 +6,23 @@ import (
 )
 
 var (
-	// ErrUnsupportedFileLifecycleModeは、ValidateFileLifecycleModeが受け付けないlifecycle modeです。
+	// ErrUnsupportedFileLifecycleMode reports a lifecycle mode that
+	// ValidateFileLifecycleMode does not accept.
 	ErrUnsupportedFileLifecycleMode = errors.New("unsupported file lifecycle mode")
-	// ErrUnsupportedDeliveryFileLifecycleModeは、ValidateDeliveryFileLifecycleModeが受け付けない
-	// lifecycle modeです。
+	// ErrUnsupportedDeliveryFileLifecycleMode reports a lifecycle mode that
+	// ValidateDeliveryFileLifecycleMode does not accept.
 	ErrUnsupportedDeliveryFileLifecycleMode = errors.New("unsupported delivery file lifecycle mode")
 )
 
-// ValidateFileLifecycleModeは、通常FileLoggerとfailure archiveが使用するlifecycle modeを
-// 検証します。
+// ValidateFileLifecycleMode validates the lifecycle mode that the normal
+// FileLogger and the failure archive use.
 //
-// 空値は、最小限の設定で通常FileLoggerを利用できるようinline modeとして扱います。
-// Delivery FileLoggerの空値はlifecycle無効であり、同じ空値でも利用側のLogger契約に
-// よって既定動作が異なります。環境変数のalias解決やdefault適用はconfig loaderの責務です。
+// An empty value is treated as inline mode, so that the normal FileLogger can
+// be used with minimal configuration. For the Delivery FileLogger an empty
+// value disables the lifecycle, so the default behavior of the same empty
+// value depends on the Logger contract that uses it. Resolving aliases in
+// environment variable values and applying defaults are the responsibility of
+// the config loader.
 func ValidateFileLifecycleMode(mode FileLifecycleMode) error {
 	switch mode {
 	case "", FileLifecycleModeDisable, FileLifecycleModeInline, FileLifecycleModeRunner:
@@ -28,10 +32,12 @@ func ValidateFileLifecycleMode(mode FileLifecycleMode) error {
 	}
 }
 
-// ValidateDeliveryFileLifecycleModeは、Delivery FileLoggerが実装するlifecycle modeを
-// 検証します。Delivery writerはinline lifecycleを持たないため、runnerまたはdisable
-// だけを受け付けます。空値はlifecycleを起動しない安全な既定動作として許容します。
-// 通常FileLoggerでは空値がinlineになるため、両Loggerの空値は同じ意味ではありません。
+// ValidateDeliveryFileLifecycleMode validates a lifecycle mode against the
+// modes that the Delivery FileLogger implements. The Delivery writer has no
+// inline lifecycle, so only runner or disable is accepted. An empty value is
+// allowed as the safe default behavior that does not start the lifecycle. For
+// the normal FileLogger an empty value means inline, so an empty value does not
+// mean the same thing for the two Loggers.
 func ValidateDeliveryFileLifecycleMode(mode FileLifecycleMode) error {
 	switch mode {
 	case "", FileLifecycleModeDisable, FileLifecycleModeRunner:

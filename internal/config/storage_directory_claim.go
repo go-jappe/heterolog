@@ -29,8 +29,8 @@ const archiveCheckpointDirectoryClaimSource = "application.reserved_directory.ar
 // sourceには、所有単位に応じて次のような値が入ります。
 //   - `logger.file.default+debug`: sync file loggerのdefaultとdebugがdirectoryを共有
 //   - `async_logger.file.error`: async error file loggerが独立したdirectoryを使用
-//   - `logger.loki.failure_spool`: sync Loki failure spool
-//   - `delivery_logger.opensearch.failure_archive`: Delivery OpenSearch failure archive
+//   - `logger.loki.failure_spool`: sync Lokiのfailure spool
+//   - `delivery_logger.opensearch.failure_archive`: Delivery OpenSearchのfailure archive
 //   - `logger.object_storage_compressed_log.file_archive.s3`: sync logger契約とS3が共有するcompressed log file archive
 //   - `async_logger.object_storage_compressed_log.spool.s3`: async logger契約とS3が共有するcompressed log file spool
 //   - `application.reserved_directory.archive_checkpoint`: application内部の予約directory

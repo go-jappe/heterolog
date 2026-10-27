@@ -77,8 +77,8 @@ func TestWorkerReportRetainsProcessingStateWhenTransitionFails(t *testing.T) {
 				t:           t,
 				claimedPath: filepath.Join(store.Root().ProcessingDir(), file.FileName),
 				onClaim: func() {
-					// Create the collision after the original file has been claimed,
-					// before checking its destination or attempting an upload.
+					// 元のfileがclaimされた後、そのdestinationを確認したりuploadを試みたりする前に
+					// 衝突を作ります。
 					if err := os.WriteFile(targetPath, collision, 0o640); err != nil {
 						t.Fatal(err)
 					}
@@ -137,8 +137,8 @@ func TestWorkerReportRetainsProcessingStateWhenTransitionFails(t *testing.T) {
 	}
 }
 
-// claimedFileTestUploader uses the uploader's destination check to introduce a
-// filesystem failure after claiming, including cases where uploading is deferred.
+// claimedFileTestUploaderは、uploaderのdestination確認を使って、claim後に
+// filesystem障害を起こします。uploadが延期される場合も含みます。
 type claimedFileTestUploader struct {
 	Uploader
 	t           *testing.T

@@ -7,47 +7,54 @@ import (
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 )
 
-// DestinationUploadErrorは、一つの宛先へのuploadが失敗したことを表します。
-// UploadReport.Errは失敗した宛先ごとにこのerrorを返し、errors.Joinでまとめます。
-// errors.Asで失敗した宛先を取り出せ、原因はerrors.Isやerrors.Asで判別できます。
+// DestinationUploadError reports that an upload to one destination failed.
+// UploadReport.Err returns this error for each failed destination, joined with
+// errors.Join. errors.As extracts the failed destination, and errors.Is and
+// errors.As identify the cause.
 type DestinationUploadError struct {
-	// Destinationは失敗した宛先のIDです。
+	// Destination is the ID of the destination that failed.
 	Destination objectstorage.DestinationID
-	// Errはupload失敗の原因です。
+	// Err is the cause of the upload failure.
 	Err error
 }
 
-// Errorは、宛先IDと原因を含む説明を返します。
+// Error returns a description that includes the destination ID and the cause.
 func (e *DestinationUploadError) Error() string {
 	return fmt.Sprintf("object storage destination %q failed: %v", e.Destination, e.Err)
 }
 
-// Unwrapは、upload失敗の原因を返します。
+// Unwrap returns the cause of the upload failure.
 func (e *DestinationUploadError) Unwrap() error { return e.Err }
 
 var (
-	// ErrUnrequestedDestinationResultは、要求していない宛先の結果が含まれることを表します。
+	// ErrUnrequestedDestinationResult reports that the results include one for a
+	// destination that was not requested.
 	ErrUnrequestedDestinationResult = errors.New("upload report contains an unrequested destination")
-	// ErrDuplicateDestinationResultは、同じ宛先の結果が複数あることを表します。
+	// ErrDuplicateDestinationResult reports that there is more than one result for
+	// the same destination.
 	ErrDuplicateDestinationResult = errors.New("upload report classifies a destination more than once")
-	// ErrMissingDestinationResultは、要求した宛先の結果がないことを表します。
+	// ErrMissingDestinationResult reports that there is no result for a requested
+	// destination.
 	ErrMissingDestinationResult = errors.New("upload report does not classify a requested destination")
 )
 
-// UploadReportErrorは、upload結果の一件が要求した宛先と一対一に対応しないことを表します。
-// errors.Isでは、ErrInvalidUploadReportと、不正の種類を表すErrの両方に一致します。
+// UploadReportError reports one case where the upload results do not correspond
+// one-to-one with the requested destinations. errors.Is matches both
+// ErrInvalidUploadReport and Err, which identifies the kind of problem.
 type UploadReportError struct {
-	// Destinationは、対応しない結果または欠けた結果の宛先IDです。
+	// Destination is the destination ID of the result that does not correspond,
+	// of the missing result, or that is requested more than once.
 	Destination objectstorage.DestinationID
-	// Indexは、ErrUnrequestedDestinationResultの場合に、UploadReport.Results内の位置です。
-	// それ以外では0です。
+	// Index is the position in UploadReport.Results when Err is
+	// ErrUnrequestedDestinationResult. It is 0 otherwise.
 	Index int
-	// Errは、ErrUnrequestedDestinationResult、ErrDuplicateDestinationResult、
-	// ErrMissingDestinationResultのいずれかです。
+	// Err is ErrDuplicateDestinationID, ErrUnrequestedDestinationResult,
+	// ErrDuplicateDestinationResult or ErrMissingDestinationResult.
 	Err error
 }
 
-// Errorは、不正の種類に応じて、宛先IDと結果の位置を含む説明を返します。
+// Error returns a description that includes the destination ID and, depending
+// on the kind of problem, the position of the result.
 func (e *UploadReportError) Error() string {
 	switch e.Err {
 	case ErrUnrequestedDestinationResult:
@@ -55,6 +62,8 @@ func (e *UploadReportError) Error() string {
 			"%v: result[%d] contains unrequested destination %q",
 			ErrInvalidUploadReport, e.Index, e.Destination,
 		)
+	case ErrDuplicateDestinationID:
+		return fmt.Sprintf("%v: destination %q is requested more than once", ErrInvalidUploadReport, e.Destination)
 	case ErrDuplicateDestinationResult:
 		return fmt.Sprintf("%v: destination %q is classified more than once", ErrInvalidUploadReport, e.Destination)
 	case ErrMissingDestinationResult:
@@ -64,5 +73,6 @@ func (e *UploadReportError) Error() string {
 	}
 }
 
-// Unwrapは、ErrInvalidUploadReportと不正の種類を表すErrを返します。
+// Unwrap returns ErrInvalidUploadReport and Err, which identifies the kind of
+// problem.
 func (e *UploadReportError) Unwrap() []error { return []error{ErrInvalidUploadReport, e.Err} }

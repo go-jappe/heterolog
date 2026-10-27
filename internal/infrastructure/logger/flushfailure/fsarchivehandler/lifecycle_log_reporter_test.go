@@ -9,11 +9,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFailureArchiveLifecycleLogReporterSeparatesCheckpointWarningsFromSaveErrors(t *testing.T) {
@@ -34,11 +34,11 @@ func TestFailureArchiveLifecycleLogReporterSeparatesCheckpointWarningsFromSaveEr
 		t.Run(tc.name, func(t *testing.T) {
 			var entries []*logging.LogEntry
 			var reportedErr error
-			record := func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			record := func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				entries = append(entries, entry)
 			}
 			pipeline := newTestArchiveHandler(t, time.Now(), nil, InternalLogHandlers{
-				OnError: func(_ context.Context, err error, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				OnError: func(_ context.Context, err error, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					reportedErr = err
 					entries = append(entries, entry)
 				},
@@ -115,8 +115,8 @@ func TestFailureArchiveLifecycleLogReporterReportsFailedRunAsErrorAndDebugOnly(t
 				_ context.Context,
 				err error,
 				entry *logging.LogEntry,
-				_ observer.Tracer,
-				_ observer.Meter,
+				_ pkgobserver.Tracer,
+				_ pkgobserver.Meter,
 			) {
 				gotErr = err
 				recordEntry(entry)
@@ -124,24 +124,24 @@ func TestFailureArchiveLifecycleLogReporterReportsFailedRunAsErrorAndDebugOnly(t
 			OnWarn: func(
 				_ context.Context,
 				entry *logging.LogEntry,
-				_ observer.Tracer,
-				_ observer.Meter,
+				_ pkgobserver.Tracer,
+				_ pkgobserver.Meter,
 			) {
 				recordEntry(entry)
 			},
 			OnInfo: func(
 				_ context.Context,
 				entry *logging.LogEntry,
-				_ observer.Tracer,
-				_ observer.Meter,
+				_ pkgobserver.Tracer,
+				_ pkgobserver.Meter,
 			) {
 				recordEntry(entry)
 			},
 			OnDebug: func(
 				_ context.Context,
 				entry *logging.LogEntry,
-				_ observer.Tracer,
-				_ observer.Meter,
+				_ pkgobserver.Tracer,
+				_ pkgobserver.Meter,
 			) {
 				recordEntry(entry)
 			},
@@ -250,8 +250,8 @@ func TestFailureArchiveLifecycleLogReporterKeepsPostRemovalErrorSeparate(t *test
 			record := func(
 				_ context.Context,
 				entry *logging.LogEntry,
-				_ observer.Tracer,
-				_ observer.Meter,
+				_ pkgobserver.Tracer,
+				_ pkgobserver.Meter,
 			) {
 				entries = append(entries, entry)
 			}
@@ -264,8 +264,8 @@ func TestFailureArchiveLifecycleLogReporterKeepsPostRemovalErrorSeparate(t *test
 						_ context.Context,
 						err error,
 						entry *logging.LogEntry,
-						_ observer.Tracer,
-						_ observer.Meter,
+						_ pkgobserver.Tracer,
+						_ pkgobserver.Meter,
 					) {
 						gotErr = err
 						entries = append(entries, entry)
@@ -310,8 +310,8 @@ func TestFailureArchiveLifecycleLogReporterClassifiesSuccessfulRunByFileChange(t
 	record := func(
 		_ context.Context,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		levels = append(levels, entry.Level)
 	}
@@ -372,8 +372,8 @@ func TestFailureArchiveLifecycleLogReporterUsesConfiguredHandlerRouting(t *testi
 	pipeline := newTestArchiveHandler(t, time.Now(), nil, InternalLogHandlers{OnInfo: func(
 		_ context.Context,
 		_ *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		called = true
 	}})

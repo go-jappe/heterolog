@@ -27,7 +27,7 @@ func TestNewClientWrapsClientWhenRetryConfigIsPresent(t *testing.T) {
 	retryCfg := newTestRetryConfig(
 		pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{
 			RetryClientMode: pkglogger.RetryClientModeRetry,
-			MaxAttempts:     2,
+			MaxRetries:      1,
 			BaseDelay:       time.Nanosecond,
 			MaxDelay:        time.Nanosecond,
 		},
@@ -47,7 +47,7 @@ func TestNewClientWrapsRetryPolicyClientWhenPolicyEnabled(t *testing.T) {
 	retryCfg := newTestRetryConfig(
 		pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{
 			RetryClientMode: pkglogger.RetryClientModeRetryPolicy,
-			MaxAttempts:     2,
+			MaxRetries:      1,
 			BaseDelay:       time.Nanosecond,
 			MaxDelay:        time.Nanosecond,
 		},
@@ -88,8 +88,9 @@ func newTestRetryConfig(
 	return testRetryConfig{cfg: cfg}
 }
 
+// MaxAttemptsは、productionのadapterと同じく、再試行の回数に初回を足した試行回数を返します。
 func (c testRetryConfig) MaxAttempts() int {
-	return c.cfg.MaxAttempts
+	return c.cfg.MaxRetries + 1
 }
 
 func (c testRetryConfig) BaseDelay() time.Duration {

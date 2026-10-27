@@ -10,11 +10,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type incompleteArchiveReportUploader struct {
@@ -60,7 +60,7 @@ func TestFailureArchiveUploadRejectsInvalidDestinationReport(t *testing.T) {
 			)
 			pipeline := newTestArchiveHandler(t, time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC), func(cfg *testArchiveConfig) {
 				cfg.setArchiveUploader(category, incompleteArchiveReportUploader{destinationIDs: testCase.destinationIDs})
-			}, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			}, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				notifiedMu.Lock()
 				defer notifiedMu.Unlock()
 				notified = append(notified, err)

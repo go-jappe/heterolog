@@ -370,7 +370,7 @@ func TestOpenSearchMappersKeepSyncAndAsyncContractsSeparated(t *testing.T) {
 	syncConfig.PostWarnThresholdDuration = 11 * time.Millisecond
 	syncConfig.PostErrorThresholdDuration = 12 * time.Millisecond
 	syncConfig.IndexLatencyEnabled = false
-	syncConfig.MaxRetryAttempts = 13
+	syncConfig.MaxItemRetries = 13
 	syncConfig.RetryWaitTime = 14 * time.Millisecond
 	syncConfig.LogBodyConfig.ErrorTraceDepth = 15
 	syncConfig.LogBodyConfig.ErrorTraceDepthDebugMode = 16
@@ -388,7 +388,7 @@ func TestOpenSearchMappersKeepSyncAndAsyncContractsSeparated(t *testing.T) {
 	asyncConfig.PostWarnThresholdDuration = 21 * time.Millisecond
 	asyncConfig.PostErrorThresholdDuration = 22 * time.Millisecond
 	asyncConfig.IndexLatencyEnabled = true
-	asyncConfig.MaxRetryAttempts = 23
+	asyncConfig.MaxItemRetries = 23
 	asyncConfig.RetryWaitTime = 24 * time.Millisecond
 	asyncConfig.LogBodyConfig.ErrorTraceDepth = 25
 	asyncConfig.LogBodyConfig.ErrorTraceDepthDebugMode = 26
@@ -413,7 +413,7 @@ func TestOpenSearchMappersKeepSyncAndAsyncContractsSeparated(t *testing.T) {
 	assertOpenSearchMapperValue(t, "async post warn threshold", asyncMapped.PostWarnThresholdDuration, 21*time.Millisecond)
 	assertOpenSearchMapperValue(t, "async post error threshold", asyncMapped.PostErrorThresholdDuration, 22*time.Millisecond)
 	assertOpenSearchMapperValue(t, "async index latency enabled", asyncMapped.IndexLatencyEnabled, true)
-	assertOpenSearchMapperValue(t, "async max retry attempts", asyncMapped.MaxRetryAttempts, 23)
+	assertOpenSearchMapperValue(t, "async max item retries", asyncMapped.MaxItemRetries, 23)
 	assertOpenSearchMapperValue(t, "async retry wait time", asyncMapped.RetryWaitTime, 24*time.Millisecond)
 	assertOpenSearchMapperValue(t, "async archive trace depth", asyncMapped.FailureStoreConfig.DurableStoreConfig.FileArchiveConfig.ErrorTraceDepth, 25)
 	assertOpenSearchMapperValue(t, "async archive debug trace depth", asyncMapped.FailureStoreConfig.DurableStoreConfig.FileArchiveConfig.ErrorTraceDepthDebugMode, 26)

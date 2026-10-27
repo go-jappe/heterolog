@@ -1,25 +1,31 @@
 package opensearch
 
-// ErrorTypeはOpenSearchがerror responseのtype fieldへ返す機械判定用の識別値です。
+// ErrorType is the machine-readable identifier that OpenSearch returns in the
+// type field of an error response.
 type ErrorType string
 
 const (
-	// ErrorTypeMapperParsing は OpenSearch が mapping 変換失敗時に返す error type です。
+	// ErrorTypeMapperParsing is the error type that OpenSearch returns when
+	// mapping conversion fails.
 	ErrorTypeMapperParsing ErrorType = "mapper_parsing_exception"
 
-	// ErrorTypeDocumentParsing は OpenSearch が document parse 失敗時に返す error type です。
+	// ErrorTypeDocumentParsing is the error type that OpenSearch returns when
+	// parsing a document fails.
 	ErrorTypeDocumentParsing ErrorType = "document_parsing_exception"
 
-	// ErrorTypeXContentParse は OpenSearch が x_content parse 失敗時に返す error type です。
+	// ErrorTypeXContentParse is the error type that OpenSearch returns when
+	// x_content parsing fails.
 	ErrorTypeXContentParse ErrorType = "x_content_parse_exception"
 
-	// ErrorTypeParse は OpenSearch が parse 失敗時に返す error type です。
+	// ErrorTypeParse is the error type that OpenSearch returns when parsing fails.
 	ErrorTypeParse ErrorType = "parse_exception"
 
-	// ErrorTypeIllegalArgument は OpenSearch が不正引数時に返す error type です。
+	// ErrorTypeIllegalArgument is the error type that OpenSearch returns for an
+	// illegal argument.
 	ErrorTypeIllegalArgument ErrorType = "illegal_argument_exception"
 
-	// ErrorTypeStrictDynamicMappingはdynamic=strictのmappingへ未定義fieldを送った場合の
-	// error typeです。同じpayloadを再送しても解消しないためquarantine分類に使用します。
+	// ErrorTypeStrictDynamicMapping is the error type for sending an undefined
+	// field to a mapping with dynamic=strict. Sending the same payload again does
+	// not resolve it, so it is used for the quarantine classification.
 	ErrorTypeStrictDynamicMapping ErrorType = "strict_dynamic_mapping_exception"
 )

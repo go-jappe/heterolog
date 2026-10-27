@@ -7,7 +7,6 @@ import (
 	"errors"
 	"testing"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 
@@ -89,19 +88,19 @@ func TestDeliveryClickHouseLoggerHandleLogEntryPreservesApplicationFieldsInJSONE
 	}
 }
 
-func clickHouseApplicationFields(t *testing.T) []applogging.Field {
+func clickHouseApplicationFields(t *testing.T) []pkglogger.Field {
 	t.Helper()
 
-	profileField, err := applogging.Any("profile", map[string]any{
+	profileField, err := pkglogger.Any("profile", map[string]any{
 		"tier":    "premium",
 		"enabled": true,
 	})
 	require.NoError(t, err)
 
-	return []applogging.Field{
-		applogging.MustFieldKey("user_id").String("hogehoge"),
-		applogging.MustFieldKey("authenticated").Bool(true),
-		applogging.MustFieldKey("attempt").Int(2),
+	return []pkglogger.Field{
+		pkglogger.MustFieldKey("user_id").String("hogehoge"),
+		pkglogger.MustFieldKey("authenticated").Bool(true),
+		pkglogger.MustFieldKey("attempt").Int(2),
 		profileField,
 	}
 }

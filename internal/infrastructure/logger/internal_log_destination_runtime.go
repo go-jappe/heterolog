@@ -4,14 +4,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // internalLogDestinationSourceは、runtimeの構築で通知先を作れない場合のNotificationTargetErrorの
@@ -56,7 +56,7 @@ type internalLogDestinationRuntime struct {
 	// cloudWatchLogsStreamRoutingGranularityは、このLoggerContractKindの通常出力と
 	// internal log出力が共通して使用するlog stream分割粒度です。保存先のgroup・
 	// streamを専用設定へ差し替えても、粒度は同じ契約設定を継承します。
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting
 	// parentOwnedFileLoggerSetは、base File設定からtop-level loggerが作成・Closeする
 	// LoggerSetを借りて保持します。通常のfile出力が無効でも、internal logのhandler
 	// targetとしてだけfileを使う場合は、このfieldに設定されます。
@@ -71,11 +71,11 @@ type internalLogDestinationRuntime struct {
 
 func newInternalLogDestinationRuntime(
 	baseConfig pkglogger.LoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
 	baseFileLoggerSet *file.LoggerSet,
 	fileDirectoryScopeLabel directorylease.ScopeLabel,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	spoolOwners ...*compressedlog.RootRuntimeBuilder,
 ) (*internalLogDestinationRuntime, error) {
 	// dedicatedConfigには、base設定とは異なる保存先が明示されたbackendだけが入ります。
@@ -89,7 +89,7 @@ func newInternalLogDestinationRuntime(
 	// stdoutの設定が不正なら、構築を設定errorで終えます。
 	stdoutTarget, err := newStdoutNotificationTarget(effectiveConfig)
 	if err != nil && pkglogger.LoggerConfigSelectsHandlerTarget(baseConfig, pkglogger.LogOutputStdout) {
-		return nil, &NotificationTargetError{Source: internalLogDestinationSource, Backend: pkglogger.LogOutputStdout, Err: err}
+		return nil, &pkglogger.NotificationTargetError{Source: internalLogDestinationSource, Backend: pkglogger.LogOutputStdout, Err: err}
 	}
 	if err == nil {
 		runtime.stdoutNotificationTarget = stdoutTarget
@@ -189,7 +189,7 @@ type deliveryInternalLogDestinationRuntime struct {
 	effectiveConfig pkglogger.DeliveryLoggerConfig
 	// cloudWatchLogsStreamRoutingGranularityは、Deliveryの通常出力とinternal log出力が
 	// 共通して使用するlog stream分割粒度です。
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting
 	// parentOwnedFileLoggerSetはbase File設定からtop-level Delivery loggerが作成・Closeする
 	// LoggerSetを借ります。通常出力がfileである必要はありません。
 	parentOwnedFileLoggerSet *file.DeliveryLoggerSet
@@ -202,11 +202,11 @@ type deliveryInternalLogDestinationRuntime struct {
 
 func newDeliveryInternalLogDestinationRuntime(
 	baseConfig pkglogger.DeliveryLoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
 	baseFileLoggerSet *file.DeliveryLoggerSet,
 	fileDirectoryScopeLabel directorylease.ScopeLabel,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*deliveryInternalLogDestinationRuntime, error) {
 	effectiveConfig, dedicatedConfig := effectiveDeliveryInternalLogConfig(baseConfig)
 	runtime := &deliveryInternalLogDestinationRuntime{
@@ -217,7 +217,7 @@ func newDeliveryInternalLogDestinationRuntime(
 	// stdoutの通知先は構築時に一度だけ作ります（internalLogDestinationRuntimeと同じです）。
 	stdoutTarget, err := newDeliveryStdoutNotificationTarget(effectiveConfig)
 	if err != nil && pkglogger.DeliveryLoggerConfigSelectsHandlerTarget(baseConfig, pkglogger.LogOutputStdout) {
-		return nil, &NotificationTargetError{Source: internalLogDestinationSource, Backend: pkglogger.LogOutputStdout, Err: err}
+		return nil, &pkglogger.NotificationTargetError{Source: internalLogDestinationSource, Backend: pkglogger.LogOutputStdout, Err: err}
 	}
 	if err == nil {
 		runtime.stdoutNotificationTarget = stdoutTarget

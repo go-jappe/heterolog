@@ -147,7 +147,7 @@ func TestLoggerSetRegistersLazyDestinationsBeforeFirstRoleOpens(t *testing.T) {
 	require.False(t, defaultLogger.requiresUploadProtection(pastCompressed, names))
 	require.True(t, defaultLogger.requiresUploadProtection(currentCompressed, names))
 	require.True(t, defaultLogger.requiresUploadProtection(newCompressed, names))
-	// A lazy role's new raw stays protected until its owning role completes delivery.
+	// lazy roleの新しいrawは、それを所有するroleがdeliveryを完了するまで保護されたままです。
 	completedRaw := filepath.Join(dir, "error_lazy-scope_20260921_1.log")
 	require.NoError(t, os.WriteFile(completedRaw, []byte("new raw generation"), 0o600))
 	require.False(t, cfg.FsstoreConfig.Lifecycle.EnableFileCompress)

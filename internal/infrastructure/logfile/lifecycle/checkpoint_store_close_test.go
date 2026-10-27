@@ -50,7 +50,7 @@ func TestDirectoryLifecycleFinalCloseClosesCheckpointStoreOnceAndRetainsError(t 
 	lifecycle, err := NewDirectoryLifecycle(manager)
 	require.NoError(t, err)
 
-	// Draining recovery leaves the Store available until its owner's final close.
+	// recoveryを排出しても、Storeはownerが最後にcloseするまで利用可能なまま残ります。
 	require.NoError(t, boundedwait.Close(t, "lifecycle.CloseLogFileProcessingRecovery()", lifecycle.CloseLogFileProcessingRecovery, boundedwait.ForceCloserOf(lifecycle)))
 	require.Zero(t, store.closeCalls.Load())
 	first := lifecycle.CloseObjectStorageCompressedLogFileUploadFailureRoutes()

@@ -12,18 +12,24 @@ const (
 )
 
 var (
-	// ErrUnsupportedOverloadPolicyは、file書込み時の空き容量不足への方針がdrop・degradeの
-	// いずれでもないことを表します。ValidateFileOverloadConfigが返すerrorとerrors.Isで判別できます。
+	// ErrUnsupportedOverloadPolicy reports that the policy for a lack of free
+	// space when writing files is neither drop nor degrade. errors.Is identifies
+	// it in the errors that ValidateFileOverloadConfig returns.
 	ErrUnsupportedOverloadPolicy = errors.New("unsupported file overload policy")
-	// ErrUnsupportedSpillDestinationは、degradeを選んだfile書込みの退避先が、実装済みのstdoutでない
-	// ことを表します。ValidateFileOverloadConfigが返すerrorとerrors.Isで判別できます。
+	// ErrUnsupportedSpillDestination reports that the evacuation destination of
+	// file writes that chose degrade is not stdout, the implemented destination.
+	// errors.Is identifies it in the errors that ValidateFileOverloadConfig
+	// returns.
 	ErrUnsupportedSpillDestination = errors.New("unsupported file overload secondary destination")
 )
 
-// ValidateFileOverloadConfigは、通常・asyncのfile書込み時の空き容量不足への対応を検証します。
-// policyの未指定はdropです。degradeの退避先はstdoutだけに対応し、drop時の退避先は使用しません。
-// 不正な方針はErrUnsupportedOverloadPolicy、degradeの不正な退避先はErrUnsupportedSpillDestinationと
-// errors.Isで一致するerrorです。
+// ValidateFileOverloadConfig validates how normal and async file writes handle
+// a lack of free space. An unset policy means drop. For degrade, only stdout is
+// supported as the evacuation destination, and for drop the evacuation
+// destination is not used. An invalid policy is an error that errors.Is matches
+// with ErrUnsupportedOverloadPolicy, and an invalid evacuation destination for
+// degrade is an error that errors.Is matches with
+// ErrUnsupportedSpillDestination.
 func ValidateFileOverloadConfig(policy OverloadPolicy, spill SpillDestination) error {
 	switch policy {
 	case "", OverloadPolicyDrop:

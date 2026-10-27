@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	infracloudwatchlogs "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs"
 	cloudwatchlogserrors "github.com/go-jappe/heterolog/internal/infrastructure/logger/cloudwatchlogs/errors"
@@ -26,6 +25,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 const (
@@ -86,8 +86,8 @@ type CloudWatchLogsLogger struct {
 	// flushManagerは構築完了前に設定し、運用中は差し替えないLogger所有の送信依存です。
 	// FlushとCloseの実行順序はinFlightとflushMuで保護します。
 	flushManager FlushManager
-	Tracer       observer.Tracer
-	Meter        observer.Meter
+	Tracer       pkgobserver.Tracer
+	Meter        pkgobserver.Meter
 }
 
 var _ logging.BackendLogEntryHandler = (*CloudWatchLogsLogger)(nil)
@@ -129,8 +129,8 @@ func NewCloudWatchLogsLogger(
 	fmCfg CloudWatchLogsFlushManagerRuntimeConfigProvider,
 	resourceProvider resource.ResourceProvider,
 	failureHandler *flushfailure.CompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 	opts ...CloudWatchLogsLoggerOption,
 ) (*CloudWatchLogsLogger, error) {
@@ -167,8 +167,8 @@ func newCloudWatchLogsLogger(
 	resourceProvider resource.ResourceProvider,
 	failureHandler *flushfailure.CompositeFailureHandler,
 	failureReportHandler *flushfailure.ReportingCompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 	opts ...CloudWatchLogsLoggerOption,
 ) (*CloudWatchLogsLogger, error) {
@@ -429,7 +429,7 @@ func (l *CloudWatchLogsLogger) enqueue(ctx context.Context, entry *logging.LogEn
 	l.mu.Lock()
 	if l.closeState != common.LoggerCloseStateOpen {
 		l.mu.Unlock()
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	l.entries = append(l.entries, entry)
 	l.bufferBytes += entryBytes
@@ -582,7 +582,7 @@ func (l *CloudWatchLogsLogger) putImmediately(ctx context.Context, entry *loggin
 	l.mu.Lock()
 	if l.closeState != common.LoggerCloseStateOpen {
 		l.mu.Unlock()
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	flushManager := l.flushManager
 	l.inFlight.Add(1)
@@ -629,7 +629,7 @@ func (l *CloudWatchLogsLogger) loggerClosedError() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closeState != common.LoggerCloseStateOpen {
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	return nil
 }

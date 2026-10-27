@@ -6,13 +6,16 @@ import (
 	loggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
 )
 
-// LoggerConfigRequiresBaseBackendは、targetのbase backendが構築・検証対象かを返します。
-// base backendとはLoggerConfig直下のFile、OpenSearchなどの設定から構築するbackendで、
-// InternalLogDestinationsに指定されたinternal log専用backendとは区別します。
+// LoggerConfigRequiresBaseBackend reports whether the base backend of target is
+// to be constructed and validated. A base backend is a backend constructed from
+// the settings directly in LoggerConfig, such as File and OpenSearch, as
+// distinct from a backend dedicated to internal logs that is specified in
+// InternalLogDestinations.
 //
-// targetを通常出力先として明示した場合、destination指定が空でtargetのbase設定が
-// non-nilの場合、または専用backendを持たない有効な内部handlerがtargetを参照する場合に
-// trueを返します。
+// It returns true when target is explicitly listed as a regular output, when
+// no destinations are specified and the base settings of target are non-nil,
+// or when an active internal log handler refers to target and target has no
+// dedicated backend.
 func LoggerConfigRequiresBaseBackend(
 	cfg LoggerConfig,
 	target LogOutputDestination,
@@ -30,10 +33,12 @@ func LoggerConfigRequiresBaseBackend(
 	)
 }
 
-// DeliveryLoggerConfigRequiresBaseBackendは、Delivery loggerについてtargetのbase
-// backendが構築・検証対象かを返します。base backendはDeliveryLoggerConfig直下の
-// 設定から構築するbackendで、InternalLogDestinationsの専用backendとは区別します。
-// 判定条件はLoggerConfigRequiresBaseBackendと同じです。
+// DeliveryLoggerConfigRequiresBaseBackend reports, for a Delivery logger,
+// whether the base backend of target is to be constructed and validated. A base
+// backend is a backend constructed from the settings directly in
+// DeliveryLoggerConfig, as distinct from a dedicated backend in
+// InternalLogDestinations. The conditions are the same as those of
+// LoggerConfigRequiresBaseBackend.
 func DeliveryLoggerConfigRequiresBaseBackend(
 	cfg DeliveryLoggerConfig,
 	target LogOutputDestination,

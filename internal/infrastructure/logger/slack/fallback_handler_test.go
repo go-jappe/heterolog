@@ -18,6 +18,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	slackgo "github.com/slack-go/slack"
 	"github.com/stretchr/testify/require"
@@ -425,8 +426,8 @@ func TestFallbackLoggerLogsEachFailedPostWithoutInvokingInternalHandler(t *testi
 		context.Context,
 		error,
 		*logging.LogEntry,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) {
 		handlerCalls.Add(1)
 	}

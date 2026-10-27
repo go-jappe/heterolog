@@ -21,9 +21,9 @@ func buildApplicationLogEntry(
 	message string,
 	err error,
 	stackTraceRequested bool,
-	fields []applogging.Field,
+	fields []pkglogger.Field,
 ) (*infralogging.LogEntry, error) {
-	if validationErr := applogging.ValidateLogEntrySize(
+	if validationErr := pkglogger.ValidateLogEntrySize(
 		maxLogEntryBytes,
 		message,
 		err,

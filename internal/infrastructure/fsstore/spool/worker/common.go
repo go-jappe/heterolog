@@ -157,9 +157,9 @@ func (s *StateStore) removeFileUnderState(
 		return fmt.Errorf("failed to remove %s spool file: %w", state, err)
 	}
 
-	// A retry after unlink succeeded must still finish syncing the deletion.
-	// Earlier successful cleanup may have pruned the bucket, so sync the nearest
-	// existing parent within this spool root before pruning any more directories.
+	// unlinkが成功した後の再試行でも、削除の同期は完了させなければなりません。以前に
+	// 成功した後始末がbucketを削除済みの場合があるため、さらにdirectoryを削除する前に、
+	// このspool root内で最も近い既存の親を同期します。
 	if err := syncExistingSpoolParent(s.RootDir.String(), filepath.Dir(filePath)); err != nil {
 		return fmt.Errorf("sync removed %s spool file directory: %w", state, err)
 	}
@@ -181,7 +181,7 @@ func syncExistingSpoolParent(root, directory string) error {
 			return err
 		}
 		if directory == filepath.Clean(root) {
-			// A store whose whole root is absent has no retained source to remove.
+			// root全体が存在しないstoreには、削除対象として残っているsourceはありません。
 			return nil
 		}
 		parent := filepath.Dir(directory)

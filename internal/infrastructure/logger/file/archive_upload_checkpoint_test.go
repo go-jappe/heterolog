@@ -18,12 +18,12 @@ import (
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile"
 	infraobjectstorage "github.com/go-jappe/heterolog/internal/infrastructure/objectstorage"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgclock "github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // restartInlineRecoveryForTestは再起動時に失われるメモリ上の再開処理を停止します。
@@ -32,7 +32,7 @@ func restartInlineRecoveryForTest(t *testing.T, logger *FileLogger) {
 	t.Helper()
 	_ = logger.archiveLogFileProcessingRecovery.ForceClose()
 	if err := closeBoundedForTest(t, boundedwait.HangTimeout, "archive log file processing recovery Close", &logger.archiveLogFileProcessingRecovery); err != nil {
-		require.ErrorIs(t, err, shutdown.ErrForcedClose)
+		require.ErrorIs(t, err, pkgshutdown.ErrForcedClose)
 	}
 	receiveForTest(t, logger.archiveLogFileProcessingRecovery.NotificationsDone(), "archive log file processing recovery notifications")
 	logger.archiveLogFileProcessingRecovery = logfile.LogFileProcessingRecovery[archiveLogFileProcessingRecoveryKey]{}

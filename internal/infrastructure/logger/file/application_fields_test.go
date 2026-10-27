@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -17,17 +16,17 @@ import (
 
 const typedFieldsJSON = `fields:{"attempt":2,"enabled":true,"labels":["primary","audit"]}`
 
-func applicationFieldsForFileTest(t *testing.T) []applogging.Field {
+func applicationFieldsForFileTest(t *testing.T) []pkglogger.Field {
 	t.Helper()
-	labels, err := applogging.Any("labels", []string{"primary", "audit"})
+	labels, err := pkglogger.Any("labels", []string{"primary", "audit"})
 	require.NoError(t, err)
 
-	return []applogging.Field{
-		applogging.WithRequestID("field-request"),
-		applogging.MustFieldKey("trace_id").String("field-trace"),
-		applogging.MustFieldKey("span_id").String("field-span"),
-		applogging.MustFieldKey("attempt").Int(2),
-		applogging.MustFieldKey("enabled").Bool(true),
+	return []pkglogger.Field{
+		pkglogger.WithRequestID("field-request"),
+		pkglogger.MustFieldKey("trace_id").String("field-trace"),
+		pkglogger.MustFieldKey("span_id").String("field-span"),
+		pkglogger.MustFieldKey("attempt").Int(2),
+		pkglogger.MustFieldKey("enabled").Bool(true),
 		labels,
 	}
 }

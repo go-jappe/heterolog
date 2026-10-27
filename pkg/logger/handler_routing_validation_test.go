@@ -471,9 +471,9 @@ func TestValidateDeliveryLoggerHandlerRoutingIncludesLifecycleAndArchiveSources(
 	}
 }
 
-// TestHandlerRoutingRejectsUnknownSelectorForEverySource guards the source
-// enumerations separately from the selector validation itself. Adding a new output
-// destination without wiring either logger contract must fail this table.
+// TestHandlerRoutingRejectsUnknownSelectorForEverySourceは、selectorの検証そのものとは
+// 別にsourceの列挙を守ります。新しい出力先を追加してどちらかのlogger contractへ配線
+// しなかった場合は、このtableが失敗しなければなりません。
 func TestHandlerRoutingRejectsUnknownSelectorForEverySource(t *testing.T) {
 	for _, source := range AllLogOutputDestinations() {
 		t.Run("sync/"+source.String(), func(t *testing.T) {

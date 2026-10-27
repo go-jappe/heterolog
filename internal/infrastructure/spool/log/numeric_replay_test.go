@@ -29,7 +29,7 @@ func numericReplayFields() map[string]any {
 	}
 }
 
-// Decode observed wire data without rounding in the test oracle itself.
+// 観測したwire dataを、test oracle自身で丸めずにdecodeします。
 func decodeNumericReplayRows(t *testing.T, body []byte) []map[string]any {
 	t.Helper()
 	decoder := json.NewDecoder(bytes.NewReader(body))

@@ -21,7 +21,7 @@ func TestFilesystemStoreCursorAdvanceBeforeSaveRecoveryPersistsOnlyLatestState(t
 		pendingSaveForTest(t, err)
 		require.True(t, checkpoint.Complete([]objectstorage.DestinationID{"primary"}))
 
-		// A later accepted completion must replace, not accumulate, the cursor.
+		// 後から受理した完了は、cursorを累積させずに置き換えなければなりません。
 		_, err = store.AdvanceCompletionCursor(ctx, CheckpointKey{Generation: "20260924-2", Compressed: true}, []objectstorage.DestinationID{"primary"})
 		pendingSaveForTest(t, err)
 		loaded, err := store.Load(ctx, CheckpointKey{Generation: "20260924-1", Compressed: true})
@@ -75,7 +75,7 @@ func TestFilesystemStoreRestartRetainsLatestCursorAfterCloseDrainsSave(t *testin
 		restore()
 		require.NoError(t, boundedwait.CloseInBubble(t, "store.Close()", store.Close, store.ForceClose))
 
-		// Closing waits until the latest accepted cursor is durable across restart.
+		// Closeは、最後に受理したcursorが再起動後も失われない状態になるまで待ちます。
 		restarted, err := NewFilesystemStore(store.directory, source)
 		require.NoError(t, err)
 		defer func() {

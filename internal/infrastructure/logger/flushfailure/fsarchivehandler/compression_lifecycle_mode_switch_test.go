@@ -25,9 +25,10 @@ import (
 	logfilerunner "github.com/go-jappe/heterolog/internal/infrastructure/logfile/runner"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // codecの試験境界で各commit段階の残存物を作り、旧modeの実処理をpanicさせます。
@@ -82,7 +83,7 @@ func testFailureArchiveCompressionModeSwitch(t *testing.T, oldMode pkgfsstore.Fi
 	}
 	require.NoError(t, checkpoint.PrepareDirectory(cfg.archiveCheckpoint.Directory))
 	reported := make(chan error, 16)
-	old := newModeSwitchArchivePipeline(t, cfg, now, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	old := newModeSwitchArchivePipeline(t, cfg, now, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		select {
 		case reported <- err:
 		default:
@@ -132,7 +133,7 @@ func testFailureArchiveCompressionModeSwitch(t *testing.T, oldMode pkgfsstore.Fi
 	}
 	require.EqualValues(t, 1, interrupted.compressCalls.Load())
 	require.Zero(t, uploads.Load(), "interrupted compression must not reach object storage")
-	require.ErrorIs(t, old.ForceClose(), shutdown.ErrForcedClose)
+	require.ErrorIs(t, old.ForceClose(), pkgshutdown.ErrForcedClose)
 	waitFailureArchiveClosedForTest(t, old)
 	interruptionGuard.UnprotectPaths(interruptionToken, interruptionPaths...)
 	require.Nil(t, old.archiveRootLease, "old writer, retry workers and root lease must all be retired")

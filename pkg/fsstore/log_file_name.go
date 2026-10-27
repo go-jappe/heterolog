@@ -6,34 +6,39 @@ import (
 	"strings"
 )
 
-// ErrInvalidLogFileNameComponentは、ログファイル名を構成する設定値にcolonが含まれることを表します。
-// ValidateLogFileNameValueが返す*LogFileNameComponentErrorはこのsentinelをwrapします。
+// ErrInvalidLogFileNameComponent reports that a setting value that makes up a
+// log file name contains a colon. The *LogFileNameComponentError that
+// ValidateLogFileNameValue returns wraps this sentinel.
 var ErrInvalidLogFileNameComponent = errors.New("log file name component must not contain ':'")
 
-// LogFileNameComponentErrorは、ログファイル名に使用できない設定値を示します。
-// errors.IsでErrInvalidLogFileNameComponentと判別でき、errors.Asで設定名と値を取得できます。
+// LogFileNameComponentError reports a setting value that cannot be used in a
+// log file name. errors.Is identifies it as ErrInvalidLogFileNameComponent, and
+// errors.As retrieves the setting name and the value.
 type LogFileNameComponentError struct {
-	// Fieldは、ValidateLogFileNameValueに渡した設定名です。
+	// Field is the setting name passed to ValidateLogFileNameValue.
 	Field string
-	// Valueは、拒否した設定値です。
+	// Value is the rejected setting value.
 	Value string
 }
 
-// Errorは、設定名と拒否した値を含む検証エラーの文言を返します。
+// Error returns the message of the validation error, which includes the
+// setting name and the rejected value.
 func (e *LogFileNameComponentError) Error() string {
 	return fmt.Sprintf("%s must not contain ':' in log file names: %q", e.Field, e.Value)
 }
 
-// Unwrapは、ErrInvalidLogFileNameComponentを返します。
+// Unwrap returns ErrInvalidLogFileNameComponent.
 func (e *LogFileNameComponentError) Unwrap() error {
 	return ErrInvalidLogFileNameComponent
 }
 
-// ValidateLogFileNameValueは、ログファイル名を構成する設定値のcolonを拒否します。
-// Windowsで通常fileではなくNTFSの別streamへ書き込むことを防ぐため、Linuxを含む
-// 全OSで同じ制約を適用します。必須値や形式の検証は各設定の既存validatorが担当します。
-// 保存先pathは対象外です。C:\logsのドライブ指定などにこの検証を適用しません。
-// 拒否した場合は*LogFileNameComponentErrorを返します。
+// ValidateLogFileNameValue rejects colons in setting values that make up log
+// file names. To prevent writing to a separate NTFS stream instead of the
+// regular file on Windows, it applies the same restriction on all operating
+// systems, including Linux. Required values and formats are validated by the
+// existing validator of each setting. Destination paths are out of scope: this
+// validation is not applied to drive specifications such as C:\logs. When it
+// rejects a value, it returns a *LogFileNameComponentError.
 func ValidateLogFileNameValue(fieldName, value string) error {
 	if strings.ContainsRune(value, ':') {
 		return &LogFileNameComponentError{Field: fieldName, Value: value}

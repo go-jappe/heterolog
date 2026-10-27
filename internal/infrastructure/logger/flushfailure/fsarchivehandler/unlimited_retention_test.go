@@ -18,6 +18,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 var unlimitedRetentionFailureCategories = []failurearchive.FailureCategory{
@@ -87,12 +88,12 @@ func TestInlineArchiveUnlimitedRetentionKeepsArchivesAndScansOnUsageCacheTTL(t *
 		errorsNotified  []error
 	)
 	pipeline := newTestArchiveHandler(t, now, unlimitedRetentionArchiveConfig, InternalLogHandlers{
-		OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			notificationsMu.Lock()
 			errorsNotified = append(errorsNotified, err)
 			notificationsMu.Unlock()
 		},
-		OnWarn: func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		OnWarn: func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			notificationsMu.Lock()
 			warnings = append(warnings, entry)
 			notificationsMu.Unlock()
@@ -301,7 +302,7 @@ func TestInlineArchiveZeroRetentionLimitDisablesOnlyThatPurge(t *testing.T) {
 						test.base(cfg)
 						limit.apply(cfg)
 					}, InternalLogHandlers{
-						OnWarn: func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+						OnWarn: func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 							notificationsMu.Lock()
 							warnings = append(warnings, entry)
 							notificationsMu.Unlock()

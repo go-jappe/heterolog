@@ -95,7 +95,7 @@ func TestNewFileArchiveConfigAdapterMapsDurableConfig(t *testing.T) {
 		LifecycleMode:              fsstore.FileLifecycleModeRunner,
 		RotationType:               fsstore.FileRotationWeekly,
 		RotationDayOfWeek:          time.Monday,
-		FileNameFormat:             failurearchive.FileNameFormat,
+		FileNameFormat:             fsstore.FailureArchiveFileNameFormat,
 		FileDateFormat:             fsstore.FileDateFormat,
 		MaxFileSize:                2 * 1024 * 1024,
 		UsageCacheTTL:              23 * time.Minute,
@@ -109,7 +109,7 @@ func TestNewFileArchiveConfigAdapterMapsDurableConfig(t *testing.T) {
 		DirCaseRetryable:           "retryable",
 		DirCasePermanent:           "permanent",
 		EnableRotate:               true,
-		MaxWriteAttempts:           3,
+		MaxWriteRetries:            2,
 		FileOperationRetryWaitTime: 50 * time.Millisecond,
 	}
 
@@ -173,8 +173,8 @@ func TestNewFileArchiveConfigAdapterMapsDurableConfig(t *testing.T) {
 	if adapter.EnableRotate() != cfg.EnableRotate {
 		t.Fatalf("EnableRotate = %v, want %v", adapter.EnableRotate(), cfg.EnableRotate)
 	}
-	if adapter.MaxWriteAttempts() != cfg.MaxWriteAttempts {
-		t.Fatalf("MaxWriteAttempts = %d, want %d", adapter.MaxWriteAttempts(), cfg.MaxWriteAttempts)
+	if adapter.MaxWriteRetries() != cfg.MaxWriteRetries {
+		t.Fatalf("MaxWriteRetries = %d, want %d", adapter.MaxWriteRetries(), cfg.MaxWriteRetries)
 	}
 	if adapter.FileOperationRetryWaitTime() != cfg.FileOperationRetryWaitTime {
 		t.Fatalf("FileOperationRetryWaitTime = %s, want %s", adapter.FileOperationRetryWaitTime(), cfg.FileOperationRetryWaitTime)

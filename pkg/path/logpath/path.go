@@ -8,10 +8,12 @@ import (
 	"github.com/go-jappe/heterolog/pkg/path/internal/statehome"
 )
 
-// DefaultLogDirは、appNameのログを保存する既定のdirectoryを返します。Linuxなどのunix系OSでは、
-// rootで動く場合は/var/log/<appName>、それ以外は利用者のstate directory
-// （$XDG_STATE_HOME、未設定なら~/.local/state）の<appName>/logsです。home directoryが
-// 分からない場合はrootと同じ場所を返します。
+// DefaultLogDir returns the default directory that stores the logs of appName.
+// On Linux, the BSDs, illumos, Solaris and AIX, it is /var/log/<appName> when
+// running as root, and otherwise <appName>/logs in the user's state directory
+// ($XDG_STATE_HOME if it is an absolute path, or else ~/.local/state). When
+// ~/.local/state would be used but the home directory is unknown, it returns
+// the same location as for root.
 func DefaultLogDir(appName string) string {
 
 	switch runtime.GOOS {
@@ -50,9 +52,11 @@ func DefaultLogDir(appName string) string {
 	}
 }
 
-// DefaultLogBaseDirは、ログの保存先の既定の基点directoryを返します。Linuxなどのunix系OSでは、
-// rootで動く場合は/var/log、それ以外は利用者のstate directory（$XDG_STATE_HOME、未設定なら
-// ~/.local/state）です。home directoryが分からない場合はrootと同じ/var/logを返します。
+// DefaultLogBaseDir returns the default base directory for storing logs. On
+// Linux, the BSDs, illumos, Solaris and AIX, it is /var/log when running as
+// root, and otherwise the user's state directory ($XDG_STATE_HOME if it is an
+// absolute path, or else ~/.local/state). When ~/.local/state would be used but
+// the home directory is unknown, it returns /var/log, the same as for root.
 func DefaultLogBaseDir() string {
 	switch runtime.GOOS {
 	case "linux", "freebsd", "openbsd", "netbsd", "dragonfly", "illumos", "solaris", "aix":

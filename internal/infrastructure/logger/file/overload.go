@@ -10,6 +10,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/disk"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // ErrFileStorageOverloadedは、空き容量不足のためfile書込みをdrop/退避したことを
@@ -25,7 +26,7 @@ type fileOverload struct {
 	handle       func(context.Context, string) error
 }
 
-func newFileOverload(cfg FileOverloadConfigProvider, meter observer.Meter) (*fileOverload, error) {
+func newFileOverload(cfg FileOverloadConfigProvider, meter pkgobserver.Meter) (*fileOverload, error) {
 	if cfg == nil {
 		return nil, nil
 	}

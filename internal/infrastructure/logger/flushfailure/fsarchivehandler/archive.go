@@ -179,9 +179,9 @@ func (f *FsArchiveHandler) appendJSONLLocked(
 	}
 
 	if err != nil {
-		// The request failed as a whole. Restore its starting boundary, preserving
-		// all earlier successful requests, including when an encoder failed after
-		// writing complete records from this request.
+		// requestは全体として失敗しました。それより前に成功したrequestをすべて残したまま、
+		// このrequestの開始時点の境界へ戻します。encoderがこのrequestの完全なrecordを
+		// 書き込んだ後に失敗した場合も同様です。
 		state := f.directoryForFailureCategory(failureCategory)
 		state.appendRollback = &archiveAppendRollback{file: file, offset: info.Size()}
 		return errors.Join(err, f.recoverArchiveAppendLocked(state))

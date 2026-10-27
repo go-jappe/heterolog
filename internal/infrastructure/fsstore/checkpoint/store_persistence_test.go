@@ -37,7 +37,7 @@ func pendingSaveForTest(t *testing.T, err error) *PendingSaveError {
 }
 
 func advanceCheckpointRecoveryForTest() {
-	// Start the worker's timer before advancing the bubble clock.
+	// bubbleの時計を進める前に、workerのtimerを開始させます。
 	synctest.Wait()
 	time.Sleep(SaveRecoveryInterval)
 	synctest.Wait()
@@ -55,8 +55,8 @@ func newCheckpointTestStore(t *testing.T, source string) *FilesystemStore {
 	return store
 }
 
-// blockCheckpointReplacement makes the real atomic rename fail without replacing
-// Store methods. Restore is called only while no save is in progress.
+// blockCheckpointReplacementは、Storeのmethodを差し替えずに、実際のatomic renameを
+// 失敗させます。返した復元用の関数は、保存の実行中でないときにだけ呼び出します。
 func blockCheckpointReplacement(t *testing.T, store *FilesystemStore) func() {
 	t.Helper()
 	path := store.documentPath()
@@ -138,8 +138,8 @@ func TestFilesystemStoreOneRecoveryPersistsLatestAcceptedCursors(t *testing.T) {
 		beforeInfo, err := os.Stat(store.documentPath())
 		require.NoError(t, err)
 
-		// Even after filesystem recovery, additional updates only advance memory.
-		// A single scheduled retry saves the greatest cursor accepted per destination.
+		// filesystemが復旧した後でも、追加の更新はmemory上の状態を進めるだけです。
+		// 予定された一度の再試行が、宛先ごとに受理した最大のcursorを保存します。
 		const concurrentUpdates = 12
 		results := make(chan error, concurrentUpdates)
 		var callers sync.WaitGroup
@@ -241,7 +241,7 @@ func TestFilesystemStoreAdditionalUpdatesWaitForRecoveryThenResumeImmediateSave(
 		require.NoError(t, err)
 		require.Equal(t, checkpointStateForTest(store), persisted)
 
-		// Also start a fresh epoch after the previous worker has fully retired.
+		// 前のworkerが完全に終了した後に、新しいepochも開始します。
 		restore = blockCheckpointReplacement(t, store)
 		_, err = store.AdvanceCompletionCursor(ctx, CheckpointKey{Generation: "20260915-4", Compressed: true}, []objectstorage.DestinationID{"primary"})
 		pendingSaveForTest(t, err)

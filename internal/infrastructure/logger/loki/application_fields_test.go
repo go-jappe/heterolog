@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -131,18 +130,18 @@ func TestDeliveryLokiLoggerHandleLogEntryPreservesApplicationFieldsInPushLine(t 
 	assertLokiPushRequestsPreserveApplicationFields(t, client.pushRequests)
 }
 
-func lokiApplicationFields(t *testing.T) []applogging.Field {
+func lokiApplicationFields(t *testing.T) []pkglogger.Field {
 	t.Helper()
 
-	contextField, err := applogging.Any("context", map[string]any{
+	contextField, err := pkglogger.Any("context", map[string]any{
 		"roles": []string{"buyer", "reviewer"},
 	})
 	require.NoError(t, err)
 
-	return []applogging.Field{
-		applogging.MustFieldKey("user_id").String("hogehoge"),
-		applogging.MustFieldKey("authenticated").Bool(true),
-		applogging.MustFieldKey("attempt").Int(2),
+	return []pkglogger.Field{
+		pkglogger.MustFieldKey("user_id").String("hogehoge"),
+		pkglogger.MustFieldKey("authenticated").Bool(true),
+		pkglogger.MustFieldKey("attempt").Int(2),
 		contextField,
 	}
 }

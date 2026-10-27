@@ -74,8 +74,8 @@ func ClassifyDurableRequestFailure(ctx context.Context, err error) retryable.Ret
 	return retryclassifier.ClassifyDurableRequestFailure(ctx, err)
 }
 
-// ClassifyDurableRequestOutcome preserves known log rejection when an automatic
-// stream creation or a retry wait is interrupted.
+// ClassifyDurableRequestOutcomeは、streamの自動作成またはretry待機が中断されたとき、
+// 既知のlogの拒否を保持します。
 func ClassifyDurableRequestOutcome(ctx context.Context, err error) retryable.RetryDecision {
 	return retryclassifier.ClassifyDurableRequestOutcome(ctx, err)
 }

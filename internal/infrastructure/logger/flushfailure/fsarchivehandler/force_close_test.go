@@ -7,9 +7,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 	"github.com/stretchr/testify/require"
-
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 )
 
 func TestFailureArchiveForceCloseReleasesWaitersButKeepsActiveResources(t *testing.T) {
@@ -28,12 +27,12 @@ func TestFailureArchiveForceCloseReleasesWaitersButKeepsActiveResources(t *testi
 		synctest.Wait()
 		require.Empty(t, closed)
 		require.NoError(t, operationContext.Err(), "normal Shutdown must not cancel accepted recovery")
-		require.ErrorIs(t, pipeline.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, pipeline.ForceClose(), pkgshutdown.ErrForcedClose)
 		synctest.Wait()
 		require.ErrorIs(t, operationContext.Err(), context.Canceled)
 		require.False(t, pipeline.tryAcceptFailureRequest())
 		for range cap(closed) {
-			require.ErrorIs(t, <-closed, shutdown.ErrForcedClose)
+			require.ErrorIs(t, <-closed, pkgshutdown.ErrForcedClose)
 		}
 		require.NotNil(t, pipeline.handler.Fsstore.FileRetryable)
 		require.NotNil(t, pipeline.archiveRootLease)

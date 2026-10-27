@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -117,7 +117,7 @@ func TestRemoveCompletedCompressedLogFileNotifiesOnlyOnFailure(t *testing.T) {
 			}
 
 			var reported []error
-			logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				reported = append(reported, err)
 			}
 			notifications := &backgroundTaskNotificationQueue{}

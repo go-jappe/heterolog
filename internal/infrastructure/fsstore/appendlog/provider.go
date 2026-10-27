@@ -77,6 +77,6 @@ type DurationConfigProvider interface {
 }
 
 type RetryConfigProvider interface {
-	MaxWriteAttempts() int
+	MaxWriteRetries() int
 	FileOperationRetryWaitTime() time.Duration
 }

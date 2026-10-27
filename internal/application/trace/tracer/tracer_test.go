@@ -10,7 +10,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/trace/tracer"
 )
 
-// testExporter observes the public export boundary without racing an async writer.
+// testExporterは、非同期のwriterと競合せずに、公開されたexportの境界を観測します。
 type testExporter struct {
 	spans chan span.SpanInput
 }

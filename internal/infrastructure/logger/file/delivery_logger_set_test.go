@@ -14,6 +14,7 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -93,8 +94,8 @@ func TestDeliveryLoggerSetBuildsInternalHandlersPerPhysicalRole(t *testing.T) {
 			OnInfo: func(
 				context.Context,
 				*logging.LogEntry,
-				observer.Tracer,
-				observer.Meter,
+				pkgobserver.Tracer,
+				pkgobserver.Meter,
 			) {
 				calledBuilds = append(calledBuilds, currentBuild)
 			},
@@ -302,8 +303,8 @@ func TestDeliveryLoggerSetFallbackWriteFailureDoesNotDispatchHandlersAgain(t *te
 		context.Context,
 		error,
 		*logging.LogEntry,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) {
 		dispatchCalls++
 	}

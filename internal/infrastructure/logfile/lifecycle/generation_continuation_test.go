@@ -13,10 +13,10 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestGenerationContinuationWaitsForEarlierCompressionFailureAcrossRestart(t *testing.T) {
@@ -61,8 +61,8 @@ func TestGenerationContinuationWaitsForEarlierCompressionFailureAcrossRestart(t 
 		require.NoError(t, err)
 		require.Empty(t, checkpoint.CompletedDestinationIDs)
 		// 障害が続くまま再起動する試験では、明示的に待機を打ち切ります。
-		require.ErrorIs(t, manager.ForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, boundedwait.CloseInBubble(t, "manager.Close()", manager.Close, manager.ForceClose), shutdown.ErrForcedClose)
+		require.ErrorIs(t, manager.ForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.CloseInBubble(t, "manager.Close()", manager.Close, manager.ForceClose), pkgshutdown.ErrForcedClose)
 
 		// Storeを新規instanceにしても、残る古い失敗世代が後続を止めます。
 		restartedRemote := newDestinationUploaderRecorder(firstDestination, secondDestination)
@@ -202,7 +202,7 @@ func newGenerationContinuationManager(
 		func(t testing.TB, err error) {
 			t.Helper()
 			if err != nil {
-				require.ErrorIs(t, err, shutdown.ErrForcedClose)
+				require.ErrorIs(t, err, pkgshutdown.ErrForcedClose)
 			}
 		})
 	return manager, compressedStore

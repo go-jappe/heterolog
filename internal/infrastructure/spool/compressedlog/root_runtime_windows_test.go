@@ -36,8 +36,8 @@ func TestManagedRouteWindowsJoinPreservesOpenReaderAndLiveStaging(t *testing.T) 
 			require.NoError(t, os.WriteFile(staging, []byte("live handoff"), 0o600))
 
 			// os.OpenはFILE_SHARE_DELETEを持たない通常のdirectory readerです。
-			// Root reservation rejection and a second registration must leave
-			// the live directory reader and the in-progress staging file intact.
+			// rootの予約拒否と2回目の登録は、開いているdirectory readerと
+			// 進行中のstaging fileをそのまま残さなければなりません。
 			reader, err := os.Open(root.ActiveDir())
 			require.NoError(t, err)
 			defer reader.Close()

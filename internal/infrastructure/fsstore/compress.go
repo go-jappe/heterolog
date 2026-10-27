@@ -54,8 +54,8 @@ func OpenFilesForCompression(srcPath, dstPath string) (*os.File, *os.File, error
 		return nil, nil, fmt.Errorf("failed to open file %v: %w", srcPath, err)
 	}
 
-	// New files must start with restricted mode bits. Existing files are opened
-	// without truncation so they can be inspected and restricted before mutation.
+	// 新しいfileは、作成時点から制限したmode bitsにする必要があります。既存のfileは、
+	// 変更前に検査して権限を制限できるよう、切り詰めずに開きます。
 	outFile, err := os.OpenFile(dstPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, sourceInfo.Mode().Perm())
 	if errors.Is(err, os.ErrExist) {
 		outFile, _, err = OpenRegularFile(dstPath, os.O_WRONLY)
@@ -601,9 +601,9 @@ func PreserveCompressionSourceWithMismatchedPeer(sourcePath string) (string, err
 	return preservedPath, errors.Join(errs...)
 }
 
-// isOperationalCompressedFileVerificationError keeps filesystem/resource
-// failures out of the corruption classification. Decoder format/checksum
-// errors do not normally carry an OS error in their chain.
+// isOperationalCompressedFileVerificationErrorは、filesystemやresourceの失敗を
+// 破損の分類から除外します。decoderの形式・checksumのerrorは、通常はerror chainに
+// OSのerrorを含みません。
 func isOperationalCompressedFileVerificationError(err error) bool {
 	if err == nil {
 		return false

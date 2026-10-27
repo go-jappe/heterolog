@@ -65,3 +65,10 @@ func TestValidateConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateConfigReportsEveryMissingValue(t *testing.T) {
+	err := ValidateConfig(Config{Token: " ", Channel: ""})
+	if !errors.Is(err, ErrTokenRequired) || !errors.Is(err, ErrChannelRequired) {
+		t.Fatalf("ValidateConfig() error = %v, want both %v and %v", err, ErrTokenRequired, ErrChannelRequired)
+	}
+}

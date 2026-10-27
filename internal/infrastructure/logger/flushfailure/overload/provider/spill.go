@@ -10,8 +10,8 @@ import (
 
 var ErrNilSpillDestinationConfig = errors.New("spill destination config is nil")
 
-// NewDegradeHandler builds a destination writer shared by direct degradation
-// and overload evacuation paths.
+// NewDegradeHandlerは、直接のdegradationとoverload時の退避の経路とで共有する、
+// 退避先のwriterを構築します。
 func NewDegradeHandler(
 	cfg overload.SpillDestinationConfigProvider,
 ) (overload.Handler, error) {

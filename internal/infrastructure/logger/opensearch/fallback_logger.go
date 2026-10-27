@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
 // FallbackLogger は内部エラーハンドラから呼ばれる OpenSearch logger です。
@@ -54,7 +54,7 @@ func (f *FallbackLogger) enqueueProcess(entry *logging.LogEntry) {
 
 	shouldWake, err := f.enqueueFallbackEntry(entry)
 	if err != nil {
-		if !errors.Is(err, applogging.ErrLoggerClosed) {
+		if !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			log.Printf("failed to enqueue OpenSearch fallback log: %v", err)
 		}
 		return
@@ -84,7 +84,7 @@ func (f *FallbackLogger) enqueueFallbackEntry(entry *logging.LogEntry) (bool, er
 	defer f.mu.Unlock()
 
 	if f.closeState != loggercommon.LoggerCloseStateOpen {
-		return false, applogging.ErrLoggerClosed
+		return false, pkglogger.ErrLoggerClosed
 	}
 	maxEntries := f.config.MaxBulkDocument()
 	if maxEntries <= 0 {

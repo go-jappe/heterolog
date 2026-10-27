@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler/reentrytest"
@@ -19,6 +18,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -104,11 +104,11 @@ func newInternalLogReentryTestLogger(t *testing.T, cfg pkglogger.FileLoggerConfi
 // 試験は使うlevelのhandlerだけを、この後で置き換えます。
 func failOnUnexpectedInternalLogHandlers(t *testing.T, logger *FileLogger) {
 	t.Helper()
-	unexpected := func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	unexpected := func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		t.Errorf("unexpected %v internal log notification: %s", entry.Level, entry.Message)
 	}
 	logger.OnWarn, logger.OnInfo, logger.OnDebug = unexpected, unexpected, unexpected
-	logger.OnError = func(ctx context.Context, _ error, entry *logging.LogEntry, tracer observer.Tracer, meter observer.Meter) {
+	logger.OnError = func(ctx context.Context, _ error, entry *logging.LogEntry, tracer pkgobserver.Tracer, meter pkgobserver.Meter) {
 		unexpected(ctx, entry, tracer, meter)
 	}
 }
@@ -215,7 +215,7 @@ func requireApplicationLinesForTest(t *testing.T, lines []string, nestedRequestI
 // 内部ログは記録しません。
 // 元の書き込みはhang検出の上限付きで実行します。通知をwriter lockの保持中に行う退行などで
 // 書き込みが止まった場合も、試験を止めずに失敗として報告します。再試行の待機はないため
-// （MaxWriteAttempts=1）、synctestのbubbleは使いません。bubbleの中ではsync.Mutexの待機で
+// （MaxWriteRetries=0）、synctestのbubbleは使いません。bubbleの中ではsync.Mutexの待機で
 // 止まった書き込みを上限で検出できないためです。
 func TestFileLoggerReentrantWritesStopForEverySynchronousInternalLog(t *testing.T) {
 	overloadConfig := func(policy pkgfsstore.OverloadPolicy) func(*pkglogger.FileLoggerConfig) {
@@ -284,7 +284,7 @@ func TestFileLoggerReentrantWritesStopForEverySynchronousInternalLog(t *testing.
 			},
 		},
 		{
-			// MaxWriteAttempts=1の失敗は、attemptの再試行logと書き込みの失敗を一件ずつ通知します。
+			// MaxWriteRetries=0の失敗は、attemptの再試行logと書き込みの失敗を一件ずつ通知します。
 			// 直接記録も同じfileへの書き込みで失敗するため、読み戻しは確認できません。
 			name:           "write retry and failure",
 			eventsPerWrite: 2,
@@ -353,11 +353,11 @@ func TestFileLoggerReentrantWritesStopForEverySynchronousInternalLog(t *testing.
 					})
 				}
 				if path.debugHandler {
-					logger.OnDebug = func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+					logger.OnDebug = func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 						reenter(ctx)
 					}
 				} else {
-					logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+					logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 						reenter(ctx)
 					}
 				}
@@ -405,7 +405,7 @@ func TestFileLoggerIndependentConcurrentDispatchesAreAllNotified(t *testing.T) {
 	const writers = 32
 	arrived := make(chan string, writers)
 	var arrivals atomic.Int32
-	logger.OnError = func(_ context.Context, _ error, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	logger.OnError = func(_ context.Context, _ error, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		if arrivals.Add(1) > writers {
 			// 想定より多い通知は待機せずに失敗させます。
 			t.Errorf("unexpected extra internal log notification: %s", entry.Message)
@@ -463,7 +463,7 @@ func TestDeliveryFileLoggerHandlerWriteFailureIsNotRedispatched(t *testing.T) {
 			var mu sync.Mutex
 			var nestedStatuses []pkglogger.DeliveryStatus
 			var nestedErrs []error
-			logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				depth, ok := probe.Enter()
 				defer probe.Exit()
 				if !ok {
@@ -513,7 +513,7 @@ func TestDeliveryFileLoggerReentrantWriteErrorIsWrittenToTheSameFile(t *testing.
 	require.NoError(t, err)
 	closeOnCleanupWithinForTest(t, boundedwait.HangTimeout, "logger Close", func() closerForTest { return logger }, true)
 	var calls atomic.Int32
-	logger.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+	logger.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 		calls.Add(1)
 	}
 	failure := errors.New("injected delivery write failure")
@@ -543,11 +543,11 @@ func TestFileLoggerBackgroundNotificationsDispatchFromMarkedContext(t *testing.T
 	logger := newInternalLogReentryTestLogger(t, internalLogReentryTestConfig(t))
 	var errorCalls, warnCalls atomic.Int32
 	var reentered atomic.Bool
-	logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		errorCalls.Add(1)
 		reentered.Store(logger.internalLogReentry.Reentered(ctx))
 	}
-	logger.OnWarn = func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {
+	logger.OnWarn = func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 		warnCalls.Add(1)
 	}
 	failure := errors.New("background task failure")

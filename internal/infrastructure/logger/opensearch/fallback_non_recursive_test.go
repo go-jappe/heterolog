@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	infraopensearch "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/opensearch"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
 )
 
@@ -66,16 +66,16 @@ func TestOpenSearchFallbackBackendFailureDoesNotInvokeInternalOrFailureHandlers(
 		context.Context,
 		error,
 		*logging.LogEntry,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) {
 		internalHandlerCalls.Add(1)
 	}
 	levelHandler := func(
 		context.Context,
 		*logging.LogEntry,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) {
 		internalHandlerCalls.Add(1)
 	}

@@ -17,28 +17,34 @@ const (
 	SourceUnixSysctl    PressureSource = "unix_sysctl"
 )
 
-// MonitorSnapshot は、monitor が保持している直近状態の読み取り用スナップショットです。
+// MonitorSnapshot is a snapshot for reading the latest state that a monitor
+// holds.
 //
-// provider を新たに叩かず、内部状態をそのまま外部へ見せるために使います。
+// It is used to show the internal state to the outside as it is, without
+// calling the provider again.
 type MonitorSnapshot struct {
-	// 直近取得した pressure
+	// Pressure is the most recently read pressure.
 	Pressure MemoryPressure
 
-	// 直近取得時刻。未取得なら zero time
+	// LastReadAt is the time of the most recent read. It is the zero time if
+	// nothing has been read yet.
 	LastReadAt time.Time
 
-	// 直近評価結果
+	// LastCritical is the result of the most recent evaluation.
 	LastCritical bool
 
-	// 直近で危険状態が何回連続したか
+	// ConsecutiveHits is how many times in a row the most recent readings were
+	// in a dangerous state.
 	ConsecutiveHits int
 
-	// 現在の危険状態が始まった時刻。危険状態でなければ zero time
+	// CriticalSince is the time when the current dangerous state began. It is
+	// the zero time when memory is not in a dangerous state.
 	CriticalSince time.Time
 }
 
-// MemoryLimitUsageは、明示的なメモリ上限と、それに対応する現在使用量です。
-// Reliableは使用量を取得できたことを表し、正常に観測した0 byteと取得失敗を区別します。
+// MemoryLimitUsage is an explicit memory limit and the current usage that
+// corresponds to it. Reliable reports that the usage was obtained, which
+// distinguishes a correctly observed 0 bytes from a failure to obtain it.
 type MemoryLimitUsage struct {
 	UsedBytes  uint64
 	LimitBytes uint64
@@ -46,102 +52,121 @@ type MemoryLimitUsage struct {
 }
 
 type MemoryPressure struct {
-	// ProcessLimitは、全体上限とは別に課されたprocess単体の追加制約です。
-	// WindowsでJob全体・process単体の両上限があるときに使用します。
-	// 既存のRatio等はJob全体を表し、判定ではこの追加制約も独立して確認します。
-	// process上限しかない場合は既存fieldで表すため、このfieldはゼロ値です。
-	// 値型なのでmonitorのsnapshotにも観測時の値がそのままコピーされます。
+	// ProcessLimit is an additional constraint on the process alone, imposed
+	// separately from the overall limit. It is used on Windows when there are
+	// both a limit for the whole Job and a limit for the single process. The
+	// existing Ratio and related fields represent the whole Job, and the
+	// evaluation also checks this additional constraint independently. When
+	// there is only a process limit, the existing fields represent it, so this
+	// field is the zero value. It is a value type, so the snapshot of a
+	// monitor also gets a copy of the value as it was observed.
 	ProcessLimit MemoryLimitUsage
 
-	// CgroupLimitはLinuxで読み取れた有限のcgroup制約のうち、残量が最小の観測です。
-	// Ratio等の主観測は最大使用率のscopeなので、この制約とは異なる場合があります。
-	// 主観測と同じscopeでも設定し、取得済みの残量0を未取得と区別します。
-	// このfieldではReliable=trueならLimitBytes=0も有効な上限0（残量0・使用率1）です。
-	// ProcessLimitのLimitBytes=0を未取得とする扱いには影響しません。
-	// Linux以外・取得不能・有限制約なしではゼロ値です。値型なのでsnapshotのコピーは独立です。
+	// CgroupLimit is the observation with the least remaining memory among the
+	// finite cgroup constraints read on Linux. The primary observation in
+	// Ratio and related fields is the scope with the highest usage ratio, so
+	// it can differ from this constraint. CgroupLimit is set even when it is
+	// the same scope as the primary observation, so that a remaining amount of
+	// 0 that was read is distinguished from one that was not read. In this
+	// field, LimitBytes=0 with Reliable=true is also a valid limit of 0 (0
+	// remaining, usage ratio 1). This does not affect treating LimitBytes=0 in
+	// ProcessLimit as not read. It is the zero value outside Linux, when the
+	// constraints cannot be read, and when there is no finite constraint. It
+	// is a value type, so its copy in a snapshot is independent.
 	CgroupLimit MemoryLimitUsage
 
-	// メモリ逼迫率。
+	// Ratio is the memory pressure ratio.
 	//
-	// 想定範囲は 0.0 - 1.0。
-	// 0.0 は逼迫なし寄り、1.0 は上限到達寄りを表す。
+	// The expected range is 0.0 - 1.0. 0.0 leans toward no pressure, and 1.0
+	// leans toward reaching the limit.
 	//
-	// 基本的には UsedBytes / LimitBytes を正規化した値を入れる。
-	// ただし、OS・実行環境ごとに取得元が異なるため、
-	// 同じ 0.90 でも厳密にまったく同じ意味とは限らない。
+	// It is basically the normalized value of UsedBytes / LimitBytes. However,
+	// the source differs by OS and execution environment, so the same 0.90
+	// does not always mean exactly the same thing.
 	//
-	// Reliable=true のときは、overload 判定に使ってよい値を想定する。
+	// When Reliable=true, the value is expected to be usable for overload
+	// evaluation.
 	Ratio float64
 
-	// 利用可能メモリ量（bytes）。
+	// AvailableBytes is the amount of available memory in bytes.
 	//
-	// Linux bare metal では MemAvailable 相当、
-	// Linux container では cgroup limit からの残量、
-	// WindowsではJob/process上限からの残量、上限がなければ空き物理メモリ相当、
-	// macOS / その他 Unix では近似値になることがある。
+	// It corresponds to MemAvailable on Linux bare metal, to the amount
+	// remaining below the cgroup limit in a Linux container, and on Windows to
+	// the amount remaining below the Job or process limit, or to the free
+	// physical memory when there is no limit. On macOS and other Unix systems
+	// it can be an approximation.
 	//
-	// 取得できない場合は 0。
-	// 0 は「本当に空きが 0」の意味とは限らず、「未取得」も含む。
+	// It is 0 when it cannot be obtained. A 0 does not always mean that there
+	// is really no free memory; it also includes "not obtained".
 	AvailableBytes uint64
 
-	// 判定上の上限値（bytes）。
+	// LimitBytes is the limit used for evaluation, in bytes.
 	//
-	// Ratio の分母として使った上限量を入れる。
-	// Linux container では cgroup の memory.max、
-	// bare metal では総物理メモリ相当を想定する。
+	// It holds the limit used as the denominator of Ratio. It is expected to
+	// be memory.max of the cgroup in a Linux container, and the equivalent of
+	// the total physical memory on bare metal.
 	//
-	// 取得できない場合は 0。
-	// 未取得の0ではRatioを判定に使えないため、Reliable=falseとする。
-	// Linuxでmemory.max=0を実際に観測した場合は、Ratio=1とCgroupLimitで
-	// 既知の上限到達を表し、使用量も取得できていればReliable=trueとする。
+	// It is 0 when it cannot be obtained. A 0 that was not obtained makes
+	// Ratio unusable for evaluation, so Reliable is false. When memory.max=0
+	// is actually observed on Linux, Ratio=1 and CgroupLimit represent the
+	// known limit that has been reached, and Reliable is true if the usage was
+	// also obtained.
 	LimitBytes uint64
 
-	// 現在使用量（bytes）。
+	// UsedBytes is the current usage in bytes.
 	//
-	// 基本的には LimitBytes - AvailableBytes、
-	// または OS が直接返す使用量を入れる。
+	// It is basically LimitBytes - AvailableBytes, or the usage that the OS
+	// returns directly.
 	//
-	// 取得できない場合は 0。
-	// 0 は「未使用」ではなく「未取得」の可能性もある。
+	// It is 0 when it cannot be obtained. A 0 may mean "not obtained" rather
+	// than "unused".
 	UsedBytes uint64
 
-	// 値の取得元。
+	// Source is where the values were obtained from.
 	//
-	// 例:
+	// For example:
 	//   - linux_cgroup_v2
 	//   - linux_proc_meminfo
 	//   - windows_globalmemorystatusex
 	//   - macos_vm_stat
 	//
-	// 呼び出し側はこの値を見て、どの環境視点の値かを判別できる。
+	// Callers can use this value to tell from which environment's point of
+	// view the values are.
 	Source PressureSource
 
-	// overload 判定に使ってよい程度に信頼できる値か。
+	// Reliable reports whether the values are reliable enough to be used for
+	// overload evaluation.
 	//
 	// true:
-	//   その環境で妥当な取得元から算出できた
+	//   the values were computed from a valid source for the environment
 	// false:
-	//   近似しか取れていない、または必要情報が不足している
+	//   only an approximation was obtained, or required information is missing
 	//
-	// falseの場合、この全体観測は判定に使わない。追加制約の信頼性は独立です。
+	// When it is false, this overall observation is not used for evaluation.
+	// The reliability of the additional constraints is independent.
 	Reliable bool
 
-	// ホスト全体視点のメモリ値か。
+	// DirectHost reports whether the memory values are from the point of view
+	// of the whole host.
 	//
 	// true:
-	//   bare metal やホスト視点 API / procfs など
+	//   bare metal, a host-view API, procfs, and so on
 	// false:
-	//   container / cgroup など制約付き実行環境視点、または未判定
+	//   the view of a constrained execution environment such as a container
+	//   or a cgroup, or not determined
 	DirectHost bool
 
-	// container / cgroup など、実行単位に閉じたメモリ視点か。
+	// Container reports whether the memory view is confined to an execution
+	// unit, such as a container or a cgroup.
 	//
 	// true:
-	//   container 制約下の limit / usage を使っている。
-	//   Linuxでは有限のcgroup v2上限、WindowsではJob objectの上限を観測した場合で、
-	//   container runtimeの有無ではなく、host全体ではない制約付きscopeかを表す。
+	//   the limit and usage under container constraints are used. This is the
+	//   case when a finite cgroup v2 limit is observed on Linux, or on Windows
+	//   when the process is in a Job object that has a memory limit or whose
+	//   limits cannot be read. It shows whether the scope is a constrained one
+	//   that is not the whole host, not whether a container runtime exists.
 	// false:
-	//   ホスト全体視点、または container と判定していない
+	//   the view of the whole host, or not determined to be a container
 	Container bool
 
 	RSSBytes    uint64

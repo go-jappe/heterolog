@@ -274,8 +274,8 @@ func TestCloudWatchLogsLoggerDoesNotSplitRequestBytes(t *testing.T) {
 	}
 }
 
-// The manager owns per-request outcomes. Its aggregate error must not cause
-// the logger to replay the entire snapshot, including already completed entries.
+// request単位の結果はmanagerが管理します。managerの集約errorによって、loggerが
+// 完了済みのentryを含むsnapshot全体を再送してはいけません。
 func TestCloudWatchLogsLoggerDoesNotRequeueWholeSnapshotWhenFlushFails(t *testing.T) {
 	logger := newLifecycleCloudWatchLogsLogger(t, time.Hour)
 	t.Cleanup(func() {

@@ -41,8 +41,8 @@ func TestOpenSearchUncertainResponseQuarantinesWithoutReplay(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "application/json")
 				calls.Add(1)
-				// The backend may have accepted the document; an automatic replay
-				// must wait for an operator to resolve this uncertain result.
+				// backendがdocumentを受理した可能性があります。この不確かな結果をoperatorが
+				// 解決するまで、自動replayは待たなければなりません。
 				_, _ = io.WriteString(w, tt.response)
 			}))
 			defer server.Close()

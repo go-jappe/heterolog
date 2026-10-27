@@ -9,10 +9,10 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	objectstoragespool "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/objectstorage"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +33,7 @@ func TestCompressedLogSpoolAggregateWaitsForActualForcedShutdown(t *testing.T) {
 			close(reported)
 		}()
 		<-entered
-		require.ErrorIs(t, runtime.RequestForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, runtime.RequestForceClose(), pkgshutdown.ErrForcedClose)
 		closed := make(chan error, 1)
 		go func() { closed <- owner.Close() }()
 		routeClosed := make(chan error, 1)
@@ -44,7 +44,7 @@ func TestCompressedLogSpoolAggregateWaitsForActualForcedShutdown(t *testing.T) {
 		unblock()
 		<-reported
 		require.NoError(t, <-routeClosed)
-		require.ErrorIs(t, <-closed, shutdown.ErrForcedClose)
+		require.ErrorIs(t, <-closed, pkgshutdown.ErrForcedClose)
 		require.True(t, runtime.ShutdownComplete())
 		select {
 		case <-runtime.ShutdownDone():

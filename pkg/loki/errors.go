@@ -6,42 +6,46 @@ import (
 )
 
 var (
-	// ErrNegativeTimeoutは、Config.Timeoutが負値であることを表します。
+	// ErrNegativeTimeout reports that Config.Timeout is negative.
 	ErrNegativeTimeout = errors.New("loki timeout must not be negative")
-	// ErrConflictingAuthは、Basic認証とbearer tokenが同時に指定されたことを表します。
+	// ErrConflictingAuth reports that both Basic authentication and a bearer token
+	// were specified.
 	ErrConflictingAuth = errors.New("loki basic auth and bearer token cannot be used together")
-	// ErrInvalidTenantIDは、tenant IDがLokiのTenant ID制約を満たさないことを表します。
+	// ErrInvalidTenantID reports that the tenant ID does not meet the Loki tenant
+	// ID constraints.
 	ErrInvalidTenantID = errors.New("invalid loki tenant id")
-	// ErrEndpointRequiredは、endpointが空であることを表します。
+	// ErrEndpointRequired reports that the endpoint is empty or blank.
 	ErrEndpointRequired = errors.New("loki endpoint is required")
-	// ErrInvalidEndpointは、endpointをURLとして解釈できないか、scheme、host、
-	// user info、query、fragment、pathの制約を満たさないことを表します。
+	// ErrInvalidEndpoint reports that the endpoint cannot be parsed as a URL or
+	// does not meet the constraints on its scheme, host, user info, query, fragment
+	// or path.
 	ErrInvalidEndpoint = errors.New("invalid loki endpoint")
-	// ErrLabelsRequiredは、streamにlabelが一つもないことを表します。
+	// ErrLabelsRequired reports that a stream has no labels.
 	ErrLabelsRequired = errors.New("loki stream labels are required")
-	// ErrInvalidLabelNameは、label名がLokiの受け付ける形式ではないことを表します。
-	// 不正なlabel名はInvalidLabelNameErrorから取り出せます。
+	// ErrInvalidLabelName reports that a label name is not in a form that Loki
+	// accepts. The invalid label name can be obtained from InvalidLabelNameError.
 	ErrInvalidLabelName = errors.New("invalid loki label name")
-	// ErrStreamWithoutEntriesは、送信するstreamにentryが一つもないことを表します。
+	// ErrStreamWithoutEntries reports that a stream to be sent has no entries.
 	ErrStreamWithoutEntries = errors.New("loki stream has no entries")
-	// ErrTooManyRedirectsは、HTTPClientにCheckRedirectがなく、redirectが既定の
-	// 10回を超えたことを表します。
+	// ErrTooManyRedirects reports that a request stopped after 10 redirects, the
+	// default limit, because the HTTP client has no CheckRedirect. This applies to
+	// the default client and to Config.HTTPClient.
 	ErrTooManyRedirects = errors.New("stopped after 10 redirects")
 )
 
-// InvalidLabelNameErrorは、label名がLokiの受け付けるPrometheus形式ではないことを表します。
-// errors.Isでは、ErrInvalidLabelNameと一致します。
+// InvalidLabelNameError reports that a label name is not in the Prometheus form
+// that Loki accepts. errors.Is matches ErrInvalidLabelName.
 type InvalidLabelNameError struct {
-	// Nameは不正なlabel名です。
+	// Name is the invalid label name.
 	Name string
 }
 
-// Errorは、不正なlabel名を含む説明を返します。
+// Error returns a description that includes the invalid label name.
 func (e *InvalidLabelNameError) Error() string {
 	return fmt.Sprintf("invalid label name %q", e.Name)
 }
 
-// Unwrapは、ErrInvalidLabelNameを返します。
+// Unwrap returns ErrInvalidLabelName.
 func (e *InvalidLabelNameError) Unwrap() error { return ErrInvalidLabelName }
 
 // validationErrorは、従来のmessageを保ったまま、errors.Isで種類を判別できる検証errorです。

@@ -19,11 +19,11 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/overload"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/overload/provider"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
-	"github.com/go-jappe/heterolog/internal/infrastructure/memory/pressure"
 	spoolstorecfg "github.com/go-jappe/heterolog/internal/infrastructure/spool/log/store"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/memorypressure"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
@@ -426,8 +426,8 @@ func TestInternalErrorUsesFailureSpoolSource(t *testing.T) {
 		ctx context.Context,
 		err error,
 		entry *logging.LogEntry,
-		tracer observer.Tracer,
-		meter observer.Meter,
+		tracer pkgobserver.Tracer,
+		meter pkgobserver.Meter,
 	) {
 		_ = ctx
 		_ = err
@@ -587,7 +587,7 @@ func TestStaleActiveBacklogWarnsOncePerDayAndStillStoresFailures(t *testing.T) {
 	}()
 	overloadHandler := &recordingOverloadHandler{}
 	handler.OverloadHandler = overloadHandler
-	handler.OnWarn = func(ctx context.Context, entry *logging.LogEntry, tracer observer.Tracer, meter observer.Meter) {
+	handler.OnWarn = func(ctx context.Context, entry *logging.LogEntry, tracer pkgobserver.Tracer, meter pkgobserver.Meter) {
 		warnCount++
 		if entry == nil {
 			t.Fatal("warn entry is nil")
@@ -690,7 +690,7 @@ func newTestHandlerWithOverloadHandler(
 	t *testing.T,
 	now time.Time,
 	overloadCfg testOverloadPolicyConfig,
-	memoryMonitor pressure.MemoryPressureMonitor,
+	memoryMonitor memorypressure.Monitor,
 	overloadHandler overload.Handler,
 	internalLogHandlers InternalLogHandlers,
 ) *SpoolStoreHandler {
@@ -724,7 +724,7 @@ func newTestHandlerWithOverloadHandler(
 
 // recordSpoolErrorsは、内部エラーの通知をnotifiedへ記録するhandlerを返します。
 func recordSpoolErrors(notified *[]error) logging.LoggerErrorHandler {
-	return func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	return func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		*notified = append(*notified, err)
 	}
 }
@@ -735,11 +735,11 @@ type countingMeter struct {
 	totals map[string]int64
 }
 
-func (m *countingMeter) Counter(name string) observer.Counter {
+func (m *countingMeter) Counter(name string) pkgobserver.Counter {
 	return countingCounter{meter: m, name: name}
 }
 
-func (m *countingMeter) Gauge(string) observer.Gauge {
+func (m *countingMeter) Gauge(string) pkgobserver.Gauge {
 	return observer.NopGauge{}
 }
 
@@ -754,7 +754,7 @@ type countingCounter struct {
 	name  string
 }
 
-func (c countingCounter) Add(_ context.Context, value int64, _ ...observer.Attr) {
+func (c countingCounter) Add(_ context.Context, value int64, _ ...pkgobserver.Attr) {
 	c.meter.mu.Lock()
 	defer c.meter.mu.Unlock()
 	if c.meter.totals == nil {

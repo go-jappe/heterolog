@@ -13,6 +13,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	"github.com/go-jappe/heterolog/pkg/clickhouse"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,8 +52,8 @@ type recordingTracer struct {
 	spans []*recordingSpan
 }
 
-func (t *recordingTracer) StartSpan(ctx context.Context, name string, attrs ...observer.Attr) (context.Context, observer.Span) {
-	span := &recordingSpan{name: name, attrs: append([]observer.Attr(nil), attrs...)}
+func (t *recordingTracer) StartSpan(ctx context.Context, name string, attrs ...pkgobserver.Attr) (context.Context, pkgobserver.Span) {
+	span := &recordingSpan{name: name, attrs: append([]pkgobserver.Attr(nil), attrs...)}
 	t.spans = append(t.spans, span)
 	ctx = context.WithValue(ctx, traceSpanKey{}, span)
 	ctx = observer.WithSpan(ctx, span)
@@ -68,17 +69,17 @@ func (t *recordingTracer) spansSince(mark int) []*recordingSpan { return t.spans
 
 type recordingSpan struct {
 	name   string
-	attrs  []observer.Attr
+	attrs  []pkgobserver.Attr
 	events []recordedEvent
 	ended  bool
 }
 
 type recordedEvent struct {
 	name  string
-	attrs []observer.Attr
+	attrs []pkgobserver.Attr
 }
 
-func (s *recordingSpan) TraceID() observer.TraceID {
+func (s *recordingSpan) TraceID() pkgobserver.TraceID {
 	return ""
 }
 
@@ -86,15 +87,15 @@ func (s *recordingSpan) End() {
 	s.ended = true
 }
 
-func (s *recordingSpan) AddEvent(name string, attrs ...observer.Attr) {
-	s.events = append(s.events, recordedEvent{name: name, attrs: append([]observer.Attr(nil), attrs...)})
+func (s *recordingSpan) AddEvent(name string, attrs ...pkgobserver.Attr) {
+	s.events = append(s.events, recordedEvent{name: name, attrs: append([]pkgobserver.Attr(nil), attrs...)})
 }
 
-func (s *recordingSpan) SetAttributes(attrs ...observer.Attr) {
+func (s *recordingSpan) SetAttributes(attrs ...pkgobserver.Attr) {
 	s.attrs = append(s.attrs, attrs...)
 }
 
-func (s *recordingSpan) RecordError(err error, attrs ...observer.Attr) {}
+func (s *recordingSpan) RecordError(err error, attrs ...pkgobserver.Attr) {}
 
 type staticRetryConfig struct {
 	maxAttempts int
@@ -460,15 +461,15 @@ func TestRetryPolicyClientCircuitBreakerSuppressesRetryAfterRepeatedFailure(t *t
 	// breakerを開いた失敗はsuppressedとして記録し、その後の再試行はbackendへ送らない。
 	opened := eventsWith(
 		tracer.spansSince(opening),
-		observer.Attr{Key: "circuit_breaker_client", Value: true},
-		observer.Attr{Key: "circuit_breaker_suppressed", Value: true},
-		observer.Attr{Key: "reason", Value: string(retryable.RetryReasonNetTimeout)},
+		pkgobserver.Attr{Key: "circuit_breaker_client", Value: true},
+		pkgobserver.Attr{Key: "circuit_breaker_suppressed", Value: true},
+		pkgobserver.Attr{Key: "reason", Value: string(retryable.RetryReasonNetTimeout)},
 	)
 	require.Len(t, opened, 1)
 	assert.Equal(t, false, attrValue(opened[0].attrs, "retry"))
 	require.Len(t, eventsWith(
 		tracer.spansSince(opening),
-		observer.Attr{Key: "reason", Value: string(retryable.RetryReasonCircuitBreakerOpen)},
+		pkgobserver.Attr{Key: "reason", Value: string(retryable.RetryReasonCircuitBreakerOpen)},
 	), 1, "the retry after opening is rejected by the breaker")
 
 	suppressed := tracer.mark()
@@ -479,7 +480,7 @@ func TestRetryPolicyClientCircuitBreakerSuppressesRetryAfterRepeatedFailure(t *t
 	assert.Len(t, client.calls, 3)
 	require.Len(t, eventsWith(
 		tracer.spansSince(suppressed),
-		observer.Attr{Key: "reason", Value: string(retryable.RetryReasonCircuitBreakerOpen)},
+		pkgobserver.Attr{Key: "reason", Value: string(retryable.RetryReasonCircuitBreakerOpen)},
 	), 1)
 	requireSpansEnded(t, tracer.spans)
 }
@@ -579,7 +580,7 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 	assert.Len(t, client.calls, 2)
 	require.Len(t, eventsWith(
 		tracer.spansSince(suppressed),
-		observer.Attr{Key: "reason", Value: string(retryable.RetryReasonCircuitBreakerOpen)},
+		pkgobserver.Attr{Key: "reason", Value: string(retryable.RetryReasonCircuitBreakerOpen)},
 	), 1)
 	requireSpansEnded(t, tracer.spans)
 }
@@ -621,7 +622,7 @@ func assertRetryEvent(t *testing.T, event recordedEvent, wantReason retryable.Re
 	assert.NotEmpty(t, attrValue(event.attrs, "error"))
 }
 
-func attrValue(attrs []observer.Attr, key string) any {
+func attrValue(attrs []pkgobserver.Attr, key string) any {
 	for _, attr := range attrs {
 		if attr.Key == key {
 			return attr.Value
@@ -640,7 +641,7 @@ func spanFromContext(t *testing.T, ctx context.Context) *recordingSpan {
 }
 
 // eventsWithは、spansに記録されたeventのうち、wantの属性をすべて持つものを返します。
-func eventsWith(spans []*recordingSpan, want ...observer.Attr) []recordedEvent {
+func eventsWith(spans []*recordingSpan, want ...pkgobserver.Attr) []recordedEvent {
 	var matched []recordedEvent
 	for _, span := range spans {
 	events:

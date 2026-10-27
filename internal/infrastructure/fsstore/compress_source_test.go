@@ -38,7 +38,7 @@ func TestOpenFilesForCompressionRejectsNonRegularSourceBeforeCreatingOutput(t *t
 					require.NoError(t, os.WriteFile(output, []byte("preserve existing output"), 0o600))
 				}
 				in, out, err := OpenFilesForCompression(source, output)
-				// Close even on a regression so Windows can clean up the fixture.
+				// 退行が起きた場合もWindowsでfixtureを削除できるよう、閉じておきます。
 				if in != nil {
 					require.NoError(t, in.Close())
 				}

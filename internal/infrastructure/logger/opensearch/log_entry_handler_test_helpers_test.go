@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/field"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -17,7 +16,7 @@ func newTestApplicationLogEntry(
 	message string,
 	err error,
 	stackTraceRequested bool,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) *logging.LogEntry {
 	ids, extra := field.ResolveIDsAndExtraFields(ctx, fields)
 	if !occurredAt.IsZero() {
@@ -41,7 +40,7 @@ func (l *OpenSearchLogger) testLog(
 	occurredAt time.Time,
 	level pkglogger.LogLevel,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return l.HandleLogEntry(
 		ctx,
@@ -49,19 +48,19 @@ func (l *OpenSearchLogger) testLog(
 	)
 }
 
-func (l *OpenSearchLogger) testDebug(ctx context.Context, message string, fields ...applogging.Field) error {
+func (l *OpenSearchLogger) testDebug(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return l.testLog(ctx, time.Time{}, pkglogger.LogLevelDebug, message, fields...)
 }
 
-func (l *OpenSearchLogger) testInfo(ctx context.Context, message string, fields ...applogging.Field) error {
+func (l *OpenSearchLogger) testInfo(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return l.testLog(ctx, time.Time{}, pkglogger.LogLevelInfo, message, fields...)
 }
 
-func (l *OpenSearchLogger) testWarn(ctx context.Context, message string, fields ...applogging.Field) error {
+func (l *OpenSearchLogger) testWarn(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return l.testLog(ctx, time.Time{}, pkglogger.LogLevelWarn, message, fields...)
 }
 
-func (l *OpenSearchLogger) testError(ctx context.Context, message string, fields ...applogging.Field) error {
+func (l *OpenSearchLogger) testError(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return l.testLog(ctx, time.Time{}, pkglogger.LogLevelError, message, fields...)
 }
 
@@ -69,7 +68,7 @@ func (l *OpenSearchLogger) testErrorWithStack(
 	ctx context.Context,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return l.HandleLogEntry(
 		ctx,
@@ -88,7 +87,7 @@ func (l *OpenSearchLogger) testErrorWithStack(
 func (l *DeliveryOpenSearchLogger) testInfo(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return l.HandleLogEntry(
 		ctx,
@@ -108,7 +107,7 @@ func (l *DeliveryOpenSearchLogger) testErrorWithStack(
 	ctx context.Context,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return l.HandleLogEntry(
 		ctx,

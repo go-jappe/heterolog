@@ -38,9 +38,10 @@ func validateSlackBackend(sourceLabel, token, channel string) error {
 	return nil
 }
 
-// ValidateSlackMaxLogsPerNotificationは、一回のSlack通知へ蓄積するlog件数の
-// flush閾値が正の値であることを検証します。0以下の値はErrNonPositiveSettingを持つ
-// ConfigFieldErrorです。
+// ValidateSlackMaxLogsPerNotification validates that the flush threshold on
+// the number of logs accumulated into one Slack notification is positive. A
+// value of 0 or less is reported as a ConfigFieldError with the kind
+// ErrNonPositiveSetting.
 func ValidateSlackMaxLogsPerNotification(maxLogs int) error {
 	if maxLogs <= 0 {
 		return settingError(
@@ -51,25 +52,28 @@ func ValidateSlackMaxLogsPerNotification(maxLogs int) error {
 	return nil
 }
 
-// SlackIntervalErrorは、Slack loggerのIntervalsのうち正でない待機時間の位置を表します。
-// ValidateSlackIntervalsが返すConfigFieldErrorの原因で、errors.Asで取り出すとIndexで
-// 不正な要素を特定できます。
+// SlackIntervalError reports the position of a non-positive wait time in the
+// Intervals of a Slack logger. It is the cause of the ConfigFieldError that
+// ValidateSlackIntervals returns; retrieved with errors.As, its Index
+// identifies the invalid element.
 type SlackIntervalError struct {
-	// Indexは、Intervalsの中で不正な待機時間の位置です（先頭は0）。
+	// Index is the zero-based position of the invalid wait time in Intervals.
 	Index int
-	// Intervalは、その位置の待機時間です。
+	// Interval is the wait time at that position.
 	Interval time.Duration
 }
 
-// Errorは、不正な待機時間の位置と値を表すmessageを返します。
+// Error returns a message that shows the position and the value of the
+// invalid wait time.
 func (e *SlackIntervalError) Error() string {
 	return fmt.Sprintf("interval at index %d must be positive: %s", e.Index, e.Interval)
 }
 
-// ValidateSlackIntervalsはbuffered Slack loggerが順に適用する待機時間を検証します。
-// 空の一覧はErrEmptySetting、0以下の待機時間はErrNonPositiveSettingを持つ
-// ConfigFieldErrorです。0以下の待機時間のConfigFieldErrorは、その位置を表す
-// SlackIntervalErrorを原因として持ちます。
+// ValidateSlackIntervals validates the wait times that a buffered Slack logger
+// applies in order. An empty list is reported as a ConfigFieldError with the
+// kind ErrEmptySetting, and a wait time of 0 or less as one with the kind
+// ErrNonPositiveSetting. The ConfigFieldError for a wait time of 0 or less has
+// as its cause a SlackIntervalError that holds the position.
 func ValidateSlackIntervals(intervals []time.Duration) error {
 	if len(intervals) == 0 {
 		return settingError(ConfigFieldIntervals, ErrEmptySetting, nil, "intervals must not be empty")
@@ -89,8 +93,9 @@ func ValidateSlackIntervals(intervals []time.Duration) error {
 	return nil
 }
 
-// ValidateSlackMaxRestThresholdはSlackの通知間隔をリセットするまでのログ到着の休止時間を
-// 検証します。0以下の値はErrNonPositiveSettingを持つConfigFieldErrorです。
+// ValidateSlackMaxRestThreshold validates the pause in log arrivals after which
+// the Slack notification interval is reset. A value of 0 or less is reported
+// as a ConfigFieldError with the kind ErrNonPositiveSetting.
 func ValidateSlackMaxRestThreshold(threshold time.Duration) error {
 	if threshold <= 0 {
 		return settingError(

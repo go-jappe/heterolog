@@ -5,7 +5,7 @@ import (
 	"log"
 
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // RequestForceCloseは遅延生成済みloggerへ中止だけを転送します。
@@ -23,12 +23,12 @@ func (h *fallbackHandlerController) RequestForceClose() error {
 			if logger == nil {
 				return
 			}
-			if err := loggercommon.ForceCloseIfSupported(logger); err != nil && !errors.Is(err, shutdown.ErrForcedClose) {
+			if err := loggercommon.ForceCloseIfSupported(logger); err != nil && !errors.Is(err, pkgshutdown.ErrForcedClose) {
 				log.Printf("force fallback logger shutdown: %v", err)
 			}
 		}()
 	}
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 // ForceCloseは内部ownerの中止契約です。資源のCloseは独立して開始しません。
@@ -58,7 +58,7 @@ func (l *LokiLogger) ForceClose() error {
 	l.closeState = loggercommon.LoggerCloseStateStarted
 	manager := l.flushManager
 	l.mu.Unlock()
-	return errors.Join(shutdown.ErrForcedClose, loggercommon.ForceCloseIfSupported(manager))
+	return errors.Join(pkgshutdown.ErrForcedClose, loggercommon.ForceCloseIfSupported(manager))
 }
 
 // ShutdownCompleteは送信結果のエラーとは独立して所有する処理の終了完了を返します。
@@ -76,7 +76,7 @@ func (fm *LokiFlushManager) ForceClose() error {
 	if fm == nil {
 		return nil
 	}
-	return errors.Join(shutdown.ErrForcedClose, fm.FailureHandler.ForceClose())
+	return errors.Join(pkgshutdown.ErrForcedClose, fm.FailureHandler.ForceClose())
 }
 
 // ShutdownCompleteはfailure handlerの実際の資源解放完了を返します。

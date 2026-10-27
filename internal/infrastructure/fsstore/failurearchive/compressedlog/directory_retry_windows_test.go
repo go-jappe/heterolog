@@ -82,8 +82,8 @@ func TestStorePublishesOnlyAfterPreviousLayoutParentSyncSucceeds(t *testing.T) {
 			t.Cleanup(func() {
 				require.NoError(t, store.EnsureDirectories(context.Background()))
 			})
-			// Leave child-directory creation permitted while denying one right
-			// required by the GENERIC_WRITE handle used for synchronization.
+			// 子directoryの作成は許可したまま、同期に使うGENERIC_WRITEのhandleに必要な
+			// 権限を一つだけ拒否します。
 			restore := testutil.DenyWindowsAccess(t, parent, windows.FILE_WRITE_EA)
 			probeErr := fsstore.SyncDirectory(parent)
 			require.ErrorIs(t, probeErr, windows.ERROR_ACCESS_DENIED)

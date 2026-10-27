@@ -137,7 +137,7 @@ func TestRootRuntimeRejectsIndependentOwnerRegardlessOfSettings(t *testing.T) {
 	if err := runtime.Close(); err != nil {
 		t.Fatal(err)
 	}
-	// An owner with no routes must release its reservation on Close.
+	// routeを持たないownerは、Close時に予約を解放しなければなりません。
 	replacement := newTestRootRuntime(t, NewConfigAdapter(objectstorage.NewCompressedLogFileUploadSpoolConfigAdapter(cfg), objectstorage.UploadTargetS3))
 	if replacement.Root().Path() != runtime.Root().Path() {
 		t.Fatal("replacement runtime resolved a different root")

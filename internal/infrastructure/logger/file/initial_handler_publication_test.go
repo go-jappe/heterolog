@@ -19,6 +19,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
@@ -75,7 +76,7 @@ func TestLoggerSetInitialHandlersPrecedeManagedMaintenanceAndCanRequestCloseOwne
 	require.NoError(t, set.ConfigureInternalHandlers(func(InternalHandlerRole) InternalHandlers {
 		gate.handlersReady.Store(true)
 		return InternalHandlers{OnError: func(
-			_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter,
+			_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter,
 		) {
 			if !errors.Is(err, compressedlogworker.ErrNoMatchingRoute) {
 				return
@@ -129,8 +130,8 @@ type initialHandlerPublicationTracer struct {
 }
 
 func (t *initialHandlerPublicationTracer) StartSpan(
-	ctx context.Context, name string, attrs ...observer.Attr,
-) (context.Context, observer.Span) {
+	ctx context.Context, name string, attrs ...pkgobserver.Attr,
+) (context.Context, pkgobserver.Span) {
 	if name == SpanFileLoggerCreate {
 		t.entered <- t.handlersReady.Load()
 		<-t.release

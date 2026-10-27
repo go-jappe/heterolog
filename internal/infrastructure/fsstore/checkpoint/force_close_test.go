@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestSaveRecoveryForceCloseCancelsPendingAndOwnerLockWait(t *testing.T) {
@@ -40,9 +40,9 @@ func TestSaveRecoveryForceCloseCancelsPendingAndOwnerLockWait(t *testing.T) {
 				go func() { stopped <- recovery.Stop() }()
 				synctest.Wait()
 				require.Empty(t, stopped)
-				require.ErrorIs(t, recovery.ForceClose(), shutdown.ErrForcedClose)
+				require.ErrorIs(t, recovery.ForceClose(), pkgshutdown.ErrForcedClose)
 				// 強制終了はStoreのlockが別処理に使われていても進められます。
-				require.ErrorIs(t, boundedwait.ReceiveInBubble(t, stopped, "receive from stopped"), shutdown.ErrForcedClose)
+				require.ErrorIs(t, boundedwait.ReceiveInBubble(t, stopped, "receive from stopped"), pkgshutdown.ErrForcedClose)
 				boundedwait.ReceiveInBubble(t, recovery.Done(), "receive from recovery.Done()")
 				recovery.StartLocked()
 				unlock()
@@ -82,7 +82,7 @@ func TestSaveRecoveryForceCloseWaitsForAcceptedIOAndDoesNotRetry(t *testing.T) {
 			go func() { stopped <- recovery.Stop() }()
 		}
 		synctest.Wait()
-		require.ErrorIs(t, recovery.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, recovery.ForceClose(), pkgshutdown.ErrForcedClose)
 		require.ErrorIs(t, ctx.Err(), context.Canceled)
 		synctest.Wait()
 		require.Empty(t, stopped)
@@ -93,7 +93,7 @@ func TestSaveRecoveryForceCloseWaitsForAcceptedIOAndDoesNotRetry(t *testing.T) {
 		}
 		releaseIO()
 		for range cap(stopped) {
-			require.ErrorIs(t, boundedwait.ReceiveInBubble(t, stopped, "receive from stopped"), shutdown.ErrForcedClose)
+			require.ErrorIs(t, boundedwait.ReceiveInBubble(t, stopped, "receive from stopped"), pkgshutdown.ErrForcedClose)
 		}
 		boundedwait.ReceiveInBubble(t, recovery.Done(), "receive from recovery.Done()")
 		require.ErrorIs(t, boundedwait.ReceiveInBubble(t, reported, "receive from reported"), cause)
@@ -128,13 +128,13 @@ func TestSaveRecoveryForceCloseWaitsForOldNotificationAndCancelsNextLoop(t *test
 		lockOwnerWithinBubble(t, &mu, "lock during the old loop's notification")
 		recovery.StartLocked()
 		mu.Unlock()
-		require.ErrorIs(t, recovery.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, recovery.ForceClose(), pkgshutdown.ErrForcedClose)
 		stopped := make(chan error, 1)
 		go func() { stopped <- recovery.Stop() }()
 		synctest.Wait()
 		require.Empty(t, stopped, "old notification registration still owns the worker")
 		releaseNotification()
-		require.ErrorIs(t, boundedwait.ReceiveInBubble(t, stopped, "receive from stopped"), shutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.ReceiveInBubble(t, stopped, "receive from stopped"), pkgshutdown.ErrForcedClose)
 		time.Sleep(2 * SaveRecoveryInterval)
 		synctest.Wait()
 		require.Equal(t, 1, attempts)
@@ -149,13 +149,13 @@ func TestFilesystemStoreForceClosePreservesUnsavedStateAndCause(t *testing.T) {
 		_, err := store.AdvanceCompletionCursor(context.Background(), key, []objectstorage.DestinationID{"archive"})
 		pending := pendingSaveForTest(t, err)
 		store.stateOrSaveMu.Lock()
-		require.ErrorIs(t, store.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, store.ForceClose(), pkgshutdown.ErrForcedClose)
 		store.stateOrSaveMu.Unlock()
 		closeErr := boundedwait.CloseInBubble(t, "store.Close()", store.Close, store.ForceClose)
-		require.ErrorIs(t, closeErr, shutdown.ErrForcedClose)
+		require.ErrorIs(t, closeErr, pkgshutdown.ErrForcedClose)
 		require.ErrorIs(t, closeErr, pending.Err)
 		boundedwait.ReceiveInBubble(t, store.Done(), "receive from store.Done()")
 		require.Equal(t, []DestinationCursor{{DestinationID: "archive", Generation: key.Generation}}, checkpointStateForTest(store).Cursors)
-		require.ErrorIs(t, store.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, store.ForceClose(), pkgshutdown.ErrForcedClose)
 	})
 }

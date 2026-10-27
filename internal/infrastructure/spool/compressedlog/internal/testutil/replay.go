@@ -1,4 +1,4 @@
-// Package replaytest provides fixtures shared by compressed log runner and worker tests.
+// Package replaytestは、compressed logのrunnerとworkerのtestで共有するfixtureを提供します。
 package replaytest
 
 import (

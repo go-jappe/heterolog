@@ -13,6 +13,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/spoolstorehandler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 
 	"github.com/stretchr/testify/require"
@@ -39,7 +40,7 @@ func TestFailureSpoolStorePreservationUsesRegisteredWriterOnWarn(t *testing.T) {
 		var warnings []*logging.LogEntry
 		writer := &spoolstorehandler.SpoolStoreHandler{
 			Store: store,
-			OnWarn: func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			OnWarn: func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				warnings = append(warnings, entry)
 			},
 		}
@@ -79,7 +80,7 @@ func TestFailureSpoolRecoveryPreservationWarningCanRequestClose(t *testing.T) {
 		var err error
 		runtime, err = NewFailureSpoolRecoveryRuntime(
 			FailureSpoolRecoveryConfigs{Sync: cfg}, testFailureSpoolRuntimeConfig(), observer.NopTracer{}, observer.NopMeter{},
-			WithFailureSpoolRecoveryOnWarn(func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			WithFailureSpoolRecoveryOnWarn(func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				warning = entry
 				runtime.RequestClose()
 				closed = true

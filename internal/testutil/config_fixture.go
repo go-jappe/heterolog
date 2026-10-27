@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// ConfigFixtureRoot creates isolated offline settings from .env.example.
-// It never opens the developer's private .env file.
+// ConfigFixtureRootは、.env.exampleから隔離されたofflineの設定を作成します。
+// 開発者の個人用.env fileを開くことはありません。
 func ConfigFixtureRoot(t testing.TB) string {
 	t.Helper()
 	source := filepath.Join(RepositoryRoot(t), ".env.example")

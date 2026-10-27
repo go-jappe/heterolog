@@ -13,13 +13,13 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -85,7 +85,7 @@ func TestInlineFailureArchiveCompressionErrorSurvivesLaterCandidatePanic(t *test
 	handler := pipeline.handler
 	state := &handler.retryableDirectory
 	var reported int
-	handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		if !errors.Is(err, firstError) {
 			t.Errorf("unexpected compression notification: %v", err)
 			return
@@ -358,7 +358,7 @@ func TestInlineFailureArchivePendingSourceConflictReportsAndPreservesSource(t *t
 			pipeline := newTestArchiveHandler(t, now, func(cfg *testArchiveConfig) {
 				cfg.enableFileCompress = true
 				cfg.compressionCodec = codec
-			}, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			}, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				reported = append(reported, err)
 			}})
 			fileName, err := pipeline.handler.archiveFileNamePattern(failureCategory)

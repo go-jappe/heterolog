@@ -99,8 +99,9 @@ func TestBuildClientChainRejectsInvalidSelectedRetryConfig(t *testing.T) {
 	assert.Equal(t, "clickhouse", invalid.Backend)
 	var fieldErr *pkglogger.ConfigFieldError
 	require.ErrorAs(t, invalid.Err, &fieldErr)
-	assert.ErrorIs(t, fieldErr, pkglogger.ErrNonPositiveSetting)
-	assert.Equal(t, pkglogger.ConfigFieldRetryMaxAttempts, fieldErr.Field)
+	// 初回を含む試行回数が1未満なら、再試行の回数が負として報告します。
+	assert.ErrorIs(t, fieldErr, pkglogger.ErrNegativeSetting)
+	assert.Equal(t, pkglogger.ConfigFieldRetryMaxRetries, fieldErr.Field)
 }
 
 func retrySelectionForTest(mode pkglogger.RetryClientMode) pkglogger.RetryClientSelection {

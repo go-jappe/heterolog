@@ -15,7 +15,7 @@ import (
 func TestDeliveryLokiRetryConfigBelongsToClientWrapper(t *testing.T) {
 	t.Setenv("HETEROLOG_ENABLE_DELIVERY_LOKI_PUSH_LATENCY", "false")
 	t.Setenv("HETEROLOG_DELIVERY_LOKI_RETRY_CLIENT_MODE", "retry_policy")
-	t.Setenv("HETEROLOG_MAX_DELIVERY_LOKI_RETRYABLE_CLIENT_ATTEMPTS", "7")
+	t.Setenv("HETEROLOG_MAX_DELIVERY_LOKI_RETRYABLE_CLIENT_RETRIES", "7")
 	t.Setenv("HETEROLOG_DELIVERY_LOKI_RETRYABLE_CLIENT_MILLISECOND", "11")
 	t.Setenv("HETEROLOG_MAX_DELIVERY_LOKI_RETRYABLE_CLIENT_DELAY_MILLISECOND", "19")
 
@@ -41,12 +41,12 @@ func TestDeliveryLokiRetryConfigBelongsToClientWrapper(t *testing.T) {
 	if got.RetryClientMode != pkglogger.RetryClientModeRetryPolicy {
 		t.Fatalf("RetryClientMode = %q, want %q", got.RetryClientMode, pkglogger.RetryClientModeRetryPolicy)
 	}
-	if got.MaxAttempts != 7 || got.BaseDelay != 11*time.Millisecond || got.MaxDelay != 19*time.Millisecond {
-		t.Fatalf("retry config = attempts:%d base:%s max:%s", got.MaxAttempts, got.BaseDelay, got.MaxDelay)
+	if got.MaxRetries != 7 || got.BaseDelay != 11*time.Millisecond || got.MaxDelay != 19*time.Millisecond {
+		t.Fatalf("retry config = attempts:%d base:%s max:%s", got.MaxRetries, got.BaseDelay, got.MaxDelay)
 	}
 
 	flushConfigType := reflect.TypeOf(pkglogger.DeliveryLokiFlushManagerConfig{})
-	for _, field := range []string{"MaxRetryAttempts", "RetryWaitTime"} {
+	for _, field := range []string{"MaxItemRetries", "RetryWaitTime"} {
 		if _, exists := flushConfigType.FieldByName(field); exists {
 			t.Fatalf("DeliveryLokiFlushManagerConfig must not own client retry field %s", field)
 		}

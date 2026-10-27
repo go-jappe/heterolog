@@ -9,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestFileLoggerCloseWaitsForAcceptedBackgroundNotifications(t *testing.T) {
@@ -37,7 +37,7 @@ func TestFileLoggerCloseWaitsForAcceptedBackgroundNotifications(t *testing.T) {
 						<-release
 					}
 					if operation == "rotation" {
-						logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+						logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 							notify(ctx)
 						}
 						forceCloseContractRotation(t, logger)
@@ -60,9 +60,9 @@ func TestFileLoggerCloseWaitsForAcceptedBackgroundNotifications(t *testing.T) {
 					require.NoError(t, notificationContext.Err())
 					require.NotNil(t, logger.Fsstore.File)
 					if force {
-						require.ErrorIs(t, logger.RequestForceClose(), shutdown.ErrForcedClose)
+						require.ErrorIs(t, logger.RequestForceClose(), pkgshutdown.ErrForcedClose)
 						synctest.Wait()
-						require.ErrorIs(t, receiveForTest(t, closed, "Close result"), shutdown.ErrForcedClose)
+						require.ErrorIs(t, receiveForTest(t, closed, "Close result"), pkgshutdown.ErrForcedClose)
 						require.ErrorIs(t, notificationContext.Err(), context.Canceled)
 						require.NotNil(t, logger.Fsstore.File, "force does not release a file while its accepted notification still uses the owner")
 					}

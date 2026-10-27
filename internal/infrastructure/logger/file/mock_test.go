@@ -13,10 +13,10 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	commoncheckpoint "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	fileerrors "github.com/go-jappe/heterolog/internal/infrastructure/logger/file/errors"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -25,8 +25,8 @@ import (
 func newStandaloneFileLogger(
 	ctx context.Context,
 	cfg FileLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*FileLogger, error) {
 	if cfg != nil && cfg.ArchiveCheckpoint().Directory != "" {
 		if err := commoncheckpoint.PrepareDirectory(cfg.ArchiveCheckpoint().Directory); err != nil {
@@ -39,8 +39,8 @@ func newStandaloneFileLogger(
 func newStandaloneErrorFileLogger(
 	ctx context.Context,
 	cfg FileLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*FileLogger, error) {
 	if cfg != nil && cfg.ArchiveCheckpoint().Directory != "" {
 		if err := commoncheckpoint.PrepareDirectory(cfg.ArchiveCheckpoint().Directory); err != nil {
@@ -53,8 +53,8 @@ func newStandaloneErrorFileLogger(
 func newStandaloneDebugFileLogger(
 	ctx context.Context,
 	cfg FileLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*FileLogger, error) {
 	if cfg != nil && cfg.ArchiveCheckpoint().Directory != "" {
 		if err := commoncheckpoint.PrepareDirectory(cfg.ArchiveCheckpoint().Directory); err != nil {

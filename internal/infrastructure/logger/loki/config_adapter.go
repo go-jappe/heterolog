@@ -49,7 +49,10 @@ func NewRetryConfigProvider(
 	return retryConfigAdapter{cfg: *cfg}
 }
 
-func (a retryConfigAdapter) MaxAttempts() int         { return a.cfg.MaxAttempts }
+// MaxAttemptsは、wrapperが数える初回を含む試行回数です。設定は再試行の回数なので、
+// 初回の1回を足します。負の再試行回数は、adapterを作る前の設定検証で拒否しています。
+func (a retryConfigAdapter) MaxAttempts() int { return a.cfg.MaxRetries + 1 }
+
 func (a retryConfigAdapter) BaseDelay() time.Duration { return a.cfg.BaseDelay }
 func (a retryConfigAdapter) MaxDelay() time.Duration  { return a.cfg.MaxDelay }
 func (a retryConfigAdapter) RetryClientSelection() pkglogger.RetryClientSelection {
@@ -162,7 +165,7 @@ func NewLokiLoggerConfigAdapter(cfg pkglogger.LokiLoggerBaseConfig) *lokiLoggerC
 		timeConfig:     loggertime.NewTimeConfigAdapter(cfg.TimeConfig),
 		runtimeConfig:  NewRuntimeConfigAdapter(cfg.RuntimeConfig),
 		logBodyConfig:  NewLogBodyConfigAdapter(cfg.LogBodyConfig),
-		samplingConfig: sampling.NewSamplingConfigAdapter(cfg.SamplingConfig),
+		samplingConfig: sampling.NewConfigProvider(cfg.SamplingConfig, cfg.RuntimeConfig.Live),
 		handlerConfig:  handler.NewConfigAdapter(cfg.HandlerConfig),
 	}
 }
@@ -265,6 +268,8 @@ type RuntimeConfigAdapter struct {
 	isDebug  bool
 	target   string
 	logLevel pkglogger.LogLevel
+	// liveを設定した場合は、logLevelの代わりにその現在のlevelを使います。
+	live *pkglogger.LiveSettings
 }
 
 func NewRuntimeConfigAdapter(cfg pkglogger.RuntimeConfig) RuntimeConfigAdapter {
@@ -273,6 +278,7 @@ func NewRuntimeConfigAdapter(cfg pkglogger.RuntimeConfig) RuntimeConfigAdapter {
 		isDebug:  cfg.IsDebug,
 		target:   cfg.Target,
 		logLevel: cfg.LogLevel,
+		live:     cfg.Live,
 	}
 }
 
@@ -289,6 +295,9 @@ func (a RuntimeConfigAdapter) Target() string {
 }
 
 func (a RuntimeConfigAdapter) LogLevel() pkglogger.LogLevel {
+	if a.live != nil {
+		return a.live.Level()
+	}
 	return a.logLevel
 }
 

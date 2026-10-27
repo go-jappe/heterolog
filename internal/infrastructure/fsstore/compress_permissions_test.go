@@ -20,8 +20,8 @@ func TestOpenFilesForCompressionRestrictsOutputBeforeWriting(t *testing.T) {
 				require.NoError(t, os.Chmod(source, sourceMode))
 				var expectedMode os.FileMode
 				if outputMode == 0 {
-					// Observe the process umask without changing it or interfering with
-					// parallel tests. Creation must retain its additional restrictions.
+					// processのumaskを変更せず、並行する試験にも影響を与えずに観測します。
+					// 作成時に加わる追加の制限は残らなければなりません。
 					control := filepath.Join(directory, "creation-mode-control")
 					require.NoError(t, os.WriteFile(control, nil, sourceMode))
 					info, err := os.Stat(control)
@@ -35,8 +35,8 @@ func TestOpenFilesForCompressionRestrictsOutputBeforeWriting(t *testing.T) {
 				in, out, err := OpenFilesForCompression(source, output)
 				require.NoError(t, err)
 				t.Cleanup(func() { _ = in.Close(); _ = out.Close() })
-				// The codec has not received either handle yet. Even an old, broad
-				// temporary file must already be restricted before the first byte.
+				// codecはまだどちらのhandleも受け取っていません。古く権限の広い一時fileでも、
+				// 最初の1 byteより前に制限済みでなければなりません。
 				testutil.RequirePrivatePermissions(t, output, expectedMode)
 				info, err := out.Stat()
 				require.NoError(t, err)

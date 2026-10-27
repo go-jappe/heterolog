@@ -338,7 +338,7 @@ func newFailureArchiveLifecycleDurableConfig(
 		LifecycleMode:              fsstore.FileLifecycleModeRunner,
 		RotationType:               fsstore.FileRotationDaily,
 		RotationDayOfWeek:          time.Sunday,
-		MaxWriteAttempts:           1,
+		MaxWriteRetries:            0,
 		FileOperationRetryWaitTime: time.Millisecond,
 		LifecycleRunnerConfig: fsstore.AppendLogRunnerConfig{
 			Interval: 15 * time.Minute,

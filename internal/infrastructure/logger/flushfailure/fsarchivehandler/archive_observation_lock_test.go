@@ -31,8 +31,8 @@ func TestFailureArchiveObservationAllowsRotationAndKeepsFileNameSnapshot(t *test
 					oldActive, err := pipeline.ActiveArchivePath(failureCategory)
 					require.NoError(t, err)
 
-					// A real size-triggered rotation changes Index and the active handle
-					// together under the writer lock while observation I/O is blocked.
+					// 観測のI/Oがblockされている間に、sizeによる実際のrotationが、writer lockの
+					// 下でIndexとactive handleを同時に変更します。
 					handler.Fsstore.Mu.Lock()
 					originalPattern, patternErr := handler.archiveFileNamePattern(failureCategory)
 					activeFile := handler.Fsstore.FileRetryable

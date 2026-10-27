@@ -42,8 +42,8 @@ func TestArchiveFailedAppendPreservesEarlierSuccessAndNextRecord(t *testing.T) {
 					before, err := os.ReadFile(path)
 					require.NoError(t, err)
 					writeErr := errors.New("injected disk-full write")
-					// The first record of this failed request is complete. Only the
-					// second write fails, so rollback must cover the whole request.
+					// 失敗するこのrequestでも、最初のrecordは完全に書き込まれます。失敗するのは
+					// 2回目の書き込みだけなので、rollbackはrequest全体を対象にしなければなりません。
 					result := failureArchiveResultForFailureCategory(category, "unacknowledged-complete")
 					second := archiveFailedRecord("unacknowledged-second", now, 503, "unavailable")
 					if failure == "encode after complete record" {
@@ -173,7 +173,7 @@ func TestArchiveCloseReportsUnrecoveredAppendAndRestartPreservesTail(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, partial, unchanged, "restart must not silently truncate unknown bytes")
 
-	// Explicit operator repair permits restarting the same archive root.
+	// operatorが明示的に修復すれば、同じarchive rootで再起動できます。
 	require.NoError(t, os.WriteFile(path, before, 0o640))
 	reopened, err = NewFailureArchivePipeline(context.Background(), archiveFixedClock{now: now}, pipeline.handler.Config,
 		observer.NopTracer{}, observer.NopMeter{}, InternalLogHandlers{})

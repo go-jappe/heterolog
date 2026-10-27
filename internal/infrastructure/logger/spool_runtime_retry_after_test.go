@@ -10,7 +10,6 @@ import (
 	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	fsstoreretryafter "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/retryafter"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/spoolstorehandler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
@@ -18,8 +17,10 @@ import (
 	logspool "github.com/go-jappe/heterolog/internal/infrastructure/spool/log"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/log/worker"
 	"github.com/go-jappe/heterolog/pkg/clock"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 
 	"github.com/stretchr/testify/assert"
@@ -34,7 +35,7 @@ func TestFailureSpoolRunReporterWarnsWhenRetryAfterWaitIsCapped(t *testing.T) {
 	var warnings []*logging.LogEntry
 	reporter := &failureSpoolRunLogReporter{
 		notifications: dispatcher,
-		onWarn: func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		onWarn: func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			warnings = append(warnings, entry)
 		},
 		contract: pkglogger.LoggerContractSync,
@@ -84,10 +85,10 @@ func TestFailureSpoolRunReporterWarnsWhenRetryAfterMarkerFails(t *testing.T) {
 	var errorsReported []error
 	reporter := &failureSpoolRunLogReporter{
 		notifications: dispatcher,
-		onError: func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		onError: func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			errorsReported = append(errorsReported, err)
 		},
-		onWarn: func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		onWarn: func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			warnings = append(warnings, entry)
 		},
 		contract: pkglogger.LoggerContractSync,
@@ -127,7 +128,7 @@ func TestFailureSpoolWriterUsesRunnerMaxRetryAfter(t *testing.T) {
 	created, err := NewLogger(
 		context.Background(),
 		testConstructibleOpenSearchFailureSpoolLoggerConfig(t.TempDir(), "opensearch"),
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		runtimeConfig,
 		nil,
 		observer.NopTracer{},

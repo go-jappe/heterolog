@@ -10,7 +10,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	commoncheckpoint "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
@@ -19,6 +18,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -1381,8 +1381,8 @@ func TestInlinePurgePanicInvalidatesObservationAndReleasesRetainedUploads(t *tes
 		InternalLogHandlers{OnDebug: func(
 			context.Context,
 			*logging.LogEntry,
-			observer.Tracer,
-			observer.Meter,
+			pkgobserver.Tracer,
+			pkgobserver.Meter,
 		) {
 			panic(panicValue)
 		}},

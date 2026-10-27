@@ -11,9 +11,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // rotationで一部の宛先だけ送信に失敗した世代は、成功した宛先を完了cursorへ記録したまま、
@@ -90,7 +90,7 @@ func TestFailureArchiveNotificationPanicPreservesCompletedDestinations(t *testin
 
 		const notificationPanic = "archive OnError panic"
 		var notifications atomic.Int64
-		handler.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+		handler.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 			if notifications.Add(1) == 1 {
 				panic(notificationPanic)
 			}

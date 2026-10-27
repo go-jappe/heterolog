@@ -13,8 +13,9 @@ type archiveAppendRollback struct {
 	offset int64
 }
 
-// recoverArchiveAppendsLocked runs before rotation can close or archive either
-// active file. No new append is accepted while a failed request's bytes remain.
+// recoverArchiveAppendsLockedは、rotationがどちらかのactive fileをCloseまたはarchive
+// できるようになる前に実行されます。失敗したrequestのbyteが残っている間は、新しい
+// appendを受け付けません。
 func (f *FsArchiveHandler) recoverArchiveAppendsLocked() error {
 	return errors.Join(
 		f.recoverArchiveAppendLocked(&f.retryableDirectory),
@@ -46,8 +47,8 @@ func truncateFailedArchiveAppend(active *os.File, offset int64) (err error) {
 	if err != nil {
 		return err
 	}
-	// A dedicated non-append handle also permits truncation on Windows. Verify
-	// identity before modifying it, so a replaced path cannot damage another file.
+	// append用ではない専用のhandleなら、Windowsでもtruncateできます。pathが置き換え
+	// られていても別のfileを壊さないよう、変更する前に同一性を確認します。
 	file, openedInfo, err := fsstore.OpenRegularFile(active.Name(), os.O_WRONLY)
 	if err != nil {
 		return err

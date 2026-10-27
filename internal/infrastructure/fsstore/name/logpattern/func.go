@@ -128,7 +128,8 @@ func ResolveDateStringForFileNameAt(cfg ConfigProvider, at time.Time) (string, e
 	}
 }
 
-// Weeklyログローテーションファイル命名のための日付の文字列を返却
+// getFormatedDateWeeklyRotationは、週次rotationの現在の期間の開始日を、file名の日付形式で
+// 返します。期間はRotationDayOfWeekに始まるため、その曜日の当日から新しい期間になります。
 func getFormatedDateWeeklyRotation(cfg ConfigProvider, now time.Time) string {
 	targetWeekday := pkgtime.GetLastWeekday(now, cfg.RotationDayOfWeek())
 	return targetWeekday.Format(cfg.FileDateFormat())

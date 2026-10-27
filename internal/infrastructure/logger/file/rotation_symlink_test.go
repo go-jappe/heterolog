@@ -36,8 +36,8 @@ func TestFileLoggersSkipLatestRawSymlinkOnStartupAndRotation(t *testing.T) {
 					}
 
 					seedPeriod := func(period string) {
-						// The latest matching filename remains authoritative even when it
-						// is a link; the writer must not fall back to the regular _7 file.
+						// 一致する最新のfilenameは、それがlinkであっても基準のままです。
+						// writerは、regular fileの_7へfallbackしてはいけません。
 						lowerPath := filepath.Join(directory, target+"_"+period+"_7.log")
 						require.NoError(t, os.WriteFile(lowerPath, []byte("earlier generation\n"), 0o600))
 						testutil.Symlink(t, linkTarget, filepath.Join(directory, target+"_"+period+"_99.log"))
@@ -45,7 +45,7 @@ func TestFileLoggersSkipLatestRawSymlinkOnStartupAndRotation(t *testing.T) {
 					if phase == "startup" {
 						now := time.Now().UTC()
 						seedPeriod(now.Format(pkgfsstore.FileDateFormat))
-						// Also seed tomorrow so crossing midnight during construction is safe.
+						// 構築中に0時をまたいでも安全なように、翌日の分も用意します。
 						seedPeriod(now.AddDate(0, 0, 1).Format(pkgfsstore.FileDateFormat))
 					}
 
@@ -59,8 +59,8 @@ func TestFileLoggersSkipLatestRawSymlinkOnStartupAndRotation(t *testing.T) {
 						if phase == "daily_rotation" {
 							writeTime = writeTime.AddDate(0, 0, 1)
 						} else {
-							// Fill through the actual append handle to trigger size rotation
-							// on Windows as well as Unix.
+							// UnixだけでなくWindowsでもsize rotationを起こすため、
+							// 実際のappend handleを通して埋めます。
 							padding := make([]byte, 32*1024)
 							for remaining := int64(writer.maxFileSize); remaining > 0; {
 								n := min(remaining, int64(len(padding)))

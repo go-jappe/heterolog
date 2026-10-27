@@ -13,9 +13,9 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestFileSeriesManagerContinuesPastFailedGenerationAndProtectsOnlyUnprocessedArchives(t *testing.T) {
@@ -70,8 +70,8 @@ func TestFileSeriesManagerContinuesPastFailedGenerationAndProtectsOnlyUnprocesse
 				manager := newFileSeriesManagerWithExistingDestinations(t, options)
 				t.Cleanup(func() {
 					// この試験は障害を残すため、受理済みの処理を明示的に打ち切ります。
-					require.ErrorIs(t, manager.ForceClose(), shutdown.ErrForcedClose)
-					require.ErrorIs(t, boundedwait.Close(t, "manager.Close()", manager.Close, boundedwait.ForceCloserOf(manager)), shutdown.ErrForcedClose)
+					require.ErrorIs(t, manager.ForceClose(), pkgshutdown.ErrForcedClose)
+					require.ErrorIs(t, boundedwait.Close(t, "manager.Close()", manager.Close, boundedwait.ForceCloserOf(manager)), pkgshutdown.ErrForcedClose)
 				})
 				if blocker == "raw-owner-protection" {
 					owner := appendlog.NewDirectoryGuardToken()
@@ -89,8 +89,8 @@ func TestFileSeriesManagerContinuesPastFailedGenerationAndProtectsOnlyUnprocesse
 					return realCompress(ctx, path)
 				}
 
-				// The blocked generation and unselected alternative stay protected, while
-				// later selected files wait for upload or enter normal local retention.
+				// blockされたgenerationと選択されなかった代替fileは保護されたまま残ります。
+				// 後続の選択済みfileは、uploadを待つか通常のlocal retentionの対象になります。
 				report, err := manager.RunOnce(ctx)
 				if blocker == "compression-failure" {
 					require.ErrorIs(t, err, compressionErr)

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/testutil"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +37,7 @@ func TestStoreByStatePreservesObstructionAndStoresSameRecords(t *testing.T) {
 					testutil.Symlink(t, target, path)
 				}
 				var warnings []*logging.LogEntry
-				store.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				store.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					warnings = append(warnings, entry)
 				}
 				records := []pkgspool.SpoolRecord{{OccurredAt: now, RequestID: "same-record", Payload: json.RawMessage(`{"message":"preserve then save"}`)}}
@@ -76,7 +76,7 @@ func TestConcurrentStoresPreserveObstructionOnceWithoutLosingRecords(t *testing.
 	require.NoError(t, os.WriteFile(filepath.Join(root, "active", "2026"), []byte("keep"), 0o644))
 	var warnings atomic.Int32
 	for _, store := range stores {
-		store.OnWarn = func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) { warnings.Add(1) }
+		store.OnWarn = func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) { warnings.Add(1) }
 	}
 	const count = 12
 	start := make(chan struct{})
@@ -118,7 +118,7 @@ func TestStoreDirectoryWarningDoesNotHoldPreparationLock(t *testing.T) {
 	store := newTestSpoolStore(t, fixedClock{now: now}, testSpoolStoreConfig{spoolPath: t.TempDir(), target: "target", dir: "record"})
 	require.NoError(t, os.MkdirAll(store.RootDir.String(), 0o755))
 	require.NoError(t, os.WriteFile(store.RootDir.ActiveDir().Path(), []byte("keep"), 0o644))
-	store.OnWarn = func(_ context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	store.OnWarn = func(_ context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		require.NoError(t, store.EnsureCurrentTimePartitionDirectory(ctx, pkgspool.StateDead))

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	loggerfield "github.com/go-jappe/heterolog/internal/infrastructure/logger/field"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
 
 	"github.com/stretchr/testify/assert"
@@ -15,9 +15,9 @@ import (
 )
 
 func TestLokiDurableDocumentPreservesValidatedApplicationFields(t *testing.T) {
-	applicationField, err := applogging.Any("valid", map[string]any{"attempt": 2})
+	applicationField, err := pkglogger.Any("valid", map[string]any{"attempt": 2})
 	require.NoError(t, err)
-	_, fields := loggerfield.ExtractIDsAndExtraFields([]applogging.Field{applicationField})
+	_, fields := loggerfield.ExtractIDsAndExtraFields([]pkglogger.Field{applicationField})
 
 	doc := (&LokiFlushManager{}).convertLogEntryRecordToDocument(lokiLogEntryRecord{
 		logEntry: &logging.LogEntry{

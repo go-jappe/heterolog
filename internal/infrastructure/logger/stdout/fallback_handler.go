@@ -12,6 +12,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/sampling"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	"github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // NotificationTargetは、内部ログの通知先（OnErrorConfig・OnWarnConfig・OnInfoConfig・
@@ -66,8 +67,8 @@ func (t *NotificationTarget) NamedErrorHandler() logging.NamedLoggerErrorHandler
 			ctx context.Context,
 			_ error,
 			entry *logging.LogEntry,
-			_ observer.Tracer,
-			_ observer.Meter,
+			_ pkgobserver.Tracer,
+			_ pkgobserver.Meter,
 		) {
 			write(ctx, entry)
 		},
@@ -96,8 +97,8 @@ func (t *NotificationTarget) namedHandler(level logger.LogLevel) logging.NamedLo
 		Handler: func(
 			ctx context.Context,
 			entry *logging.LogEntry,
-			_ observer.Tracer,
-			_ observer.Meter,
+			_ pkgobserver.Tracer,
+			_ pkgobserver.Meter,
 		) {
 			write(ctx, entry)
 		},

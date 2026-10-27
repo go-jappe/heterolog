@@ -17,11 +17,11 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestFileSeriesManagerNewDestinationSkipsExistingRawFilesAndReenabledDestinationResumes(t *testing.T) {
@@ -253,8 +253,8 @@ func TestFileSeriesManagerCompressionSwitchSharesGenerationCompletionWithoutSkip
 	require.Equal(t, []string{raw}, remote.pathsFor(retrying))
 	require.FileExists(t, raw)
 	require.FileExists(t, next)
-	require.ErrorIs(t, first.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "first.Close()", first.Close, boundedwait.ForceCloserOf(first)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, first.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "first.Close()", first.Close, boundedwait.ForceCloserOf(first)), pkgshutdown.ErrForcedClose)
 
 	restartedStore, err := checkpointstore.NewFilesystemStore(checkpointDirectory, target)
 	require.NoError(t, err)
@@ -322,8 +322,8 @@ func TestFileSeriesManagerCheckpointRestartResumesFailedDestinationWithoutReuplo
 	// process再起動を模してmanager・uploader・checkpoint storeをすべて作り直します。
 	// 成功済み宛先は永続checkpointから世代3までの完了を復元して再送せず、失敗した
 	// 宛先だけがlocalに残る世代2から世代順に再送してcheckpointを前進させます。
-	require.ErrorIs(t, firstManager.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, firstManager.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), pkgshutdown.ErrForcedClose)
 	restartedStore, err := checkpointstore.NewFilesystemStore(
 		checkpointDirectory,
 		checkpointSource,
@@ -407,8 +407,8 @@ func TestFileSeriesManagerCheckpointResumesInOrderAfterCompressionFailure(t *tes
 
 	// process再起動を模してManagerを作り直してもsourceとcheckpointから失敗位置を復元します。
 	// 失敗世代を完了してから、後続fileを送信します。
-	require.ErrorIs(t, manager.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "manager.Close()", manager.Close, boundedwait.ForceCloserOf(manager)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, manager.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "manager.Close()", manager.Close, boundedwait.ForceCloserOf(manager)), pkgshutdown.ErrForcedClose)
 	restartedStore, err := checkpointstore.NewFilesystemStore(store.Directory(), store.SourceID())
 	require.NoError(t, err)
 	restartedManager := newFileSeriesManagerWithExistingDestinations(t, FileSeriesManagerOptions{
@@ -844,8 +844,8 @@ func TestFileSeriesManagerCheckpointRestartRetriesOnlyFailedDestinationForSingle
 	require.Equal(t, []string{legacyCustom}, firstUploader.pathsFor(secondary))
 	require.FileExists(t, legacyCustom)
 
-	require.ErrorIs(t, firstManager.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, firstManager.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), pkgshutdown.ErrForcedClose)
 	restartedStore, err := checkpointstore.NewFilesystemStore(
 		checkpointDirectory,
 		checkpointSource,
@@ -1096,8 +1096,8 @@ func TestFileSeriesManagerUsesCurrentDestinationsForUnprocessedGenerationsAfterR
 	// process再起動と同時にactive destinationを入れ替えます。両generationとも
 	// 前RunOnceでは圧縮に失敗しましたが、過去の宛先は固定せず、
 	// 現在のlaterDestinationへlocalに残る両generationを送信します。
-	require.ErrorIs(t, firstManager.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, firstManager.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), pkgshutdown.ErrForcedClose)
 	restartedStore, err := checkpointstore.NewFilesystemStore(
 		checkpointDirectory,
 		checkpointSource,
@@ -1256,7 +1256,7 @@ func (u *destinationUploaderRecorder) pathsFor(destination objectstorage.Destina
 	return append([]string(nil), u.paths[destination]...)
 }
 
-// failOnceCheckpointStore fails before accepting the selected update.
+// failOnceCheckpointStoreは、選択した更新を受理する前に失敗します。
 type failOnceCheckpointStore struct {
 	checkpointstore.Store
 	destination  objectstorage.DestinationID

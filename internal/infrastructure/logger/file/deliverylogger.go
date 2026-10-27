@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
@@ -26,6 +25,7 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -85,8 +85,8 @@ type DeliveryFileLogger struct {
 	OnWarn  logging.LoggerHandlerFunc
 	OnInfo  logging.LoggerHandlerFunc
 	OnDebug logging.LoggerHandlerFunc
-	Tracer  observer.Tracer // observebility計装用
-	Meter   observer.Meter  // observebility計装用
+	Tracer  pkgobserver.Tracer // observebility計装用
+	Meter   pkgobserver.Meter  // observebility計装用
 
 	// internalLogReentryは、OnErrorへ渡すcontextへこのDeliveryFileLoggerの印を付け、通知を
 	// 実行するgoroutineを記録します。通知の中から同じloggerへ書き込んで失敗した場合、
@@ -96,19 +96,19 @@ type DeliveryFileLogger struct {
 
 // NewDeliveryFileLoggerはdefault roleだけを所有するphysical handlerを作ります。
 // 同じdirectoryでerror/debug roleも使う場合は、一括所有するDeliveryLoggerSetを使用します。
-func NewDeliveryFileLogger(ctx context.Context, cfg DeliveryFileLoggerConfigProvider, tracer observer.Tracer, meter observer.Meter) (*DeliveryFileLogger, error) {
+func NewDeliveryFileLogger(ctx context.Context, cfg DeliveryFileLoggerConfigProvider, tracer pkgobserver.Tracer, meter pkgobserver.Meter) (*DeliveryFileLogger, error) {
 	return newStandaloneDeliveryFileLogger(ctx, cfg, DefaultLogger, tracer, meter)
 }
 
 // NewDeliveryErrorFileLoggerはerror roleだけを所有するphysical handlerを作ります。
 // 同じdirectoryの別roleと共有する場合はDeliveryLoggerSetを使用します。
-func NewDeliveryErrorFileLogger(ctx context.Context, cfg DeliveryFileLoggerConfigProvider, tracer observer.Tracer, meter observer.Meter) (*DeliveryFileLogger, error) {
+func NewDeliveryErrorFileLogger(ctx context.Context, cfg DeliveryFileLoggerConfigProvider, tracer pkgobserver.Tracer, meter pkgobserver.Meter) (*DeliveryFileLogger, error) {
 	return newStandaloneDeliveryFileLogger(ctx, cfg, ErrorLogger, tracer, meter)
 }
 
 // NewDeliveryDebugFileLoggerはdebug roleだけを所有するphysical handlerを作ります。
 // 同じdirectoryの別roleと共有する場合はDeliveryLoggerSetを使用します。
-func NewDeliveryDebugFileLogger(ctx context.Context, cfg DeliveryFileLoggerConfigProvider, tracer observer.Tracer, meter observer.Meter) (*DeliveryFileLogger, error) {
+func NewDeliveryDebugFileLogger(ctx context.Context, cfg DeliveryFileLoggerConfigProvider, tracer pkgobserver.Tracer, meter pkgobserver.Meter) (*DeliveryFileLogger, error) {
 	return newStandaloneDeliveryFileLogger(ctx, cfg, DebugLogger, tracer, meter)
 }
 
@@ -116,8 +116,8 @@ func newStandaloneDeliveryFileLogger(
 	ctx context.Context,
 	cfg DeliveryFileLoggerConfigProvider,
 	role loggerType,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*DeliveryFileLogger, error) {
 	if err := validateDeliveryFileLoggerConfigProvider(cfg, role); err != nil {
 		return nil, fmt.Errorf(ErrorMsgInvalidConfigStatus, err)
@@ -284,7 +284,7 @@ func (l *DeliveryFileLogger) dispatchWriteError(
 // 記録します。この書き込み自身のinternal logは通知しないため、再入はここで終わります。Close開始後の
 // 拒否以外の記録失敗は、DeliveryLoggerSetのfallback書き込みと同じく標準loggerへ残します。
 func (l *DeliveryFileLogger) writeReentrantInternalLog(ctx context.Context, entry *logging.LogEntry) {
-	if err := l.writeFallbackEntry(ctx, entry); err != nil && !errors.Is(err, applogging.ErrLoggerClosed) {
+	if err := l.writeFallbackEntry(ctx, entry); err != nil && !errors.Is(err, logger.ErrLoggerClosed) {
 		log.Printf(ErrorMsgWriteLog, err)
 	}
 }
@@ -484,12 +484,12 @@ func (l *DeliveryFileLogger) closeOwnedFileResource() error {
 
 func (l *DeliveryFileLogger) rejectIfClosed() error {
 	if l == nil || l.forceRequested() {
-		return applogging.ErrLoggerClosed
+		return logger.ErrLoggerClosed
 	}
 	l.lifecycleMu.Lock()
 	defer l.lifecycleMu.Unlock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
-		return applogging.ErrLoggerClosed
+		return logger.ErrLoggerClosed
 	}
 	return nil
 }
@@ -498,12 +498,12 @@ func (l *DeliveryFileLogger) rejectIfClosed() error {
 // writeはbackend attempt前の拒否としてErrLoggerClosedを返します。
 func (l *DeliveryFileLogger) lockForWrite() error {
 	if l == nil || l.forceRequested() {
-		return applogging.ErrLoggerClosed
+		return logger.ErrLoggerClosed
 	}
 	l.lifecycleMu.Lock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
 		l.lifecycleMu.Unlock()
-		return applogging.ErrLoggerClosed
+		return logger.ErrLoggerClosed
 	}
 	l.Fsstore.Mu.Lock()
 	l.lifecycleMu.Unlock()
@@ -516,8 +516,8 @@ func newDeliveryFileLoggerBase(
 	ctx context.Context,
 	cfg DeliveryFileLoggerConfigProvider,
 	loggerType loggerType,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	directory string,
 ) (*DeliveryFileLogger, error) {
 	tracer = observer.EnsureTracer(tracer)

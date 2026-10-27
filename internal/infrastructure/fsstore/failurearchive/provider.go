@@ -29,7 +29,7 @@ type FileArchiveConfigProvider interface {
 	DirCaseRetryable() string // ex.)/var/lib/{target}/{dir}/{retryable}
 	DirCasePermanent() string // ex.)/var/lib/{target}/{dir}/{permanent}
 	EnableRotate() bool
-	MaxWriteAttempts() int
+	MaxWriteRetries() int
 	FileOperationRetryWaitTime() time.Duration
 }
 

@@ -9,12 +9,11 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// RequireIntegrationEnvironment opts in to a live test without making HETEROLOG_ENV_PATH
-// affect unrelated tests. Only the explicitly selected file supplies config
-// settings: config keys inherited from the process are unset first, while the
-// runtime environment such as PATH, HOME, TMP, SystemRoot, proxies, and
-// certificate locations is kept. The environment is restored after the test.
-// The caller must not run in parallel because config.LoadConfig reads process env.
+// RequireIntegrationEnvironmentは、HETEROLOG_ENV_PATHを無関係なtestに影響させずに、
+// live testへopt-inします。設定値を与えるのは、明示的に選んだfileだけです。processから
+// 引き継いだ設定keyを先にunsetし、PATH、HOME、TMP、SystemRoot、proxy、証明書の場所などの
+// 実行環境は保持します。環境はtestの後で元に戻します。config.LoadConfigはprocessの
+// 環境変数を読むため、呼び出し側は並列に実行してはいけません。
 func RequireIntegrationEnvironment(t testing.TB, optInVariable string) map[string]string {
 	t.Helper()
 	if !strings.EqualFold(os.Getenv(optInVariable), "true") && os.Getenv(optInVariable) != "1" {

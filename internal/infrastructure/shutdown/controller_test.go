@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestControllerGracefulCloseWaitsAndSharesTerminalResult(t *testing.T) {
@@ -79,11 +80,11 @@ func TestControllerForceReleasesCallersButNotRunningCleanup(t *testing.T) {
 		go func() { results <- c.Close("test blocked I/O", attempt) }()
 	}
 	boundedwait.Receive(t, entered, "the cleanup attempt")
-	if err := c.ForceClose(func() { close(aborted) }); !errors.Is(err, ErrForcedClose) {
+	if err := c.ForceClose(func() { close(aborted) }); !errors.Is(err, pkgshutdown.ErrForcedClose) {
 		t.Fatal(err)
 	}
 	for range 8 {
-		if err := boundedwait.Receive(t, results, "a Close wait released by ForceClose"); !errors.Is(err, ErrForcedClose) {
+		if err := boundedwait.Receive(t, results, "a Close wait released by ForceClose"); !errors.Is(err, pkgshutdown.ErrForcedClose) {
 			t.Fatal(err)
 		}
 	}
@@ -158,7 +159,7 @@ func TestControllerCallerCancellationDoesNotAbortCleanup(t *testing.T) {
 func TestControllerForceBeforeCloseStillCompletesResourceCleanup(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var c Controller
-		if err := c.ForceClose(nil); !errors.Is(err, ErrForcedClose) {
+		if err := c.ForceClose(nil); !errors.Is(err, pkgshutdown.ErrForcedClose) {
 			t.Fatal(err)
 		}
 		var calls atomic.Int32
@@ -167,7 +168,7 @@ func TestControllerForceBeforeCloseStillCompletesResourceCleanup(t *testing.T) {
 				return false, errors.New("unfinished")
 			}
 			return true, nil
-		}); !errors.Is(err, ErrForcedClose) {
+		}); !errors.Is(err, pkgshutdown.ErrForcedClose) {
 			t.Fatal(err)
 		}
 		<-c.Done()

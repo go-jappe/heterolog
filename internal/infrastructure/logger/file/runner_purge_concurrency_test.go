@@ -20,6 +20,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // purgeGateTracerは既存のpurge spanで実削除直前を止め、writerとの重なりを確定します。
@@ -31,8 +32,8 @@ type purgeGateTracer struct {
 }
 
 func (g *purgeGateTracer) StartSpan(
-	ctx context.Context, name string, attrs ...observer.Attr,
-) (context.Context, observer.Span) {
+	ctx context.Context, name string, attrs ...pkgobserver.Attr,
+) (context.Context, pkgobserver.Span) {
 	if name == g.spanName {
 		g.once.Do(func() {
 			close(g.entered)

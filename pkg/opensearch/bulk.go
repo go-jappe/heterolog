@@ -6,11 +6,12 @@ import (
 	"fmt"
 )
 
-// BulkRequestSizeは、IndexDocumentsが送信するgzip圧縮前のNDJSON bodyのbyte数を返します。
-// action metadata、document本文、および各行末の改行をすべて含みます。
+// BulkRequestSize returns the number of bytes of the NDJSON body that
+// IndexDocuments sends, before gzip compression. It includes all of the action
+// metadata, the document bodies, and the newline at the end of each line.
 //
-// この関数とIndexDocumentsは同じbulkRequestBodyを使用するため、呼び出し側は送信時と
-// 同じ形式を推測や近似なしで計測できます。
+// IndexDocuments builds its body with the same code, so callers measure the
+// exact format that is sent, without guessing or approximation.
 func BulkRequestSize(docs []DocumentWriteRequest) (int, error) {
 	body, err := bulkRequestBody(docs)
 	if err != nil {

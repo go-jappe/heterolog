@@ -58,8 +58,8 @@ func TestAsyncAndDeliveryMultiLoggersIsolateEntriesForEachHandler(t *testing.T) 
 				require.NoError(t, logger.Close())
 			}
 
-			// Close joins the handlers before inspecting or changing their entries.
-			// This also catches aliasing without introducing a race in the test.
+			// handlerのentryを確認・変更する前に、Closeでhandlerの終了を待ちます。
+			// これにより、test自体にraceを持ち込まずにaliasingも検出できます。
 			require.Len(t, seen, 2)
 			first, second := seen[0], seen[1]
 			require.Equal(t, original, first)

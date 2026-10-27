@@ -12,12 +12,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestInlineCloseWithoutCheckpointRetriesOnlyFailedDestination(t *testing.T) {
@@ -55,7 +55,7 @@ func TestInlineCloseWithoutCheckpointPreservesPartialSuccessAfterNotificationPan
 		)
 		replacement := &sequenceArchiveUploader{}
 		var notifications atomic.Int32
-		logger.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+		logger.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 			if notifications.Add(1) == 1 {
 				// 復旧登録時に現在のuploaderへ取り替えず、送信を開始した宛先を維持します。
 				logger.ArchiveUploader = newMultiArchiveUploader(t, uploader.Destination{ID: "replacement", Uploader: replacement})
@@ -113,7 +113,7 @@ func TestInlineCloseWithoutCheckpointRetriesCleanupWithoutRepeatingUpload(t *tes
 					uploader.Destination{ID: "secondary", Uploader: secondary},
 				)
 				var notifications atomic.Int32
-				logger.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+				logger.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 					if notifications.Add(1) == 1 && tc.notificationPanic {
 						panic("accepted cleanup notification panic")
 					}
@@ -240,7 +240,7 @@ func TestInlineCheckpointNotificationPanicAfterRecoveryDoesNotRepeatUpload(t *te
 		source := writeCanonicalRawLog(t, logger, "20260920", 1)
 		store.failRecord.Store(true)
 		var notifications atomic.Int32
-		logger.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+		logger.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 			if notifications.Add(1) == 1 {
 				store.failRecord.Store(false)
 				// 通知先の待機中に復旧が完了しても、初回側は共有operationを書き換えません。

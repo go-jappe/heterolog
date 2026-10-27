@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
@@ -18,6 +17,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -422,8 +422,8 @@ func TestFailureArchiveRotationCloseErrorUsesNewActiveFile(t *testing.T) {
 		_ context.Context,
 		err error,
 		_ *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		delegatedErr = err
 		content, readErr := os.ReadFile(newPath)

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/spool"
 )
 
@@ -15,7 +15,9 @@ const defaultMaxRetryAfter = time.Hour
 
 type Worker struct {
 	TargetBackendService string
-	Store                WorkFileStore // move / read / delete
+	// Storeは、processing fileの候補の列挙、active fileの取得、recordの読み込み、
+	// done / dead / quarantineへの移動とrecordの保存、削除に使います。
+	Store WorkFileStore
 
 	// ActiveSpoolWriterは、再送が必要なrecordをactive spoolへ戻す書き込み口です。
 	// dead / quarantine / doneへの遷移はStoreが担当します。
@@ -97,8 +99,8 @@ type Worker struct {
 
 	// 処理結果とエラーはRunOnce系の戻り値で渡します。Loggerの内部通知先への
 	// 振り分けはrunnerのReporterが担当し、worker内から重複通知しません。
-	Tracer observer.Tracer
-	Meter  observer.Meter
+	Tracer pkgobserver.Tracer
+	Meter  pkgobserver.Meter
 }
 
 type Option func(*Worker)

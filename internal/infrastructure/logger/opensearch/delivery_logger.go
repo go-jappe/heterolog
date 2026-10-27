@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"sync"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/opensearch"
 )
 
@@ -45,8 +45,8 @@ func NewDeliveryOpenSearchLogger(
 	fmCfg DeliveryOpenSearchFlushManagerConfigProvider,
 	resourceProvider resource.ResourceProvider,
 	failureHandler *flushfailure.ReportingCompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 ) *DeliveryOpenSearchLogger {
 	tracer = observer.EnsureTracer(tracer)
@@ -156,7 +156,7 @@ func (l *DeliveryOpenSearchLogger) indexImmediatelyWithReport(
 	l.stateMu.Lock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
 		l.stateMu.Unlock()
-		err := applogging.ErrLoggerClosed
+		err := pkglogger.ErrLoggerClosed
 		return pkglogger.NewTargetDeliveryReport(openSearchDeliveryRejectedResult(err)), err
 	}
 	indexer := l.indexer
@@ -187,7 +187,7 @@ func (l *DeliveryOpenSearchLogger) loggerClosedError() error {
 	l.stateMu.Lock()
 	defer l.stateMu.Unlock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	return nil
 }

@@ -11,7 +11,8 @@ const (
 	WriteLogFileWarnThresholdDuration  = 20 * time.Millisecond
 	WriteLogFileErrorThresholdDuration = 100 * time.Millisecond
 
-	//　ファイル操作時のエラーリトライ数 MaxWriteAttemptsで呼び出される
-	MaxFileOperationnRetryAttempts = 3
-	FileOperationRetryWaitTime     = 100 * time.Millisecond
+	// MaxFileOperationRetriesは、ファイル操作が失敗したときに初回に加えて再試行する回数です。
+	// MaxWriteRetriesに使い、初回と合わせて最大3回操作します。
+	MaxFileOperationRetries    = 2
+	FileOperationRetryWaitTime = 100 * time.Millisecond
 )

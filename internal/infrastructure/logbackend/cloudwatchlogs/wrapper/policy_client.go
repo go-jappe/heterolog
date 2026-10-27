@@ -8,6 +8,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/retryclassifier"
 	"github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // RetryPolicyClientはpolicy付きretryを担当し、circuit breaker状態は保持しません。
@@ -16,7 +17,7 @@ import (
 type retryPolicyClient struct {
 	next   cloudwatchlogs.Client
 	cfg    retryBackoffConfigProvider
-	tracer observer.Tracer
+	tracer pkgobserver.Tracer
 }
 
 var _ cloudwatchlogs.Client = (*retryPolicyClient)(nil)
@@ -24,7 +25,7 @@ var _ cloudwatchlogs.Client = (*retryPolicyClient)(nil)
 func newRetryPolicyClient(
 	next cloudwatchlogs.Client,
 	cfg retryBackoffConfigProvider,
-	tracer observer.Tracer,
+	tracer pkgobserver.Tracer,
 ) *retryPolicyClient {
 	return &retryPolicyClient{
 		next:   next,
@@ -87,13 +88,13 @@ func (c *retryPolicyClient) doWithPolicyRetry(ctx context.Context, name string, 
 
 		delay, ok := retryable.PolicyDelay(ctx, attempt, c.baseDelay(), c.maxDelay(), decision)
 		span.AddEvent("cloudwatchlogs.retry_decision",
-			observer.Attr{Key: "reason", Value: string(decision.Reason)},
-			observer.Attr{Key: "retry_class", Value: string(retryable.PolicyClass(decision))},
-			observer.Attr{Key: "attempt", Value: attempt},
-			observer.Attr{Key: "retry", Value: ok},
-			observer.Attr{Key: "http_status", Value: decision.Code},
-			observer.Attr{Key: "error", Value: lastErr.Error()},
-			observer.Attr{Key: "retry_policy", Value: true},
+			pkgobserver.Attr{Key: "reason", Value: string(decision.Reason)},
+			pkgobserver.Attr{Key: "retry_class", Value: string(retryable.PolicyClass(decision))},
+			pkgobserver.Attr{Key: "attempt", Value: attempt},
+			pkgobserver.Attr{Key: "retry", Value: ok},
+			pkgobserver.Attr{Key: "http_status", Value: decision.Code},
+			pkgobserver.Attr{Key: "error", Value: lastErr.Error()},
+			pkgobserver.Attr{Key: "retry_policy", Value: true},
 		)
 		span.End()
 		if !ok {

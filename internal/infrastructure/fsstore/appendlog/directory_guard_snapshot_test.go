@@ -86,8 +86,8 @@ func testDirectoryGuardSnapshotsChooseStableActiveSpelling(t *testing.T, nameCas
 	wantProtected := map[string]struct{}{retained: {}, activeFirst: {}, activeSecond: {}}
 	wantActive := map[string]struct{}{activeFirst: {}, activeSecond: {}}
 	if ignoresCase {
-		// Active spelling wins even though the retained spelling sorts first.
-		// Multiple active spellings use the lexical minimum, independent of owner order.
+		// retainedの表記が辞書順で先に来ても、activeの表記が優先されます。
+		// activeの表記が複数ある場合は、ownerの順序によらず辞書順で最小の表記を使います。
 		wantProtected = map[string]struct{}{activeFirst: {}}
 		wantActive = map[string]struct{}{activeFirst: {}}
 	}

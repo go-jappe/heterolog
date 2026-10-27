@@ -82,9 +82,10 @@ func (f *FileStore) rotate(
 			err,
 		)
 	}
+	// MaxWriteRetriesは初回に加える再試行の回数で、構築時に0以上と検証済みです。
 	newFile, err := retry.RetryWithResult(
 		func() (*os.File, error) { return OpenFile(newPath) },
-		f.Config.MaxWriteAttempts(),
+		f.Config.MaxWriteRetries(),
 		f.Config.FileOperationRetryWaitTime(),
 	)
 	if err != nil {

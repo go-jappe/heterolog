@@ -79,8 +79,8 @@ func TestInlineFullScanSharesObservedTypesAndNamesThroughRecoveryUploadAndPurge(
 			{Path: uploadPeer, Size: 9, ModTime: now},
 		},
 	}
-	// The scanner owns the filesystem inspection. A detached snapshot makes any
-	// subsequent ReadDir/Lstat observable: its directory and paths do not exist.
+	// filesystemの検査はscannerが担います。filesystemから切り離されたsnapshotにより、
+	// その後にReadDir/Lstatがあれば観測できます。そのdirectoryとpathは存在しません。
 	var scans int
 	logger.inlinePurge.fileScanner = &fakePurgeFileScanner{observe: func(
 		pattern logpattern.FileNamePattern, mode logpattern.GlobMode,

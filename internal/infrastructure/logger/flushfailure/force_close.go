@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // ForceCloseは新規failure処理を止め、対応するchildの復旧処理を中止します。
@@ -21,7 +21,7 @@ func (c *CompositeFailureHandler) ForceClose() error {
 	c.state = compositeLifecycleStateDraining
 	handlers := append([]FailureHandler(nil), c.Handlers...)
 	c.lifecycleMu.Unlock()
-	errs := []error{shutdown.ErrForcedClose}
+	errs := []error{pkgshutdown.ErrForcedClose}
 	for index, handler := range handlers {
 		if err := loggercommon.ForceCloseIfSupported(handler); err != nil {
 			errs = append(errs, &FailureHandlerError{

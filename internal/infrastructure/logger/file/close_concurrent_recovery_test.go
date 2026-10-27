@@ -12,11 +12,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
 type controlledCloseArchiveUploader struct {
@@ -84,7 +84,7 @@ func TestFileLoggerConcurrentCloseJoinsRecoveryNotificationClose(t *testing.T) {
 		require.EqualValues(t, 1, upload.calls.Load(), "only one caller owns uploader cleanup")
 		require.Empty(t, closed)
 		require.Empty(t, notificationClosed, "the asynchronous request joins the same unfinished close attempt")
-		require.ErrorIs(t, logger.rejectIfClosed(), applogging.ErrLoggerClosed)
+		require.ErrorIs(t, logger.rejectIfClosed(), pkglogger.ErrLoggerClosed)
 		unblockUploader()
 		for range cap(closed) {
 			require.NoError(t, receiveForTest(t, closed, "Close result"))
@@ -143,7 +143,7 @@ func TestFileLoggerConcurrentCloseRetriesIncompleteCleanupUntilSuccess(t *testin
 		require.Empty(t, retry)
 		require.EqualValues(t, 2, upload.calls.Load())
 		require.Equal(t, loggercommon.LoggerCloseStateStarted, logger.closeState)
-		require.ErrorIs(t, logger.rejectIfClosed(), applogging.ErrLoggerClosed)
+		require.ErrorIs(t, logger.rejectIfClosed(), pkglogger.ErrLoggerClosed)
 		unblockRetry()
 		require.ErrorIs(t, receiveForTest(t, first, "first Close result"), os.ErrClosed)
 		for range cap(firstJoiners) {

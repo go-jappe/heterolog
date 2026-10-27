@@ -12,8 +12,8 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	commoncheckpoint "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -48,7 +48,7 @@ func TestLoggerContractsUseOptionalCheckpointDirectoryAndKeepFallbackFilesLazy(t
 								cfg.InternalLogDestinations = &pkglogger.DeliveryInternalLogDestinationConfig{File: &internalFile}
 								logRoot = internalFile.FsstoreConfig.Layout.LogPath
 							}
-							created, err := NewDeliveryLogger(context.Background(), cfg, streamrouting.None, observer.NopTracer{}, observer.NopMeter{})
+							created, err := NewDeliveryLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, observer.NopTracer{}, observer.NopMeter{})
 							require.NoError(t, err)
 							t.Cleanup(func() { require.NoError(t, created.Close()) })
 							owned := created.(*topLevelDeliveryLoggerRuntime)
@@ -64,7 +64,7 @@ func TestLoggerContractsUseOptionalCheckpointDirectoryAndKeepFallbackFilesLazy(t
 								logRoot = internalFile.FsstoreConfig.Layout.LogPath
 							}
 							if contract == "sync" {
-								created, err := NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+								created, err := NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 								require.NoError(t, err)
 								t.Cleanup(func() { require.NoError(t, created.Close()) })
 								owned := created.(*topLevelLoggerRuntime)
@@ -73,7 +73,7 @@ func TestLoggerContractsUseOptionalCheckpointDirectoryAndKeepFallbackFilesLazy(t
 								asyncCfg := asyncConfigFromLoggerConfig(cfg)
 								asyncCfg.MaxLogEntryBytes = cfg.MaxLogEntryBytes
 								asyncCfg.MaxParallel = 1
-								created, err := NewAsyncLogger(context.Background(), asyncCfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+								created, err := NewAsyncLogger(context.Background(), asyncCfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 								require.NoError(t, err)
 								t.Cleanup(func() { require.NoError(t, created.Close()) })
 								owned := created.(*topLevelAsyncLoggerRuntime)

@@ -11,31 +11,38 @@ import (
 const maxPutLogEventsTimeSpan = 24 * time.Hour
 
 var (
-	// ErrEventTimestampRequiredは、batch分割に必要なeventのtimestampがzero値であることを
-	// 表します。
+	// ErrEventTimestampRequired reports that the timestamp of an event, which
+	// batch splitting needs, is the zero value.
 	ErrEventTimestampRequired = errors.New("cloudwatch logs event timestamp is required")
-	// ErrEventMessageEmptyは、eventのmessageが空であることを表します。CloudWatch Logsは
-	// 空のmessageを受け付けません。
+	// ErrEventMessageEmpty reports that the message of an event is empty.
+	// CloudWatch Logs does not accept an empty message.
 	ErrEventMessageEmpty = errors.New("cloudwatch logs event message is empty")
-	// ErrEventsNotSortedは、eventsがtimestamp昇順ではないことを表します。
+	// ErrEventsNotSorted reports that events are not in ascending timestamp order.
 	ErrEventsNotSorted = errors.New("cloudwatch logs event timestamps must be sorted ascending")
-	// ErrTooManyEventsは、一回のrequestのevent件数がMaxPutLogEventsCountを超えることを表します。
+	// ErrTooManyEvents reports that the number of events in one request exceeds
+	// MaxPutLogEventsCount.
 	ErrTooManyEvents = errors.New("cloudwatch logs put batch has too many events")
-	// ErrBatchTooLargeは、一回のrequestのbyte数がCloudWatch Logsの上限を超えることを表します。
+	// ErrBatchTooLarge reports that the number of bytes in one request exceeds
+	// the CloudWatch Logs limit.
 	ErrBatchTooLarge = errors.New("cloudwatch logs put batch is too large")
-	// ErrBatchTimeSpanTooLongは、一回のrequest内の最古eventと最新eventのtimestamp差が
-	// 24時間を超えることを表します。
+	// ErrBatchTimeSpanTooLong reports that the difference between the timestamps
+	// of the oldest and the newest event in one request exceeds 24 hours.
 	ErrBatchTimeSpanTooLong = errors.New("cloudwatch logs put batch time span exceeds 24h")
 )
 
-// SplitPutLogEventsBatchesは、timestamp昇順のeventsをCloudWatch Logsの一request当たりの
-// 件数、byte数、最古eventと最新eventのtimestamp差（最大24時間）の上限に収まる
-// 連続したbatchへ分割します。24時間は暦日ではなく、一request内のtimestamp差です。
+// SplitPutLogEventsBatches splits events in ascending timestamp order into
+// consecutive batches that fit the CloudWatch Logs per-request limits on the
+// number of events, the number of bytes, and the difference between the
+// timestamps of the oldest and the newest event (at most 24 hours). The 24
+// hours are not a calendar day but a timestamp difference within one request.
 //
-// AWSの受付可能期間は検証しません。古すぎるeventや未来のeventも送信し、AWS responseの
-// rejectedLogEventsInfoを正として呼び出し側が分類します。入力順は変更せず、各batch内と
-// batch間で元の順序を維持します。messageがMaxPutLogEventMessageBytesを超え、単独でも
-// 一回のrequestに収まらないeventはerrorにします。
+// It does not check the period in which AWS accepts events. Events that are
+// too old or in the future are sent as well, and the caller classifies them,
+// treating rejectedLogEventsInfo in the AWS response as authoritative. It does
+// not change the input order and keeps the original order within each batch
+// and across batches. It returns an error for an event whose message exceeds
+// MaxPutLogEventMessageBytes, because such an event does not fit in one
+// request even on its own.
 func SplitPutLogEventsBatches(events []Event) ([][]Event, error) {
 	if len(events) == 0 {
 		return nil, nil
@@ -110,12 +117,16 @@ func unsortedEventsError(index int, timestamp, previousTimestamp int64) error {
 	)}
 }
 
-// EventTooLargeErrorは、一件のeventのmessageがPutLogEventsで送信できる上限を超えることを
-// 表します。このeventはbatchを分割しても送信できません。
+// EventTooLargeError reports that the message of one event exceeds the limit
+// of what PutLogEvents can send. The event cannot be sent even if the batch is
+// split.
 type EventTooLargeError struct {
-	// Indexは入力events内の位置です。
+	// Index is the position in the input events.
 	Index int
-	// MessageBytesはmessageのUTF-8 byte数、MaxBytesは一件のmessageに許される上限です。
+	// MessageBytes is the size of the message as it is sent: its UTF-8 bytes,
+	// with each invalid UTF-8 byte counted as the three bytes of the U+FFFD
+	// that JSON encoding substitutes for it. MaxBytes is the limit allowed for
+	// one message.
 	MessageBytes int
 	MaxBytes     int
 }

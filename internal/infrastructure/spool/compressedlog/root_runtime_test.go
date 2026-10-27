@@ -13,7 +13,6 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	objectstoragespool "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/objectstorage"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	replaytest "github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog/internal/testutil"
 	compressedlogworker "github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog/worker"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -21,6 +20,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
 	pkgs3 "github.com/go-jappe/heterolog/pkg/objectstorage/uploader/s3"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
@@ -61,8 +61,8 @@ func TestManagedRouteRetryablePublishDoesNotWakeReplay(t *testing.T) {
 			t.Fatal("retryable publish woke replay and caused an immediate duplicate PUT")
 		default:
 		}
-		// Replay uses the copied flat spool file, so the producer can remove its
-		// original immediately after a successful handoff.
+		// replayはcopyしたflatなspool fileを使うため、producerはhandoffの成功直後に
+		// 元のfileを削除できます。
 		if err := os.Remove(sourcePath); err != nil {
 			t.Fatal(err)
 		}
@@ -988,7 +988,7 @@ func newTestRootRuntime(t *testing.T, config ConfigProvider) *RootRuntime {
 		t.Fatalf("NewRootRuntime() error = %v", err)
 	}
 	t.Cleanup(func() {
-		if err := runtime.Close(); err != nil && !(runtime.closeController.IsForced() && errors.Is(err, shutdown.ErrForcedClose)) {
+		if err := runtime.Close(); err != nil && !(runtime.closeController.IsForced() && errors.Is(err, pkgshutdown.ErrForcedClose)) {
 			t.Errorf("root Close() error = %v", err)
 		}
 	})

@@ -15,6 +15,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	slackgo "github.com/slack-go/slack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -349,7 +350,7 @@ func newDeliverySlackLoggerWithConfigForTest(
 	return logger, client
 }
 
-// An HTTP 200 response can still mean Slack rejected the message.
+// HTTP 200のresponseでも、Slackがmessageを拒否したことを意味する場合があります。
 func TestDeliverySlackLoggerAPIRejectionReportsFailed(t *testing.T) {
 	logger, _ := newDeliverySlackLoggerForLevelTest(t, context.Background(), pkglogger.LogLevelDebug)
 	logger.slackAPI = slackgo.New("dummy-token", slackgo.OptionHTTPClient(slackAPIRejectionClient{}))
@@ -367,7 +368,7 @@ func TestSlackLoggerAPIRejectionNotifiesAndCloseCanRetry(t *testing.T) {
 		// cleanupのClose結果は検証しません。Closeは完了後の再呼び出しで何もしません。
 		t.Cleanup(func() { _ = logger.Close() })
 		errors := make(chan error, 4)
-		logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			errors <- err
 		}
 		const message = "retain this message after API rejection"

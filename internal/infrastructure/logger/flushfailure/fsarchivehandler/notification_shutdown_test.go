@@ -9,11 +9,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestFailureArchiveShutdownWaitsForNotificationsUntilForce(t *testing.T) {
@@ -32,7 +32,7 @@ func TestFailureArchiveShutdownWaitsForNotificationsUntilForce(t *testing.T) {
 					func(cfg *testArchiveConfig) {
 						cfg.lifecycleMode = pkgfsstore.FileLifecycleModeRunner
 						cfg.lifecycleRunnerConfig.Interval = time.Hour
-					}, InternalLogHandlers{OnDebug: func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+					}, InternalLogHandlers{OnDebug: func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 						entered <- ctx
 						<-release
 					}})
@@ -49,9 +49,9 @@ func TestFailureArchiveShutdownWaitsForNotificationsUntilForce(t *testing.T) {
 				require.Empty(t, result, "normal shutdown must wait for the accepted notification")
 				require.NoError(t, notificationContext.Err(), "normal close and producer cancellation must not cancel notification output")
 				if force {
-					require.ErrorIs(t, pipeline.RequestForceClose(), shutdown.ErrForcedClose)
+					require.ErrorIs(t, pipeline.RequestForceClose(), pkgshutdown.ErrForcedClose)
 					synctest.Wait()
-					require.ErrorIs(t, <-result, shutdown.ErrForcedClose)
+					require.ErrorIs(t, <-result, pkgshutdown.ErrForcedClose)
 					require.ErrorIs(t, notificationContext.Err(), context.Canceled)
 					select {
 					case <-pipeline.ShutdownDone():

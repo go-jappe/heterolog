@@ -5,7 +5,7 @@ import (
 
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // ForceCloseは新規受付を止め、childへ強制終了を転送します。
@@ -58,7 +58,7 @@ func (m *DeliveryMultiLogger) ForceClose() error {
 }
 
 func forceCloseChildren[T any](children []T) error {
-	errs := []error{shutdown.ErrForcedClose}
+	errs := []error{pkgshutdown.ErrForcedClose}
 	for _, child := range children {
 		if err := loggercommon.ForceCloseIfSupported(child); err != nil {
 			errs = append(errs, wrapHandlerErr(child, "ForceClose", err))

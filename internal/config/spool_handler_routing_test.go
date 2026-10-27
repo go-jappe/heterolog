@@ -302,8 +302,8 @@ func TestSpoolHandlerRoutesRemainDistinctThroughTopLevelMappersAndAdapters(t *te
 				}
 			}
 
-			// Distinct valid lists reveal any level swap even when the example routes
-			// every level to stdout. Both targets are loaded as handler destinations.
+			// levelごとに異なる有効な一覧を与えるため、公開例が全levelをstdoutへ振り分けていても
+			// levelの取り違えを検出できます。stdoutとfileのどちらのtargetもhandler出力先として読み込まれます。
 			want := [][]string{{"stdout"}, {"file"}, {"stdout", "file"}, {"file", "stdout"}}
 			for i, suffix := range spoolHandlerRoutingSuffixes {
 				if err := os.Setenv("HETEROLOG_"+tt.prefix+suffix, strings.Join(want[i], ",")); err != nil {

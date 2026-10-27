@@ -5,8 +5,11 @@ import (
 	"fmt"
 )
 
-// ErrNilPutLogEventsOutputは、PutLogEventsがerrorを返さずにnilのPutLogEventsOutputを
-// 返したことを表します。送信結果を確定できないため、受理された証拠として扱いません。
+// ErrNilPutLogEventsOutput reports that there is no PutLogEventsOutput to
+// establish the result of a submission. Validate returns it for a nil output,
+// such as one from a Client that returned neither an output nor an error, and
+// HTTPClient.PutLogEvents returns it inside a ResponseDecodeError when the
+// response body is JSON null. It is not treated as evidence of acceptance.
 var ErrNilPutLogEventsOutput = errors.New("cloudwatch logs client returned nil PutLogEventsOutput without error")
 
 // ResponseDecodeError means a successful HTTP response could not establish the

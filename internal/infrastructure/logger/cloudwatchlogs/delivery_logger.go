@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // DeliveryCloudWatchLogsLogger は delivery pipeline 向けに DeliveryReport を返す CloudWatch Logs logger です。
@@ -29,8 +28,8 @@ func NewDeliveryCloudWatchLogsLogger(
 	fmCfg DeliveryCloudWatchLogsFlushManagerConfigProvider,
 	resourceProvider resource.ResourceProvider,
 	failureHandler *flushfailure.ReportingCompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 	opts ...CloudWatchLogsLoggerOption,
 ) (*DeliveryCloudWatchLogsLogger, error) {
@@ -97,7 +96,7 @@ func (l *DeliveryCloudWatchLogsLogger) putImmediatelyWithReport(
 	l.mu.Lock()
 	if l.closeState != common.LoggerCloseStateOpen {
 		l.mu.Unlock()
-		err := applogging.ErrLoggerClosed
+		err := pkglogger.ErrLoggerClosed
 		return pkglogger.NewTargetDeliveryReport(cloudWatchLogsDeliveryRejectedResult(err)), err
 	}
 	flushManager := l.flushManager

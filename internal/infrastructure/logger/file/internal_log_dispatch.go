@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -131,7 +130,7 @@ func (l *FileLogger) writeReentrantInternalLog(
 	localEntry := *entry
 	logging.EnsureEntryOccurredAt(&localEntry, l.Clock)
 	err := l.writeFallbackEntry(ctx, &localEntry)
-	if err == nil || errors.Is(err, applogging.ErrLoggerClosed) || errors.Is(err, pkglogger.ErrLogDropped) {
+	if err == nil || errors.Is(err, pkglogger.ErrLoggerClosed) || errors.Is(err, pkglogger.ErrLogDropped) {
 		return
 	}
 	log.Printf(ErrorMsgWriteLog, err)

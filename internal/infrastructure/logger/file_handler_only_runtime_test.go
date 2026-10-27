@@ -291,19 +291,19 @@ type closeEventTestLogger struct {
 
 func (*closeEventTestLogger) StopAccepting() {}
 
-func (*closeEventTestLogger) Debug(context.Context, string, ...applogging.Field) error {
+func (*closeEventTestLogger) Debug(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (*closeEventTestLogger) Info(context.Context, string, ...applogging.Field) error {
+func (*closeEventTestLogger) Info(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (*closeEventTestLogger) Warn(context.Context, string, ...applogging.Field) error {
+func (*closeEventTestLogger) Warn(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (*closeEventTestLogger) Error(context.Context, string, ...applogging.Field) error {
+func (*closeEventTestLogger) Error(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
@@ -311,7 +311,7 @@ func (*closeEventTestLogger) ErrorWithStack(
 	context.Context,
 	string,
 	error,
-	...applogging.Field,
+	...pkglogger.Field,
 ) error {
 	return nil
 }

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/sampling"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
@@ -101,7 +100,7 @@ func TestFileLoggerKeepsRequestSamplingDecisionAcrossEntries(t *testing.T) {
 
 	writes := []struct {
 		level string
-		write func(context.Context, string, ...applogging.Field) error
+		write func(context.Context, string, ...pkglogger.Field) error
 	}{
 		{level: "debug", write: logger.testDebug},
 		{level: "info", write: logger.testInfo},

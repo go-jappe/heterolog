@@ -38,8 +38,8 @@ type testThirdTargetReport struct{ target string }
 func (testThirdTargetReport) Kind() failurestore.DurableType { return thirdTestDurableType }
 func (r testThirdTargetReport) String() string               { return string(r.Kind()) + " " + r.target }
 
-// testThirdFailureTarget persists a copy so tests can observe whether the
-// configured target participates in both reuse and saving.
+// testThirdFailureTargetはcopyを永続化し、設定したtargetが再利用と保存の両方に
+// 参加するかをtestで観測できるようにします。
 type testThirdFailureTarget struct {
 	rootPath     string
 	panicOnSave  bool
@@ -166,7 +166,7 @@ func TestManagedUploaderRequiresThirdFailureTargetForReuse(t *testing.T) {
 		notifications = append(notifications, notification)
 	}
 
-	// Two matching copies do not complete a handoff configured with three targets.
+	// 一致するcopyが2つだけでは、3つのtargetを設定したhandoffは完了しません。
 	require.NoError(t, managed.Upload(context.Background(), uploadertest.Request(t, source)))
 	require.Equal(t, 1, remote.callCount())
 	require.Empty(t, notifications)

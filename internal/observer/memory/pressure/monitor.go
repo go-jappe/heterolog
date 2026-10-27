@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/infrastructure/memory/pressure"
 	"github.com/go-jappe/heterolog/pkg/memorypressure"
 )
 
@@ -74,7 +73,7 @@ func New(
 	provider memorypressure.Provider,
 	policy memorypressure.CriticalPolicy,
 	pollInterval time.Duration,
-) (pressure.MemoryPressureMonitor, error) {
+) (memorypressure.Monitor, error) {
 	if provider == nil {
 		return nil, fmt.Errorf("%w: provider is nil", ErrInvalidMonitorConfig)
 	}

@@ -60,7 +60,7 @@ func TestDirectorySetupFilesystemPreservesQueryFailure(t *testing.T) {
 	failure := errors.New("volume query failed")
 	directory := `C:\application\logs`
 	err := validateDirectorySetupFilesystemWithQuery(directory, func(string) (string, uint32, error) {
-		// Even apparently acceptable flags cannot hide a failed volume query.
+		// 一見受け入れられるflagが返っても、volume queryの失敗は隠せません。
 		return "NTFS", windows.FILE_PERSISTENT_ACLS, failure
 	})
 	if !errors.Is(err, failure) || errors.Is(err, errors.ErrUnsupported) {

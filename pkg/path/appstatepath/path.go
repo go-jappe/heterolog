@@ -10,16 +10,19 @@ import (
 
 const ArchiveCheckpointDirectoryName = "archive-checkpoints"
 
-// ArchiveCheckpointDirectoryはapplication stateのbase pathと最終targetから、
-// appendlog archive checkpointが共有する専用directoryを解決します。
+// ArchiveCheckpointDirectory resolves, from the base path of the application
+// state and the final target, the dedicated directory that appendlog archive
+// checkpoints share.
 func ArchiveCheckpointDirectory(basePath, target string) string {
 	return filepath.Join(basePath, target, ArchiveCheckpointDirectoryName)
 }
 
-// DefaultAppStateDirは、appNameの状態を保存する既定のdirectoryを返します。Linuxなどのunix系OSでは、
-// rootで動く場合は/var/lib/<appName>、それ以外は利用者のstate directory
-// （$XDG_STATE_HOME、未設定なら~/.local/state）の<appName>です。home directoryが
-// 分からない場合はrootと同じ場所を返します。
+// DefaultAppStateDir returns the default directory that stores the state of
+// appName. On Linux, the BSDs, illumos, Solaris and AIX, it is
+// /var/lib/<appName> when running as root, and otherwise <appName> in the
+// user's state directory ($XDG_STATE_HOME if it is an absolute path, or else
+// ~/.local/state). When ~/.local/state would be used but the home directory is
+// unknown, it returns the same location as for root.
 func DefaultAppStateDir(appName string) string {
 	switch runtime.GOOS {
 
@@ -57,10 +60,12 @@ func DefaultAppStateDir(appName string) string {
 	}
 }
 
-// DefaultAppStateBaseDirは、spoolと状態の保存先の既定の基点directoryを返します。Linuxなどの
-// unix系OSでは、rootで動く場合は/var/lib、それ以外は利用者のstate directory
-// （$XDG_STATE_HOME、未設定なら~/.local/state）です。home directoryが分からない場合は
-// rootと同じ/var/libを返します。
+// DefaultAppStateBaseDir returns the default base directory for storing spools
+// and state. On Linux, the BSDs, illumos, Solaris and AIX, it is /var/lib when
+// running as root, and otherwise the user's state directory ($XDG_STATE_HOME if
+// it is an absolute path, or else ~/.local/state). When ~/.local/state would be
+// used but the home directory is unknown, it returns /var/lib, the same as for
+// root.
 func DefaultAppStateBaseDir() string {
 	switch runtime.GOOS {
 	case "linux", "freebsd", "openbsd", "netbsd", "dragonfly", "illumos", "solaris", "aix":

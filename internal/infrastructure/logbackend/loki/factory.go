@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/loki/wrapper"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // NewClientが失敗した段階を表すerrorの種類です。原因のerrorはerrors.Is・errors.Asで辿れます。
@@ -21,8 +21,8 @@ var (
 func NewClient(
 	cfg pkgloki.Config,
 	retryCfg wrapper.RetryConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (wrapper.Client, error) {
 	client, err := pkgloki.New(cfg)
 	if err != nil {

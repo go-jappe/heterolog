@@ -170,7 +170,7 @@ func TestClientSendAsyncRejectsNonPositiveWorkerCount(t *testing.T) {
 			if err := client.SendAsync([]Metric{{Name: "unserviceable", Value: 1}}); err == nil {
 				t.Fatal("SendAsync accepted data without any workers to deliver it")
 			}
-			// Disabling asynchronous workers must leave synchronous sending available.
+			// 非同期workerを無効にしても、同期送信は使えるままである必要があります。
 			if err := client.Send(context.Background(), []Metric{{Name: "synchronous", Value: 2}}); err != nil {
 				t.Fatal(err)
 			}
@@ -205,7 +205,7 @@ func TestClientSendAsyncConcurrentClose(t *testing.T) {
 			WithHTTPClient(&http.Client{Transport: transport}),
 			WithErrorHandler(func(err error) { t.Errorf("async send: %v", err) }))
 		defer client.Close()
-		// Ensure the test checks delivery even when Close wins every subsequent race.
+		// 以降の競合ですべてCloseが勝っても、testが配送を確認できるようにします。
 		if err := client.SendAsync([]Metric{{Name: "before_close", Value: 1}}); err != nil {
 			t.Fatal(err)
 		}

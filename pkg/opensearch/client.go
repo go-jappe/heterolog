@@ -23,27 +23,28 @@ import (
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 )
 
-// AuthType は認証タイプを表す列挙型
+// AuthType is an enumerated type that represents an authentication type.
 type AuthType string
 
 const (
-	// AuthTypeBasic はBasic認証を表します
+	// AuthTypeBasic represents Basic authentication.
 	AuthTypeBasic AuthType = "basic"
-	// AuthTypeAPIKey はAPIキー認証を表します
+	// AuthTypeAPIKey represents API key authentication.
 	AuthTypeAPIKey AuthType = "apikey"
-	// AuthTypeAWSIAM はAWS IAM認証を表します
+	// AuthTypeAWSIAM represents AWS IAM authentication.
 	AuthTypeAWSIAM AuthType = "awsiam"
-	// AuthTypeSAML はSAML認証を表します
+	// AuthTypeSAML represents SAML authentication.
 	AuthTypeSAML AuthType = "saml"
-	// AuthTypeOIDC はOpenID Connect認証を表します
+	// AuthTypeOIDC represents OpenID Connect authentication.
 	AuthTypeOIDC AuthType = "oidc"
-	// AuthTypeCertificate はクライアント証明書認証を表します
+	// AuthTypeCertificate represents client certificate authentication.
 	AuthTypeCertificate AuthType = "certificate"
-	// AuthTypeNone は認証なしを表します
+	// AuthTypeNone represents no authentication.
 	AuthTypeNone AuthType = "none"
 )
 
-// IndexResponse はOpenSearchの単一ドキュメントインデックス操作のレスポンスを表します
+// IndexResponse represents the response of an OpenSearch index operation for a
+// single document.
 type IndexResponse struct {
 	Index   string `json:"_index"`
 	ID      string `json:"_id"`
@@ -52,7 +53,7 @@ type IndexResponse struct {
 	Status  int    `json:"status"`
 }
 
-// BulkResponse はOpenSearchのバルク操作のレスポンスを表します
+// BulkResponse represents the response of an OpenSearch bulk operation.
 type BulkResponse struct {
 	Took   int                         `json:"took"`
 	Errors bool                        `json:"errors"`
@@ -67,14 +68,14 @@ type BulkItemResult struct {
 	Error   *ErrorDetail `json:"error,omitempty"`
 }
 
-// Client はOpenSearchとの通信を行うインターフェース
+// Client is the interface for communicating with OpenSearch.
 type Client interface {
-	// IndexDocument は単一のドキュメントをインデックスに追加します
-	// 成功時はOpenSearchのレスポンスを返します
+	// IndexDocument adds a single document to an index.
+	// On success, it returns the OpenSearch response.
 	IndexDocument(ctx context.Context, doc DocumentWriteRequest) (*IndexResponse, error)
 
-	// IndexDocuments は複数のドキュメントをバルク操作でインデックスに追加します
-	// 成功時はOpenSearchのバルクレスポンスを返します
+	// IndexDocuments adds multiple documents to indexes with a bulk operation.
+	// On success, it returns the OpenSearch bulk response.
 	IndexDocuments(ctx context.Context, docs []DocumentWriteRequest) (*BulkResponse, error)
 }
 
@@ -87,10 +88,10 @@ type realClient struct {
 	compressRequest bool //　圧縮送信可否
 }
 
-// AuthConfig は認証設定を保持する構造体
+// AuthConfig is a struct that holds authentication settings.
 type AuthConfig struct {
 	Type   AuthType
-	Config any // 実際の型は認証方式ごとに異なる
+	Config any // the actual type differs for each authentication method
 }
 
 type BasicAuthConfig struct {
@@ -117,33 +118,40 @@ type OIDCAuthConfig struct {
 type CertificateAuthConfig struct {
 	CertFile string
 	KeyFile  string
-	CAFile   string
+	// CAFile, when set, is a PEM file whose certificates are trusted for
+	// verifying the server instead of the system roots.
+	CAFile string
 }
 
 type SAMLAuthConfig struct {
 	Token string
 }
 
-// Config はOpenSearchクライアントの設定
+// Config is the configuration of an OpenSearch client.
 type Config struct {
 	Endpoint string // "https://example.com:9200"
-	// TimeoutはHTTP requestの上限です。0はdefault timeoutを使う未指定sentinel、負値は不正です。
-	Timeout       time.Duration
-	SkipVerifySSL bool // 証明書の検証を行うのであればfalse 自作証明書はtrue
+	// Timeout is the time limit of an HTTP request. Zero is the unset sentinel
+	// that selects the default timeout, and a negative value is invalid.
+	Timeout time.Duration
+	// SkipVerifySSL, when true, disables verification of the server certificate
+	// and host name entirely, not only for self-signed certificates. It has no
+	// effect on an http endpoint. To keep verification against a private CA,
+	// use CertificateAuthConfig.CAFile with certificate authentication.
+	SkipVerifySSL bool
 	AuthConfig    AuthConfig
 
-	CompressRequest bool // 圧縮送信可否
+	CompressRequest bool // whether to send requests compressed
 }
 
-// DocumentWriteRequest はOpenSearchへ書き込むdocumentとoperationを保持します。
+// DocumentWriteRequest holds the document and operation to write to OpenSearch.
 type DocumentWriteRequest struct {
-	Index string // must be non-empty
+	Index string // must be non-empty and have no surrounding whitespace
 	ID    string // must be non-empty
 	Doc   map[string]any
-	Op    WriteOp // WriteOpIndex または WriteOpCreate
+	Op    WriteOp // WriteOpIndex or WriteOpCreate
 }
 
-// ActionPath は書き込み operation に対応するOpenSearch endpointを返します。
+// ActionPath returns the OpenSearch endpoint for the write operation.
 func (d DocumentWriteRequest) ActionPath() (string, error) {
 	switch d.Op {
 	case WriteOpIndex:
@@ -155,7 +163,7 @@ func (d DocumentWriteRequest) ActionPath() (string, error) {
 	}
 }
 
-// BulkActionKey は書き込み operation に対応するOpenSearch bulk actionを返します。
+// BulkActionKey returns the OpenSearch bulk action for the write operation.
 func (d DocumentWriteRequest) BulkActionKey() (string, error) {
 	switch d.Op {
 	case WriteOpIndex:
@@ -184,7 +192,7 @@ const (
 	WriteOpCreate WriteOp = "create"
 )
 
-// New は新しいOpenSearchクライアントを作成します
+// New creates a new OpenSearch client.
 func New(cfg Config) (Client, error) {
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, err
@@ -273,9 +281,9 @@ func (r *realClient) IndexDocument(ctx context.Context, doc DocumentWriteRequest
 		return nil, err
 	}
 
-	// Date-math index expressions must encode all reserved characters, including
-	// '+' and ':' in time zones, which PathEscape leaves unchanged. QueryEscape
-	// provides that encoding; spaces in a path must use %20 rather than '+'.
+	// date mathのindex式では、PathEscapeが変更しないtime zoneの'+'や':'も含め、すべての予約文字を
+	// encodeする必要があります。QueryEscapeがそのencodeを行います。path内の空白は'+'ではなく
+	// %20にする必要があります。
 	indexPath := strings.ReplaceAll(url.QueryEscape(doc.Index), "+", "%20")
 	urlStr := fmt.Sprintf("%s/%s/%s/%s", r.endpoint, indexPath, action, url.PathEscape(doc.ID))
 
@@ -343,8 +351,8 @@ func (r *realClient) IndexDocument(ctx context.Context, doc DocumentWriteRequest
 	if err := json.Unmarshal(respBody, &indexResponse); err != nil {
 		return nil, &ResponseDecodeError{Operation: "index", Err: err}
 	}
-	// Ingest pipelines can drop index/create requests normally. Such a noop
-	// returns HTTP 200; a contradictory status cannot confirm this outcome.
+	// ingest pipelineは、index/create requestを正常にdropできます。そのnoopはHTTP 200を返します。
+	// 矛盾するstatusでは、この結果を確認できません。
 	if indexResponse.Result == "noop" && resp.StatusCode != http.StatusOK {
 		return nil, &ResponseDecodeError{Operation: "index", Err: fmt.Errorf("unexpected HTTP status for noop result: %d", resp.StatusCode)}
 	}
@@ -442,8 +450,8 @@ func (r *realClient) sendBulkRequest(ctx context.Context, method, url, contentTy
 	if err := decoder.Decode(&bulkResponse); err != nil {
 		return nil, &ResponseDecodeError{Operation: "bulk", Err: err}
 	}
-	// A complete JSON value alone does not verify the response: gzip checksum
-	// errors and truncated HTTP bodies can appear only at the end of the stream.
+	// 完全なJSON値を読めただけでは、responseを検証したことになりません。gzip checksumの誤りや
+	// 途中で切れたHTTP bodyは、streamの最後で初めて現れることがあるためです。
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {

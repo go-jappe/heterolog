@@ -2,9 +2,11 @@ package failurestore
 
 import "strings"
 
-// ParseDurableTypeは一つの文字列をDurableTypeへ正規化します。
-// 既知値の表記揺れはcanonicalな定数へ揃え、未知値と空値はtrimと
-// 小文字化だけを行って保持します。対応可否は後段のvalidatorが判断します。
+// ParseDurableType normalizes one string to a DurableType. Known values, in any
+// letter case and with leading and trailing white space removed, are mapped to
+// the canonical constants, and unknown and empty values are kept after only
+// trimming and lowercasing them. A later validator decides whether the value
+// is supported.
 func ParseDurableType(value string) DurableType {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	switch normalized {

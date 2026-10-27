@@ -6,11 +6,12 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 )
 
-// DirectorySyncError identifies a created directory's parent whose persistence
-// is unconfirmed. EnsureDirectory and its variants record the parent for the
-// rest of the process and retry its sync before preparing any directory at or
-// below it, so a later attempt keeps returning this error, even when the created
-// directory already exists, until the sync succeeds.
+// DirectorySyncErrorは、作成したdirectoryの親のうち、永続化を確認できていないものを
+// 示します。EnsureDirectoryとその派生関数は、processが続く間この親を記録し、その親
+// 自身または配下のdirectoryを準備する前に親の同期を再試行します。そのため、同期が
+// 成功するまでは、作成したdirectoryがすでに存在していても、後の呼び出しはこのerrorを
+// 返し続けます。再試行で親自体が存在しないと分かった場合は、確認すべき作成結果が
+// 残っていないため、同期の成功と同じく記録を解除します。
 type DirectorySyncError struct {
 	Directory string
 	Err       error

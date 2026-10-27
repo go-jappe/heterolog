@@ -42,8 +42,8 @@ func TestInterruptedWaitPreservesBackendClassificationAndBothCauses(t *testing.T
 				err := fmt.Errorf("client operation: %w", retryable.InterruptedWait(tt.last, stop))
 				require.ErrorIs(t, err, tt.last)
 				require.ErrorIs(t, err, stop)
-				// Immediate retry must still stop. Durable classification is a separate
-				// decision about the completed request, not permission to continue now.
+				// 即時retryは、それでも止まらなければなりません。durable分類は完了したrequestに
+				// ついての別の判断であり、今すぐ続行してよいという許可ではありません。
 				require.False(t, retryable.ClassifyRetry(ctx, err).Retry)
 				got := retryable.ClassifyDurableRequestOutcome(ctx, err, tt.classify)
 				require.Equal(t, tt.wantRetry, got.Retry)

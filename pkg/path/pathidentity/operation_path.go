@@ -2,9 +2,10 @@ package pathidentity
 
 import "path/filepath"
 
-// AbsoluteOrCleanPathは、元の大小文字を保ったままパスを整理して絶対化します。
-// 空のパスは空のまま返します。絶対化に失敗した場合は、整理した元のパスを返します。
-// 対象ファイルの存在確認やリンク解決、比較用の小文字化は行いません。
+// AbsoluteOrCleanPath cleans the path and makes it absolute while keeping its
+// original case. An empty path is returned empty. If making the path absolute
+// fails, it returns the cleaned original path. It does not check whether the
+// target file exists, resolve links, or lowercase the path for comparison.
 func AbsoluteOrCleanPath(path string) string {
 	if path == "" {
 		return ""

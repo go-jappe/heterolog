@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
 
@@ -27,7 +27,7 @@ func TestInternalLogDestinationRuntimeMakesDedicatedFileTerminalWithoutMutatingC
 				File: internalFile,
 			},
 		},
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		syncInternalLogFileDirectoryScopeLabel,
 		observer.NopTracer{},
@@ -65,7 +65,7 @@ func TestDeliveryInternalLogDestinationRuntimeMakesDedicatedFileTerminalWithoutM
 				File: internalFile,
 			},
 		},
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		deliveryInternalLogFileDirectoryScopeLabel,
 		observer.NopTracer{},

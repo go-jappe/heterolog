@@ -3,42 +3,35 @@ package heterolog
 import (
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
-	configspool "github.com/go-jappe/heterolog/internal/config/spool"
-	"github.com/go-jappe/heterolog/internal/config/spool/spoollifecycle"
-	"github.com/go-jappe/heterolog/internal/config/spool/spoolrunner"
-	"github.com/go-jappe/heterolog/internal/config/spool/spoolsupervisor"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
-	"github.com/go-jappe/heterolog/internal/infrastructure/memory/pressure"
+	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	memorymonitor "github.com/go-jappe/heterolog/internal/observer/memory/pressure"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	"github.com/go-jappe/heterolog/pkg/memorypressure"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
+	"github.com/go-jappe/heterolog/pkg/spool/spoollifecycle"
+	"github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
+	"github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 )
 
 // Option supplies optional dependencies and runtime policies to constructors.
-type Option func(*options)
+type Option = loggerruntime.Option
 
-type options struct {
-	spool   *SpoolConfig
-	routing StreamRouting
-	monitor MemoryPressureMonitor
-	tracer  Tracer
-	meter   Meter
-}
-
-// Public aliases allow custom instrumentation without importing internal packages.
+// These aliases name the types for custom instrumentation and memory pressure
+// monitoring, so callers need not import pkg/observer or pkg/memorypressure.
 type (
-	Tracer                = observer.Tracer
-	Span                  = observer.Span
-	TraceID               = observer.TraceID
-	ObserverAttr          = observer.Attr
-	Meter                 = observer.Meter
-	Counter               = observer.Counter
-	Gauge                 = observer.Gauge
-	MemoryPressureMonitor = pressure.MemoryPressureMonitor
+	Tracer                = pkgobserver.Tracer
+	Span                  = pkgobserver.Span
+	TraceID               = pkgobserver.TraceID
+	ObserverAttr          = pkgobserver.Attr
+	Meter                 = pkgobserver.Meter
+	Counter               = pkgobserver.Counter
+	Gauge                 = pkgobserver.Gauge
+	MemoryPressureMonitor = memorypressure.Monitor
 )
 
 // SpoolConfig configures background replay of durable failure spools.
-type SpoolConfig = configspool.SpoolConfig
+type SpoolConfig = pkgspool.SpoolConfig
 
 // SpoolRunnerConfig supplies separate replay settings for each backend.
 type SpoolRunnerConfig = spoolrunner.SpoolRunnerConfig
@@ -63,46 +56,48 @@ type SpoolLifecycleConfig = spoollifecycle.LifecycleConfig
 type SpoolSupervisorConfig = spoolsupervisor.RunnerSupervisorConfig
 
 // StreamRouting selects time partitioning for CloudWatch Logs stream names.
-type StreamRouting = streamrouting.Granularity
+type StreamRouting = pkgcloudwatchlogs.StreamRouting
 
 const (
-	StreamRoutingNone    = streamrouting.None
-	StreamRoutingMonthly = streamrouting.Monthly
-	StreamRoutingDaily   = streamrouting.Daily
-	StreamRoutingHourly  = streamrouting.Hourly
+	StreamRoutingNone    = pkgcloudwatchlogs.StreamRoutingNone
+	StreamRoutingMonthly = pkgcloudwatchlogs.StreamRoutingMonthly
+	StreamRoutingDaily   = pkgcloudwatchlogs.StreamRoutingDaily
+	StreamRoutingHourly  = pkgcloudwatchlogs.StreamRoutingHourly
 )
 
 // ErrInvalidStreamRouting reports that WithCloudWatchLogsStreamRouting received
 // a StreamRouting value that is not supported. The constructors return it as an
 // *InvalidStreamRoutingError.
-var ErrInvalidStreamRouting = streamrouting.ErrInvalidGranularity
+var ErrInvalidStreamRouting = pkgcloudwatchlogs.ErrInvalidStreamRouting
 
 // InvalidStreamRoutingError reports the unsupported StreamRouting value in its
 // Granularity field. errors.Is matches ErrInvalidStreamRouting.
-type InvalidStreamRoutingError = streamrouting.InvalidGranularityError
+type InvalidStreamRoutingError = pkgcloudwatchlogs.InvalidStreamRoutingError
 
 // WithSpool supplies replay settings when a synchronous or asynchronous
 // backend uses durable spooling. Delivery loggers do not own replay workers.
-func WithSpool(cfg SpoolConfig) Option {
-	return func(o *options) { o.spool = &cfg }
-}
+func WithSpool(cfg SpoolConfig) Option { return loggerruntime.WithSpool(cfg) }
 
 // WithCloudWatchLogsStreamRouting selects stream partitioning for CloudWatch.
 func WithCloudWatchLogsStreamRouting(routing StreamRouting) Option {
-	return func(o *options) { o.routing = routing }
+	return loggerruntime.WithCloudWatchLogsStreamRouting(routing)
 }
 
 // WithObservers supplies instrumentation. Nil dependencies use no-op observers.
 // The caller retains ownership of observer providers and their shutdown.
 func WithObservers(tracer Tracer, meter Meter) Option {
-	return func(o *options) { o.tracer, o.meter = tracer, meter }
+	return loggerruntime.WithObservers(tracer, meter)
 }
 
 // WithMemoryPressureMonitor supplies an already-started monitor, such as one
 // from NewMemoryPressureMonitor, for overload policies. The caller owns its
-// lifetime: loggers neither start, reset, nor stop it.
+// lifetime: loggers neither start, reset, nor stop it. Its policy replaces the
+// MemoryCriticalRatio, MinAvailableMemoryBytes and
+// MemoryCriticalConsecutiveHits of the spool settings. Without it, each spool
+// that enables UseMemoryPressureForOverload starts and stops its own monitor
+// with those settings.
 func WithMemoryPressureMonitor(monitor MemoryPressureMonitor) Option {
-	return func(o *options) { o.monitor = monitor }
+	return loggerruntime.WithMemoryPressureMonitor(monitor)
 }
 
 // ErrInvalidMemoryPressureMonitor reports that NewMemoryPressureMonitor rejected
@@ -134,34 +129,4 @@ func NewMemoryPressureMonitor(
 
 // DefaultSpoolConfig returns replay settings for every supported backend.
 // Purging is disabled so retained records are not deleted implicitly.
-func DefaultSpoolConfig() SpoolConfig {
-	backend := BackendSpoolRunnerConfig{
-		Runner: SpoolLoopConfig{Interval: 100 * time.Millisecond},
-		Worker: SpoolWorkerConfig{
-			Finalize:      SpoolFinalizeConfig{RetryDelay: time.Second, MaxEntries: 4098},
-			MaxRetryAfter: time.Hour,
-		},
-		LifeCycle: SpoolLifecycleConfig{SizePurgeInterval: time.Minute},
-	}
-	return SpoolConfig{
-		SupervisorConfig: SpoolSupervisorConfig{RestartDelay: time.Second},
-		RunnerConfig: SpoolRunnerConfig{
-			OpensearchConfig:     backend,
-			LokiConfig:           backend,
-			CloudWatchLogsConfig: backend,
-			ClickHouseConfig:     backend,
-		},
-	}
-}
-
-func resolveOptions(opts []Option) (options, error) {
-	o := options{routing: StreamRoutingNone}
-	for _, apply := range opts {
-		if apply != nil {
-			apply(&o)
-		}
-	}
-	o.tracer = observer.EnsureTracer(o.tracer)
-	o.meter = observer.EnsureMeter(o.meter)
-	return o, o.routing.Validate()
-}
+func DefaultSpoolConfig() SpoolConfig { return loggerruntime.DefaultSpoolConfig() }

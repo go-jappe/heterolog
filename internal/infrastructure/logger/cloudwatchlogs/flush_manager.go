@@ -19,6 +19,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // FlushManager は LogEntry を CloudWatch Logs へ送信し、失敗時の durable fallback へ橋渡しします。
@@ -59,8 +60,8 @@ type CloudWatchLogsFlushManager struct {
 	FailureHandler       *flushfailure.CompositeFailureHandler
 	FailureReportHandler *flushfailure.ReportingCompositeFailureHandler
 	resource             resource.ResourceProvider
-	Tracer               observer.Tracer
-	Meter                observer.Meter
+	Tracer               pkgobserver.Tracer
+	Meter                pkgobserver.Meter
 }
 
 // NewCloudWatchLogsFlushManagerはCloudWatch Logs送信用FlushManagerを生成します。
@@ -74,8 +75,8 @@ func NewCloudWatchLogsFlushManager(
 	cfg CloudWatchLogsFlushManagerRuntimeConfigProvider,
 	failureHandler *flushfailure.CompositeFailureHandler,
 	resourceProvider resource.ResourceProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *CloudWatchLogsFlushManager {
 	return newCloudWatchLogsFlushManager(
 		loggerBase,
@@ -98,8 +99,8 @@ func newCloudWatchLogsFlushManager(
 	failureHandler *flushfailure.CompositeFailureHandler,
 	failureReportHandler *flushfailure.ReportingCompositeFailureHandler,
 	resourceProvider resource.ResourceProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *CloudWatchLogsFlushManager {
 	return &CloudWatchLogsFlushManager{
 		LoggerBase:           loggerBase,
@@ -275,7 +276,7 @@ func (fm *CloudWatchLogsFlushManager) FlushWithNoFallback(
 			continue
 		}
 		if output == nil {
-			log.Printf("failed to flush CloudWatch Logs fallback logger: %v", errNilCloudWatchLogsPutLogEventsOutput())
+			log.Printf("failed to flush CloudWatch Logs fallback logger: %v", pkgcloudwatchlogs.ErrNilPutLogEventsOutput)
 			continue
 		}
 		logRejectedCloudWatchLogsOutput("cloudwatch logs fallback logger", output, len(requestRecords))
@@ -371,7 +372,7 @@ func (fm *CloudWatchLogsFlushManager) putCloudWatchLogsRequest(
 ) (loggerfailure.SendResult, error) {
 	result := loggerfailure.SendResult{Meta: meta}
 	if err := ctx.Err(); err != nil {
-		// No backend attempt began. Preserve the accepted input for later replay.
+		// backendへの送信試行は始まっていません。受理済みの入力を後の再送のために保持します。
 		result.TerminalError = err
 		result.RetryableRecords = fm.buildFailedRecordsFromPutError(
 			meta.AttemptedAt, logStreamName, eventRecords,
@@ -394,11 +395,9 @@ func (fm *CloudWatchLogsFlushManager) putCloudWatchLogsRequest(
 	// HTTP成功後にctxが終了していても、CloudWatch Logs側では受理済みの可能性が
 	// あるため、putErr == nilならresponseを優先します。
 	if putErr == nil {
-		// clientがerrorなしでnilを返した場合は、送信結果を確認できない原因をsentinelで保持します。
-		outputErr := errNilCloudWatchLogsPutLogEventsOutput()
-		if output != nil {
-			outputErr = output.Validate(len(eventRecords))
-		}
+		// clientがerrorなしでnilを返した場合、Validateは送信結果を確認できない原因として
+		// pkgcloudwatchlogs.ErrNilPutLogEventsOutputを返します。
+		outputErr := output.Validate(len(eventRecords))
 		if outputErr != nil {
 			span.RecordError(outputErr)
 			result.TerminalError = outputErr
@@ -431,8 +430,8 @@ func (fm *CloudWatchLogsFlushManager) putCloudWatchLogsRequest(
 		// 一件でも拒否されたeventだけを分類器の判定どおりquarantineへ隔離します。
 		return fm.putSplitCloudWatchLogsRequest(ctx, meta, logStreamName, eventRecords, putErr)
 	}
-	// Preserve explicit backend responses even if the caller stops afterwards.
-	// An attempt stopped with the caller's context does not establish acceptance.
+	// 呼び出し元がその後停止しても、backendの明示的なresponseは保持します。
+	// 呼び出し元のcontextで止まった試行は、受理されたことを示しません。
 	decision := infracloudwatchlogs.ClassifyDurableRequestOutcome(ctx, putErr)
 	sendErr := ctx.Err()
 	if sendErr != nil && (errors.Is(putErr, context.Canceled) || errors.Is(putErr, context.DeadlineExceeded)) {
@@ -507,10 +506,6 @@ func (fm *CloudWatchLogsFlushManager) putSplitCloudWatchLogsRequest(
 	}
 	return result, errors.Join(sendErrs...)
 }
-
-var errCloudWatchLogsNilPutLogEventsOutput = errors.New("cloudwatch logs client returned nil PutLogEventsOutput without error")
-
-func errNilCloudWatchLogsPutLogEventsOutput() error { return errCloudWatchLogsNilPutLogEventsOutput }
 
 // ErrClientNotInitializedは、送信に使うCloudWatch Logs clientまたはlog stream名の解決器が
 // 設定されていないことを表します。

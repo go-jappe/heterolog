@@ -36,7 +36,7 @@ func TestRetryWaitCancellationPreservesFailureRecords(t *testing.T) {
 						require.Len(t, events, 1)
 						return nil, attempt()
 					}}
-					client, err := wrapper.BuildClientChain(raw, NewRetryConfigProvider(&pkglogger.CloudWatchLogsRetryableClientCaseTransportErrorConfig{RetryClientMode: mode, MaxAttempts: 3, BaseDelay: 100 * time.Millisecond, MaxDelay: 100 * time.Millisecond}), nil, nil)
+					client, err := wrapper.BuildClientChain(raw, NewRetryConfigProvider(&pkglogger.CloudWatchLogsRetryableClientCaseTransportErrorConfig{RetryClientMode: mode, MaxRetries: 2, BaseDelay: 100 * time.Millisecond, MaxDelay: 100 * time.Millisecond}), nil, nil)
 					require.NoError(t, err)
 					saved := &recordingCloudWatchLogsFailureHandler{}
 					composite := mustNewCloudWatchLogsFailureComposite(t, []flushfailure.FailureHandler{saved})

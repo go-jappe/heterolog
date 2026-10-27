@@ -15,10 +15,10 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestObjectStorageUploadManagerDoesNotReuseAnotherGenerationSuccess(t *testing.T) {
@@ -249,8 +249,8 @@ func TestFileSeriesManagerRestartUsesGenerationSuccessWithPreviousCompressionFor
 	require.FileExists(t, gzipPath)
 	require.NoFileExists(t, raw)
 
-	require.ErrorIs(t, first.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "first.Close()", first.Close, boundedwait.ForceCloserOf(first)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, first.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "first.Close()", first.Close, boundedwait.ForceCloserOf(first)), pkgshutdown.ErrForcedClose)
 	restartedStore, err := checkpointstore.NewFilesystemStore(checkpointDirectory, "codec-restart")
 	require.NoError(t, err)
 	restartedRemote := newDestinationUploaderRecorder(primary, secondary)

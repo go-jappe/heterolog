@@ -77,7 +77,7 @@ func TestRunnerRunValidatesPurgeIntervalOnlyWithPurger(t *testing.T) {
 			require.ErrorIs(t, invalidRunner.Run(context.Background()), ErrInvalidCompressedLogFileUploadSpoolConfig)
 			require.False(t, invalidRunner.IsRunning())
 
-			// Replay-only runners do not use the optional purge interval.
+			// replayだけを行うrunnerは、任意指定のpurge intervalを使いません。
 			runner, err := NewRunner(worker, config, nil)
 			require.NoError(t, err)
 			cancel, done := startRunnerStateTestRun(t, runner)

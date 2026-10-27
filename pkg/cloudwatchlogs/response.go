@@ -1,17 +1,21 @@
 package cloudwatchlogs
 
 const (
-	// ErrorTypeResourceNotFoundException は CloudWatch Logs が存在しない resource に対して返す error type です。
+	// ErrorTypeResourceNotFoundException is the error type that CloudWatch Logs
+	// returns for a resource that does not exist.
 	ErrorTypeResourceNotFoundException = "ResourceNotFoundException"
 
-	// ErrorTypeResourceAlreadyExistsException は CloudWatch Logs が既存 resource 作成に対して返す error type です。
+	// ErrorTypeResourceAlreadyExistsException is the error type that CloudWatch
+	// Logs returns for an attempt to create a resource that already exists.
 	ErrorTypeResourceAlreadyExistsException = "ResourceAlreadyExistsException"
 
-	// ErrorTypeOperationAbortedException は CloudWatch Logs が同時更新などの競合時に返す error type です。
+	// ErrorTypeOperationAbortedException is the error type that CloudWatch Logs
+	// returns on a conflict, such as concurrent updates.
 	ErrorTypeOperationAbortedException = "OperationAbortedException"
 
-	// ErrorTypeRequestAbortedException は、responseを返す前にrequest処理が中断された場合の
-	// AWS共通error typeです。呼び出し元のcontext終了とは別に、backend responseとして
-	// 受け取った場合のretry分類に使用します。
+	// ErrorTypeRequestAbortedException is the error type, common to AWS
+	// services, for a request whose processing was aborted before a response
+	// was returned. It is used to classify retries when it is received as a
+	// backend response, as distinct from the end of the caller's context.
 	ErrorTypeRequestAbortedException = "RequestAbortedException"
 )

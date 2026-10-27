@@ -121,8 +121,8 @@ type contextCloseableLogEntryHandler interface {
 
 func closeLogger(l any) (err error) {
 	defer func() {
-		// Keep a child panic inside the normal close-error path so siblings
-		// still close and only unfinished children are retried by the owner.
+		// childのpanicも通常のclose error経路で扱います。これにより兄弟のchildも続けてcloseされ、
+		// ownerは終了していないchildだけを再試行します。
 		if recovered := recover(); recovered != nil {
 			err = loggerPanicError(recovered)
 		}
@@ -187,7 +187,7 @@ func (m *MultiLogger) runAll(
 
 	type loggerResult struct {
 		index   int
-		failure *applogging.LoggerFailure
+		failure *pkglogger.LoggerFailure
 	}
 
 	// timeout で runAll が先に return した後に logger goroutine が完了しても、
@@ -206,7 +206,7 @@ func (m *MultiLogger) runAll(
 			result := loggerResult{index: i}
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					result.failure = &applogging.LoggerFailure{
+					result.failure = &pkglogger.LoggerFailure{
 						HandlerType: fmt.Sprintf("%T", l),
 						Op:          op,
 						Err:         loggerPanicError(recovered),
@@ -216,7 +216,7 @@ func (m *MultiLogger) runAll(
 			}()
 
 			if err := l.HandleLogEntry(runCtx, infralogging.CloneLogEntry(entry)); err != nil {
-				result.failure = &applogging.LoggerFailure{
+				result.failure = &pkglogger.LoggerFailure{
 					HandlerType: fmt.Sprintf("%T", l),
 					Op:          op,
 					Err:         err,
@@ -225,7 +225,7 @@ func (m *MultiLogger) runAll(
 		}()
 	}
 
-	failures := make([]applogging.LoggerFailure, 0)
+	failures := make([]pkglogger.LoggerFailure, 0)
 	completed := make([]bool, len(m.loggers))
 	completedCount := 0
 
@@ -250,7 +250,7 @@ func (m *MultiLogger) runAll(
 			return nil
 		}
 
-		return &applogging.MultiLoggerError{
+		return &pkglogger.MultiLoggerError{
 			Op:       op,
 			Failures: failures,
 		}
@@ -288,14 +288,14 @@ func (m *MultiLogger) runAll(
 					continue
 				}
 
-				failures = append(failures, applogging.LoggerFailure{
+				failures = append(failures, pkglogger.LoggerFailure{
 					HandlerType: fmt.Sprintf("%T", m.loggers[i]),
 					Op:          op,
 					Err:         timeoutErr,
 				})
 			}
 
-			return &applogging.MultiLoggerError{
+			return &pkglogger.MultiLoggerError{
 				Op:       op,
 				Failures: failures,
 			}
@@ -319,7 +319,7 @@ func (m *MultiLogger) rejectIfClosing(op string) error {
 
 // multiLoggerClosingErrorは、Close開始後に到着した要求をopの拒否として返します。
 func multiLoggerClosingError(op string) error {
-	return &OperationError{Op: op, Err: fmt.Errorf("multi logger is closing: %w", applogging.ErrLoggerClosed)}
+	return &OperationError{Op: op, Err: fmt.Errorf("multi logger is closing: %w", pkglogger.ErrLoggerClosed)}
 }
 
 // logはapplication入力を一つのLogEntryへ変換してから各backendへfan-outします。
@@ -331,7 +331,7 @@ func (m *MultiLogger) log(
 	message string,
 	err error,
 	stackTraceRequested bool,
-	fields []applogging.Field,
+	fields []pkglogger.Field,
 ) error {
 	op := multiLoggerOperation(level, stackTraceRequested)
 	if m == nil {
@@ -364,7 +364,7 @@ func (m *MultiLogger) log(
 func (m *MultiLogger) Debug(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return m.log(ctx, pkglogger.LogLevelDebug, message, nil, false, fields)
 }
@@ -372,7 +372,7 @@ func (m *MultiLogger) Debug(
 func (m *MultiLogger) Info(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return m.log(ctx, pkglogger.LogLevelInfo, message, nil, false, fields)
 }
@@ -380,7 +380,7 @@ func (m *MultiLogger) Info(
 func (m *MultiLogger) Warn(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return m.log(ctx, pkglogger.LogLevelWarn, message, nil, false, fields)
 }
@@ -388,7 +388,7 @@ func (m *MultiLogger) Warn(
 func (m *MultiLogger) Error(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return m.log(ctx, pkglogger.LogLevelError, message, nil, false, fields)
 }
@@ -397,7 +397,7 @@ func (m *MultiLogger) ErrorWithStack(
 	ctx context.Context,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return m.log(ctx, pkglogger.LogLevelError, message, err, true, fields)
 }

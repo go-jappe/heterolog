@@ -79,8 +79,8 @@ func TestUploadPreservesObjectKeyAndSignsTransmittedURI(t *testing.T) {
 					w.WriteHeader(http.StatusOK)
 				}))
 				defer server.Close()
-				// Route virtual-host requests to the local server while retaining the
-				// actual bucket hostname in the request and its signature.
+				// virtual-host形式のrequestを、requestとその署名には実際のbucketのhost名を
+				// 残したまま、local serverへ送ります。
 				transport := &http.Transport{DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 					return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
 				}}
@@ -169,8 +169,8 @@ func TestUploadSignsWithTrimmedInputRegion(t *testing.T) {
 	assertS3RequestSignatureForRegion(t, got.header, got.host, got.uri, len(fileBody), "Custom-Region-1")
 }
 
-// Recompute SigV4 from the expected wire contract, independently of the SDK
-// signer and production URL helpers. S3 uses the encoded URI exactly once.
+// SDKのsignerや本番のURL helperとは独立に、期待する通信上の契約からSigV4を計算し直します。
+// S3はencodeしたURIをちょうど一度だけ使います。
 func assertS3RequestSignature(t *testing.T, headers http.Header, host, uri string, bodyLength int) {
 	t.Helper()
 	assertS3RequestSignatureForRegion(t, headers, host, uri, bodyLength, "ap-northeast-1")

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	logfilerunner "github.com/go-jappe/heterolog/internal/infrastructure/logfile/runner"
@@ -18,6 +17,7 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -119,8 +119,8 @@ type deliveryFileMaintenanceRunnerSpec struct {
 
 func newLogFileMaintenanceRuntime(
 	specs []logFileMaintenanceRunnerSpec,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	spoolOwners ...*compressedlog.RootRuntimeBuilder,
 ) (_ *appendLogMaintenanceRuntime, resultErr error) {
 	if len(specs) == 0 {
@@ -172,8 +172,8 @@ func newLogFileMaintenanceRuntime(
 
 func newDeliveryFileMaintenanceRuntime(
 	specs []deliveryFileMaintenanceRunnerSpec,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	spoolOwners ...*compressedlog.RootRuntimeBuilder,
 ) (_ *appendLogMaintenanceRuntime, resultErr error) {
 	if len(specs) == 0 {
@@ -258,8 +258,8 @@ func buildLogFileMaintenanceRuntime(
 	internalLogFile *pkglogger.FileLoggerConfig,
 	newAvailableHandlers func() handlerStruct,
 	fallbackCloserOwner *fallbackHandlerCloserOwner,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	spoolOwners ...*compressedlog.RootRuntimeBuilder,
 ) (*appendLogMaintenanceRuntime, error) {
 	specs, err := logFileMaintenanceRunnerSpecs(base, internalLogFile)
@@ -303,8 +303,8 @@ func buildDeliveryFileMaintenanceRuntime(
 	internalLogFile *pkglogger.DeliveryFileLoggerConfig,
 	newAvailableHandlers func() handlerStruct,
 	fallbackCloserOwner *fallbackHandlerCloserOwner,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	spoolOwners ...*compressedlog.RootRuntimeBuilder,
 ) (*appendLogMaintenanceRuntime, error) {
 	specs, err := deliveryFileMaintenanceRunnerSpecs(base, internalLogFile)

@@ -7,6 +7,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/config/objectstoragecompressedlog"
 	"github.com/go-jappe/heterolog/internal/config/spool/spoolrunner"
 	"github.com/go-jappe/heterolog/pkg/env"
+	pkgspoolrunner "github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
 )
 
 // 送信先が指定したRetry-Afterの待機上限は、backendごとのspool runnerと圧縮ログspoolの
@@ -83,8 +84,8 @@ func TestMaxRetryAfterDefaultsAreOneHour(t *testing.T) {
 
 // mapperは各backendのspool runner設定と圧縮ログspool設定の待機上限を、そのまま実行時設定へ渡す。
 func TestMaxRetryAfterIsMappedToRuntimeConfigs(t *testing.T) {
-	mapped := mapBackendSpoolRunnerConfig(spoolrunner.BackendSpoolRunnerConfig{
-		Worker: spoolrunner.WorkerConfig{MaxRetryAfter: 17 * time.Minute},
+	mapped := mapBackendSpoolRunnerConfig(pkgspoolrunner.BackendSpoolRunnerConfig{
+		Worker: pkgspoolrunner.WorkerConfig{MaxRetryAfter: 17 * time.Minute},
 	})
 	if mapped.Worker.MaxRetryAfter != 17*time.Minute {
 		t.Fatalf("mapped spool runner max retry-after = %s, want 17m", mapped.Worker.MaxRetryAfter)

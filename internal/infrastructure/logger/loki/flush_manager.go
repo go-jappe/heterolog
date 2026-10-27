@@ -20,6 +20,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type FlushManager interface {
@@ -37,8 +38,8 @@ type LokiFlushManager struct {
 	FailureHandler       *flushfailure.CompositeFailureHandler
 	FailureReportHandler *flushfailure.ReportingCompositeFailureHandler
 	resource             resource.ResourceProvider
-	Tracer               observer.Tracer
-	Meter                observer.Meter
+	Tracer               pkgobserver.Tracer
+	Meter                pkgobserver.Meter
 }
 
 // NewLokiFlushManagerはLoki送信用FlushManagerを生成します。
@@ -49,8 +50,8 @@ func NewLokiFlushManager(
 	cfg LokiFlushManagerRuntimeConfigProvider,
 	failureHandler *flushfailure.CompositeFailureHandler,
 	resourceProvider resource.ResourceProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *LokiFlushManager {
 	return newLokiFlushManager(
 		loggerBase,
@@ -71,8 +72,8 @@ func newLokiFlushManager(
 	failureHandler *flushfailure.CompositeFailureHandler,
 	failureReportHandler *flushfailure.ReportingCompositeFailureHandler,
 	resourceProvider resource.ResourceProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *LokiFlushManager {
 	return &LokiFlushManager{
 		LoggerBase:           loggerBase,
@@ -222,7 +223,7 @@ func (fm *LokiFlushManager) pushLogEntries(ctx context.Context, entries []*loggi
 // lokiPushStateは、一回のflushで送信する物理requestの結果を集約します。
 type lokiPushState struct {
 	result          *loggerfailure.SendResult
-	span            observer.Span
+	span            pkgobserver.Span
 	requestErrors   []error
 	cancellationErr error
 	succeededPushes int
@@ -243,9 +244,9 @@ func (fm *LokiFlushManager) pushRequest(
 	result := state.result
 	requestEntryRecords := entryRecordsForPushRequest(entryRecords, request)
 	if err := ctx.Err(); err != nil {
-		// This request was never handed to the client. Preserve it for replay;
-		// earlier successful or uncertain requests retain their own outcomes.
-		// A split request keeps the confirmed 413 that rejected the whole request.
+		// このrequestは一度もclientへ渡していません。再送のために保持し、先行する成功または
+		// 結果不明のrequestは、それぞれの結果を保ちます。分割したrequestは、分割前の
+		// request全体を拒否した確定済みの413を保持します。
 		decision := retryable.RetryDecision{Retry: true, Reason: retryable.RetryReasonRequestNotSent}
 		cause := err
 		if splitFrom != nil {
@@ -265,8 +266,8 @@ func (fm *LokiFlushManager) pushRequest(
 	elapsed := time.Since(start)
 	fm.handlePushDelayLog(ctx, elapsed)
 
-	// A confirmed response remains authoritative even if cancellation raced
-	// with its return. Do not turn an acknowledged success into a replay.
+	// 確定したresponseは、その返却とcancellationが競合しても確定結果として扱います。
+	// 確認応答を受けた成功を再送に変えません。
 	if err == nil {
 		state.succeededPushes++
 		return

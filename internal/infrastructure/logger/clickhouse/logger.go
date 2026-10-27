@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	clickhouseerrors "github.com/go-jappe/heterolog/internal/infrastructure/logger/clickhouse/errors"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
@@ -19,6 +18,7 @@ import (
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 const (
@@ -70,8 +70,8 @@ type ClickHouseLogger struct {
 	flushIntervalGen   func(time.Duration) *time.Ticker
 	flushManager       FlushManager
 	resourceProvider   resource.ResourceProvider
-	Tracer             observer.Tracer
-	Meter              observer.Meter
+	Tracer             pkgobserver.Tracer
+	Meter              pkgobserver.Meter
 }
 
 var _ logging.BackendLogEntryHandler = (*ClickHouseLogger)(nil)
@@ -106,8 +106,8 @@ func NewClickHouseLogger(
 	fmCfg ClickHouseFlushManagerRuntimeConfigProvider,
 	resourceProvider resource.ResourceProvider,
 	failureHandler *flushfailure.CompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 	opts ...ClickHouseLoggerOption,
 ) (*ClickHouseLogger, error) {
@@ -144,8 +144,8 @@ func newClickHouseLogger(
 	fmCfg ClickHouseFlushManagerRuntimeConfigProvider,
 	resourceProvider resource.ResourceProvider,
 	failureHandler *flushfailure.CompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 	opts ...ClickHouseLoggerOption,
 ) (*ClickHouseLogger, error) {
@@ -392,7 +392,7 @@ func (l *ClickHouseLogger) enqueue(ctx context.Context, entry *logging.LogEntry)
 	l.mu.Lock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
 		l.mu.Unlock()
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	l.appendBufferedEntryLocked(entry, entryBytes, forceFlush)
 	shouldFlush := l.shouldFlushLocked()
@@ -553,7 +553,7 @@ func (l *ClickHouseLogger) loggerClosedError() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	return nil
 }

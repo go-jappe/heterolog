@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/field"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -17,7 +16,7 @@ func newTestApplicationLogEntry(
 	message string,
 	err error,
 	stackTraceRequested bool,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) *logging.LogEntry {
 	ids, extra := field.ResolveIDsAndExtraFields(ctx, fields)
 	if !occurredAt.IsZero() {
@@ -41,7 +40,7 @@ func (l *LokiLogger) testLog(
 	occurredAt time.Time,
 	level pkglogger.LogLevel,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return l.HandleLogEntry(
 		ctx,
@@ -49,19 +48,19 @@ func (l *LokiLogger) testLog(
 	)
 }
 
-func (l *LokiLogger) testDebug(ctx context.Context, message string, fields ...applogging.Field) error {
+func (l *LokiLogger) testDebug(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return l.testLog(ctx, time.Time{}, pkglogger.LogLevelDebug, message, fields...)
 }
 
-func (l *LokiLogger) testInfo(ctx context.Context, message string, fields ...applogging.Field) error {
+func (l *LokiLogger) testInfo(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return l.testLog(ctx, time.Time{}, pkglogger.LogLevelInfo, message, fields...)
 }
 
-func (l *LokiLogger) testWarn(ctx context.Context, message string, fields ...applogging.Field) error {
+func (l *LokiLogger) testWarn(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return l.testLog(ctx, time.Time{}, pkglogger.LogLevelWarn, message, fields...)
 }
 
-func (l *LokiLogger) testError(ctx context.Context, message string, fields ...applogging.Field) error {
+func (l *LokiLogger) testError(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return l.testLog(ctx, time.Time{}, pkglogger.LogLevelError, message, fields...)
 }
 
@@ -69,7 +68,7 @@ func (l *LokiLogger) testErrorWithStack(
 	ctx context.Context,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return l.HandleLogEntry(
 		ctx,
@@ -88,7 +87,7 @@ func (l *LokiLogger) testErrorWithStack(
 func (l *DeliveryLokiLogger) testDebug(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return l.testDeliveryLog(ctx, pkglogger.LogLevelDebug, message, fields...)
 }
@@ -96,7 +95,7 @@ func (l *DeliveryLokiLogger) testDebug(
 func (l *DeliveryLokiLogger) testInfo(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return l.testDeliveryLog(ctx, pkglogger.LogLevelInfo, message, fields...)
 }
@@ -104,7 +103,7 @@ func (l *DeliveryLokiLogger) testInfo(
 func (l *DeliveryLokiLogger) testWarn(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return l.testDeliveryLog(ctx, pkglogger.LogLevelWarn, message, fields...)
 }
@@ -112,7 +111,7 @@ func (l *DeliveryLokiLogger) testWarn(
 func (l *DeliveryLokiLogger) testError(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return l.testDeliveryLog(ctx, pkglogger.LogLevelError, message, fields...)
 }
@@ -121,7 +120,7 @@ func (l *DeliveryLokiLogger) testDeliveryLog(
 	ctx context.Context,
 	level pkglogger.LogLevel,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return l.HandleLogEntry(
 		ctx,
@@ -133,7 +132,7 @@ func (l *DeliveryLokiLogger) testErrorWithStack(
 	ctx context.Context,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return l.HandleLogEntry(
 		ctx,

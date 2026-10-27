@@ -9,11 +9,11 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	infracloudwatchlogs "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/formatter"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/timestamp"
 	"github.com/go-jappe/heterolog/pkg/clock"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -103,7 +103,7 @@ func TestCloudWatchStreamUsesOccurrenceTimezoneIndependentOfDisplay(t *testing.T
 	)[0]
 	resolver, err := infracloudwatchlogs.NewLogStreamNameResolver(
 		"application/task",
-		streamrouting.Daily,
+		pkgcloudwatchlogs.StreamRoutingDaily,
 	)
 	if err != nil {
 		t.Fatalf("NewLogStreamNameResolver() error = %v", err)

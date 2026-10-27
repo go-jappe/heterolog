@@ -8,15 +8,20 @@ import (
 	"strings"
 )
 
-// ErrEmptyStorageDirectoryは、保存先のpathが空文字または空白だけであることを表します。
-// ResolveDirectoryとResolveAndValidateManagedDirectoryが返し、errors.Isで判別できます。
+// ErrEmptyStorageDirectory reports that the path of a storage location is an
+// empty string or only white space. ResolveDirectory and
+// ResolveAndValidateManagedDirectory return it, and errors.Is can identify it.
 var ErrEmptyStorageDirectory = errors.New("storage directory path must not be empty")
 
-// ResolveDirectoryは、保存先の初期化時にリンクを解決し、実体の絶対パスを返します。
-// 未作成の部分は、存在する親を解決してから結合します。ディレクトリは作成しません。
-// リンク切れ・循環・権限不足・ディレクトリ以外のパスはエラーとし、未解決のパスへ戻しません。
-// 呼び出し側は結果を保持して保存先と比較キーの両方に使い、通常処理では再解決しません。
-// 初期化と並行する外部からのパス置換や、稼働中のリンク変更への追従は対象外です。
+// ResolveDirectory resolves links when a storage location is initialized and
+// returns the absolute path of the real directory. Parts that do not exist yet
+// are joined after the existing parent is resolved. It does not create
+// directories. A broken link, a loop, insufficient permissions, or a path that
+// is not a directory is an error, and it never falls back to the unresolved
+// path. The caller keeps the result and uses it both as the storage location
+// and for comparison keys, and does not resolve it again during normal
+// processing. Following external path replacements made concurrently with
+// initialization, or link changes made while running, is out of scope.
 func ResolveDirectory(directory string) (string, error) {
 	if strings.TrimSpace(directory) == "" {
 		return "", ErrEmptyStorageDirectory

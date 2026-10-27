@@ -24,7 +24,7 @@ func loadLoggerInternalLogDestinationConfig(
 			false,
 		)
 	}
-	separateDebugLogDir, separateDebugLogDirErr := loadOptionalInternalLogBool(env.GetEnvString("HETEROLOG_LOG_INTERNAL_LOG_FILE_SEPARATE_DEBUG_LOG_DIR", ""), "HETEROLOG_LOG_INTERNAL_LOG_FILE_SEPARATE_DEBUG_LOG_DIR")
+	separateDebugLogDir, separateDebugLogDirErr := loadOptionalInternalLogBool(env, "HETEROLOG_LOG_INTERNAL_LOG_FILE_SEPARATE_DEBUG_LOG_DIR")
 
 	return logconfig.InternalLogDestinationConfig{
 		FileLogPath:                    env.GetEnvString("HETEROLOG_LOG_INTERNAL_LOG_FILE_LOG_PATH", ""),
@@ -64,7 +64,7 @@ func loadAsyncLoggerInternalLogDestinationConfig(
 			false,
 		)
 	}
-	separateDebugLogDir, separateDebugLogDirErr := loadOptionalInternalLogBool(env.GetEnvString("HETEROLOG_ASYNC_LOG_INTERNAL_LOG_FILE_SEPARATE_DEBUG_LOG_DIR", ""), "HETEROLOG_ASYNC_LOG_INTERNAL_LOG_FILE_SEPARATE_DEBUG_LOG_DIR")
+	separateDebugLogDir, separateDebugLogDirErr := loadOptionalInternalLogBool(env, "HETEROLOG_ASYNC_LOG_INTERNAL_LOG_FILE_SEPARATE_DEBUG_LOG_DIR")
 
 	return logconfig.InternalLogDestinationConfig{
 		FileLogPath:                    env.GetEnvString("HETEROLOG_ASYNC_LOG_INTERNAL_LOG_FILE_LOG_PATH", ""),
@@ -104,7 +104,7 @@ func loadDeliveryLoggerInternalLogDestinationConfig(
 			false,
 		)
 	}
-	separateDebugLogDir, separateDebugLogDirErr := loadOptionalInternalLogBool(env.GetEnvString("HETEROLOG_DELIVERY_LOG_INTERNAL_LOG_FILE_SEPARATE_DEBUG_LOG_DIR", ""), "HETEROLOG_DELIVERY_LOG_INTERNAL_LOG_FILE_SEPARATE_DEBUG_LOG_DIR")
+	separateDebugLogDir, separateDebugLogDirErr := loadOptionalInternalLogBool(env, "HETEROLOG_DELIVERY_LOG_INTERNAL_LOG_FILE_SEPARATE_DEBUG_LOG_DIR")
 
 	return logconfig.InternalLogDestinationConfig{
 		FileLogPath:                    env.GetEnvString("HETEROLOG_DELIVERY_LOG_INTERNAL_LOG_FILE_LOG_PATH", ""),
@@ -128,15 +128,16 @@ func loadDeliveryLoggerInternalLogDestinationConfig(
 	}, errors.Join(err, separateDebugLogDirErr)
 }
 
-// loadOptionalInternalLogBoolは読み込み済みの値から、空文字の継承と明示的なfalseを区別します。
-// 非空の入力は通常のboolean environment値と同じ規則で解析します。keyはエラー表示用です。
-func loadOptionalInternalLogBool(raw, key string) (*bool, error) {
-	if raw == "" {
+// loadOptionalInternalLogBoolは、未設定・空文字の継承（nil）と明示的なfalseを区別します。
+// 非空の値は他のboolean設定と同じくGetEnvBoolで解析し、不正な値はkeyを持つ
+// pkgenv.VariableError（ErrNotBoolean）として返します。
+func loadOptionalInternalLogBool(env pkgenv.Lookup, key string) (*bool, error) {
+	if env.GetEnvString(key, "") == "" {
 		return nil, nil
 	}
-	value, err := pkgenv.ParseBool(raw)
+	value, err := env.GetEnvBool(key, false)
 	if err != nil {
-		return nil, newInvalidEnvironmentValueError(key, raw, err, "environment variable %q %v", key, err)
+		return nil, err
 	}
 	return &value, nil
 }

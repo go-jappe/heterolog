@@ -8,7 +8,7 @@ import (
 // SpoolStoreOverloadPolicyConfigProviderは、active spoolへの保存可否を決める
 // overload設定と、保存可否には影響しない滞留Warn設定を提供します。
 type SpoolStoreOverloadPolicyConfigProvider interface {
-	OverloadPolicy() durable.OverloadPolicy     // drop or spill
+	OverloadPolicy() durable.OverloadPolicy     // dropまたはdegrade
 	SpillDestination() durable.SpillDestination // spoolに受け入れられない(spill)場合の二次退避先　s3 stdoutなど
 
 	// 前回の統計 scan 以降、この回数を超えて overload 判定が呼ばれたら、

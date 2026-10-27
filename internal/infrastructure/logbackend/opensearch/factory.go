@@ -3,8 +3,8 @@ package opensearch
 import (
 	"errors"
 	"fmt"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/opensearch/wrapper"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
 )
 
@@ -25,8 +25,8 @@ var (
 func NewClient(
 	clientCfg OpenSearchClientConfigProvider,
 	retryCfg wrapper.RetryConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (pkgopensearch.Client, error) {
 	if clientCfg == nil {
 		return nil, ErrNilClientConfig

@@ -9,7 +9,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/infrastructure/memory/pressure"
 	"github.com/go-jappe/heterolog/pkg/memorypressure"
 
 	"github.com/stretchr/testify/assert"
@@ -53,7 +52,7 @@ func (r *sequenceMemoryPressureReader) calls() int {
 }
 
 // newTestMonitor は、検証済みの policy で monitor を生成します。
-func newTestMonitor(t *testing.T, reader memorypressure.Provider, policy memorypressure.CriticalPolicy, interval time.Duration) pressure.MemoryPressureMonitor {
+func newTestMonitor(t *testing.T, reader memorypressure.Provider, policy memorypressure.CriticalPolicy, interval time.Duration) memorypressure.Monitor {
 	t.Helper()
 	monitor, err := New(reader, policy, interval)
 	require.NoError(t, err)

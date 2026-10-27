@@ -97,8 +97,8 @@ func TestResolveCompressedFilePath(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			// The observations intentionally have no backing files: resolution uses
-			// the caller's snapshot and must neither inspect nor create files.
+			// observedのpathには、意図的に実fileを用意していません。解決処理は呼び出し元の
+			// snapshotを使い、fileの検査も作成もしてはいけません。
 			path, exists, err := fsstore.ResolveCompressedFilePath(source, test.observed, test.format)
 			if test.wantErr {
 				require.Error(t, err)

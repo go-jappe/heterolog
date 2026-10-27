@@ -23,7 +23,7 @@ func TestStoreEnsureDirectoriesSkipsFilesystemAfterSuccess(t *testing.T) {
 			store := newTestStore(t, pkglogger.LoggerContractSync)
 			require.NoError(t, store.EnsureDirectories(context.Background()))
 			directory := store.Root().RetryableDir()
-			require.NoError(t, os.Remove(directory)) // Only this empty test directory is removed.
+			require.NoError(t, os.Remove(directory)) // この試験用の空directoryだけを削除します。
 			if replacedByFile {
 				require.NoError(t, os.WriteFile(directory, []byte("external replacement"), 0o600))
 			}
@@ -57,12 +57,12 @@ func TestStoreEnsureDirectoriesSkipsFilesystemAfterSuccess(t *testing.T) {
 				require.ErrorIs(t, err, os.ErrNotExist)
 			}
 
-			// A different Store still validates and creates its directories.
+			// 別のStoreは、引き続き自身のdirectoryを検証・作成します。
 			restarted, err := NewStore(store.Root())
 			require.NoError(t, err)
 			if replacedByFile {
 				require.Error(t, restarted.EnsureDirectories(context.Background()))
-				require.NoError(t, os.Remove(directory)) // Remove only the replacement fixture above.
+				require.NoError(t, os.Remove(directory)) // 上で置いた置き換え用のfixtureだけを削除します。
 			}
 			require.NoError(t, restarted.EnsureDirectories(context.Background()))
 			require.DirExists(t, directory)

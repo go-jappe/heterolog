@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	appconfig "github.com/go-jappe/heterolog/internal/config"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	"github.com/go-jappe/heterolog/internal/testutil"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/require"
@@ -31,9 +31,9 @@ func TestCloudWatchLogsLoggerUsesConfigFixtureAndPutsThroughMockClient(t *testin
 	require.Equal(t, requiredDotEnvStringForCloudWatchLogsLoggerTest(t, envFile, "HETEROLOG_CLOUDWATCH_LOG_STREAM_NAME"), cfg.CloudWatchLogs.CloudWatchLogsFlushManagerConfig.LogStreamName)
 	require.Equal(
 		t,
-		streamrouting.Normalize(streamrouting.Granularity(
+		pkgcloudwatchlogs.StreamRouting(
 			requiredDotEnvStringForCloudWatchLogsLoggerTest(t, envFile, "HETEROLOG_CLOUDWATCH_LOG_STREAM_ROTATION"),
-		)),
+		).Normalize(),
 		appCfg.Logger.CloudWatchLogsConfig.LogStreamRoutingGranularity,
 	)
 	require.Equal(t, requiredDotEnvBoolForCloudWatchLogsLoggerTest(t, envFile, "HETEROLOG_ENABLE_CLOUDWATCH_COMPRESS_REQUEST"), cfg.CloudWatchLogsClient.CompressRequest)

@@ -1,0 +1,104 @@
+package heterolog
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/go-jappe/heterolog/internal/application/outputsettings"
+	"github.com/go-jappe/heterolog/internal/presentation/http/admin"
+	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+)
+
+// MinAdminTokenLength is the minimum length in bytes of an admin API token.
+const MinAdminTokenLength = pkgadmin.MinTokenLength
+
+var (
+	// ErrAdminTokenTooShort reports an admin API token shorter than
+	// MinAdminTokenLength. The error never contains the token.
+	ErrAdminTokenTooShort = admin.ErrTokenTooShort
+	// ErrAdminNoLoggers reports an admin API configuration without loggers.
+	ErrAdminNoLoggers = outputsettings.ErrNoLoggers
+	// ErrAdminServerAddrRequired reports an AdminServerConfig without Addr.
+	ErrAdminServerAddrRequired = admin.ErrServerAddrRequired
+	// ErrAdminServerInsecure reports an admin server that would listen on a
+	// non-loopback address without TLS, which would send the token over the
+	// network in clear text.
+	ErrAdminServerInsecure = admin.ErrServerInsecure
+	// ErrAdminServerTLSIncomplete reports an AdminServerConfig that sets only
+	// one of TLSCertFile and TLSKeyFile.
+	ErrAdminServerTLSIncomplete = admin.ErrServerTLSIncomplete
+)
+
+// SettingsController is a logger whose output settings can change while it
+// runs. *Runtime and *AsyncRuntime implement it.
+type SettingsController = pkglogger.SettingsController
+
+var (
+	_ SettingsController = (*Runtime)(nil)
+	_ SettingsController = (*AsyncRuntime)(nil)
+)
+
+// AdminHandlerConfig configures NewAdminHandler: the bearer Token (at least
+// MinAdminTokenLength bytes), the Loggers by the names used in the API, and an
+// optional OnChange called after each change, for example for audit logs.
+// Without OnChange, each change is written as one line to the standard logger.
+type AdminHandlerConfig = pkgadmin.HandlerConfig
+
+// AdminChange describes a change of one output made through the admin API: the
+// client's RemoteAddr, the Logger name, the Output, and the settings Before
+// and After the change.
+type AdminChange = pkgadmin.Change
+
+// AdminServerConfig configures StartAdminServer. Addr is the TCP address to
+// listen on; with an empty host, such as ":9100", the server listens on
+// 127.0.0.1 only. Listening on a non-loopback address requires TLSCertFile and
+// TLSKeyFile. Token and OnChange are as in AdminHandlerConfig.
+type AdminServerConfig = pkgadmin.ServerConfig
+
+// AdminServer serves the admin API until Shutdown or Close stops it.
+type AdminServer struct {
+	// serverは、起動したgoroutineが状態を書き込むため、複製せずpointerで持ちます。
+	server *admin.Server
+}
+
+// NewAdminHandler returns an http.Handler for the admin API, which reads and
+// changes the level and sampling of the outputs of running loggers. Mount it
+// on your own server, behind your own TLS when it is reachable over a network;
+// StartAdminServer starts a dedicated server instead. The handler serves:
+//
+//	GET   /settings  returns the current settings of every logger
+//	PATCH /settings  changes the fields given in the JSON body
+//
+// Every request must send "Authorization: Bearer <Token>". A PATCH checks all
+// of its changes before applying any of them. Changes take effect from the
+// next entry and are kept in memory only, so a restart returns to the
+// configured settings.
+func NewAdminHandler(cfg AdminHandlerConfig) (http.Handler, error) {
+	return admin.NewHandler(cfg)
+}
+
+// StartAdminServer starts a dedicated HTTP server for the admin API of
+// NewAdminHandler and returns once it listens. loggers maps the names used in
+// the API to the loggers whose settings it reads and changes. The server
+// listens on a loopback address unless cfg names another host and enables TLS.
+// Call Shutdown or Close to stop it.
+func StartAdminServer(cfg AdminServerConfig, loggers map[string]SettingsController) (*AdminServer, error) {
+	server, err := admin.StartServer(cfg, loggers)
+	if err != nil {
+		return nil, err
+	}
+	return &AdminServer{server: server}, nil
+}
+
+// Addr returns the address the server listens on, including the port chosen
+// when AdminServerConfig.Addr asked for port 0.
+func (s *AdminServer) Addr() string { return s.server.Addr() }
+
+// Shutdown stops accepting connections and waits until active requests finish
+// or ctx ends. It returns ctx's error if ctx ends first, and otherwise the
+// error that stopped the server, if any.
+func (s *AdminServer) Shutdown(ctx context.Context) error { return s.server.Shutdown(ctx) }
+
+// Close stops the server immediately and closes active connections.
+func (s *AdminServer) Close() error { return s.server.Close() }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // ClassifyFunc は、バックエンド固有のエラーを retryable.RetryDecision に変換します。
@@ -20,11 +21,11 @@ type ClassifyFunc func(context.Context, error) retryable.RetryDecision
 // 試行ごとにOperationGuard.Doを呼び出します。
 type OperationGuard struct {
 	circuitBreaker *retryable.CircuitBreaker
-	tracer         observer.Tracer
+	tracer         pkgobserver.Tracer
 
 	// meter は初期化して保持しますが、現時点ではメトリクスを記録していません。
 	// 判定結果はトレースイベントにのみ記録します。
-	meter observer.Meter
+	meter pkgobserver.Meter
 
 	eventName string
 	classify  ClassifyFunc
@@ -35,8 +36,8 @@ type OperationGuard struct {
 // バックエンド固有のエラー判定処理を指定します。
 type OperationGuardOptions struct {
 	CircuitBreaker *retryable.CircuitBreaker
-	Tracer         observer.Tracer
-	Meter          observer.Meter
+	Tracer         pkgobserver.Tracer
+	Meter          pkgobserver.Meter
 	EventName      string
 	Classify       ClassifyFunc
 }
@@ -177,7 +178,7 @@ func (g *OperationGuard) Do(ctx context.Context, name string, op func(context.Co
 }
 
 func (g *OperationGuard) addDecisionEvent(
-	span observer.Span,
+	span pkgobserver.Span,
 	failureClassification retryable.RetryDecision,
 	err error,
 	attempt int,
@@ -203,26 +204,26 @@ func (g *OperationGuard) addDecisionEvent(
 
 	span.AddEvent(
 		g.eventName,
-		observer.Attr{Key: "reason", Value: string(failureClassification.Reason)},
-		observer.Attr{Key: "attempt", Value: attempt},
-		observer.Attr{Key: "retry", Value: willRetry},
-		observer.Attr{Key: "http_status", Value: failureClassification.Code},
-		observer.Attr{Key: "error", Value: errorText},
-		observer.Attr{Key: "retry_policy_client", Value: false},
-		observer.Attr{Key: "circuit_breaker_client", Value: true},
-		observer.Attr{
+		pkgobserver.Attr{Key: "reason", Value: string(failureClassification.Reason)},
+		pkgobserver.Attr{Key: "attempt", Value: attempt},
+		pkgobserver.Attr{Key: "retry", Value: willRetry},
+		pkgobserver.Attr{Key: "http_status", Value: failureClassification.Code},
+		pkgobserver.Attr{Key: "error", Value: errorText},
+		pkgobserver.Attr{Key: "retry_policy_client", Value: false},
+		pkgobserver.Attr{Key: "circuit_breaker_client", Value: true},
+		pkgobserver.Attr{
 			Key:   "circuit_breaker_suppressed",
 			Value: suppressed,
 		},
-		observer.Attr{
+		pkgobserver.Attr{
 			Key:   "circuit_breaker_probe",
 			Value: probe,
 		},
-		observer.Attr{
+		pkgobserver.Attr{
 			Key:   "circuit_breaker_consecutive",
 			Value: consecutive,
 		},
-		observer.Attr{
+		pkgobserver.Attr{
 			Key:   "circuit_breaker_failure_millisecond",
 			Value: failureDuration,
 		},

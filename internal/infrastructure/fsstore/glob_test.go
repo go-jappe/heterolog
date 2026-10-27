@@ -33,7 +33,7 @@ func TestGetFilesInfoSkipsStatFailures(t *testing.T) {
 
 	directory := t.TempDir()
 	existingPath := filepath.Join(directory, "existing.log")
-	// A missing file deterministically exercises the stat-error path on every OS.
+	// 存在しないfileを使うと、どのOSでも確実にstat errorの経路を通ります。
 	invalidPath := filepath.Join(directory, "missing.log")
 	if err := os.WriteFile(existingPath, []byte("existing"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error: %v", err)

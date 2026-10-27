@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // 送信元がRetry-Afterを引き継いだrecordは、FailedAtにRetryAfterを加えた時刻まで
@@ -74,7 +74,7 @@ func TestStoreSendResultByStateCapsRetryAfterAndWarnsOnce(t *testing.T) {
 			handler := newTestHandler(t, now, testOverloadPolicyConfig{})
 			handler.SetMaxRetryAfter(tt.maxRetryAfter)
 			var warnings []*logging.LogEntry
-			handler.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			handler.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				warnings = append(warnings, entry)
 			}
 			failedAt := now.Add(-time.Second)
@@ -133,7 +133,7 @@ func TestStoreSendResultByStateDoesNotWarnWithinMaximum(t *testing.T) {
 	handler := newTestHandler(t, now, testOverloadPolicyConfig{})
 	handler.SetMaxRetryAfter(time.Hour)
 	warned := false
-	handler.OnWarn = func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) { warned = true }
+	handler.OnWarn = func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) { warned = true }
 	record := failedRecord("at-maximum", "http_throttle", now)
 	record.RetryAfter = time.Hour
 

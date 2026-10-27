@@ -2,7 +2,8 @@ package s3
 
 import "github.com/go-jappe/heterolog/pkg/objectstorage"
 
-// ConfigFromProviderは、adapterの各設定値からS3 client・宛先ID生成用の入力を作ります。
+// ConfigFromProvider builds, from each setting of provider, the input for the
+// S3 client and for generating destination IDs.
 func ConfigFromProvider(provider objectstorage.S3ConfigProvider) objectstorage.S3Config {
 	return objectstorage.S3Config{
 		Region:          provider.Region(),

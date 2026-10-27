@@ -11,7 +11,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -97,9 +96,9 @@ func TestMultiLoggersDoNotExposeHandleLogEntry(t *testing.T) {
 }
 
 var (
-	_ applogging.Logger         = (*MultiLogger)(nil)
-	_ applogging.AsyncLogger    = (*AsyncBestEffortMultiLogger)(nil)
-	_ applogging.DeliveryLogger = (*DeliveryMultiLogger)(nil)
+	_ pkglogger.Logger         = (*MultiLogger)(nil)
+	_ pkglogger.AsyncLogger    = (*AsyncBestEffortMultiLogger)(nil)
+	_ pkglogger.DeliveryLogger = (*DeliveryMultiLogger)(nil)
 )
 
 // syncHandlerStubは、backend非依存のlogical LogEntryだけを受け取る
@@ -151,7 +150,7 @@ func (h *contextCloseHandlerStub) Close(context.Context) error {
 
 func TestTopLevelMultiLoggerOwnsApplicationContract(t *testing.T) {
 	syncChild := &syncHandlerStub{}
-	_, childIsApplicationLogger := any(syncChild).(applogging.Logger)
+	_, childIsApplicationLogger := any(syncChild).(pkglogger.Logger)
 	require.False(t, childIsApplicationLogger)
 
 	logger := newTestMultiLogger(syncChild)
@@ -160,7 +159,7 @@ func TestTopLevelMultiLoggerOwnsApplicationContract(t *testing.T) {
 	require.NoError(t, logger.Close())
 
 	asyncChild := &syncHandlerStub{}
-	_, childIsAsyncApplicationLogger := any(asyncChild).(applogging.AsyncLogger)
+	_, childIsAsyncApplicationLogger := any(asyncChild).(pkglogger.AsyncLogger)
 	require.False(t, childIsAsyncApplicationLogger)
 	asyncLogger, err := NewAsyncBestEffortMultiLogger(
 		asyncBestEffortConfigStub{timeout: time.Second, maxParallel: 1},
@@ -200,7 +199,7 @@ func TestMultiLoggerTimesOutBlockedHandler(t *testing.T) {
 
 		require.Error(t, err)
 		assert.GreaterOrEqual(t, time.Since(started), timeout, "runAll must wait for the configured timeout")
-		var multiErr *applogging.MultiLoggerError
+		var multiErr *pkglogger.MultiLoggerError
 		require.ErrorAs(t, err, &multiErr)
 		require.Len(t, multiErr.Failures, 1)
 		assert.ErrorIs(t, multiErr.Failures[0].Err, context.DeadlineExceeded)
@@ -232,7 +231,7 @@ func TestMultiLoggerErrorDisplaysChildTypeAndPreservesCause(t *testing.T) {
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, childErr)
-	var multiErr *applogging.MultiLoggerError
+	var multiErr *pkglogger.MultiLoggerError
 	require.ErrorAs(t, err, &multiErr)
 	require.Len(t, multiErr.Failures, 1)
 	require.Equal(t, fmt.Sprintf("%T", child), multiErr.Failures[0].HandlerType)
@@ -251,7 +250,7 @@ func TestMultiLoggerRecoversHandlerPanic(t *testing.T) {
 
 	require.ErrorIs(t, err, panicErr)
 	require.ErrorIs(t, err, ErrLoggerPanicked)
-	var multiErr *applogging.MultiLoggerError
+	var multiErr *pkglogger.MultiLoggerError
 	require.ErrorAs(t, err, &multiErr)
 	require.Len(t, multiErr.Failures, 1)
 	require.Equal(t, fmt.Sprintf("%T", child), multiErr.Failures[0].HandlerType)
@@ -289,7 +288,7 @@ func TestMultiLoggerWithoutChildrenRejectsEntriesAfterClose(t *testing.T) {
 	require.Equal(t, testMultiLoggerTimeout, m.timeout)
 	require.NoError(t, m.runAll(context.Background(), entry))
 	require.NoError(t, m.Close())
-	require.ErrorIs(t, m.runAll(context.Background(), entry), applogging.ErrLoggerClosed)
+	require.ErrorIs(t, m.runAll(context.Background(), entry), pkglogger.ErrLoggerClosed)
 	require.NoError(t, m.Close())
 }
 
@@ -338,7 +337,7 @@ func TestMultiLoggerCloseWaitsForHandlerStillRunningAfterTimeout(t *testing.T) {
 		}
 
 		err = m.runAll(context.Background(), testLogEntry(pkglogger.LogLevelInfo, "while closing"))
-		require.ErrorIs(t, err, applogging.ErrLoggerClosed)
+		require.ErrorIs(t, err, pkglogger.ErrLoggerClosed)
 		var opErr *OperationError
 		require.ErrorAs(t, err, &opErr)
 		require.Equal(t, "multi.Info", opErr.Op)

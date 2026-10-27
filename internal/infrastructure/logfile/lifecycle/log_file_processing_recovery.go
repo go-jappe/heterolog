@@ -11,9 +11,9 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile/processing"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // logFileProcessingRecoveryKeyは送信・圧縮・後片付けと宛先準備の復旧を区別します。
@@ -63,7 +63,7 @@ func (m *FileSeriesManager) ForceClose() error {
 	recovery := m.logFileProcessingRecovery
 	m.initMu.Unlock()
 	var errs []error
-	errs = append(errs, shutdown.ErrForcedClose)
+	errs = append(errs, pkgshutdown.ErrForcedClose)
 	if recovery != nil {
 		errs = append(errs, recovery.ForceClose())
 	}
@@ -114,7 +114,7 @@ func (m *FileSeriesManager) Close() error {
 		m.initMu.Lock()
 		select {
 		case <-m.forceDone:
-			m.closeErr = errors.Join(m.closeErr, shutdown.ErrForcedClose)
+			m.closeErr = errors.Join(m.closeErr, pkgshutdown.ErrForcedClose)
 		default:
 		}
 		m.closed = true
@@ -225,10 +225,11 @@ func (m *FileSeriesManager) scheduleLogFileProcessingRecoveryForOwner(path strin
 	return true
 }
 
-// Preparation recovery refreshes current destinations and accepted checkpoint
-// state. It rebuilds the existing generations and never runs compression or retention.
-// A blocked first compressed upload gets
-// its own protected continuation after checkpoint preparation succeeds.
+// preparation recoveryは、現在のdestinationと受理済みcheckpointの状態を取得し直します。
+// 既存のgenerationを再構築し、compressionやretentionは実行しません。
+// checkpoint preparationの成功後は、現在の走査で選択したすべてのfile（圧縮しない
+// 設定ではlog file、それ以外では各sourceで選択された圧縮済みfile）へ、保護された
+// continuationを用意します。個別の登録を断られたfileは、この準備処理の中で続けます。
 func (m *FileSeriesManager) scheduleUploadPreparationRecovery(paths []string, failure error) {
 	if m.manualRecovery {
 		return
@@ -260,8 +261,8 @@ func (m *FileSeriesManager) scheduleUploadPreparationRecovery(paths []string, fa
 			if err != nil {
 				return err
 			}
-			// Registration and ordering use the current scan, including files that
-			// appeared after the original preparation failure.
+			// 登録と順序付けには、元のpreparation失敗の後に現れたfileも含め、
+			// 現在のscanを使います。
 			_, err = m.prepareObjectStorageUploadRun(ctx, scan.files, scan.sourceGroups.Files.Paths)
 			if err != nil && !checkpointstore.IsPendingSaveOnly(err) {
 				return err
@@ -271,8 +272,8 @@ func (m *FileSeriesManager) scheduleUploadPreparationRecovery(paths []string, fa
 			if err != nil {
 				return err
 			}
-			// Preparation is complete. These continuations are ready now, so nil
-			// avoids waiting for another retry interval before their first attempt.
+			// preparationは完了しています。これらのcontinuationはすぐに実行できるため、
+			// nilを渡して、最初の試行の前に再びretry intervalを待たないようにします。
 			pending := false
 			var continuationErrs []error
 			resume := func(path string, generation fileGeneration, compressed bool) {
@@ -324,7 +325,7 @@ func (m *FileSeriesManager) scheduleUploadPreparationRecovery(paths []string, fa
 				if pathidentity.ComparisonKey(selected[pathidentity.ComparisonKey(source)]) != pathidentity.ComparisonKey(path) {
 					continue
 				}
-				// Source retirement belongs to normal compression, not log file processing recovery.
+				// sourceのretirementは、log file processing recoveryではなく通常のcompressionが担当します。
 				if containsRecoveryPath(scan.sourceGroups.Files.Paths, source) {
 					continue
 				}

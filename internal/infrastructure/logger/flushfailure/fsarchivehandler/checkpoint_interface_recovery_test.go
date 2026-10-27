@@ -2,7 +2,6 @@ package fsarchivehandler
 
 import (
 	"context"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"os"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	checkpointtest "github.com/go-jappe/heterolog/internal/testutil/checkpoint"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -71,7 +71,7 @@ func TestFailureArchivePersistenceFailureDoesNotBlockCompletedFileRemoval(t *tes
 					require.Error(t, err)
 				}
 				var notifications atomic.Int64
-				handler.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+				handler.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 					notifications.Add(1)
 				}
 				outcome := handler.uploadCheckpointedArchiveGroup(ctx, []string{path}, category, fileName)

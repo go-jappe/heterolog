@@ -14,15 +14,15 @@ func GenerateOpaqueID(prefix string) string {
 	return fmt.Sprintf("%s-%d-%s", prefix, time.Now().UnixNano(), uuid.NewString())
 }
 
-// OpaqueIDGenerator はOpaqueIDを生成するインターフェース
+// OpaqueIDGenerator is an interface that generates OpaqueIDs.
 type OpaqueIDGenerator interface {
 	GenerateOpaqueID(prefix string) string
 }
 
-// DefaultOpaqueIDGenerator はデフォルトのOpaqueIDジェネレーター
+// DefaultOpaqueIDGenerator is the default OpaqueID generator.
 type DefaultOpaqueIDGenerator struct{}
 
-// GenerateOpaqueID はOpaqueIDを生成します
+// GenerateOpaqueID generates an OpaqueID.
 func (g *DefaultOpaqueIDGenerator) GenerateOpaqueID(prefix string) string {
 	return GenerateOpaqueID(prefix)
 }

@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/wrapper"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // NewClientが失敗した段階を表すerrorの種類です。原因のerrorはerrors.Is・errors.Asで辿れます。
@@ -22,8 +22,8 @@ var (
 func NewClient(
 	cfg pkgcloudwatchlogs.Config,
 	retryCfg wrapper.RetryConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (pkgcloudwatchlogs.Client, error) {
 	client, err := pkgcloudwatchlogs.New(cfg)
 	if err != nil {

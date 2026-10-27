@@ -27,7 +27,7 @@ func TestReplayLoopWaitsForFirstIntervalAndCompletedReplay(t *testing.T) {
 				replays <- time.Now()
 				if first {
 					first = false
-					// Upload and reporting together may exceed several intervals.
+					// uploadとreportを合わせると、intervalを何回分も超えることがあります。
 					time.Sleep(35 * time.Second)
 				}
 			}, 0, nil)

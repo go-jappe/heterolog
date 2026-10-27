@@ -956,8 +956,8 @@ func clickHouseQuoteStringForLoggerTest(value string) string {
 	return "'" + replacer.Replace(value) + "'"
 }
 
-// Config-based live tests must read the dedicated integration file, not the
-// deterministic local fixture used by the ordinary configuration tests.
+// 設定に基づくlive testは、通常の設定testが使う決定的なlocal fixtureではなく、
+// 専用のintegration fileを読む必要があります。
 func loadLiveBackendEnvironment(t *testing.T, optIn, backend string) (appconfig.AppConfig, map[string]string) {
 	t.Helper()
 	envFile := testutil.RequireIntegrationEnvironment(t, optIn)
@@ -984,7 +984,7 @@ func (c loggerEnvBackendSpoolConfig) FileNameFormat() string {
 func (c loggerEnvBackendSpoolConfig) FileDateFormat() string {
 	return "20060102"
 }
-func (c loggerEnvBackendSpoolConfig) MaxWriteAttempts() int {
+func (c loggerEnvBackendSpoolConfig) MaxWriteRetries() int {
 	return 1
 }
 func (c loggerEnvBackendSpoolConfig) FileOperationRetryWaitTime() time.Duration {

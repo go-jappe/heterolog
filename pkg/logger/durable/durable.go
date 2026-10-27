@@ -9,27 +9,30 @@ import (
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 )
 
-// DurableTypeは既存logger failure-store APIとのsource互換を保つaliasです。
-// compressed log file upload failure側は、このpackageをimportせず同じ選択値を使用できます。
+// DurableType is an alias that keeps source compatibility with the existing
+// logger failure-store API. The compressed log file upload failure side can use
+// the same selection values without importing this package.
 type DurableType = failurestore.DurableType
 
-// SpillType はdurable storeを使わない場合の直接退避先です。
-// 現在実装済みなのはstdoutだけです。s3/nfsは予約値で、選択すると
-// failure handlerの構築時に起動エラーになります。
+// SpillType is a direct evacuation destination used when no durable store is
+// used. Only stdout is implemented at present. s3 and nfs are reserved values,
+// and selecting one causes a startup error when the failure handler is built.
 type SpillType string
 
-type OverloadPolicy string   // spool限界時のポリシー
-type SpillDestination string // 1次退避先がoverload時の2次退避先
+type OverloadPolicy string   // policy when a durable store reaches its limit
+type SpillDestination string // secondary evacuation destination for when the primary one is overloaded
 
 const (
-	// DurableTypeNoneはfailure storeの保存方式を明示的に選択しないことを表します。
-	// 単独指定した場合、spoolとfile archiveのどちらも使用しません。
+	// DurableTypeNone explicitly selects no storage method for the failure
+	// store. When it is specified alone, neither the spool nor the file
+	// archive is used.
 	DurableTypeNone        = failurestore.DurableTypeNone
 	DurableTypeFileArchive = failurestore.DurableTypeFileArchive
 	DurableTypeSpool       = failurestore.DurableTypeSpool
 
-	// SpillTypeNoneはDurableTypeNone選択時の直接退避先を明示的に選択しないことを表します。
-	// EnableDegradeがtrueの場合は設定矛盾としてvalidation errorになります。
+	// SpillTypeNone explicitly selects no direct evacuation destination when
+	// DurableTypeNone is selected. When EnableDegrade is true, it is a
+	// contradictory configuration and causes a validation error.
 	SpillTypeNone SpillType = "none"
 
 	OverloadPolicyDrop    OverloadPolicy = "drop"
@@ -40,150 +43,163 @@ const (
 	SpillDestinationNFS    SpillDestination = "nfs"
 )
 
-// FailureStoreConfig はbackend共通のdurable failure store設定です。
+// FailureStoreConfig is the durable failure store configuration shared by all
+// backends.
 type FailureStoreConfig struct {
-	// EnableDegradeはDurableTypeNoneを選択した場合だけ、
-	// SpillTypeの退避先へ直接出力するかを制御する。
-	// store使用中のoverload処理は各OverloadPolicyが別途制御する。
+	// EnableDegrade controls whether failures are written directly to the
+	// SpillType destinations. It applies only when DurableTypeNone is selected.
+	// Overload handling while a store is in use is controlled separately by
+	// each OverloadPolicy.
 	EnableDegrade      bool
-	MaxConcurrent      int // failure storeまたはdirect degradeが有効な場合は正の値が必須
+	MaxConcurrent      int // must be positive when a failure store or direct degrade is enabled
 	DurableType        []DurableType
-	SpillType          []SpillType // stdoutのみ実装済み。s3/nfsは予約値で、選択すると起動時エラー
+	SpillType          []SpillType // only stdout is implemented; s3/nfs are reserved values that cause a startup error when selected
 	DurableStoreConfig DurableStoreConfig
 }
 
-// DeliveryFailureStoreConfig は、Delivery loggerの最終宛先への送信失敗後に使う
-// failure store設定です。即時送信するDelivery loggerは保存完了を待って結果を
-// DeliveryReportへ含めます。送信自体をqueueへ受け付けるloggerでは、後続flushが
-// この設定を使用します。
+// DeliveryFailureStoreConfig is the failure store configuration used after a
+// Delivery logger fails to send to its final destination. A Delivery logger
+// that sends immediately waits until saving completes and includes the result
+// in the DeliveryReport. In a logger that accepts the sends themselves into a
+// queue, later flushes use this configuration.
 type DeliveryFailureStoreConfig struct {
-	// EnableDegradeとSpillTypeはDurableTypeNone選択時の直接退避を制御する。
+	// EnableDegrade and SpillType control direct evacuation when
+	// DurableTypeNone is selected.
 	EnableDegrade     bool
 	DurableType       []DurableType
-	SpillType         []SpillType // stdoutのみ実装済み。s3/nfsは予約値で、選択すると起動時エラー
+	SpillType         []SpillType // only stdout is implemented; s3/nfs are reserved values that cause a startup error when selected
 	FileArchiveConfig DeliveryFileArchiveConfig
 }
 
-// DurableStoreConfig はbackend共通のdurable store設定です。
+// DurableStoreConfig is the durable store configuration shared by all
+// backends.
 type DurableStoreConfig struct {
 	FileArchiveConfig FileArchiveConfig
 	SpoolConfig       SpoolConfig
 }
 
 type SpoolConfig struct {
-	SpoolPath string // ex.)/var/lib/{appname}/spool (/var/lib/部分)
-	Target    string // (appname部分)
-	Dir       string // ex.)/var/lib/{appname}/spool/{Dir} (Dir部分)
+	SpoolPath string // ex.)/var/lib/{appname}/spool (the /var/lib/ part)
+	Target    string // (the appname part)
+	Dir       string // ex.)/var/lib/{appname}/spool/{Dir} (the Dir part)
 
 	OverloadPolicyConfig SpoolOverloadPolicyConfig
 	HandlerConfig        handler.HandlerConfig
 }
 
-// オーバーロード時の処理判定の設定。
+// SpoolOverloadPolicyConfig configures how processing is decided on overload.
 //
-// retryable な失敗データを spool へ保存してよいかを判定するための閾値群を持つ。
-// 主な用途は、バックエンド送信失敗時に retry 用データを active spool へ退避する前に、
-// その保存先自体が過負荷・逼迫していないかを確認すること。
+// It holds the thresholds that decide whether retryable failure data may be
+// saved to the spool. Its main use is to check, before data for a retry is
+// evacuated to the active spool when sending to a backend fails, whether that
+// storage itself is overloaded or running short of resources.
 //
-// 各 overload 閾値は「0値なら無効」として扱う設計にすると運用しやすい。
-// ActiveBacklogWarnAfterDays だけは保存可否に影響しない滞留警告用の閾値。
+// Designing each overload threshold so that its zero value disables it makes
+// operation easier. Only ActiveBacklogWarnAfterDays is a threshold for backlog
+// warnings that does not affect whether data may be saved.
 //
-// ActiveBacklogWarnAfterDays を除く有効な条件に抵触した場合は、
-// OverloadPolicy に従って drop または spill（SecondaryDestination への退避）を行う。
+// When an enabled condition other than ActiveBacklogWarnAfterDays is hit, the
+// data is dropped or evacuated to SpillDestination according to
+// OverloadPolicy.
 type SpoolOverloadPolicyConfig struct {
-	// オーバーロード判定時の動作方針。
+	// OverloadPolicy is the course of action when overload is detected.
 	//
 	// drop:
-	//   spool への保存を諦めて破棄する。
+	//   gives up saving to the spool and discards the data.
 	//
-	// spill:
-	//   spool 以外の SecondaryDestination へ退避する。
+	// degrade:
+	//   evacuates the data to SpillDestination, outside the spool.
 	OverloadPolicy OverloadPolicy
 
-	// OverloadPolicy が spill の場合の二次退避先。
-	// 例: s3, stdout など。
+	// SpillDestination is the secondary evacuation destination when
+	// OverloadPolicy is degrade. Only stdout is implemented at present.
 	//
-	// spool にこれ以上受け入れられない場合の代替保存先を表す。
+	// It is the alternative storage used when the spool cannot accept any more
+	// data.
 	//
-	// 0値または未設定時の扱いは実装側で定義する。
-	// たとえば「spill 指定なのに退避先未設定なら drop 扱いにする」など。
+	// With degrade, any other value, including the zero value, causes a
+	// startup error when the failure handler is built.
 	SpillDestination SpillDestination
 
-	// 前回の統計 scan 以降、この回数を超えて overload 判定が呼ばれた場合、
-	// StatsScanInterval の期限前でも ディレクトリ統計を再 scan する。
+	// MaxCallsSinceScan rescans the directory statistics, even before
+	// StatsScanInterval expires, when the number of overload checks since the
+	// previous statistics scan, including the current one, reaches it.
 	//
-	// 短時間に大量の保存判定が走る場合でも、古い統計値を使い続けることを防ぐための上限。
+	// It is an upper bound that keeps old statistics from being used on and on
+	// even when a large number of save checks run in a short time.
 	//
-	// 0 の場合は、呼び出し回数による再 scan は無効。
+	// 0 disables rescans based on the number of calls.
 	MaxCallsSinceScan uint64
 
-	// overload 判定用に保持している ディレクトリ統計の有効期間。
-	// この期間を過ぎた場合、次回の overload 判定時に統計を再 scan する。
+	// StatsScanInterval is how long the directory statistics kept for the
+	// overload check remain valid. After this period has passed, the
+	// statistics are rescanned at the next overload check.
 	//
-	// 0 以下の場合は、毎回再 scan する。
+	// When it is 0 or less, the statistics are rescanned every time.
 	StatsScanInterval time.Duration
 
-	// ディレクトリ配下の総サイズ上限。
-	// この値を超えていた場合、新たな retryable データは spool に保存しない。
+	// MaxDirSize is the maximum total size under the directory. When the total
+	// exceeds this value, new retryable data is not saved to the spool.
 	//
-	// 単位: bytes
+	// Unit: bytes
 	//
-	// 0 の場合は無効。
+	// 0 disables it.
 	MaxDirSize uint64
 
-	// active ディレクトリ内の最古ファイルに対して滞留警告を出す経過日数。
-	// 最も古いデータがこの日数より古い場合は一日一回 Warn を出すが、
-	// overload とはみなさず、新たな retryable データの保存は継続する。
+	// ActiveBacklogWarnAfterDays is the age in days of the oldest file in the
+	// active directory at which a backlog warning is issued. When the oldest
+	// data is older than this many days, a Warn is issued once a day, but this
+	// is not treated as overload and new retryable data continues to be saved.
 	//
-	// 単位: days
+	// Unit: days
 	//
-	// 0 の場合は無効。負数は設定エラー。
+	// 0 disables it. A negative value is a configuration error.
 	ActiveBacklogWarnAfterDays int
 
-	// ホストまたは実行環境上で確保すべき最小空きディスク容量。
-	// 利用可能なディスク空き容量がこの値を下回った場合、
-	// 新たな retryable データは spool に保存しない。
+	// MinAvailableDiskSpace is the minimum free disk space to keep on the host
+	// or in the execution environment. When the available free disk space
+	// falls below this value, new retryable data is not saved to the spool.
 	//
-	// 単位: bytes
+	// Unit: bytes
 	//
-	// 0 の場合は無効。
+	// 0 disables it.
 	MinAvailableDiskSpace uint64
 
-	// メモリ逼迫状況をoverload判定材料にするか
+	// UseMemoryPressureForOverload selects whether memory pressure is taken
+	// into account in the overload check. When it is true and no monitor is
+	// passed with heterolog.WithMemoryPressureMonitor, the spool starts its own
+	// monitor, which reads the memory pressure of the operating system every
+	// second and judges each reading with MemoryCriticalRatio,
+	// MinAvailableMemoryBytes and MemoryCriticalConsecutiveHits; the monitor
+	// stops when the logger closes. A monitor passed with
+	// heterolog.WithMemoryPressureMonitor applies its own policy instead of
+	// these three settings. The logger fails to start when the settings enable
+	// no threshold or the memory pressure cannot be read.
 	UseMemoryPressureForOverload bool
 
-	// メモリ逼迫とみなす使用率閾値。
-	// 例: 0.90 なら、使用率 90% 以上を critical 候補とする。
-	//
-	// 0.0 - 1.0 を想定。
-	//
-	// 0 の場合は無効。
+	// MemoryCriticalRatio is the usage ratio, from 0 to 1, at or above which a
+	// memory reading is a critical candidate. For example, with 0.90, a usage
+	// of 90% or more is a candidate. 0 or less disables this condition.
 	MemoryCriticalRatio float64
 
-	// 最低限確保したい空きメモリ量。
-	// 利用可能メモリがこの値を下回った場合、メモリ逼迫候補とする。
-	//
-	// 単位: bytes
-	//
-	// Ratio 判定と AND / OR のどちらで組み合わせるかは実装方針による。
-	// 0 の場合は無効。
+	// MinAvailableMemoryBytes is the amount of available memory, in bytes, at
+	// or below which a memory reading is a critical candidate. 0 disables this
+	// condition.
 	MinAvailableMemoryBytes uint64
 
-	// メモリ逼迫判定を何回連続で観測したら overload と確定するか。
-	// 一時的なスパイクで直ちに spool 保存停止へ入るのを防ぐための連続ヒット回数。
-	//
-	// 例: 3 の場合、critical 判定が 3 回連続したときに overload とみなす。
-	//
-	// 0 の場合は無効。
-	// ただし、実装によっては 0 を 1 回として扱ってもよい。
+	// MemoryCriticalConsecutiveHits is how many readings in a row must be
+	// critical candidates before memory counts as overloaded, so that a short
+	// spike does not stop saving to the spool at once. 0 and 1 mean the first
+	// candidate.
 	MemoryCriticalConsecutiveHits int
 }
 
-// open
+// FileArchiveConfig configures the failure archive, the durable store that
+// DurableTypeFileArchive selects.
 type FileArchiveConfig struct {
 	Target                 string
 	MaxFileSize            uint64
-	FailureFileArchivePath string // ex.)/var/lib/{appname}　(linuxの場合の例)
+	FailureFileArchivePath string // ex.)/var/lib/{appname} (an example for Linux)
 	Dir                    string // ex.)/var/lib/{appname}/{dir}/
 	DirCaseRetryable       string // ex.)/var/lib/{appname}/{dir}/{retryable}
 	DirCasePermanent       string // ex.)/var/lib/{appname}/{dir}/{permanent}
@@ -191,42 +207,52 @@ type FileArchiveConfig struct {
 	FileDateFormat         string
 	EnableRotate           bool
 	UsageCacheTTL          time.Duration
-	// MaxFileBackups、MaxFileAge、MaxDirSizeは保持世代数、保持日数、ディレクトリ合計byte数の上限です。
-	// 0は上限なしで、その条件では削除しません。0以外は保持世代数2以上、保持日数1以上、
-	// MaxDirSizeは10 MiB以上かつMaxFileSize以上を指定します。上限なしでも、空き容量が
-	// OverloadPolicyConfig.MinAvailableDiskSpaceを下回った新しい失敗はarchiveへ保存しません。
+	// MaxFileBackups, MaxFileAge and MaxDirSize are the limits on the number of
+	// kept generations, the number of kept days, and the total bytes of the
+	// directory. 0 means no limit, and nothing is deleted by that condition. A
+	// nonzero value must be at least 2 for the kept generations, at least 1 for
+	// the kept days, and for MaxDirSize at least 10 MiB and at least
+	// MaxFileSize. Even without limits, a new failure that occurs while the
+	// free space is below OverloadPolicyConfig.MinAvailableDiskSpace is not
+	// saved to the archive.
 	MaxFileBackups     int
 	MaxFileAge         int
 	MaxDirSize         uint64
 	EnableFileCompress bool
 	CompressFormat     fsstore.CompressFormat
-	// CompressionCodecはprogrammaticに追加する独自圧縮形式です。nilなら
-	// CompressFormatに対応する組み込みcodecを使用します。
-	CompressionCodec           fsstore.CompressionCodec
-	RotationType               fsstore.FileRotationType // daily weekly monthly
-	RotationDayOfWeek          time.Weekday
-	MaxWriteAttempts           int
+	// CompressionCodec is a custom compression format added programmatically.
+	// When it is nil, the built-in codec for CompressFormat is used.
+	CompressionCodec  fsstore.CompressionCodec
+	RotationType      fsstore.FileRotationType // daily weekly monthly
+	RotationDayOfWeek time.Weekday
+	// MaxWriteRetries is how many times a failed file operation, such as a write
+	// or opening the next file at rotation, is retried after the first try. 0
+	// tries once without retrying, and a negative value is invalid.
+	MaxWriteRetries int
+	// FileOperationRetryWaitTime is the wait before each retry.
 	FileOperationRetryWaitTime time.Duration
 	ObjectStorageUploadConfig  objectstorage.UploadTargetConfig
 	ArchiveCheckpointConfig    fsstore.ArchiveCheckpointConfig
-	// LifecycleRunnerConfigはrunner modeの周期loopとoptional Supervisor設定です。
+	// LifecycleRunnerConfig is the periodic loop and the optional Supervisor
+	// configuration of runner mode.
 	LifecycleRunnerConfig fsstore.AppendLogRunnerConfig
-	// LifecycleModeはrotation後のcompress、upload、purgeを実行する主体です。
-	// 空値はLifecycleMode導入前と同じinlineとして扱います。
+	// LifecycleMode selects what runs the compress, upload and purge steps
+	// after rotation. An empty value is treated as inline, the same as before
+	// LifecycleMode was introduced.
 	LifecycleMode fsstore.FileLifecycleMode
 
 	OverloadPolicyConfig FileArchiveOverloadPolicyConfig
 	HandlerConfig        handler.HandlerConfig
 
 	IsDebug                  bool
-	ErrorTraceDepth          int // backend loggerのerror trace設定を継承
-	ErrorTraceDepthDebugMode int // backend loggerのdebug時error trace設定を継承
+	ErrorTraceDepth          int // inherits the error trace setting of the backend logger
+	ErrorTraceDepthDebugMode int // inherits the debug-mode error trace setting of the backend logger
 }
 
 type DeliveryFileArchiveConfig struct {
 	Target                 string
 	MaxFileSize            uint64
-	FailureFileArchivePath string // ex.)/var/lib/{appname}　(linuxの場合の例)
+	FailureFileArchivePath string // ex.)/var/lib/{appname} (an example for Linux)
 	Dir                    string // ex.)/var/lib/{appname}/{dir}/
 	DirCaseRetryable       string // ex.)/var/lib/{appname}/{dir}/{retryable}
 	DirCasePermanent       string // ex.)/var/lib/{appname}/{dir}/{permanent}
@@ -234,40 +260,48 @@ type DeliveryFileArchiveConfig struct {
 	FileDateFormat         string
 	EnableRotate           bool
 	UsageCacheTTL          time.Duration
-	// MaxFileBackups、MaxFileAge、MaxDirSizeの意味と0（上限なし）の扱いはFileArchiveConfigと同じです。
+	// MaxFileBackups, MaxFileAge and MaxDirSize have the same meaning, and the
+	// same handling of 0 (no limit), as in FileArchiveConfig.
 	MaxFileBackups     int
 	MaxFileAge         int
 	MaxDirSize         uint64
 	EnableFileCompress bool
 	CompressFormat     fsstore.CompressFormat
-	// CompressionCodecの契約はFileArchiveConfig.CompressionCodecと同じです。
-	CompressionCodec           fsstore.CompressionCodec
-	RotationType               fsstore.FileRotationType // daily weekly monthly
-	RotationDayOfWeek          time.Weekday
-	MaxWriteAttempts           int
+	// CompressionCodec has the same contract as
+	// FileArchiveConfig.CompressionCodec.
+	CompressionCodec  fsstore.CompressionCodec
+	RotationType      fsstore.FileRotationType // daily weekly monthly
+	RotationDayOfWeek time.Weekday
+	// MaxWriteRetries is how many times a failed file operation, such as a write
+	// or opening the next file at rotation, is retried after the first try. 0
+	// tries once without retrying, and a negative value is invalid.
+	MaxWriteRetries int
+	// FileOperationRetryWaitTime is the wait before each retry.
 	FileOperationRetryWaitTime time.Duration
 	ObjectStorageUploadConfig  objectstorage.UploadTargetConfig
 	ArchiveCheckpointConfig    fsstore.ArchiveCheckpointConfig
-	// LifecycleRunnerConfigの意味はFileArchiveConfigと同じです。
+	// LifecycleRunnerConfig has the same meaning as in FileArchiveConfig.
 	LifecycleRunnerConfig fsstore.AppendLogRunnerConfig
-	// LifecycleModeの意味と空値の扱いはFileArchiveConfigと同じです。
+	// LifecycleMode has the same meaning, and the same handling of an empty
+	// value, as in FileArchiveConfig.
 	LifecycleMode fsstore.FileLifecycleMode
 
 	OverloadPolicyConfig FileArchiveOverloadPolicyConfig
 	HandlerConfig        handler.HandlerConfig
 
 	IsDebug                  bool
-	ErrorTraceDepth          int // backend loggerのerror trace設定を継承
-	ErrorTraceDepthDebugMode int // backend loggerのdebug時error trace設定を継承
+	ErrorTraceDepth          int // inherits the error trace setting of the backend logger
+	ErrorTraceDepthDebugMode int // inherits the debug-mode error trace setting of the backend logger
 }
 
-// MinFileArchiveAvailableDiskSpaceはfailure archiveの空き容量閾値として
-// 設定できる最小値です。
+// MinFileArchiveAvailableDiskSpace is the smallest value that can be set as
+// the free space threshold of the failure archive.
 const MinFileArchiveAvailableDiskSpace uint64 = 100 * 1024 * 1024
 
-// FileArchiveOverloadPolicyConfigはfailure archiveの過負荷判定と退避方法の設定です。
+// FileArchiveOverloadPolicyConfig configures overload detection for the
+// failure archive and how failures are evacuated.
 type FileArchiveOverloadPolicyConfig struct {
 	OverloadPolicy        OverloadPolicy   // drop or degrade
-	SpillDestination      SpillDestination // archiveに受け入れられない(degrade)場合の二次退避先　s3 stdoutなど
-	MinAvailableDiskSpace uint64           // これを下回ったらarchiveには保存しない
+	SpillDestination      SpillDestination // secondary destination when the archive cannot accept failures (degrade); only stdout is implemented
+	MinAvailableDiskSpace uint64           // failures are not saved to the archive while free space is below this
 }

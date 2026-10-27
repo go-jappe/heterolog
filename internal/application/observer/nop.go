@@ -3,16 +3,18 @@ package observer
 import (
 	"context"
 	"reflect"
+
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
-func EnsureTracer(t Tracer) Tracer {
+func EnsureTracer(t pkgobserver.Tracer) pkgobserver.Tracer {
 	if IsNilInterface(t) {
 		return NopTracer{}
 	}
 	return t
 }
 
-func EnsureMeter(m Meter) Meter {
+func EnsureMeter(m pkgobserver.Meter) pkgobserver.Meter {
 	if IsNilInterface(m) {
 		return NopMeter{}
 	}
@@ -42,7 +44,7 @@ func IsNilInterface(v any) bool {
 
 type NopTracer struct{}
 
-func (NopTracer) StartSpan(ctx context.Context, name string, attrs ...Attr) (context.Context, Span) {
+func (NopTracer) StartSpan(ctx context.Context, name string, attrs ...pkgobserver.Attr) (context.Context, pkgobserver.Span) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -55,32 +57,32 @@ func (NopTracer) StartSpan(ctx context.Context, name string, attrs ...Attr) (con
 
 type NopSpan struct{}
 
-func (NopSpan) AddEvent(name string, attrs ...Attr) {}
+func (NopSpan) AddEvent(name string, attrs ...pkgobserver.Attr) {}
 
-func (NopSpan) RecordError(err error, attrs ...Attr) {}
+func (NopSpan) RecordError(err error, attrs ...pkgobserver.Attr) {}
 
 func (NopSpan) End() {}
 
-func (NopSpan) TraceID() TraceID {
+func (NopSpan) TraceID() pkgobserver.TraceID {
 	return ""
 }
 
-func (NopSpan) SetAttributes(attrs ...Attr) {}
+func (NopSpan) SetAttributes(attrs ...pkgobserver.Attr) {}
 
 type NopMeter struct{}
 
-func (NopMeter) Counter(name string) Counter {
+func (NopMeter) Counter(name string) pkgobserver.Counter {
 	return NopCounter{}
 }
 
-func (NopMeter) Gauge(name string) Gauge {
+func (NopMeter) Gauge(name string) pkgobserver.Gauge {
 	return NopGauge{}
 }
 
 type NopCounter struct{}
 
-func (NopCounter) Add(ctx context.Context, value int64, attrs ...Attr) {}
+func (NopCounter) Add(ctx context.Context, value int64, attrs ...pkgobserver.Attr) {}
 
 type NopGauge struct{}
 
-func (NopGauge) Record(ctx context.Context, value float64, attrs ...Attr) {}
+func (NopGauge) Record(ctx context.Context, value float64, attrs ...pkgobserver.Attr) {}

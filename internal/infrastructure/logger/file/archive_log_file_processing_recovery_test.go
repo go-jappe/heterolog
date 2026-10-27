@@ -13,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
@@ -22,6 +21,7 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type recoverableInlineCheckpointStore struct {
@@ -236,7 +236,7 @@ func TestInlineLogFileProcessingRecoveryErrorHandlerCanRequestClose(t *testing.T
 		var closeOnRecovery atomic.Bool
 		var closeStarted atomic.Bool
 		// callbackは再試行の開始前に設定し、実行中のloggerのフィールドを書き換えません。
-		logger.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+		logger.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 			if closeOnRecovery.Load() && closeStarted.CompareAndSwap(false, true) {
 				logger.RequestClose()
 				go func() { closed <- logger.Close() }()

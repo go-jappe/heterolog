@@ -17,15 +17,15 @@ import (
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
-// ErrTerminalRecoveryConflict means saved terminal evidence cannot be reconciled
-// with the whole processing file. All files must remain for inspection.
+// ErrTerminalRecoveryConflictは、保存済みのterminalの証拠をprocessing file全体と
+// 整合させられないことを表します。確認のため、すべてのfileを残す必要があります。
 var ErrTerminalRecoveryConflict = errors.New("processing file conflicts with saved terminal outcome")
 
-// ErrQuarantineRecoveryConflict retains the original quarantine error identity.
+// ErrQuarantineRecoveryConflictは、従来のquarantine用errorのidentityを維持します。
 var ErrQuarantineRecoveryConflict = ErrTerminalRecoveryConflict
 
-// ReconcileProcessingQuarantine retains the original boolean entry point while
-// applying the same recovery rules to every terminal state.
+// ReconcileProcessingQuarantineは、従来のboolを返す入口を維持しつつ、
+// すべてのterminal stateに同じ復旧規則を適用します。
 func (s *StateStore) ReconcileProcessingQuarantine(
 	ctx context.Context,
 	processingPath string,
@@ -35,12 +35,13 @@ func (s *StateStore) ReconcileProcessingQuarantine(
 	return state != "", err
 }
 
-// ReconcileProcessingTerminal recovers a completed done, dead or quarantine write
-// whose processing-file removal was interrupted. Only a single state's complete,
-// ordered match is sufficient evidence. Partial or mixed results are preserved
-// for inspection rather than inferring the lost redistribution plan.
-// An empty state with no error means ordinary processing may continue. A nonempty
-// state with no error means the saved result is synced and its source removed.
+// ReconcileProcessingTerminalは、done・dead・quarantineへの書き込みが完了した後、
+// processing fileの削除が中断された状態を復旧します。十分な証拠になるのは、一つの
+// stateだけが完全に、同じ順序で一致する場合です。部分的な結果や複数のstateに
+// またがる結果は、失われた振り分け計画を推測せず、確認のために保全します。
+// errorなしで空のstateを返した場合は、通常の処理を続けてよいことを表します。
+// errorなしで空でないstateを返した場合は、保存した結果を同期し、その元fileを
+// 削除したことを表します。
 func (s *StateStore) ReconcileProcessingTerminal(
 	ctx context.Context,
 	processingPath string,
@@ -61,8 +62,8 @@ func (s *StateStore) ReconcileProcessingTerminal(
 		if err := ctx.Err(); err != nil {
 			return savedState, err
 		}
-		// Validate ancestors without creating directories or following aliases.
-		// A dangling symlink must not count as absent saved evidence.
+		// directoryを作成せず、aliasもたどらずに祖先を検証します。dangling symlinkを、
+		// 保存済みの証拠がない状態として扱ってはいけません。
 		parentRel := filepath.Join(string(state), filepath.Dir(rel))
 		if _, err := pathidentity.ResolveAndValidateManagedDirectory(s.RootDir.String(), parentRel); err != nil {
 			return savedState, fmt.Errorf("inspect saved %s directory: %w", state, err)
@@ -103,8 +104,8 @@ func (s *StateStore) ReconcileProcessingTerminal(
 			return savedState, fmt.Errorf("%w: record %d does not match a finalized %s record", ErrTerminalRecoveryConflict, i, savedState)
 		}
 	}
-	// Recheck the original before deleting it, rather than relying on a caller's
-	// earlier read or on a matching filename alone.
+	// 呼び出し元が以前に読んだ内容やfile名の一致だけに頼らず、削除する前に元fileを
+	// 確認し直します。
 	source, sourceInfo, err := infrafsstore.OpenRegularFile(processingPath, os.O_RDONLY)
 	if err != nil {
 		return savedState, fmt.Errorf("verify finalized processing file: %w", err)
@@ -118,8 +119,8 @@ func (s *StateStore) ReconcileProcessingTerminal(
 	if err != nil || !sameStoredRecords(records, current) {
 		return savedState, fmt.Errorf("%w: processing contents changed before cleanup", ErrTerminalRecoveryConflict)
 	}
-	// A previous process may have renamed the result without completing its
-	// final sync. Confirm durability before removing the still-available source.
+	// 前のprocessが結果をrenameした後、最後の同期を完了していない可能性があります。
+	// まだ残っている元fileを削除する前に、永続化を確認します。
 	if err := syncTerminalRecoveryEvidence(ctx, savedPath, savedInfo); err != nil {
 		return savedState, err
 	}
@@ -161,8 +162,8 @@ func syncTerminalRecoveryEvidence(ctx context.Context, path string, before os.Fi
 }
 
 func sameQuarantinedRecord(original, quarantined pkgspool.SpoolRecord) bool {
-	// These are the only fields changed by the resend outcome and finalization.
-	// Marshal the remaining record so new immutable fields participate as well.
+	// 再送の結果と確定処理で変わるfieldは、これらだけです。残りのrecordはmarshalして
+	// 比較し、新しく追加される不変のfieldも比較に含めます。
 	normalize := func(record pkgspool.SpoolRecord) pkgspool.SpoolRecord {
 		record.FinalizedAt = time.Time{}
 		record.FirstResendAttemptedAt = time.Time{}

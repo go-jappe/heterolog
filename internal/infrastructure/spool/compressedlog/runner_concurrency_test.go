@@ -52,8 +52,8 @@ func TestRunnerRunWaitsForManualRunOnceBeforeRecoveringProcessing(t *testing.T) 
 		runDone := make(chan error, 1)
 		go func() { runDone <- runner.Run(ctx) }()
 
-		// Neither periodic recovery nor another manual cycle may reclaim a file
-		// while the preceding manual upload still owns its processing transition.
+		// 先行する手動uploadがprocessing transitionを所有している間は、
+		// 定期recoveryも別の手動cycleもfileを再claimしてはなりません。
 		// 待機中の周期は仮想時間で何度も期限を迎えますが、先行するuploadの完了前には進みません。
 		waitingContext, cancelWaiting := context.WithTimeout(context.Background(), 30*time.Millisecond)
 		defer cancelWaiting()
@@ -190,7 +190,7 @@ func TestRunnerPurgeSerializesWithManualReplayAndCancelsLockWaits(t *testing.T) 
 		require.ErrorIs(t, <-purgeDone, context.Canceled)
 		runner.storeOrPurgeMu.Unlock()
 
-		// Cancellation while waiting for the store lock must release runMu.
+		// store lockを待つ間にcancelされたら、runMuを解放しなければなりません。
 		_, err = runner.runPurgeOnce(context.Background())
 		require.NoError(t, err)
 	})

@@ -333,6 +333,8 @@ var publicEnvKeyMapperExemptions = func() map[string]string {
 			"the mapper uses the client only for a selected OpenSearch output"
 		observability = "it is loaded into AppConfig.ObservabilityCfg for the tracer (internal/application/trace/tracer, on hold); " +
 			"no logger mapper uses it"
+		adminServer = "it is loaded into AppConfig.AdminServer; the application starts the admin server with " +
+			"EnvConfig.AdminServerConfig, so no logger mapper uses it"
 	)
 	exemptions := map[string]string{
 		"HETEROLOG_ENABLE_OPENSEARCH":       unusedClient,
@@ -347,6 +349,11 @@ var publicEnvKeyMapperExemptions = func() map[string]string {
 		"HETEROLOG_OTEL_SPAN_ENDPOINT", "HETEROLOG_OTEL_SPAN_HEADERS", "HETEROLOG_OTEL_SPAN_INSECURE", "HETEROLOG_OTEL_SPAN_PROTOCOL",
 	} {
 		exemptions[key] = observability
+	}
+	for _, key := range []string{
+		"HETEROLOG_ADMIN_ADDR", "HETEROLOG_ADMIN_TOKEN", "HETEROLOG_ADMIN_TLS_CERT_FILE", "HETEROLOG_ADMIN_TLS_KEY_FILE",
+	} {
+		exemptions[key] = adminServer
 	}
 	return exemptions
 }()

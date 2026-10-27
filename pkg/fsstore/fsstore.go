@@ -9,86 +9,107 @@ import (
 	"unicode"
 )
 
-// ErrCorruptCompressedFileは、codecがdecode、checksum、footer等を検査して
-// 圧縮内容の破損を確定できた場合、または非空の元ログに対する圧縮結果が0 byteで
-// 元ログを表現できないと確認した場合に返す分類sentinelです。
+// ErrCorruptCompressedFile is the classification sentinel returned when a codec
+// has checked the decoding, checksum, footer or the like and established that
+// the compressed content is corrupt, or when the compressed result of a
+// non-empty source log has been confirmed to be 0 bytes and so cannot
+// represent the source log.
 //
-// CompressionCodecの実装は、filesystem/resource error、context cancellation、
-// verifier初期化不能、原因を破損と断定できないgeneric errorをこのsentinelで
-// wrapしてはいけません。
+// Implementations of CompressionCodec must not use this sentinel to wrap
+// filesystem or resource errors, context cancellation, failures to initialize
+// the verifier, or generic errors whose cause cannot be identified as
+// corruption.
 var ErrCorruptCompressedFile = errors.New("compressed file is corrupt")
 
-// FileRotationTypeは、appendlog file名の期間境界を決めるrotation単位です。
+// FileRotationType is the rotation unit that determines the period boundaries
+// in appendlog file names.
 type FileRotationType string
 
-// CompressFormatは、圧縮形式を識別する永続的なIDです。組み込み形式に加えて、
-// CompressionCodecが提供する独自形式も表現します。
+// CompressFormat is a persistent ID that identifies a compression format.
+// Besides the built-in formats, it also represents custom formats that a
+// CompressionCodec provides.
 type CompressFormat string
 
 const (
-	// CompressGzipはgzip形式を表します。
+	// CompressGzip represents the gzip format.
 	CompressGzip CompressFormat = "gzip"
-	// CompressZstdはZstandard形式を表します。
+	// CompressZstd represents the Zstandard format.
 	CompressZstd CompressFormat = "zstd"
-	// CompressLz4はLZ4形式を表します。
+	// CompressLz4 represents the LZ4 format.
 	CompressLz4 CompressFormat = "lz4"
-	// CompressXzはXZ形式を表します。
+	// CompressXz represents the XZ format.
 	CompressXz CompressFormat = "xz"
 
-	// ExtensionCompressGzipはgzip形式の標準的なfile extensionです。
+	// ExtensionCompressGzip is the standard file extension of the gzip format.
 	ExtensionCompressGzip = ".gz"
-	// ExtensionCompressZstdはZstandard形式の標準的なfile extensionです。
+	// ExtensionCompressZstd is the standard file extension of the Zstandard format.
 	ExtensionCompressZstd = ".zst"
-	// ExtensionCompressLz4はLZ4形式のfile extensionです。
+	// ExtensionCompressLz4 is the file extension of the LZ4 format.
 	ExtensionCompressLz4 = ".lz4"
-	// ExtensionCompressXzはXZ形式のfile extensionです。
+	// ExtensionCompressXz is the file extension of the XZ format.
 	ExtensionCompressXz = ".xz"
 
-	// FileNameFormatは通常appendlogの永続的な命名形式です。
-	// 引数はprefix、target、rotation期間、indexの順です。
+	// FileNameFormat is the persistent naming format of normal appendlog files.
+	// Its arguments are the prefix, the target, the rotation period and the
+	// index, in that order.
 	FileNameFormat = "/%s%s_%s_%d.log"
-	// FailureArchiveFileNameFormatはfailure archive JSONLの永続的な命名形式です。
-	// 引数の順序はFileNameFormatと同じです。
+	// FailureArchiveFileNameFormat is the persistent naming format of failure
+	// archive JSONL files. Its arguments are in the same order as those of
+	// FileNameFormat.
 	FailureArchiveFileNameFormat = "/%s%s_%s_%d.jsonl"
 
-	// FileDateFormatはfile名のrotation期間とarchive checkpoint cursorに使用する
-	// YYYYMMDD形式です。変更する場合は既存fileとcheckpointのmigrationが必要です。
+	// FileDateFormat is the YYYYMMDD format used for the rotation period in file
+	// names and for archive checkpoint cursors. Changing it requires migrating
+	// existing files and checkpoints.
 	FileDateFormat = "20060102"
 
-	// FileRotationDailyは日単位のrotation期間を表します。
+	// FileRotationDaily represents a daily rotation period.
 	FileRotationDaily FileRotationType = "daily"
-	// FileRotationWeeklyは週単位のrotation期間を表します。
+	// FileRotationWeekly represents a weekly rotation period. A period starts at
+	// 00:00 on the configured rotation weekday, so a new file starts on that day,
+	// and the file names carry the date of that day.
 	FileRotationWeekly FileRotationType = "weekly"
-	// FileRotationMonthlyは月単位のrotation期間を表します。
+	// FileRotationMonthly represents a monthly rotation period.
 	FileRotationMonthly FileRotationType = "monthly"
 )
 
-// CompressionCodecは、appendlog fileの圧縮と圧縮結果の完全性検証を、同じ形式について
-// 提供します。VerifyCompressedIntegrityは新しく生成した一時fileのcommit前検証と、再起動後に
-// sourceと共存する公開済み圧縮fileの回復判定の両方で使用します。独自形式を追加する場合は、
-// この契約を実装したcodecをtyped configへ設定します。.envへ形式を追加する必要はありません。
+// CompressionCodec provides, for the same format, the compression of appendlog
+// files and the integrity verification of the compressed result.
+// VerifyCompressedIntegrity is used both to verify a newly created temporary
+// file before it is committed and to decide, after a restart, how to recover a
+// published compressed file that coexists with its source. To add a custom
+// format, set a codec that implements this contract in the typed config. There
+// is no need to add the format to .env.
 //
-// Formatは圧縮fileの一段extensionにも使うため、`br`のような
-// IsValidCompressionFileExtension("."+format)を満たすcanonical IDを返します。
-// このIDは既存fileを再起動後にもdecodeするための永続的な形式identityです。同じIDの
-// decode互換性を運用途中で失わせてはいけません。
+// Format is also used as the single-level extension of compressed files, so it
+// returns a canonical ID, such as `br`, that satisfies
+// IsValidCompressionFileExtension("."+format). The ID is the persistent
+// identity of the format, used to decode existing files even after a restart.
+// Decoding compatibility for the same ID must not be lost while the system is
+// in operation.
 //
-// VerifyCompressedIntegrityはinputをcloseせず、EOFまでdecodeしてchecksumやfooterを含む
-// codec固有の完全性検証を完了しなければなりません。commit前には`.tmp` suffixのpathも
-// 渡されるため、file名から形式を推測せず、このcodec自身の形式として検証します。
-// decode/checksum/footerにより内容の破損を確定できた場合だけ
-// ErrCorruptCompressedFileをwrapしてください。I/O、resource不足、context cancellation、
-// 初期化不能、原因不明のerrorは破損と断定せず、そのまま返します。
-// 一つのcodec instanceはdefault/error/debugやretryable/permanentのManager間で共有され得るため、
-// 実装はCompressとVerifyCompressedIntegrityの並行呼び出しに安全である必要があります。
+// VerifyCompressedIntegrity must not close the input, and must decode it to EOF
+// and complete the codec-specific integrity verification, including checksums
+// and footers. Files whose names have a `.tmp` suffix are also passed to it
+// before a commit, so it verifies the input as this codec's own format
+// instead of guessing the format from the file name. Wrap
+// ErrCorruptCompressedFile only when decoding, a checksum or a footer
+// establishes that the content is
+// corrupt. I/O errors, resource shortages, context cancellation,
+// initialization failures and errors of unknown cause are not judged to be
+// corruption and are returned as they are. One codec instance may be shared
+// among the default/error/debug and retryable/permanent Managers, so
+// implementations must be safe for concurrent calls to Compress and
+// VerifyCompressedIntegrity.
 type CompressionCodec interface {
 	Format() CompressFormat
 	Compress(in, out *os.File) error
 	VerifyCompressedIntegrity(in *os.File) error
 }
 
-// Extensionは圧縮済みfileへ付加するextensionを返します。組み込み以外の形式では
-// canonical IDの先頭へdotを付け、file名に使用できないIDでは空文字を返します。
+// Extension returns the extension appended to compressed files. For formats
+// other than the built-in ones it prefixes the canonical ID with a dot, and it
+// returns an empty string for an ID that cannot be used in file names.
 func (f CompressFormat) Extension() string {
 	switch f {
 	case CompressGzip:
@@ -110,8 +131,10 @@ func (f CompressFormat) Extension() string {
 	}
 }
 
-// IsValidCompressionFileExtensionは、圧縮済みfile名へ付加できる一段extensionかを返します。
-// `.tmp`はatomic圧縮の一時file用に予約し、追加dotやpath/glob文字を含む値は拒否します。
+// IsValidCompressionFileExtension reports whether extension is a single-level
+// extension that can be appended to compressed file names. `.tmp` is reserved
+// for the temporary files of atomic compression, and values that contain
+// additional dots or path or glob characters are rejected.
 func IsValidCompressionFileExtension(extension string) bool {
 	if len(extension) < 2 || extension[0] != '.' || strings.EqualFold(extension, ".tmp") {
 		return false
@@ -125,8 +148,10 @@ func IsValidCompressionFileExtension(extension string) bool {
 	return true
 }
 
-// ParseFileRotationはcanonicalな文字列をFileRotationTypeへ変換します。表記揺れは
-// 補正せず、未対応の値はerrorにします。既定値へのfallbackはconfig loaderの責務です。
+// ParseFileRotation converts a canonical string to a FileRotationType. It does
+// not correct variant spellings, and it returns an error for an unsupported
+// value. Falling back to the default value is the responsibility of the config
+// loader.
 func ParseFileRotation(rotationStr string) (FileRotationType, error) {
 	rotation := FileRotationType(rotationStr)
 	switch rotation {
@@ -137,12 +162,14 @@ func ParseFileRotation(rotationStr string) (FileRotationType, error) {
 	}
 }
 
-// ErrInvalidFileRotationWeekdayは、weekly rotationの曜日がtime.Weekdayの有効範囲外であることを表します。
+// ErrInvalidFileRotationWeekday reports that the weekday of a weekly rotation
+// is outside the valid range of time.Weekday.
 var ErrInvalidFileRotationWeekday = errors.New("file rotation weekday must be between Sunday and Saturday")
 
-// ValidateFileRotationWeekdayは、weekly rotationで使用する曜日がtime.Weekdayの
-// 有効範囲内かを検証します。daily、monthly、未知のrotationでは曜日を使用しないため
-// 検証しません。未知のrotation自体は実行側がdailyとして扱います。
+// ValidateFileRotationWeekday validates that the weekday used by a weekly
+// rotation is within the valid range of time.Weekday. Daily, monthly and
+// unknown rotations do not use the weekday, so it is not validated for them.
+// At run time, an unknown rotation itself is treated as daily.
 func ValidateFileRotationWeekday(rotation FileRotationType, dayOfWeek time.Weekday) error {
 	if rotation != FileRotationWeekly {
 		return nil
@@ -153,7 +180,7 @@ func ValidateFileRotationWeekday(rotation FileRotationType, dayOfWeek time.Weekd
 	return nil
 }
 
-// StringはFileRotationTypeの文字列表現を返します。
+// String returns the string representation of the FileRotationType.
 func (r FileRotationType) String() string {
 	return string(r)
 }

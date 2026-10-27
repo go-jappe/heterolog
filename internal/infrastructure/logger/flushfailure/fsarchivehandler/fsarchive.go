@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile/processing"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -196,7 +196,7 @@ func (fh *FsArchiveHandler) tryCompressArchiveSource(
 	ctx, span := fh.Tracer.StartSpan(ctx, SpanFileCompress)
 	format := fh.Fsstore.GetCompressFormat()
 	span.SetAttributes(
-		observer.Attr{
+		pkgobserver.Attr{
 			Key:   "compress.format",
 			Value: string(format),
 		},

@@ -14,11 +14,11 @@ import (
 	"testing/synctest"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	slackgo "github.com/slack-go/slack"
 	"github.com/stretchr/testify/require"
@@ -141,7 +141,7 @@ func TestSlackLoggerEnqueueDoesNotWaitForSendAndCloseJoinsCallbacks(t *testing.T
 			t.Fatalf("Close returned before the in-flight callback completed: %v", err)
 		default:
 		}
-		if err := logger.testInfo(context.Background(), "during close"); !errors.Is(err, applogging.ErrLoggerClosed) {
+		if err := logger.testInfo(context.Background(), "during close"); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Info() during Close error = %v, want ErrLoggerClosed", err)
 		}
 
@@ -163,7 +163,7 @@ func TestSlackLoggerEnqueueDoesNotWaitForSendAndCloseJoinsCallbacks(t *testing.T
 			t.Fatalf("max concurrent Slack calls = %d, want 1", maxActive)
 		}
 
-		if err := logger.testInfo(context.Background(), "after close"); !errors.Is(err, applogging.ErrLoggerClosed) {
+		if err := logger.testInfo(context.Background(), "after close"); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Info() after Close error = %v, want ErrLoggerClosed", err)
 		}
 		if err := logger.Close(); err != nil {
@@ -195,7 +195,7 @@ func TestSlackLoggerRejectsEveryPublicWriteAfterClose(t *testing.T) {
 	}
 	for _, check := range checks {
 		t.Run(check.name, func(t *testing.T) {
-			require.ErrorIs(t, check.log(), applogging.ErrLoggerClosed)
+			require.ErrorIs(t, check.log(), pkglogger.ErrLoggerClosed)
 		})
 	}
 	require.Equal(t, 0, client.callCount())
@@ -214,7 +214,7 @@ func TestSlackLoggerCloseWaitsForTimerNotification(t *testing.T) {
 		t.Cleanup(releaseNotification)
 		var first sync.Once
 		var notificationCtx context.Context
-		logger.OnInfo = func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		logger.OnInfo = func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			first.Do(func() {
 				notificationCtx = ctx
 				close(entered)
@@ -239,7 +239,7 @@ func TestSlackLoggerCloseWaitsForTimerNotification(t *testing.T) {
 		if err := notificationCtx.Err(); err != nil {
 			t.Fatal(err)
 		}
-		if err := logger.testInfo(context.Background(), "late"); !errors.Is(err, applogging.ErrLoggerClosed) {
+		if err := logger.testInfo(context.Background(), "late"); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("late write = %v, want closed", err)
 		}
 		releaseNotification()

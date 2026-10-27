@@ -11,10 +11,8 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	appconfig "github.com/go-jappe/heterolog/internal/config"
-	configspool "github.com/go-jappe/heterolog/internal/config/spool"
 	configspoolrunner "github.com/go-jappe/heterolog/internal/config/spool/spoolrunner"
 	configspoolsupervisor "github.com/go-jappe/heterolog/internal/config/spool/spoolsupervisor"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
@@ -26,6 +24,8 @@ import (
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
+	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
+	pkgspoolrunner "github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
 
 	"github.com/stretchr/testify/require"
 )
@@ -182,13 +182,13 @@ func TestNewFailureSpoolRecoveryRuntimeBuildsPipelinesSelectedByConfigFixture(t 
 	if err := os.Setenv("HETEROLOG_ENV_PATH", envPath); err != nil {
 		t.Fatalf("set HETEROLOG_ENV_PATH: %v", err)
 	}
-	// Keep the test on the .env file loading path while redirecting durable
-	// files away from the production filesystem.
+	// .env fileを読み込む経路で試験しつつ、durable fileはproductionのfilesystemから
+	// 外れた場所へ向けます。
 	if err := os.Setenv("HETEROLOG_SYSTEM_LIB_DIR", t.TempDir()); err != nil {
 		t.Fatalf("set temporary HETEROLOG_SYSTEM_LIB_DIR: %v", err)
 	}
 
-	// This scenario exercises replay for both backends in both contracts.
+	// このscenarioでは、両方のbackendの再送を両方の契約で確認します。
 	if err := os.Setenv("HETEROLOG_ASYNC_LOG_TYPE", "file,stdout,slack,opensearch,loki"); err != nil {
 		t.Fatal(err)
 	}
@@ -938,7 +938,7 @@ func testOpenSearchFailureSpoolConfig(
 		},
 		OpenSearchFlushManagerConfig: pkglogger.OpenSearchFlushManagerConfig{
 			FailureStoreConfig: failureStore,
-			MaxRetryAttempts:   1,
+			MaxItemRetries:     0,
 		},
 	}
 }
@@ -980,10 +980,10 @@ func testClickHouseClient(endpoint string) *pkgclickhouse.Config {
 	}
 }
 
-func testFailureSpoolRuntimeConfig() *configspool.SpoolConfig {
-	cfg := &configspool.SpoolConfig{}
+func testFailureSpoolRuntimeConfig() *pkgspool.SpoolConfig {
+	cfg := &pkgspool.SpoolConfig{}
 	cfg.SupervisorConfig.RestartDelay = configspoolsupervisor.DefaultRestartDelay
-	for _, backend := range []*configspoolrunner.BackendSpoolRunnerConfig{
+	for _, backend := range []*pkgspoolrunner.BackendSpoolRunnerConfig{
 		&cfg.RunnerConfig.OpensearchConfig,
 		&cfg.RunnerConfig.LokiConfig,
 		&cfg.RunnerConfig.CloudWatchLogsConfig,
@@ -1074,19 +1074,19 @@ func (l *spoolRuntimeCloseLogger) closeCallCount() int {
 	return l.calls
 }
 
-func (*spoolRuntimeCloseLogger) Debug(context.Context, string, ...applogging.Field) error {
+func (*spoolRuntimeCloseLogger) Debug(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (*spoolRuntimeCloseLogger) Info(context.Context, string, ...applogging.Field) error {
+func (*spoolRuntimeCloseLogger) Info(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (*spoolRuntimeCloseLogger) Warn(context.Context, string, ...applogging.Field) error {
+func (*spoolRuntimeCloseLogger) Warn(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (*spoolRuntimeCloseLogger) Error(context.Context, string, ...applogging.Field) error {
+func (*spoolRuntimeCloseLogger) Error(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
@@ -1094,7 +1094,7 @@ func (*spoolRuntimeCloseLogger) ErrorWithStack(
 	context.Context,
 	string,
 	error,
-	...applogging.Field,
+	...pkglogger.Field,
 ) error {
 	return nil
 }

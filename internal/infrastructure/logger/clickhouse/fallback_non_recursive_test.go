@@ -14,6 +14,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestClickHouseFallbackBackendFailureDoesNotInvokeInternalOrFailureHandlers(t *testing.T) {
@@ -79,16 +80,16 @@ func TestClickHouseFallbackBackendFailureDoesNotInvokeInternalOrFailureHandlers(
 			context.Context,
 			error,
 			*logging.LogEntry,
-			observer.Tracer,
-			observer.Meter,
+			pkgobserver.Tracer,
+			pkgobserver.Meter,
 		) {
 			internalHandlerCalls.Add(1)
 		}
 		levelHandler := func(
 			context.Context,
 			*logging.LogEntry,
-			observer.Tracer,
-			observer.Meter,
+			pkgobserver.Tracer,
+			pkgobserver.Meter,
 		) {
 			internalHandlerCalls.Add(1)
 		}

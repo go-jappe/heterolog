@@ -12,7 +12,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
@@ -20,6 +19,7 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestInlineCheckpointRetryUsesRoleFactoryErrorHandler(t *testing.T) {
@@ -40,7 +40,7 @@ func TestInlineCheckpointRetryUsesRoleFactoryErrorHandler(t *testing.T) {
 				require.NoError(t, err)
 				closeOnCleanupWithinForTest(t, boundedwait.BubbleTimeout, "set Close", func() closerForTest { return set }, false)
 				require.NoError(t, set.ConfigureInternalHandlers(func(handlerRole InternalHandlerRole) InternalHandlers {
-					return InternalHandlers{OnError: func(ctx context.Context, err error, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+					return InternalHandlers{OnError: func(ctx context.Context, err error, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 						_, loadErr := store.Load(ctx, key)
 						notifications <- notification{role: handlerRole, err: err, loadErr: loadErr, entry: entry}
 					}}
@@ -97,7 +97,7 @@ func TestInlineCheckpointRetryErrorHandlerCanRequestCloseLoggerSet(t *testing.T)
 		closed := make(chan error, 4)
 		var closeStarted atomic.Bool
 		require.NoError(t, set.ConfigureInternalHandlers(func(InternalHandlerRole) InternalHandlers {
-			return InternalHandlers{OnError: func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+			return InternalHandlers{OnError: func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 				if closeStarted.CompareAndSwap(false, true) {
 					set.RequestClose()
 					go func() { closed <- set.Close() }()

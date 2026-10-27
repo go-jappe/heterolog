@@ -35,8 +35,8 @@ func TestRootRuntimeStateConcurrentCloseBeforeAndAfterStart(t *testing.T) {
 				requireRootRuntimeState(t, runtime, rootRuntimeRunning)
 			}
 
-			// All callers must observe retirement without canceling or closing
-			// either completion channel a second time.
+			// すべてのcallerは、二度目のcancelや、どちらかの完了channelの二度目のcloseを
+			// 起こさずにretirementを観測しなければなりません。
 			var callers sync.WaitGroup
 			for i := 0; i < 4; i++ {
 				callers.Add(1)

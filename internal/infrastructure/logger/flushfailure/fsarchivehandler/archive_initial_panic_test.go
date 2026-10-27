@@ -12,12 +12,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type firstPanicArchiveCodec struct {
@@ -71,7 +71,7 @@ func TestFailureArchiveShutdownDrainsInitialRotationPanic(t *testing.T) {
 						cfg.setArchiveUploader(category, remote)
 					})
 					reported := make(chan error, 1)
-					pipeline.handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+					pipeline.handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 						var internalErr *FailureArchiveInternalError
 						if errors.As(err, &internalErr) && internalErr.Op == OperationRotationArchive {
 							select {

@@ -30,9 +30,10 @@ const (
 	// - retry_policy_with_breaker: RetryPolicyClient -> CircuitBreakerClient -> raw client。
 	// defaultではbreakerを暗黙に有効化せず、エラー分類に応じた有界retryだけを適用します。
 	DefaultRetryClientMode = "retry_policy"
-	DefaultMaxAttempts     = 3
-	DefaultBaseDelay       = 200 * time.Millisecond
-	DefaultMaxDelay        = 1 * time.Second
+	// DefaultMaxRetriesは、初回の送信に加える再試行の既定の回数です。初回と合わせて最大3回送ります。
+	DefaultMaxRetries = 2
+	DefaultBaseDelay  = 200 * time.Millisecond
+	DefaultMaxDelay   = 1 * time.Second
 )
 
 type LokiClientConfig struct {

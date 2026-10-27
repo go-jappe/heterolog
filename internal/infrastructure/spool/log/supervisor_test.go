@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/config/spool/spoolsupervisor"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/log/worker"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
+	pkgspoolsupervisor "github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -315,7 +315,7 @@ func TestRunnerSupervisorContainsReporterPanicWhileReportingRunnerFailure(t *tes
 func TestRunnerSupervisorConfigAdapter(t *testing.T) {
 	t.Parallel()
 
-	adapter := NewConfigAdapter(spoolsupervisor.RunnerSupervisorConfig{
+	adapter := NewConfigAdapter(pkgspoolsupervisor.RunnerSupervisorConfig{
 		RestartDelay: 25 * time.Millisecond,
 		MaxRestarts:  3,
 	})

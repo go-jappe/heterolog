@@ -9,19 +9,23 @@ import (
 	loggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
 )
 
-// ErrHandlerSelectorNotConfiguredは、handler selectorが同じ設定内のbase backendや
-// internal-log専用保存先へ解決できないことを表します。
+// ErrHandlerSelectorNotConfigured reports that a handler selector cannot be
+// resolved to a base backend or a dedicated internal-log destination in the same
+// configuration.
 var ErrHandlerSelectorNotConfigured = errors.New("handler selector is not configured")
 
-// HandlerSelectorErrorは、解決できないhandler selectorを表します。errors.Asで取り出すと
-// selectorを指定したsource、log level、selectorを特定でき、errors.Isでは
-// ErrHandlerSelectorNotConfiguredと一致します。
+// HandlerSelectorError describes a handler selector that cannot be resolved.
+// Retrieved with errors.As, it identifies the source that specified the
+// selector, the log level and the selector, and errors.Is matches
+// ErrHandlerSelectorNotConfigured.
 type HandlerSelectorError struct {
-	// Sourceは"logger stdout"など、selectorを指定したsourceです。
+	// Source is the source that specified the selector, such as "logger stdout".
 	Source string
-	// Levelはselectorを指定したlog levelで、"error"、"warn"、"info"、"debug"のいずれかです。
+	// Level is the log level for which the selector is specified, one of
+	// "error", "warn", "info" or "debug".
 	Level string
-	// Selectorは設定値の前後の空白を除いたselectorです。
+	// Selector is the selector with leading and trailing whitespace removed
+	// from the configured value.
 	Selector string
 }
 
@@ -39,14 +43,16 @@ type handlerRoutingSource struct {
 	config       loggerhandler.HandlerConfig
 }
 
-// ValidateLoggerHandlerRoutingは、sync/async loggerの有効なsourceが指定した
-// handler selectorを、同じLoggerConfigに存在するbase backendまたは
-// internal-log専用保存先へ構造的に解決できることを検証します。client nilや
-// endpoint/indexなどの実値はValidateLoggerBackendConfigsが検証します。
+// ValidateLoggerHandlerRouting verifies that the handler selectors specified by
+// the active sources of a sync or async logger can be structurally resolved to a
+// base backend or a dedicated internal-log destination that exists in the same
+// LoggerConfig. ValidateLoggerBackendConfigs validates the actual values, such
+// as a nil client or the endpoint and index.
 //
-// 通常出力として未選択のbackendもhandler-only targetとして利用できます。一方、
-// 未選択source自身のrouting、DurableTypeで未選択のdurable storeのroutingは
-// runtimeで実行されないため検証対象に含めません。
+// A backend that is not selected as a regular output can still be used as a
+// handler-only target. On the other hand, the routing of an unselected source
+// itself and the routing of a durable store that DurableType does not select
+// are not validated, because they never run at runtime.
 func ValidateLoggerHandlerRouting(sourceLabel string, cfg LoggerConfig) error {
 	available := loggerHandlerSelectors(cfg)
 	var errs []error
@@ -60,9 +66,10 @@ func ValidateLoggerHandlerRouting(sourceLabel string, cfg LoggerConfig) error {
 	return errors.Join(errs...)
 }
 
-// ValidateDeliveryLoggerHandlerRoutingは、Delivery loggerの有効なsourceについて
-// ValidateLoggerHandlerRoutingと同じselector契約を検証します。Delivery failure
-// storeはfile archiveだけを使用するため、spool routingは対象に含めません。
+// ValidateDeliveryLoggerHandlerRouting validates the same selector contract as
+// ValidateLoggerHandlerRouting for the active sources of a Delivery logger. A
+// Delivery failure store uses only the file archive, so spool routing is not
+// validated.
 func ValidateDeliveryLoggerHandlerRouting(
 	sourceLabel string,
 	cfg DeliveryLoggerConfig,

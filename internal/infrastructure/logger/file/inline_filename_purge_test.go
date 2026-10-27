@@ -61,13 +61,13 @@ func TestInlineFilenameGenerationPurgeOrdersDateAndNumericIndexPerSeries(t *test
 			})
 			var expiredPaths, retainedPaths []string
 			for _, extension := range []string{"log", "log.gz"} {
-				// An earlier date outranks its larger numeric index.
+				// 日付が早いことは、numeric indexが大きいことより優先されます。
 				expiredPaths = append(expiredPaths, writeInlineFilenamePurgeFile(
 					t, logger, "20420505", 100, extension, 1, now,
 				))
 				for _, index := range []int{2, 10, 11} {
-					// Both mtime order and lexical index order disagree with
-					// the intended retention of generations 10 and 11.
+					// mtimeの順序とindexの辞書順は、どちらも世代10と11を
+					// 保持するという意図とは食い違います。
 					path := writeInlineFilenamePurgeFile(
 						t, logger, "20420506", index, extension, 1, now.Add(-time.Duration(index)*time.Hour),
 					)
@@ -83,8 +83,8 @@ func TestInlineFilenameGenerationPurgeOrdersDateAndNumericIndexPerSeries(t *test
 			for _, path := range expiredPaths {
 				require.NoFileExists(t, path)
 			}
-			// Raw and gzip each retain two backups, independently of each
-			// other and of the protected active file.
+			// rawとgzipは、互いに独立に、また保護されたactive fileとも独立に、
+			// それぞれ2つのbackupを保持します。
 			for _, path := range retainedPaths {
 				require.FileExists(t, path)
 			}
@@ -103,8 +103,8 @@ func TestInlineFilenameCapacityPurgeOrdersNamesAndCountsProtectedFiles(t *testin
 					cfg.FsstoreConfig.Lifecycle.MaxDirSize = uint64(3 * fileSize)
 				})
 				activePath := logger.Fsstore.ActiveFilePath
-				// Use the existing append-only handle rather than truncating
-				// it, which is not supported by that handle on Windows.
+				// 既存のappend-only handleをtruncateせず、そのまま使います。
+				// Windowsでは、そのhandleでのtruncateはsupportされていません。
 				logger.Fsstore.Mu.Lock()
 				written, err := logger.Fsstore.File.Write(make([]byte, fileSize))
 				logger.Fsstore.Mu.Unlock()
@@ -124,8 +124,8 @@ func TestInlineFilenameCapacityPurgeOrdersNamesAndCountsProtectedFiles(t *testin
 				require.NoError(t, purgeFileLoggerForTest(context.Background(), logger))
 				require.NoFileExists(t, olderDatePath)
 				require.NoFileExists(t, lowerIndexPath)
-				// The protected 8 MiB must count toward the 12 MiB limit:
-				// otherwise the three unprotected files would all survive.
+				// 保護された8 MiBも12 MiBの上限に数えなければなりません。
+				// そうしないと、保護されていない3つのfileがすべて残ってしまいます。
 				var remainingBytes int64
 				for _, path := range []string{activePath, retainedPath, newestPath} {
 					info, err := os.Stat(path)

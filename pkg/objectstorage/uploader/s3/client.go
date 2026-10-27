@@ -29,17 +29,22 @@ const (
 	maxHTTPStatusErrorBodyBytes int64 = 64 * 1024
 )
 
-// ErrorCodeはS3 XML error responseのCodeです。HTTP status codeとは独立して保持します。
+// ErrorCode is the Code of an S3 XML error response. It is kept separately
+// from the HTTP status code.
 type ErrorCode string
 
 const (
-	// ErrorCodeRequestTimeoutは、S3がHTTP 400で返す一時的なrequest timeoutです。
+	// ErrorCodeRequestTimeout is the temporary request timeout that S3 returns
+	// with HTTP 400.
 	ErrorCodeRequestTimeout ErrorCode = "RequestTimeout"
-	// ErrorCodeTemporaryRedirectは、bucketのDNS更新中に返る一時redirectです。
+	// ErrorCodeTemporaryRedirect is the temporary redirect returned while the
+	// DNS of a bucket is being updated.
 	ErrorCodeTemporaryRedirect ErrorCode = "TemporaryRedirect"
-	// ErrorCodeOperationAbortedは、resourceに対する競合中のoperationです。
+	// ErrorCodeOperationAborted reports a conflicting operation in progress on
+	// the resource.
 	ErrorCodeOperationAborted ErrorCode = "OperationAborted"
-	// ErrorCodeConditionalRequestConflictは、条件付きPutObjectの競合です。
+	// ErrorCodeConditionalRequestConflict reports a conflict of a conditional
+	// PutObject.
 	ErrorCodeConditionalRequestConflict ErrorCode = "ConditionalRequestConflict"
 )
 
@@ -56,9 +61,10 @@ type Client struct {
 
 type Config struct {
 	objectstorage.S3Config
-	// HTTPClientを指定した場合はその設定を使い、S3Config.Timeoutは適用しません。
-	// UploadはPUTのredirectを追従せず、3xx responseをHTTPStatusErrorとして返します。
-	// 元のclientのCheckRedirectは変更しません。
+	// HTTPClient, when set, is used with its own settings, and S3Config.Timeout
+	// is not applied. Upload does not follow redirects of the PUT and returns a
+	// 3xx response as an HTTPStatusError. The CheckRedirect of the original
+	// client is not changed.
 	HTTPClient *http.Client
 }
 
@@ -96,8 +102,9 @@ func New(cfg Config) (*Client, error) {
 	}, nil
 }
 
-// Uploadはfileを一回のPutObjectで送信します。2xx以外のresponseは、redirectを含めて
-// HTTPStatusErrorとして返し、再送や保持の判断は呼び出し側の分類へ委ねます。
+// Upload sends the file with a single PutObject. It returns any response other
+// than 2xx, including a redirect, as an HTTPStatusError, and leaves the
+// decision to retry or retain the file to the caller's classification.
 func (c *Client) Upload(ctx context.Context, input uploader.UploadInput) error {
 	if err := input.Validate(); err != nil {
 		return err
@@ -138,8 +145,8 @@ func (c *Client) Upload(ctx context.Context, input uploader.UploadInput) error {
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.ContentLength = info.Size()
 	if info.Size() == 0 {
-		// A non-nil generic body with ContentLength 0 means unknown length to
-		// net/http. NoBody makes the empty PUT send Content-Length: 0.
+		// ContentLengthが0でnilではない一般のbodyは、net/httpでは長さ不明を意味します。
+		// NoBodyにすると、空のPUTはContent-Length: 0を送ります。
 		req.Body = http.NoBody
 	}
 
@@ -173,33 +180,40 @@ func (c *Client) doPut(req *http.Request) (*http.Response, error) {
 	return httpClient.Do(req)
 }
 
-// HTTPStatusErrorは、S3 PutObjectが返した失敗responseを保持します。
-// HTTP statusとS3 XML errorを分離し、本文が壊れていても上限付きの診断情報を残します。
+// HTTPStatusError holds a failure response returned by S3 PutObject. It keeps
+// the HTTP status separate from the S3 XML error, and it retains bounded
+// diagnostic information even when the body is malformed.
 type HTTPStatusError struct {
-	// CodeはHTTP status codeです。S3 XML responseのCodeはErrorCodeへ保持します。
+	// Code is the HTTP status code. The Code of the S3 XML response is kept in
+	// ErrorCode.
 	Code   int
 	Status string
 
-	// Bodyは上限まで読み込んだresponse body、BodyTruncatedは切り詰めの有無です。
+	// Body is the response body read up to the limit, and BodyTruncated
+	// reports whether it was truncated.
 	Body          []byte
 	BodyTruncated bool
 
-	// ErrorCode以降はS3 XML error responseから取得します。RequestIDとHostIDは
-	// XMLに値がなければ対応するX-Amz response headerを使用します。
+	// ErrorCode and the fields after it are taken from the S3 XML error
+	// response. RequestID and HostID use the corresponding X-Amz response
+	// header when the XML has no value.
 	ErrorCode ErrorCode
 	Message   string
 	Resource  string
 	RequestID string
 	HostID    string
 
-	// responseを完全に読めない場合、またはXMLとして解釈できない場合もHTTP statusを
-	// 失わないよう、解析失敗を補助情報として保持します。
-	// これらはUnwrapで返しません。再試行の判定はEOFやcontextなどの型付きerrorをHTTP statusより
-	// 優先するため、原因として辿れるとstatusによる判定が変わります。
+	// ResponseReadError and ResponseParseError hold, as supplementary
+	// information, a failure to read the response completely or to parse it as
+	// XML, so that the HTTP status is not lost even in those cases. errors.Is
+	// and errors.As do not reach them: the retry decision gives typed errors
+	// such as EOF and context errors priority over the HTTP status, so if they
+	// could be followed as causes, the decision based on the status would
+	// change.
 	ResponseReadError  error
 	ResponseParseError error
 
-	// RetryAfterDurationはRetry-After headerから得た待機時間です。
+	// RetryAfterDuration is the wait obtained from the Retry-After header.
 	RetryAfterDuration time.Duration
 }
 
@@ -313,8 +327,8 @@ func (c *Client) objectURL(objectKey string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid s3 endpoint: %w", err)
 	}
-	// Canonicalize encoding within each endpoint segment without interpreting
-	// escaped slashes as separators. The endpoint may include a proxy prefix.
+	// escapeされたslashを区切りとして解釈せずに、endpointの各segment内のencodingを
+	// 正規化します。endpointはproxyのprefixを含む場合があります。
 	prefixParts := strings.Split(parsed.EscapedPath(), "/")
 	for i, part := range prefixParts {
 		decoded, err := url.PathUnescape(part)
@@ -330,8 +344,8 @@ func (c *Client) objectURL(objectKey string) (string, error) {
 	} else {
 		parsed.Host = c.bucket + "." + parsed.Host
 	}
-	// Object keys are opaque names. In particular, repeated slashes and dot
-	// segments must not be cleaned as if this were a filesystem path.
+	// object keyは不透明な名前です。特に、連続したslashやdot segmentを、filesystemの
+	// pathのように整理してはいけません。
 	parsed.Path += "/" + objectKey
 	parsed.RawPath = escapedPath + "/" + escapeObjectKey(objectKey)
 	return parsed.String(), nil
@@ -347,8 +361,8 @@ func (c *Client) signRequest(req *http.Request) error {
 
 	req.Header.Set(contentSHA256Key, unsignedPayload)
 	signer := v4.NewSigner(func(options *v4.SignerOptions) {
-		// objectURL already uses S3's canonical URI encoding. Unlike other
-		// AWS services, S3 does not escape that URI a second time for signing.
+		// objectURLはすでにS3のcanonical URI encodingを使っています。ほかのAWS serviceと
+		// 異なり、S3は署名のためにそのURIをもう一度escapeしません。
 		options.DisableURIPathEscaping = true
 	})
 	return signer.SignHTTP(req.Context(), creds, req, unsignedPayload, serviceName, c.region, time.Now())
@@ -363,8 +377,9 @@ func escapeObjectKey(objectKey string) string {
 }
 
 func escapePathSegment(segment string) string {
-	// S3 leaves only RFC 3986 unreserved bytes unescaped within a segment.
-	// QueryEscape has that character set; spaces must use %20 rather than +.
+	// S3はsegment内で、RFC 3986のunreservedのbyteだけをescapeせずに残します。
+	// QueryEscapeがescapeせずに残すのも同じ文字集合です。ただし、空白は+ではなく%20に
+	// する必要があります。
 	return strings.ReplaceAll(url.QueryEscape(segment), "+", "%20")
 }
 

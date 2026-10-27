@@ -7,7 +7,6 @@ import (
 	"log"
 	"sync"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
@@ -16,12 +15,13 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 var (
 	// ErrLoggerSetClosedは既存のfile package利用者向けのerror名を維持しつつ、
 	// application共通のClose後拒否原因としてerrors.Isで判定できるようにします。
-	ErrLoggerSetClosed         = fmt.Errorf("file logger set is closed: %w", applogging.ErrLoggerClosed)
+	ErrLoggerSetClosed         = fmt.Errorf("file logger set is closed: %w", pkglogger.ErrLoggerClosed)
 	ErrLoggerSetAlreadyStarted = errors.New("file logger set already created a logger")
 )
 
@@ -56,8 +56,8 @@ func (e *RoleCloseError) Unwrap() error { return e.Err }
 // fileを使用しない構成では、最初のeventを受け取るまでFileLoggerを生成しません。
 type LoggerSet struct {
 	config FileLoggerConfigProvider
-	tracer observer.Tracer
-	meter  observer.Meter
+	tracer pkgobserver.Tracer
+	meter  pkgobserver.Meter
 
 	// muは生成済みloggerの取得・公開と設定状態だけを保護します。
 	// 初回生成やCloseの完了待ちでは保持せず、別roleの既存logger取得を妨げません。
@@ -95,8 +95,8 @@ type LoggerSet struct {
 // 各New*FileLoggerまたはfallback handlerの初回利用時に必要なroleだけを作成します。
 func NewLoggerSet(
 	cfg FileLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*LoggerSet, error) {
 	return NewLoggerSetWithDirectoryScopeLabel(
 		defaultLoggerSetDirectoryScopeLabel,
@@ -113,8 +113,8 @@ func NewLoggerSet(
 func NewLoggerSetWithDirectoryScopeLabel(
 	directoryScopeLabel directorylease.ScopeLabel,
 	cfg FileLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	providedSpoolRuntimes ...compressedlog.RootRuntimes,
 ) (*LoggerSet, error) {
 	if cfg == nil {
@@ -295,8 +295,8 @@ func (s *LoggerSet) newErrorFallbackHandler() logging.LoggerErrorHandler {
 		ctx context.Context,
 		_ error,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		handler(ctx, entry, nil, nil)
 	}
@@ -356,8 +356,8 @@ func (s *LoggerSet) fallbackHandler(level pkglogger.LogLevel) logging.LoggerHand
 	return func(
 		ctx context.Context,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		if entry == nil {
 			return
@@ -366,7 +366,7 @@ func (s *LoggerSet) fallbackHandler(level pkglogger.LogLevel) logging.LoggerHand
 		role := resolveInternalLogFileRole(s.config.Fsstore().Layout(), level)
 		logger, err := s.fileLogger(ctx, role)
 		if err != nil {
-			if errors.Is(err, applogging.ErrLoggerClosed) {
+			if errors.Is(err, pkglogger.ErrLoggerClosed) {
 				return
 			}
 			log.Printf(MsgFailedCreateFallbackFileLogger, err)
@@ -388,7 +388,7 @@ func (s *LoggerSet) fallbackHandler(level pkglogger.LogLevel) logging.LoggerHand
 		defer span.End()
 
 		if err := logger.writeFallbackEntry(ctx, &localEntry); err != nil {
-			if errors.Is(err, applogging.ErrLoggerClosed) {
+			if errors.Is(err, pkglogger.ErrLoggerClosed) {
 				return
 			}
 			// overload policyによるdropは設定した処置で、metricとspan eventに記録済みです。

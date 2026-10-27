@@ -3,11 +3,11 @@ package cloudwatchlogs
 import (
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/sampling"
 	loggertime "github.com/go-jappe/heterolog/internal/infrastructure/logger/time"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -15,7 +15,7 @@ import (
 type CloudWatchLogsFlushManagerRuntimeConfigProvider interface {
 	LogGroupName() string
 	LogStreamName() string
-	LogStreamRoutingGranularity() streamrouting.Granularity
+	LogStreamRoutingGranularity() pkgcloudwatchlogs.StreamRouting
 	PostWarnThresholdDuration() time.Duration
 	PostErrorThresholdDuration() time.Duration
 	PutLatencyEnabled() bool

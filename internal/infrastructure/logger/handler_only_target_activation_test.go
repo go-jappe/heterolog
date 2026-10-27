@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	filelogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	stdoutlogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout"
@@ -65,13 +64,13 @@ func TestHandlerOnlyTargetDoesNotStartNormalSyncOrAsyncChild(t *testing.T) {
 
 				stdoutTarget, err := newStdoutNotificationTarget(cfg)
 				require.NoError(t, err)
-				available := getHandler(cfg, streamrouting.None, fileLoggerSet, stdoutTarget)
+				available := getHandler(cfg, pkgcloudwatchlogs.StreamRoutingNone, fileLoggerSet, stdoutTarget)
 				requireSelectedErrorTarget(t, cfg, sourceName, target.String(), available)
 
 				children, _, err := buildLoggers(
 					context.Background(),
 					cfg,
-					streamrouting.None,
+					pkgcloudwatchlogs.StreamRoutingNone,
 					nil,
 					observer.NopTracer{},
 					observer.NopMeter{},
@@ -115,13 +114,13 @@ func TestHandlerOnlyTargetDoesNotStartNormalDeliveryChild(t *testing.T) {
 
 			stdoutTarget, err := newDeliveryStdoutNotificationTarget(cfg)
 			require.NoError(t, err)
-			available := getDeliveryHandler(cfg, streamrouting.None, fileLoggerSet, stdoutTarget)
+			available := getDeliveryHandler(cfg, pkgcloudwatchlogs.StreamRoutingNone, fileLoggerSet, stdoutTarget)
 			requireSelectedDeliveryErrorTarget(t, cfg, sourceName, target.String(), available)
 
 			children, _, err := buildDeliveryLoggers(
 				context.Background(),
 				cfg,
-				streamrouting.None,
+				pkgcloudwatchlogs.StreamRoutingNone,
 				observer.NopTracer{},
 				observer.NopMeter{},
 				fileLoggerSet,
@@ -170,7 +169,7 @@ func TestBuildDeliveryLoggersFileSplitFlagsAreIndependent(t *testing.T) {
 			children, _, err := buildDeliveryLoggers(
 				context.Background(),
 				cfg,
-				streamrouting.None,
+				pkgcloudwatchlogs.StreamRoutingNone,
 				observer.NopTracer{},
 				observer.NopMeter{},
 				fileLoggerSet,
@@ -189,14 +188,14 @@ func TestDeliveryHandlerOnlyFileIsLazyAndOwnedByTopLevelLogger(t *testing.T) {
 	root := cfg.File.FsstoreConfig.Layout.LogPath
 	tracer := observer.NopTracer{}
 	meter := observer.NopMeter{}
-	topLevel, err := NewDeliveryLogger(context.Background(), cfg, streamrouting.None, tracer, meter)
+	topLevel, err := NewDeliveryLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, tracer, meter)
 	require.NoError(t, err)
 
 	owned, ok := topLevel.(*topLevelDeliveryLoggerRuntime)
 	require.True(t, ok)
 	require.Empty(t, logFilesUnder(t, root), "handler-only delivery file must stay lazy")
 
-	available := getDeliveryHandler(cfg, streamrouting.None, owned.fileLoggerSet, owned.internalLogDestinations.stdoutNotificationTarget)
+	available := getDeliveryHandler(cfg, pkgcloudwatchlogs.StreamRoutingNone, owned.fileLoggerSet, owned.internalLogDestinations.stdoutNotificationTarget)
 	sourceCfg := stdoutlogger.NewDeliveryConfigAdapter(*cfg.Stdout)
 	selected := selectConfiguredHandlers(available, sourceCfg.Handler())
 	require.Len(t, selected.OnError, 1)
@@ -554,7 +553,7 @@ func newActivationFileConfig(t *testing.T, target string) *pkglogger.FileLoggerC
 				WriteFileErrorThresholdDuration: time.Millisecond,
 			},
 			Retry: pkgfsstore.RetryConfig{
-				MaxWriteAttempts:           1,
+				MaxWriteRetries:            0,
 				FileOperationRetryWaitTime: time.Millisecond,
 			},
 		},

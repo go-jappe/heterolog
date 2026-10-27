@@ -13,9 +13,9 @@ import (
 	slackgo "github.com/slack-go/slack"
 )
 
-// Exercise actual requests rather than the transient interval/timer fields.
-// A burst begins immediately, grows through the configured intervals, and
-// restarts at the first interval after more than MaxRestThreshold without logs.
+// 一時的なinterval・timer fieldではなく、実際のrequestで確認します。burstは即時に始まり、
+// 設定したintervalを順にたどって間隔を広げ、logのない期間がMaxRestThresholdを超えると
+// 最初のintervalからやり直します。
 func TestSlackIdleResetReplacesPendingTimerAndPreservesQueuedLogs(t *testing.T) {
 	for _, fallback := range []bool{false, true} {
 		t.Run(slackResetKind(fallback), func(t *testing.T) {
@@ -36,15 +36,15 @@ func TestSlackIdleResetReplacesPendingTimerAndPreservesQueuedLogs(t *testing.T) 
 				synctest.Wait()
 				client.requireCalls(t, 2, start.Add(2*time.Hour), "first interval queued", "threshold equality keeps burst")
 
-				fixture.enqueue(t, "old burst pending") // The next interval is three hours.
+				fixture.enqueue(t, "old burst pending") // 次のintervalは3時間です。
 				time.Sleep(time.Hour + time.Nanosecond)
 				fixture.enqueue(t, "new burst")
 				synctest.Wait()
 				client.requireCalls(t, 3, time.Now(), "old burst pending", "new burst")
 				fixture.enqueue(t, "after reset first interval")
 
-				// The invalidated three-hour timer would expire here. It must not
-				// send the entry reserved for the new burst one nanosecond later.
+				// 無効にした3時間のtimerは、ここで期限を迎えるはずです。そのtimerが、
+				// 1 nanosecond後に新しいburstで送る予定のentryを送信してはいけません。
 				time.Sleep(2*time.Hour - time.Nanosecond)
 				synctest.Wait()
 				client.requireCalls(t, 3, start.Add(3*time.Hour+time.Nanosecond), "new burst")

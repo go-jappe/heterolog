@@ -49,7 +49,7 @@ func TestTimerBasedFlush(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, logger.Close(context.Background())) }()
 	require.NoError(t, logger.testInfo(context.Background(), "sent by the timer"))
-	// Assert before Close: a shutdown flush must not conceal a broken timer branch.
+	// Closeの前に確認します。shutdown時のflushで、壊れたtimer経路を隠してはいけません。
 	select {
 	case doc := <-received:
 		require.Equal(t, "sent by the timer", doc["message"])

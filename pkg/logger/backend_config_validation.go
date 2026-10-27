@@ -5,11 +5,20 @@ import (
 	"fmt"
 )
 
-// ValidateLoggerBackendConfigsは、sync/async loggerが実際に構築するbackendの
-// 存在と値を検証します。通常出力、handler-onlyのbare selector、空destination時の
-// non-nil base設定に加え、通常設定と異なるinternal-log保存先を対象にします。
-// internal-log保存先のclient設定は、対応するlogger設定と組で指定する必要があります。
-// 通常出力が一つもない設定はErrNoActiveLogOutputを含むerrorになります。
+// ValidateLoggerBackendConfigs validates the backends that a sync or async
+// logger actually constructs. It reports a destination selected in
+// LogOutputDestinations whose settings are missing, and validates the values
+// of the Slack, OpenSearch, Loki, CloudWatch Logs and ClickHouse settings used
+// by a regular output, by a handler-only bare selector, or as the non-nil base
+// settings when no destinations are specified, as well as the internal-log
+// destinations that differ from the regular settings. The client settings of
+// an internal-log destination must be specified together with the
+// corresponding logger settings. A configuration without any regular output
+// results in an error that contains ErrNoActiveLogOutput.
+//
+// A handler selector that names a backend without settings is reported by
+// ValidateLoggerHandlerRouting, not by this function. The values of the file
+// and stdout settings are not validated here.
 func ValidateLoggerBackendConfigs(sourceLabel string, cfg LoggerConfig) error {
 	var errs []error
 	errs = append(errs, validateActiveLogOutputExists(
@@ -30,10 +39,12 @@ func ValidateLoggerBackendConfigs(sourceLabel string, cfg LoggerConfig) error {
 	return errors.Join(errs...)
 }
 
-// ValidateDeliveryLoggerBackendConfigsは、Delivery loggerについて通常出力、
-// handler-only base、空destination時のbase、およびinternal-log専用保存先の
-// backend存在・実値を同じ契約で検証します。送信先のないDeliveryReportを返す
-// 構成にならないよう、通常出力が一つもない設定もErrNoActiveLogOutputで拒否します。
+// ValidateDeliveryLoggerBackendConfigs applies the checks of
+// ValidateLoggerBackendConfigs, with the same limits, to a Delivery logger. It
+// also validates InternalLogBatchConfig for the backends that the internal-log
+// handler selectors use. So that the logger is never set up to return a
+// DeliveryReport without destinations, it also rejects a configuration without
+// any regular output with ErrNoActiveLogOutput.
 func ValidateDeliveryLoggerBackendConfigs(
 	sourceLabel string,
 	cfg DeliveryLoggerConfig,

@@ -2,23 +2,28 @@ package spool
 
 import "time"
 
-// RetryAfterClampは、送信先がRetry-Afterで指定した再送待機、またはspoolに保存済みの
-// 再送下限時刻を、設定した上限まで短縮したことを表します。短縮は運用者へ通知します。
+// RetryAfterClamp reports that a resend wait that a destination specified with
+// Retry-After, or an earliest resend time already saved in the spool, was
+// shortened to the configured maximum. Operators are notified of the
+// shortening.
 type RetryAfterClamp struct {
-	// Requestedは短縮前の待機時間です。保存済みの下限時刻を短縮した場合は、
-	// 読み込んだ時点から保存済みの下限時刻までの時間です。
+	// Requested is the wait before it was shortened. When a saved earliest
+	// resend time was shortened, it is the time from when it was loaded until
+	// the saved earliest resend time.
 	Requested time.Duration
-	// MaxRetryAfterは適用した上限です。
+	// MaxRetryAfter is the maximum that was applied.
 	MaxRetryAfter time.Duration
-	// NotBeforeは短縮後の再送下限時刻です。
+	// NotBefore is the earliest resend time after shortening.
 	NotBefore time.Time
-	// Storedは、spoolに保存済みの下限時刻を読み込み時に短縮したことを表します。
-	// falseの場合は、送信先の応答が指定した待機を短縮したことを表します。
+	// Stored reports that an earliest resend time saved in the spool was
+	// shortened when it was loaded. When false, it reports that a wait
+	// specified by a response of the destination was shortened.
 	Stored bool
 }
 
-// CapRetryAfterは、retryAfterをmaxRetryAfterまでに制限した待機時間と、短縮したかを返します。
-// maxRetryAfterが0以下の場合は制限しません。呼び出し側は設定値を検証済みで渡してください。
+// CapRetryAfter returns retryAfter limited to at most maxRetryAfter, and
+// whether it was shortened. A maxRetryAfter of 0 or less imposes no limit.
+// Callers must pass a configuration value that has already been validated.
 func CapRetryAfter(retryAfter, maxRetryAfter time.Duration) (time.Duration, bool) {
 	if maxRetryAfter > 0 && retryAfter > maxRetryAfter {
 		return maxRetryAfter, true

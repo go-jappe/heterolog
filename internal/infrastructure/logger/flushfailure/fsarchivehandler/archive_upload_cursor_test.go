@@ -49,7 +49,7 @@ func TestFailureArchiveCursorBlocksOnlyDestinationWithOlderFailure(t *testing.T)
 				checkpoint, err := store.Load(ctx, failureArchiveCompressedLogCheckpointKey(t, handler, category, first))
 				require.NoError(t, err)
 				require.Equal(t, []objectstorage.DestinationID{"healthy", "retrying"}, checkpoint.CompletedDestinationIDs)
-				// Observation and deletion do not forget the completion cursor.
+				// 観測や削除を経ても、completion cursorは失われません。
 				require.NoError(t, triggerFailureArchiveCleanupForFailureCategory(handler, category))
 				require.NoError(t, os.WriteFile(first, []byte("reappeared generation"), 0o600))
 				outcome := handler.uploadCheckpointedArchiveGroup(ctx, []string{first}, category, pattern)

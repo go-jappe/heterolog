@@ -29,9 +29,9 @@ func (s *inlineConflictRecoveryStore) AdvanceCompletionCursor(ctx context.Contex
 	return checkpoint, err
 }
 
-// This uploader models reentering ManagedUploader: only the conflicting
-// destination needs another uploader call to preserve and resolve its receipt.
-// Physical preservation and remote-result reuse are covered by ManagedUploader tests.
+// このuploaderは、ManagedUploaderへの再進入を模します。conflictした宛先だけが、
+// そのreceiptを保全して解決するために、もう一度uploaderの呼び出しを必要とします。
+// 物理的な保全とremote結果の再利用は、ManagedUploaderのtestで確認します。
 type inlineConflictRecoveryUploader struct {
 	store          checkpointstore.Store
 	key            checkpointstore.CheckpointKey
@@ -135,7 +135,7 @@ func TestInlineCheckpointConflictRecoveryReentersOnlyUnresolvedDestination(t *te
 					require.Equal(t, resolveAttempt, nextUploader.attempts["primary"])
 					secondaryAttempts := 1
 					if stage == "resume cursor update" {
-						secondaryAttempts = 0 // Its original successful upload preceded this continuation.
+						secondaryAttempts = 0 // 最初の成功したuploadは、このcontinuationより前に済んでいます。
 					}
 					require.Equal(t, secondaryAttempts, nextUploader.attempts["secondary"], "successful peers must not be reuploaded")
 					checkpoint, err := store.Load(ctx, key)

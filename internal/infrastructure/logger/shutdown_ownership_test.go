@@ -9,12 +9,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestTopLevelForceRetainsFileLeaseUntilExternalMaintenanceStops(t *testing.T) {
@@ -40,7 +40,7 @@ func TestTopLevelForceRetainsFileLeaseUntilExternalMaintenanceStops(t *testing.T
 			appendLogMaintenanceRuntime: maintenance,
 			fileLoggerSet:               files,
 		}
-		require.ErrorIs(t, owner.ForceClose(), applogging.ErrForcedClose)
+		require.ErrorIs(t, owner.ForceClose(), pkgshutdown.ErrForcedClose)
 		synctest.Wait()
 		require.False(t, files.ShutdownComplete(), "force must not independently dispose dependent files")
 		lease, acquireErr := directorylease.Acquire("test.forced-maintenance", cfg.FsstoreConfig.Layout.LogPath)
@@ -63,7 +63,7 @@ func TestTopLevelForceRetainsFileLeaseUntilExternalMaintenanceStops(t *testing.T
 }
 
 type detachedForcedBackend struct {
-	applogging.Logger
+	pkglogger.Logger
 	start, done, release, requested chan struct{}
 	startOnce, requestOnce          sync.Once
 	// forceCloseCalledは親が中止要求の代わりにchildの後片付けを開始したことを記録します。
@@ -78,17 +78,17 @@ func (b *detachedForcedBackend) Close() error {
 		close(b.start)
 		go func() { <-b.release; close(b.done) }()
 	})
-	return applogging.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func (b *detachedForcedBackend) RequestForceClose() error {
 	b.requestOnce.Do(func() { close(b.requested) })
-	return applogging.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func (b *detachedForcedBackend) ForceClose() error {
 	b.forceCloseCalled.Store(true)
-	return applogging.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func (b *detachedForcedBackend) ShutdownDone() <-chan struct{} { return b.done }
@@ -135,8 +135,8 @@ func TestTopLevelForceCompletesDownstreamSpoolCleanupAfterDetachedChild(t *testi
 		result := make(chan error, 1)
 		go func() { result <- owner.Close() }()
 		boundedwait.ReceiveInBubble(t, backend.start, "the backend Close")
-		require.ErrorIs(t, owner.ForceClose(), applogging.ErrForcedClose)
-		require.ErrorIs(t, boundedwait.ReceiveInBubble(t, result, "the forced Close"), applogging.ErrForcedClose)
+		require.ErrorIs(t, owner.ForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.ReceiveInBubble(t, result, "the forced Close"), pkgshutdown.ErrForcedClose)
 		boundedwait.ReceiveInBubble(t, backend.requested, "the force request to the child")
 		synctest.Wait()
 		lease, acquireErr := directorylease.Acquire("test.forced-spool-live", root)

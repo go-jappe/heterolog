@@ -16,7 +16,7 @@ func TestRetryConfigProviderPreservesInvalidModeForChainValidation(t *testing.T)
 		t.Run(string(mode), func(t *testing.T) {
 			provider := NewRetryConfigProvider(&pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: mode,
-				MaxAttempts:     2,
+				MaxRetries:      1,
 				BaseDelay:       time.Millisecond,
 				MaxDelay:        time.Second,
 			})
@@ -47,7 +47,7 @@ func TestRetryConfigProviderPreservesInvalidModeForChainValidation(t *testing.T)
 func TestRetryConfigProvider(t *testing.T) {
 	cfg := &pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicyWithBreaker,
-		MaxAttempts:     4,
+		MaxRetries:      3,
 		BaseDelay:       50 * time.Millisecond,
 		MaxDelay:        2 * time.Second,
 	}
@@ -61,8 +61,9 @@ func TestRetryConfigProvider(t *testing.T) {
 	if !selection.UseRetryPolicyClient || selection.UseRetryingClient || !selection.UseCircuitBreakerClient {
 		t.Fatalf("RetryClientSelection() = %+v, want policy + circuit breaker", selection)
 	}
-	if got := adapter.MaxAttempts(); got != cfg.MaxAttempts {
-		t.Fatalf("MaxAttempts() = %d, want %d", got, cfg.MaxAttempts)
+	// wrapperへは、再試行の回数に初回を足した試行回数を渡します。
+	if got := adapter.MaxAttempts(); got != cfg.MaxRetries+1 {
+		t.Fatalf("MaxAttempts() = %d, want %d", got, cfg.MaxRetries+1)
 	}
 	if got := adapter.BaseDelay(); got != cfg.BaseDelay {
 		t.Fatalf("BaseDelay() = %s, want %s", got, cfg.BaseDelay)
@@ -108,15 +109,15 @@ func TestDeliveryFlushManagerAdapterDoesNotExposeNormalFailureStoreConfig(t *tes
 
 func TestNormalFlushManagerAdapterExposesBulkRetryConfig(t *testing.T) {
 	adapter := NewFlushManagerConfigAdapter(pkglogger.OpenSearchFlushManagerConfig{
-		MaxRetryAttempts: 4,
+		MaxItemRetries: 4,
 		Resource: pkglogger.Resource{
 			Cloud: &pkglogger.CloudResourceInfo{},
 		},
 	})
 
 	var bulkConfig OpenSearchBulkFlushManagerConfigProvider = adapter
-	if got, want := bulkConfig.MaxRetryAttempts(), 4; got != want {
-		t.Fatalf("MaxRetryAttempts() = %d, want %d", got, want)
+	if got, want := bulkConfig.MaxItemRetries(), 4; got != want {
+		t.Fatalf("MaxItemRetries() = %d, want %d", got, want)
 	}
 }
 

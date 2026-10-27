@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestNewCheckpointStoreWithoutErrorHandlerReturnsFilesystemStore(t *testing.T) {
@@ -23,8 +23,8 @@ func TestNewCheckpointStoreWithoutErrorHandlerReturnsFilesystemStore(t *testing.
 		require.NoError(t, err)
 		require.IsType(t, &checkpointstore.FilesystemStore{}, store)
 		require.NoError(t, boundedwait.CloseInBubble(t, "store.Close()", store.Close, boundedwait.ForceCloserOf(store)))
-		// An unnecessary notification worker would remain blocked when this
-		// synctest bubble exits, since the raw store cannot close that worker.
+		// 不要な通知workerがあれば、raw storeはそのworkerを閉じられないため、
+		// このsynctest bubbleの終了時にblockされたまま残ります。
 	})
 }
 
@@ -46,7 +46,7 @@ func TestNewCheckpointStoreFailureClosesNotificationWorker(t *testing.T) {
 				require.ErrorIs(t, err, os.ErrNotExist)
 				synctest.Wait()
 				require.Zero(t, calls, "constructor errors are returned without retry notifications")
-				// Bubble completion requires the constructor's worker to exit.
+				// bubbleを完了するには、constructorが起動したworkerが終了している必要があります。
 			})
 		})
 	}
@@ -89,8 +89,8 @@ func TestCheckpointStoreCloseStopsProducerAndNotificationsDoneDrainsCallbacks(t 
 				var pending *checkpointstore.PendingSaveError
 				require.ErrorAs(t, err, &pending)
 				synctest.Wait()
-				// The first retry enters the blocked callback; the second is
-				// accepted while it waits and must still drain after Close.
+				// 1回目のretryはblockされたcallbackに入ります。2回目はその待機中に受理され、
+				// Close後も排出されなければなりません。
 				for range 2 {
 					time.Sleep(checkpointstore.SaveRecoveryInterval)
 					synctest.Wait()
@@ -175,8 +175,8 @@ func TestCheckpointStoreForceClosePreservesAcceptedNotifications(t *testing.T) {
 			synctest.Wait()
 		}
 		boundedwait.ReceiveInBubble(t, notificationStarted, "receive from notificationStarted")
-		require.ErrorIs(t, owned.ForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, boundedwait.CloseInBubble(t, "owned.Close()", owned.Close, owned.ForceClose), shutdown.ErrForcedClose)
+		require.ErrorIs(t, owned.ForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.CloseInBubble(t, "owned.Close()", owned.Close, owned.ForceClose), pkgshutdown.ErrForcedClose)
 		boundedwait.ReceiveInBubble(t, owned.Done(), "receive from owned.Done()")
 		select {
 		case <-owned.NotificationsDone():

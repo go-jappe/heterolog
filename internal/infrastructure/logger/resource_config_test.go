@@ -3,12 +3,12 @@ package logger
 import (
 	"testing"
 
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	clickhouselogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/clickhouse"
 	cloudwatchlogslogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/cloudwatchlogs"
 	lokilogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/loki"
 	opensearchlogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/opensearch"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -48,7 +48,7 @@ func TestBackendResourceAdaptersUseCommonOptionalCloudHandling(t *testing.T) {
 					CloudWatchLogs: &pkglogger.CloudWatchLogsConfig{
 						CloudWatchLogsFlushManagerConfig: pkglogger.CloudWatchLogsFlushManagerConfig{Resource: input},
 					},
-				}, streamrouting.None)
+				}, pkgcloudwatchlogs.StreamRoutingNone)
 				return result
 			},
 		},

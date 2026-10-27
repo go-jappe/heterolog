@@ -12,21 +12,21 @@ import (
 	"testing/synctest"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/multi"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgclock "github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 
 	"github.com/stretchr/testify/require"
 )
@@ -70,7 +70,7 @@ func TestFileLoggerRejectsDirectWritesOnceCloseStarts(t *testing.T) {
 		defer logger.backgroundMu.Unlock()
 		return logger.closeState == common.LoggerCloseStateStarted
 	}, hangTimeoutForTest, time.Millisecond)
-	require.ErrorIs(t, logger.testInfo(context.Background(), "during close"), applogging.ErrLoggerClosed)
+	require.ErrorIs(t, logger.testInfo(context.Background(), "during close"), pkglogger.ErrLoggerClosed)
 
 	logger.Fsstore.Mu.Unlock()
 	fileLocked = false
@@ -94,7 +94,7 @@ func TestFileLoggerRejectsDirectWritesOnceCloseStarts(t *testing.T) {
 	}
 	for _, check := range checks {
 		t.Run(check.name, func(t *testing.T) {
-			require.ErrorIs(t, check.log(), applogging.ErrLoggerClosed)
+			require.ErrorIs(t, check.log(), pkglogger.ErrLoggerClosed)
 			require.Nil(t, logger.Fsstore.File)
 			require.Equal(t, activePath, logger.Fsstore.ActiveFilePath)
 		})
@@ -219,24 +219,24 @@ func TestFileLoggerInternalWriteHandlerCanRequestClose(t *testing.T) {
 		context.Context,
 		error,
 		*logging.LogEntry,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) {
 		closeFromHandler()
 	}
 	logger.OnWarn = func(
 		context.Context,
 		*logging.LogEntry,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) {
 		closeFromHandler()
 	}
 	logger.OnDebug = func(
 		context.Context,
 		*logging.LogEntry,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) {
 		closeFromHandler()
 	}
@@ -272,8 +272,8 @@ func TestFileLoggerCleanupErrorHandlerCanRequestClose(t *testing.T) {
 		_ context.Context,
 		err error,
 		_ *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		handled <- err
 		logger.RequestClose()
@@ -436,8 +436,8 @@ func TestFileLoggerCleanupWarnAndDebugHandlersCanRequestClose(t *testing.T) {
 		logger.OnWarn = func(
 			_ context.Context,
 			entry *logging.LogEntry,
-			_ observer.Tracer,
-			_ observer.Meter,
+			_ pkgobserver.Tracer,
+			_ pkgobserver.Meter,
 		) {
 			closeOnce.Do(func() {
 				handled <- entry
@@ -468,8 +468,8 @@ func TestFileLoggerCleanupWarnAndDebugHandlersCanRequestClose(t *testing.T) {
 		logger.OnDebug = func(
 			_ context.Context,
 			entry *logging.LogEntry,
-			_ observer.Tracer,
-			_ observer.Meter,
+			_ pkgobserver.Tracer,
+			_ pkgobserver.Meter,
 		) {
 			closeOnce.Do(func() {
 				handled <- entry
@@ -496,8 +496,8 @@ func closeFileLoggerOnFirstCleanupError(
 		_ context.Context,
 		err error,
 		_ *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		closeOnce.Do(func() {
 			handled <- err
@@ -637,8 +637,8 @@ func TestFileLoggerRotationArchiveErrorHandlerCanRequestClose(t *testing.T) {
 				_ context.Context,
 				err error,
 				_ *logging.LogEntry,
-				_ observer.Tracer,
-				_ observer.Meter,
+				_ pkgobserver.Tracer,
+				_ pkgobserver.Meter,
 			) {
 				closeOnce.Do(func() {
 					handled <- err
@@ -650,9 +650,9 @@ func TestFileLoggerRotationArchiveErrorHandlerCanRequestClose(t *testing.T) {
 			require.NoError(t, rotateFileLoggerForTest(context.Background(), logger))
 			handledErr := receiveForTest(t, handled, "archive error was not dispatched")
 			require.ErrorIs(t, handledErr, tt.wantErr)
-			require.ErrorIs(t, logger.ForceClose(), shutdown.ErrForcedClose, "永続的な障害の終了待ちは明示的に中止する")
+			require.ErrorIs(t, logger.ForceClose(), pkgshutdown.ErrForcedClose, "永続的な障害の終了待ちは明示的に中止する")
 			closeErr := receiveForTest(t, closeResult, "OnError deadlocked while closing its own logger")
-			require.ErrorIs(t, closeErr, shutdown.ErrForcedClose)
+			require.ErrorIs(t, closeErr, pkgshutdown.ErrForcedClose)
 			receiveForTest(t, logger.closeController.Done(), "file logger shutdown worker completion")
 		})
 	}
@@ -669,8 +669,8 @@ func TestFileLoggerRotationArchivePanicIsRecoveredAndReported(t *testing.T) {
 		_ context.Context,
 		err error,
 		_ *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		handled <- err
 	}
@@ -678,9 +678,9 @@ func TestFileLoggerRotationArchivePanicIsRecoveredAndReported(t *testing.T) {
 	require.NoError(t, rotateFileLoggerForTest(context.Background(), logger))
 	handledErr := receiveForTest(t, handled, "archive task panic was not recovered and reported")
 	requireRotationArchivePanicReported(t, handledErr, "archive uploader panic")
-	require.ErrorIs(t, logger.ForceClose(), shutdown.ErrForcedClose)
+	require.ErrorIs(t, logger.ForceClose(), pkgshutdown.ErrForcedClose)
 	receiveForTest(t, logger.ShutdownDone(), "file logger shutdown worker completion")
-	require.ErrorIs(t, closeBoundedForTest(t, boundedwait.HangTimeout, "logger Close", logger), shutdown.ErrForcedClose)
+	require.ErrorIs(t, closeBoundedForTest(t, boundedwait.HangTimeout, "logger Close", logger), pkgshutdown.ErrForcedClose)
 }
 
 func TestFileLoggerAcceptedWritePanicReleasesLockAndCloseReservation(t *testing.T) {
@@ -740,8 +740,8 @@ func TestFileLoggerPostRotationCleanupPlanningPanicReleasesArchiveTask(t *testin
 		_ context.Context,
 		err error,
 		_ *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		handled <- err
 	}
@@ -783,8 +783,8 @@ func TestFileLoggerRetryScheduleClockPanicStillReleasesRotationProtection(t *tes
 		_ context.Context,
 		err error,
 		_ *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		handled <- err
 	}
@@ -792,7 +792,7 @@ func TestFileLoggerRetryScheduleClockPanicStillReleasesRotationProtection(t *tes
 	require.NoError(t, rotateFileLoggerForTest(context.Background(), logger))
 	handledErr := receiveForTest(t, handled, "retry schedule clock panic was not reported")
 	requireRotationArchivePanicReported(t, handledErr, closeContractScheduleClockPanic)
-	require.ErrorIs(t, logger.ForceClose(), shutdown.ErrForcedClose)
+	require.ErrorIs(t, logger.ForceClose(), pkgshutdown.ErrForcedClose)
 	receiveForTest(t, logger.ShutdownDone(), "file logger shutdown worker completion")
 	requireRotationProtectionReleased(t, logger, protectedPaths)
 	require.True(t, runtime.directorySizeTracker.TryStartObservation(
@@ -801,7 +801,7 @@ func TestFileLoggerRetryScheduleClockPanicStillReleasesRotationProtection(t *tes
 		false,
 	), "cache invalidation must run even when retry scheduling panics")
 	runtime.directorySizeTracker.AbortObservation()
-	require.ErrorIs(t, closeBoundedForTest(t, boundedwait.HangTimeout, "logger Close", logger), shutdown.ErrForcedClose)
+	require.ErrorIs(t, closeBoundedForTest(t, boundedwait.HangTimeout, "logger Close", logger), pkgshutdown.ErrForcedClose)
 }
 
 func requireRotationProtectionReleased(
@@ -871,11 +871,11 @@ func TestLoggerSetClosedErrorUsesCommonLoggerClosedCause(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, closeBoundedForTest(t, boundedwait.HangTimeout, "loggerSet Close", loggerSet))
-	require.ErrorIs(t, logger.testInfo(context.Background(), "after set close"), applogging.ErrLoggerClosed)
+	require.ErrorIs(t, logger.testInfo(context.Background(), "after set close"), pkglogger.ErrLoggerClosed)
 
 	_, err = loggerSet.NewFileLogger(context.Background())
 	require.ErrorIs(t, err, ErrLoggerSetClosed)
-	require.ErrorIs(t, err, applogging.ErrLoggerClosed)
+	require.ErrorIs(t, err, pkglogger.ErrLoggerClosed)
 }
 
 func TestDeliveryFileLoggerRejectsWithReportOnceCloseStarts(t *testing.T) {
@@ -907,7 +907,7 @@ func TestDeliveryFileLoggerRejectsWithReportOnceCloseStarts(t *testing.T) {
 		return logger.closeState == common.LoggerCloseStateStarted
 	}, hangTimeoutForTest, time.Millisecond)
 	report, deliveryErr := logger.testInfo(context.Background(), "during close")
-	require.ErrorIs(t, deliveryErr, applogging.ErrLoggerClosed)
+	require.ErrorIs(t, deliveryErr, pkglogger.ErrLoggerClosed)
 	requireDeliveryFileClosedRejection(t, report)
 
 	logger.Fsstore.Mu.Unlock()
@@ -919,7 +919,7 @@ func TestDeliveryFileLoggerRejectsWithReportOnceCloseStarts(t *testing.T) {
 	logger.lifecycleMu.Unlock()
 
 	report, deliveryErr = logger.testErrorWithStack(context.Background(), "after close", nil)
-	require.ErrorIs(t, deliveryErr, applogging.ErrLoggerClosed)
+	require.ErrorIs(t, deliveryErr, pkglogger.ErrLoggerClosed)
 	requireDeliveryFileClosedRejection(t, report)
 	require.Nil(t, logger.Fsstore.File)
 	require.Equal(t, activePath, logger.Fsstore.ActiveFilePath)
@@ -945,7 +945,7 @@ func TestDeliveryLoggerSetClosedResultIsRejected(t *testing.T) {
 		context.Background(),
 		"after set close",
 	)
-	require.ErrorIs(t, deliveryErr, applogging.ErrLoggerClosed)
+	require.ErrorIs(t, deliveryErr, pkglogger.ErrLoggerClosed)
 	requireDeliveryFileClosedRejection(t, report)
 }
 
@@ -953,7 +953,7 @@ func requireDeliveryFileClosedRejection(t *testing.T, report pkglogger.DeliveryR
 	t.Helper()
 	require.Len(t, report.Targets, 1)
 	require.Equal(t, pkglogger.DeliveryRejected, report.Targets[0].Status)
-	require.ErrorIs(t, report.Targets[0].Err, applogging.ErrLoggerClosed)
+	require.ErrorIs(t, report.Targets[0].Err, pkglogger.ErrLoggerClosed)
 }
 
 type closeContractBlockingFirstClock struct {

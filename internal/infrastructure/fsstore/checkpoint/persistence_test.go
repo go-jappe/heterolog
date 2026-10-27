@@ -57,8 +57,8 @@ func TestWriteAtomicallyFailedRenamePreservesDestinationAndRemovesTemporaryFile(
 	t.Parallel()
 	directory := t.TempDir()
 	path := filepath.Join(directory, "source.json")
-	// A nonempty directory cannot be replaced by the checkpoint file on either
-	// Windows or Unix. This exercises the real failed-rename cleanup path.
+	// 空でないdirectoryは、WindowsでもUnixでもcheckpoint fileで置き換えられません。
+	// これにより、rename失敗時の実際の後始末の経路を確かめます。
 	require.NoError(t, os.Mkdir(path, 0o700))
 	marker := filepath.Join(path, "preserve")
 	require.NoError(t, os.WriteFile(marker, []byte("untouched"), 0o600))

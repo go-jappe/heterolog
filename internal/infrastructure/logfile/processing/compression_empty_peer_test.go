@@ -53,7 +53,7 @@ func TestProcessCompressionEmptyPeerPreservesNonemptySource(t *testing.T) {
 					return
 				}
 				require.NoFileExists(t, peer)
-				// The next pass compresses the retained records; success must preserve their exact contents.
+				// 次のpassで保持したrecordを圧縮します。成功時はその内容を正確に保たなければなりません。
 				result, err = ProcessCompression(context.Background(), CompressionRequest{
 					SourcePath: source, CompressedPath: peer,
 				}, operations)
@@ -84,8 +84,8 @@ func TestProcessCompressionEmptySourceCanBeCompressedAndRecovered(t *testing.T) 
 			before, err := os.ReadFile(result.CompressedPath)
 			require.NoError(t, err)
 
-			// Recreate the state left by a process stopping after publication but before source retirement.
-			// A fresh store must accept the valid compressed empty log, regardless of its encoded length.
+			// 公開後、source retirement前にprocessが停止したときに残る状態を再現します。
+			// 新しいstoreは、encode後の長さにかかわらず、有効な圧縮済みの空logを受け入れなければなりません。
 			require.NoError(t, os.WriteFile(source, nil, 0o600))
 			restarted, restartedCalls := compressionFileOperations(format)
 			recovered, err := ProcessCompression(context.Background(), CompressionRequest{
@@ -99,7 +99,7 @@ func TestProcessCompressionEmptySourceCanBeCompressedAndRecovered(t *testing.T) 
 			after, err := os.ReadFile(recovered.CompressedPath)
 			require.NoError(t, err)
 			require.Equal(t, before, after)
-			// Source retirement must also leave the peer verifiable for later recovery steps.
+			// source retirementの後も、後続のrecovery stepのためにpeerを検証可能なまま残さなければなりません。
 			exists, err := restarted.VerifyExisting(source, recovered.CompressedPath)
 			require.NoError(t, err)
 			require.True(t, exists)

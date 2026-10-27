@@ -13,9 +13,9 @@ import (
 	"github.com/go-jappe/heterolog/internal/config/logconfig"
 	lokicfg "github.com/go-jappe/heterolog/internal/config/loki"
 	mappedvalidation "github.com/go-jappe/heterolog/internal/config/validation/mapped"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	cloudwatchlogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/cloudwatchlogs"
 	lokilogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/loki"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 )
@@ -43,10 +43,10 @@ func TestLoadConfigAppliesApplicationCloudWatchRegionDefault(t *testing.T) {
 	}
 }
 
-// TestLoadConfigMapsLokiSettingsFromMatchingEnvContract verifies the complete configuration route
-// from a real HETEROLOG_ENV_PATH file through LoadConfig, the public logger DTO, and the infrastructure
-// adapters. Every LoggerContractKind intentionally uses different values so a sync/async/delivery mix-up
-// cannot pass because the repository's normal .env happens to contain equal values.
+// TestLoadConfigMapsLokiSettingsFromMatchingEnvContractは、HETEROLOG_ENV_PATHで指定した実ファイルから
+// LoadConfig、公開logger DTO、infrastructure adapterまでの設定経路全体を検証します。
+// LoggerContractKindごとに意図的に異なる値を使い、repositoryの通常の.envが偶然同じ値を含む
+// ためにsync/async/deliveryの取り違えがpassすることのないようにします。
 func TestLoadConfigMapsLokiSettingsFromMatchingEnvContract(t *testing.T) {
 	base := loggerContractTestBaseEnv("loki")
 	// 各行は既定値と異なる値にし、全てのkeyが読込結果に現れるようにします。
@@ -80,7 +80,7 @@ func TestLoadConfigMapsLokiSettingsFromMatchingEnvContract(t *testing.T) {
 		`HETEROLOG_LOKI_HEADERS={"X-Scope":"loki-sync"}`,
 		"HETEROLOG_ENABLE_LOKI_COMPRESS_REQUEST=false",
 		"HETEROLOG_LOKI_RETRY_CLIENT_MODE=retry",
-		"HETEROLOG_MAX_LOKI_RETRYABLE_CLIENT_ATTEMPTS=39",
+		"HETEROLOG_MAX_LOKI_RETRYABLE_CLIENT_RETRIES=39",
 		"HETEROLOG_LOKI_RETRYABLE_CLIENT_MILLISECOND=40",
 		"HETEROLOG_MAX_LOKI_RETRYABLE_CLIENT_DELAY_MILLISECOND=41",
 		"HETEROLOG_ASYNC_LOKI_LOG_LEVEL=ERROR",
@@ -111,7 +111,7 @@ func TestLoadConfigMapsLokiSettingsFromMatchingEnvContract(t *testing.T) {
 		`HETEROLOG_ASYNC_LOKI_HEADERS={"X-Scope":"loki-async"}`,
 		"HETEROLOG_ENABLE_ASYNC_LOKI_COMPRESS_REQUEST=false",
 		"HETEROLOG_ASYNC_LOKI_RETRY_CLIENT_MODE=retry_policy_with_breaker",
-		"HETEROLOG_MAX_ASYNC_LOKI_RETRYABLE_CLIENT_ATTEMPTS=59",
+		"HETEROLOG_MAX_ASYNC_LOKI_RETRYABLE_CLIENT_RETRIES=59",
 		"HETEROLOG_ASYNC_LOKI_RETRYABLE_CLIENT_MILLISECOND=60",
 		"HETEROLOG_MAX_ASYNC_LOKI_RETRYABLE_CLIENT_DELAY_MILLISECOND=61",
 		"HETEROLOG_ENABLE_DELIVERY_LOKI_PUSH_LATENCY=false",
@@ -126,7 +126,7 @@ func TestLoadConfigMapsLokiSettingsFromMatchingEnvContract(t *testing.T) {
 		`HETEROLOG_DELIVERY_LOKI_HEADERS={"X-Scope":"loki-delivery"}`,
 		"HETEROLOG_ENABLE_DELIVERY_LOKI_COMPRESS_REQUEST=false",
 		"HETEROLOG_DELIVERY_LOKI_RETRY_CLIENT_MODE=circuit_breaker",
-		"HETEROLOG_MAX_DELIVERY_LOKI_RETRYABLE_CLIENT_ATTEMPTS=69",
+		"HETEROLOG_MAX_DELIVERY_LOKI_RETRYABLE_CLIENT_RETRIES=69",
 		"HETEROLOG_DELIVERY_LOKI_RETRYABLE_CLIENT_MILLISECOND=70",
 		"HETEROLOG_MAX_DELIVERY_LOKI_RETRYABLE_CLIENT_DELAY_MILLISECOND=71",
 	}
@@ -153,8 +153,8 @@ func TestLoadConfigMapsLokiSettingsFromMatchingEnvContract(t *testing.T) {
 	assertLokiMappedContract(t, "async", asyncMapped.Loki.LokiLoggerBaseConfig, asyncMapped.Loki.LokiFlushManagerConfig, asyncMapped.LokiClient.Endpoint, asyncMapped.LokiClient.TenantID, asyncMapped.LokiClient.Headers, asyncMapped.LokiClient.CompressRequest, asyncMapped.Loki.LokiRetryableClientCaseTransportErrorConfig, asyncFailureWant, pkglogger.LogLevelError, 51*time.Second, 52, 5201, 520, 5301, 5302, false)
 	assertLokiDeliveryMappedContract(t, deliveryMapped, deliveryFailureWant)
 
-	// The final adapter boundary is checked separately from DTO assertions. This catches an
-	// adapter that silently drops a field even when LoadConfig and mapper are both correct.
+	// 最後のadapter境界は、DTOの検証とは別に確認します。これにより、LoadConfigとmapperが
+	// どちらも正しくても、fieldを黙って落とすadapterを検出できます。
 	syncLoggerAdapter := lokilogger.NewLokiLoggerConfigAdapter(syncMapped.Loki.LokiLoggerBaseConfig)
 	assertContractValue(t, "sync Loki adapter log level", syncLoggerAdapter.Runtime().LogLevel(), pkglogger.LogLevelInfo)
 	assertContractValue(t, "sync Loki adapter max entries", syncLoggerAdapter.MaxEntries(), 32)
@@ -185,8 +185,8 @@ func TestLoadConfigMapsLokiSettingsFromMatchingEnvContract(t *testing.T) {
 	assertContractValue(t, "delivery Loki adapter latency", deliveryFlushAdapter.PushLatencyEnabled(), false)
 }
 
-// TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract applies the same contract-separation
-// proof to CloudWatch Logs, including its contract-specific group/stream and AWS client settings.
+// TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContractは、同じ契約分離の検証を
+// CloudWatch Logsにも適用します。契約ごとのgroup/streamとAWS client設定も対象です。
 func TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract(t *testing.T) {
 	base := loggerContractTestBaseEnv("cloudwatchlogs")
 	// 各行は既定値と異なる値にし、全てのkeyが読込結果に現れるようにします。
@@ -222,7 +222,7 @@ func TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract(t *testing.
 		"HETEROLOG_ENABLE_CLOUDWATCH_AUTO_CREATE_LOG_STREAM=true",
 		"HETEROLOG_ENABLE_CLOUDWATCH_COMPRESS_REQUEST=false",
 		"HETEROLOG_CLOUDWATCH_RETRY_CLIENT_MODE=retry",
-		"HETEROLOG_MAX_CLOUDWATCH_RETRYABLE_CLIENT_ATTEMPTS=39",
+		"HETEROLOG_MAX_CLOUDWATCH_RETRYABLE_CLIENT_RETRIES=39",
 		"HETEROLOG_CLOUDWATCH_RETRYABLE_CLIENT_MILLISECOND=40",
 		"HETEROLOG_MAX_CLOUDWATCH_RETRYABLE_CLIENT_DELAY_MILLISECOND=41",
 		"HETEROLOG_ASYNC_CLOUDWATCH_LOG_LEVEL=ERROR",
@@ -255,7 +255,7 @@ func TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract(t *testing.
 		"HETEROLOG_ENABLE_ASYNC_CLOUDWATCH_AUTO_CREATE_LOG_STREAM=true",
 		"HETEROLOG_ENABLE_ASYNC_CLOUDWATCH_COMPRESS_REQUEST=false",
 		"HETEROLOG_ASYNC_CLOUDWATCH_RETRY_CLIENT_MODE=retry_policy_with_breaker",
-		"HETEROLOG_MAX_ASYNC_CLOUDWATCH_RETRYABLE_CLIENT_ATTEMPTS=59",
+		"HETEROLOG_MAX_ASYNC_CLOUDWATCH_RETRYABLE_CLIENT_RETRIES=59",
 		"HETEROLOG_ASYNC_CLOUDWATCH_RETRYABLE_CLIENT_MILLISECOND=60",
 		"HETEROLOG_MAX_ASYNC_CLOUDWATCH_RETRYABLE_CLIENT_DELAY_MILLISECOND=61",
 		"HETEROLOG_ENABLE_DELIVERY_CLOUDWATCH_PUT_LATENCY=false",
@@ -272,7 +272,7 @@ func TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract(t *testing.
 		"HETEROLOG_ENABLE_DELIVERY_CLOUDWATCH_AUTO_CREATE_LOG_STREAM=true",
 		"HETEROLOG_ENABLE_DELIVERY_CLOUDWATCH_COMPRESS_REQUEST=false",
 		"HETEROLOG_DELIVERY_CLOUDWATCH_RETRY_CLIENT_MODE=circuit_breaker",
-		"HETEROLOG_MAX_DELIVERY_CLOUDWATCH_RETRYABLE_CLIENT_ATTEMPTS=69",
+		"HETEROLOG_MAX_DELIVERY_CLOUDWATCH_RETRYABLE_CLIENT_RETRIES=69",
 		"HETEROLOG_DELIVERY_CLOUDWATCH_RETRYABLE_CLIENT_MILLISECOND=70",
 		"HETEROLOG_MAX_DELIVERY_CLOUDWATCH_RETRYABLE_CLIENT_DELAY_MILLISECOND=71",
 	}
@@ -287,9 +287,9 @@ func TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract(t *testing.
 	deliveryFailureWant := deliveryFailureContractWant("cloudwatch-delivery", 601)
 
 	assertCloudWatchLoadedContracts(t, cfg, syncFailureWant, asyncFailureWant, deliveryFailureWant)
-	assertContractValue(t, "loaded sync CloudWatch stream routing granularity", cfg.Logger.CloudWatchLogsConfig.LogStreamRoutingGranularity, streamrouting.Monthly)
-	assertContractValue(t, "loaded async CloudWatch stream routing granularity", cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.LogStreamRoutingGranularity, streamrouting.Daily)
-	assertContractValue(t, "loaded delivery CloudWatch stream routing granularity", cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.LogStreamRoutingGranularity, streamrouting.Hourly)
+	assertContractValue(t, "loaded sync CloudWatch stream routing granularity", cfg.Logger.CloudWatchLogsConfig.LogStreamRoutingGranularity, pkgcloudwatchlogs.StreamRoutingMonthly)
+	assertContractValue(t, "loaded async CloudWatch stream routing granularity", cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.LogStreamRoutingGranularity, pkgcloudwatchlogs.StreamRoutingDaily)
+	assertContractValue(t, "loaded delivery CloudWatch stream routing granularity", cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.LogStreamRoutingGranularity, pkgcloudwatchlogs.StreamRoutingHourly)
 
 	syncMapped := ToLoggerConfig(cfg)
 	asyncMapped := ToAsyncBestEffortMultiLoggerConfig(cfg)
@@ -316,7 +316,7 @@ func TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract(t *testing.
 		syncMapped.CloudWatchLogs.CloudWatchLogsFlushManagerConfig,
 		cfg.Logger.CloudWatchLogsConfig.LogStreamRoutingGranularity,
 	)
-	assertContractValue(t, "sync CloudWatch adapter routing granularity", syncFlushAdapter.LogStreamRoutingGranularity(), streamrouting.Monthly)
+	assertContractValue(t, "sync CloudWatch adapter routing granularity", syncFlushAdapter.LogStreamRoutingGranularity(), pkgcloudwatchlogs.StreamRoutingMonthly)
 	assertContractValue(t, "sync CloudWatch adapter group", syncFlushAdapter.LogGroupName(), "sync-group")
 	assertContractValue(t, "sync CloudWatch adapter archive dir", syncFlushAdapter.FailureStoreConfig().DurableStoreConfig().FileArchiveConfig().Dir(), syncFailureWant.archiveDir)
 	assertContractValue(t, "sync CloudWatch adapter spool dir", syncFlushAdapter.FailureStoreConfig().DurableStoreConfig().SpoolConfig().Dir(), syncFailureWant.spoolDir)
@@ -329,7 +329,7 @@ func TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract(t *testing.
 		asyncMapped.CloudWatchLogs.CloudWatchLogsFlushManagerConfig,
 		cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.LogStreamRoutingGranularity,
 	)
-	assertContractValue(t, "async CloudWatch adapter routing granularity", asyncFlushAdapter.LogStreamRoutingGranularity(), streamrouting.Daily)
+	assertContractValue(t, "async CloudWatch adapter routing granularity", asyncFlushAdapter.LogStreamRoutingGranularity(), pkgcloudwatchlogs.StreamRoutingDaily)
 	assertContractValue(t, "async CloudWatch adapter group", asyncFlushAdapter.LogGroupName(), "async-group")
 	assertContractValue(t, "async CloudWatch adapter archive dir", asyncFlushAdapter.FailureStoreConfig().DurableStoreConfig().FileArchiveConfig().Dir(), asyncFailureWant.archiveDir)
 	assertContractValue(t, "async CloudWatch adapter spool memory pressure", asyncFlushAdapter.FailureStoreConfig().DurableStoreConfig().SpoolConfig().OverloadPolicyConfig().UseMemoryPressureForOverload(), true)
@@ -338,7 +338,7 @@ func TestLoadConfigMapsCloudWatchLogsSettingsFromMatchingEnvContract(t *testing.
 		deliveryMapped.CloudWatchLogs.DeliveryCloudWatchLogsFlushManagerConfig,
 		cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.LogStreamRoutingGranularity,
 	)
-	assertContractValue(t, "delivery CloudWatch adapter routing granularity", deliveryFlushAdapter.LogStreamRoutingGranularity(), streamrouting.Hourly)
+	assertContractValue(t, "delivery CloudWatch adapter routing granularity", deliveryFlushAdapter.LogStreamRoutingGranularity(), pkgcloudwatchlogs.StreamRoutingHourly)
 	assertContractValue(t, "delivery CloudWatch adapter group", deliveryFlushAdapter.LogGroupName(), "delivery-group")
 	assertContractValue(t, "delivery CloudWatch adapter archive dir", deliveryFlushAdapter.DeliveryFailureStoreConfig().DeliveryDurableStoreConfig().FileArchiveConfig().Dir(), deliveryFailureWant.archiveDir)
 }
@@ -398,9 +398,9 @@ func TestMapLoggerConfigsRejectUnsupportedCloudWatchStreamRoutingGranularityFrom
 				err,
 				tt.wantSource,
 				mappedvalidation.ConfigSectionCloudWatchLogsStreamRouting,
-				streamrouting.ErrInvalidGranularity,
+				pkgcloudwatchlogs.ErrInvalidStreamRouting,
 			)
-			var granularityErr *streamrouting.InvalidGranularityError
+			var granularityErr *pkgcloudwatchlogs.InvalidStreamRoutingError
 			if !errors.As(configErr, &granularityErr) || granularityErr.Granularity != "weekly" {
 				t.Fatalf("stream routing error = %v, want rejected granularity %q", configErr, "weekly")
 			}
@@ -717,7 +717,7 @@ func assertLokiLoadedContracts(t *testing.T, cfg AppConfig, syncWant, asyncWant 
 	assertContractValue(t, "loaded sync Loki endpoint", cfg.LokiClient.Endpoint, "http://loki-sync.example")
 	assertContractValue(t, "loaded sync Loki tenant", cfg.LokiClient.TenantID, "loki-sync-tenant")
 	assertContractValue(t, "loaded sync Loki headers", cfg.LokiClient.Headers, map[string]string{"X-Scope": "loki-sync"})
-	assertContractValue(t, "loaded sync Loki retry attempts", cfg.Logger.LokiConfig.LokiRetryAbleClientConfig.MaxAttempts, 39)
+	assertContractValue(t, "loaded sync Loki retry attempts", cfg.Logger.LokiConfig.LokiRetryAbleClientConfig.MaxRetries, 39)
 	assertContractValue(t, "loaded sync Loki failure", fullFailureSnapshotFromLoaded(cfg.Logger.LokiConfig.LokiFlushManagerConfig.FailureHandlerConfig), syncWant)
 
 	assertContractValue(t, "loaded async Loki log level", cfg.AsyncBestEffortMultiLoggerConfig.LokiConfig.LogLevel, pkglogger.LogLevelError)
@@ -731,7 +731,7 @@ func assertLokiLoadedContracts(t *testing.T, cfg AppConfig, syncWant, asyncWant 
 	assertContractValue(t, "loaded async Loki endpoint", cfg.AsyncLokiClient.Endpoint, "http://loki-async.example")
 	assertContractValue(t, "loaded async Loki tenant", cfg.AsyncLokiClient.TenantID, "loki-async-tenant")
 	assertContractValue(t, "loaded async Loki headers", cfg.AsyncLokiClient.Headers, map[string]string{"X-Scope": "loki-async"})
-	assertContractValue(t, "loaded async Loki retry attempts", cfg.AsyncBestEffortMultiLoggerConfig.LokiConfig.LokiRetryAbleClientConfig.MaxAttempts, 59)
+	assertContractValue(t, "loaded async Loki retry attempts", cfg.AsyncBestEffortMultiLoggerConfig.LokiConfig.LokiRetryAbleClientConfig.MaxRetries, 59)
 	assertContractValue(t, "loaded async Loki failure", fullFailureSnapshotFromLoaded(cfg.AsyncBestEffortMultiLoggerConfig.LokiConfig.LokiFlushManagerConfig.FailureHandlerConfig), asyncWant)
 
 	assertContractValue(t, "loaded delivery Loki latency", cfg.DeliveryLogger.DeliveryLokiConfig.PushLatencyEnabled, false)
@@ -740,7 +740,7 @@ func assertLokiLoadedContracts(t *testing.T, cfg AppConfig, syncWant, asyncWant 
 	assertContractValue(t, "loaded delivery Loki endpoint", cfg.DeliveryLokiClient.Endpoint, "http://loki-delivery.example")
 	assertContractValue(t, "loaded delivery Loki tenant", cfg.DeliveryLokiClient.TenantID, "loki-delivery-tenant")
 	assertContractValue(t, "loaded delivery Loki headers", cfg.DeliveryLokiClient.Headers, map[string]string{"X-Scope": "loki-delivery"})
-	assertContractValue(t, "loaded delivery Loki retry attempts", cfg.DeliveryLogger.DeliveryLokiConfig.LokiRetryAbleClientConfig.MaxAttempts, 69)
+	assertContractValue(t, "loaded delivery Loki retry attempts", cfg.DeliveryLogger.DeliveryLokiConfig.LokiRetryAbleClientConfig.MaxRetries, 69)
 	assertContractValue(t, "loaded delivery Loki failure", deliveryFailureSnapshotFromLoaded(cfg.DeliveryLogger.DeliveryLokiConfig.DeliveryLokiFlushManagerConfig.FailureHandlerConfig), deliveryWant)
 }
 
@@ -755,7 +755,7 @@ func assertCloudWatchLoadedContracts(t *testing.T, cfg AppConfig, syncWant, asyn
 	assertContractValue(t, "loaded sync CloudWatch region", cfg.CloudWatchLogsClient.Region, "sync-region")
 	assertContractValue(t, "loaded sync CloudWatch group", cfg.CloudWatchLogsClient.LogGroupName, "sync-group")
 	assertContractValue(t, "loaded sync CloudWatch headers", cfg.CloudWatchLogsClient.Headers, map[string]string{"X-Scope": "cloudwatch-sync"})
-	assertContractValue(t, "loaded sync CloudWatch retry attempts", cfg.Logger.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxAttempts, 39)
+	assertContractValue(t, "loaded sync CloudWatch retry attempts", cfg.Logger.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxRetries, 39)
 	assertContractValue(t, "loaded sync CloudWatch failure", fullFailureSnapshotFromLoaded(cfg.Logger.CloudWatchLogsConfig.CloudWatchLogsFlushManagerConfig.FailureHandlerConfig), syncWant)
 
 	assertContractValue(t, "loaded async CloudWatch log level", cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.LogLevel, pkglogger.LogLevelError)
@@ -767,14 +767,14 @@ func assertCloudWatchLoadedContracts(t *testing.T, cfg AppConfig, syncWant, asyn
 	assertContractValue(t, "loaded async CloudWatch region", cfg.AsyncCloudWatchLogsClient.Region, "async-region")
 	assertContractValue(t, "loaded async CloudWatch group", cfg.AsyncCloudWatchLogsClient.LogGroupName, "async-group")
 	assertContractValue(t, "loaded async CloudWatch headers", cfg.AsyncCloudWatchLogsClient.Headers, map[string]string{"X-Scope": "cloudwatch-async"})
-	assertContractValue(t, "loaded async CloudWatch retry attempts", cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxAttempts, 59)
+	assertContractValue(t, "loaded async CloudWatch retry attempts", cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxRetries, 59)
 	assertContractValue(t, "loaded async CloudWatch failure", fullFailureSnapshotFromLoaded(cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.CloudWatchLogsFlushManagerConfig.FailureHandlerConfig), asyncWant)
 
 	assertContractValue(t, "loaded delivery CloudWatch latency", cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.PutLatencyEnabled, false)
 	assertContractValue(t, "loaded delivery CloudWatch region", cfg.DeliveryCloudWatchLogsClient.Region, "delivery-region")
 	assertContractValue(t, "loaded delivery CloudWatch group", cfg.DeliveryCloudWatchLogsClient.LogGroupName, "delivery-group")
 	assertContractValue(t, "loaded delivery CloudWatch headers", cfg.DeliveryCloudWatchLogsClient.Headers, map[string]string{"X-Scope": "cloudwatch-delivery"})
-	assertContractValue(t, "loaded delivery CloudWatch retry attempts", cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxAttempts, 69)
+	assertContractValue(t, "loaded delivery CloudWatch retry attempts", cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxRetries, 69)
 	assertContractValue(t, "loaded delivery CloudWatch failure", deliveryFailureSnapshotFromLoaded(cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.DeliveryCloudWatchLogsFlushManagerConfig.FailureHandlerConfig), deliveryWant)
 }
 
@@ -865,15 +865,15 @@ func assertLokiLoadedEnvFields(t *testing.T, cfg AppConfig) {
 	})
 	assertContractValue(t, "loaded sync Loki no bulk flush mode", sync.NoBulkFlushModeEnabled, true)
 	assertContractValue(t, "loaded sync Loki retry", sync.LokiRetryAbleClientConfig, logconfig.LokiRetryAbleClientConfig{
-		RetryClientMode: pkglogger.RetryClientModeRetry, MaxAttempts: 39,
+		RetryClientMode: pkglogger.RetryClientModeRetry, MaxRetries: 39,
 		BaseDelay: 40 * time.Millisecond, MaxDelay: 41 * time.Millisecond,
 	})
 	assertContractValue(t, "loaded async Loki retry", async.LokiRetryAbleClientConfig, logconfig.LokiRetryAbleClientConfig{
-		RetryClientMode: pkglogger.RetryClientModeRetryPolicyWithBreaker, MaxAttempts: 59,
+		RetryClientMode: pkglogger.RetryClientModeRetryPolicyWithBreaker, MaxRetries: 59,
 		BaseDelay: 60 * time.Millisecond, MaxDelay: 61 * time.Millisecond,
 	})
 	assertContractValue(t, "loaded delivery Loki retry", delivery.LokiRetryAbleClientConfig, logconfig.LokiRetryAbleClientConfig{
-		RetryClientMode: pkglogger.RetryClientModeCircuitBreaker, MaxAttempts: 69,
+		RetryClientMode: pkglogger.RetryClientModeCircuitBreaker, MaxRetries: 69,
 		BaseDelay: 70 * time.Millisecond, MaxDelay: 71 * time.Millisecond,
 	})
 	for _, client := range []struct {
@@ -916,15 +916,15 @@ func assertCloudWatchLoadedEnvFields(t *testing.T, cfg AppConfig) {
 	})
 	assertContractValue(t, "loaded sync CloudWatch no bulk flush mode", sync.NoBulkFlushModeEnabled, true)
 	assertContractValue(t, "loaded sync CloudWatch retry", sync.CloudWatchLogsRetryAbleClientConfig, logconfig.CloudWatchLogsRetryAbleClientConfig{
-		RetryClientMode: pkglogger.RetryClientModeRetry, MaxAttempts: 39,
+		RetryClientMode: pkglogger.RetryClientModeRetry, MaxRetries: 39,
 		BaseDelay: 40 * time.Millisecond, MaxDelay: 41 * time.Millisecond,
 	})
 	assertContractValue(t, "loaded async CloudWatch retry", async.CloudWatchLogsRetryAbleClientConfig, logconfig.CloudWatchLogsRetryAbleClientConfig{
-		RetryClientMode: pkglogger.RetryClientModeRetryPolicyWithBreaker, MaxAttempts: 59,
+		RetryClientMode: pkglogger.RetryClientModeRetryPolicyWithBreaker, MaxRetries: 59,
 		BaseDelay: 60 * time.Millisecond, MaxDelay: 61 * time.Millisecond,
 	})
 	assertContractValue(t, "loaded delivery CloudWatch retry", delivery.CloudWatchLogsRetryAbleClientConfig, logconfig.CloudWatchLogsRetryAbleClientConfig{
-		RetryClientMode: pkglogger.RetryClientModeCircuitBreaker, MaxAttempts: 69,
+		RetryClientMode: pkglogger.RetryClientModeCircuitBreaker, MaxRetries: 69,
 		BaseDelay: 70 * time.Millisecond, MaxDelay: 71 * time.Millisecond,
 	})
 	for _, client := range []struct {

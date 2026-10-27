@@ -34,7 +34,7 @@ func NewConfigAdapter(cfg logger.FileLoggerConfig) configAdapter {
 		ObjectStorageUploadConfig: objectstorage.NewLogFileUploadConfigAdapter(cfg.ObjectStorageUploadConfig),
 		ArchiveCheckpointConfig:   cfg.ArchiveCheckpointConfig,
 		LifecycleModeConfig:       cfg.LifecycleMode,
-		SamplingConfig:            sampling.NewSamplingConfigAdapter(cfg.SamplingConfig),
+		SamplingConfig:            sampling.NewConfigProvider(cfg.SamplingConfig, cfg.RuntimeConfig.Live),
 		HandlerConfig:             handler.NewConfigAdapter(cfg.HandlerConfig),
 	}
 }
@@ -145,6 +145,8 @@ type runtimeConfigAdapter struct {
 	IsDebugConfig  bool
 	TargetConfig   string
 	LogLevelConfig logger.LogLevel
+	// LiveConfigを設定した場合は、LogLevelConfigの代わりにその現在のlevelを使います。
+	LiveConfig *logger.LiveSettings
 }
 
 func newRuntimeConfigAdapter(cfg logger.RuntimeConfig) RuntimeProvider {
@@ -153,6 +155,7 @@ func newRuntimeConfigAdapter(cfg logger.RuntimeConfig) RuntimeProvider {
 		IsDebugConfig:  cfg.IsDebug,
 		TargetConfig:   cfg.Target,
 		LogLevelConfig: cfg.LogLevel,
+		LiveConfig:     cfg.Live,
 	}
 }
 
@@ -166,6 +169,9 @@ func (a runtimeConfigAdapter) Target() string {
 	return a.TargetConfig
 }
 func (a runtimeConfigAdapter) LogLevel() logger.LogLevel {
+	if a.LiveConfig != nil {
+		return a.LiveConfig.Level()
+	}
 	return a.LogLevelConfig
 }
 

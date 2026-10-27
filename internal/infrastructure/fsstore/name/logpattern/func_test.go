@@ -385,8 +385,9 @@ func TestGetDateStringForFileNameUsesConfiguredWeeklyRotationDay(t *testing.T) {
 }
 
 func TestResolveDateStringForFileNameUsesProvidedTimezoneForWeeklyPeriod(t *testing.T) {
-	// UTCでは木曜日ですが、FileLoggerが渡すJSTでは金曜日です。
-	now := time.Date(2026, time.August, 21, 0, 30, 0, 0, time.FixedZone("JST", 9*60*60))
+	// JSTではrotationの曜日の木曜日ですが、UTCではまだ水曜日です。UTCで判定すると
+	// 前の週の20260813になるため、渡された時刻のtimezoneを使うことを確かめられます。
+	now := time.Date(2026, time.August, 20, 0, 30, 0, 0, time.FixedZone("JST", 9*60*60))
 	cfg := rotationNameTestConfig{
 		rotation:       pkgfsstore.FileRotationWeekly,
 		dayOfWeek:      time.Thursday,
@@ -399,6 +400,83 @@ func TestResolveDateStringForFileNameUsesProvidedTimezoneForWeeklyPeriod(t *test
 	}
 	if want := "20260820"; got != want {
 		t.Fatalf("ResolveDateStringForFileNameAt() = %q, want weekly period %q", got, want)
+	}
+}
+
+// 週次の期間はrotationの曜日の0時に始まり、その日の日付がfile名に入ります。
+func TestResolveDateStringForFileNameStartsWeeklyPeriodOnRotationDay(t *testing.T) {
+	cfg := rotationNameTestConfig{
+		rotation:       pkgfsstore.FileRotationWeekly,
+		dayOfWeek:      time.Sunday,
+		fileDateFormat: pkgfsstore.FileDateFormat,
+	}
+	// 2036-01-06と2036-01-13は日曜日です。
+	for _, tc := range []struct {
+		name string
+		at   time.Time
+		want string
+	}{
+		{name: "last moment before the rotation day", at: time.Date(2036, time.January, 5, 23, 59, 59, 999999999, time.UTC), want: "20351230"},
+		{name: "start of the rotation day", at: time.Date(2036, time.January, 6, 0, 0, 0, 0, time.UTC), want: "20360106"},
+		{name: "later on the rotation day", at: time.Date(2036, time.January, 6, 12, 0, 0, 0, time.UTC), want: "20360106"},
+		{name: "last day of the period", at: time.Date(2036, time.January, 12, 23, 59, 0, 0, time.UTC), want: "20360106"},
+		{name: "next rotation day", at: time.Date(2036, time.January, 13, 0, 0, 0, 0, time.UTC), want: "20360113"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ResolveDateStringForFileNameAt(cfg, tc.at)
+			if err != nil {
+				t.Fatalf("ResolveDateStringForFileNameAt() error = %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("ResolveDateStringForFileNameAt(%s) = %q, want %q", tc.at, got, tc.want)
+			}
+		})
+	}
+}
+
+// 前の週のfileへ書いている間にrotationの曜日になれば、その日のうちに新しいfileへ切り替えます。
+func TestRotateByDateAtStartsWeeklyFileOnRotationDay(t *testing.T) {
+	cfg := rotationNameTestConfig{
+		rotation:       pkgfsstore.FileRotationWeekly,
+		dayOfWeek:      time.Sunday,
+		fileDateFormat: pkgfsstore.FileDateFormat,
+	}
+	for _, tc := range []struct {
+		name        string
+		at          time.Time
+		wantRotated bool
+	}{
+		{name: "saturday keeps the current week", at: time.Date(2036, time.January, 5, 23, 59, 0, 0, time.UTC)},
+		{name: "sunday starts a new week", at: time.Date(2036, time.January, 6, 0, 0, 0, 0, time.UTC), wantRotated: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// 2035-12-30（日曜日）に始まった期間のactive fileです。
+			path := filepath.Join(t.TempDir(), "heterolog_20351230_1.log")
+			file, err := os.Create(path)
+			if err != nil {
+				t.Fatalf("create active file: %v", err)
+			}
+			t.Cleanup(func() { _ = file.Close() })
+
+			rotateCalls := 0
+			rotated, err := rotateByDateAt(
+				context.Background(),
+				file,
+				cfg,
+				&FileNamePattern{},
+				func(context.Context) error { rotateCalls++; return nil },
+				tc.at,
+			)
+			if err != nil {
+				t.Fatalf("rotateByDateAt() error = %v", err)
+			}
+			if rotated != tc.wantRotated {
+				t.Fatalf("rotateByDateAt() rotated = %t, want %t", rotated, tc.wantRotated)
+			}
+			if want := map[bool]int{false: 0, true: 1}[tc.wantRotated]; rotateCalls != want {
+				t.Fatalf("rotate calls = %d, want %d", rotateCalls, want)
+			}
+		})
 	}
 }
 
@@ -535,7 +613,7 @@ func TestCheckAndRotateAtDoesNotRotateBackwardWhenClockMovesBackward(t *testing.
 		rotationNameTestConfig{
 			rotation:       pkgfsstore.FileRotationDaily,
 			fileDateFormat: pkgfsstore.FileDateFormat,
-			// active file is empty, so size rotation is not selected either.
+			// active fileは空なので、size rotationも選ばれません。
 		},
 		&fileName,
 		time.Date(2026, time.August, 20, 23, 30, 0, 0, time.FixedZone("JST", 9*60*60)),

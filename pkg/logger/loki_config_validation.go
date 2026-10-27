@@ -52,9 +52,11 @@ func validateLokiStaticLabels(sourceLabel string, labels map[string]string) erro
 	return nil
 }
 
-// ValidateLokiPushLimitsは、送信前に適用する1行とPush request全体のbyte上限を
-// 検証します。実際のLokiまたはgateway側の上限との一致は利用者が管理します。
-// 不正な項目はErrNonPositiveSettingまたはErrInconsistentSettingを持つConfigFieldErrorです。
+// ValidateLokiPushLimits validates the byte limits on a single line and on a
+// whole Push request that are applied before sending. Keeping them in line
+// with the actual limits of Loki or a gateway is the user's responsibility. An
+// invalid setting is reported as a ConfigFieldError with the kind
+// ErrNonPositiveSetting or ErrInconsistentSetting.
 func ValidateLokiPushLimits(maxLineBytes, maxPushRequestBytes int) error {
 	var errs []error
 	if maxLineBytes <= 0 {
@@ -83,8 +85,9 @@ func ValidateLokiPushLimits(maxLineBytes, maxPushRequestBytes int) error {
 	return errors.Join(errs...)
 }
 
-// ValidateLokiMaxEntriesは、buffer flushを開始するentry件数の閾値が正の値で
-// あることを検証します。0以下の値はErrNonPositiveSettingを持つConfigFieldErrorです。
+// ValidateLokiMaxEntries validates that the threshold on the number of entries
+// that starts a buffer flush is positive. A value of 0 or less is reported as
+// a ConfigFieldError with the kind ErrNonPositiveSetting.
 func ValidateLokiMaxEntries(maxEntries int) error {
 	if maxEntries <= 0 {
 		return settingError(
@@ -95,8 +98,9 @@ func ValidateLokiMaxEntries(maxEntries int) error {
 	return nil
 }
 
-// ValidateLokiBufferConfigは、通常bufferのsoft flush閾値とfallback queueのhard上限を
-// 検証します。Push requestの物理分割はMaxPushRequestBytesが独立して担当します。
+// ValidateLokiBufferConfig validates the soft flush thresholds of the regular
+// buffer and the hard limit of the fallback queue. MaxPushRequestBytes governs
+// the physical splitting of Push requests on its own.
 func ValidateLokiBufferConfig(
 	maxEntries int,
 	bufferFlushBytes int,

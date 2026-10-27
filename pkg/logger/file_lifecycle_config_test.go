@@ -73,7 +73,7 @@ func TestDeliveryFileLoggerConfigLifecycleRunnerConfigDerivesSharedSettings(t *t
 				MaxFileSize:  42,
 			},
 			Duration: fsstore.DurationConfig{WriteFileWarnThresholdDuration: time.Second},
-			Retry:    fsstore.RetryConfig{MaxWriteAttempts: 3},
+			Retry:    fsstore.RetryConfig{MaxWriteRetries: 2},
 		},
 		LifecycleRunnerSettings: DeliveryFileLifecycleRunnerSettings{
 			MaxFileBackups:   7,
@@ -88,7 +88,7 @@ func TestDeliveryFileLoggerConfigLifecycleRunnerConfigDerivesSharedSettings(t *t
 	if got.FsstoreConfig.Layout.LogPath != "/updated" ||
 		got.FsstoreConfig.Lifecycle.MaxFileSize != 42 ||
 		got.FsstoreConfig.Duration.WriteFileWarnThresholdDuration != time.Second ||
-		got.FsstoreConfig.Retry.MaxWriteAttempts != 3 ||
+		got.FsstoreConfig.Retry.MaxWriteRetries != 2 ||
 		got.FsstoreConfig.Lifecycle.MaxFileBackups != 7 ||
 		got.FsstoreConfig.Lifecycle.ErrorPurge.MaxFileAge != 30 ||
 		got.FsstoreConfig.Lifecycle.DebugPurge.MaxFileAge != 3 ||

@@ -2,9 +2,9 @@ package victoriametrics
 
 import "fmt"
 
-// normalizePushManagerConfig owns its copy so applying defaults does not change
-// the caller's settings. A zero retry count/delay deliberately disables retries
-// or waiting; unlike capacities and timeouts, those values need no default.
+// normalizePushManagerConfigは自分用のcopyを持つため、既定値を適用しても呼び出し元の
+// 設定は変わりません。retry回数やretry delayが0の場合は、意図的にretryや待機を無効に
+// します。容量やtimeoutと違い、これらの値に既定値は必要ありません。
 func normalizePushManagerConfig(config *PushManagerConfig) (*PushManagerConfig, error) {
 	defaults := DefaultConfig()
 	if config == nil {

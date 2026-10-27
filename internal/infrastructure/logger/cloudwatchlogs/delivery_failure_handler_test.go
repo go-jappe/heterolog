@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/fsarchivehandler"
 	"github.com/go-jappe/heterolog/pkg/clock"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
@@ -89,7 +89,7 @@ func TestBuildDeliveryFailureHandlerRejectsCloudWatchLogsSpool(t *testing.T) {
 			FailureStoreConfig: pkgdurable.DeliveryFailureStoreConfig{
 				DurableType: []pkgdurable.DurableType{pkgdurable.DurableTypeSpool},
 			},
-		}, streamrouting.None),
+		}, pkgcloudwatchlogs.StreamRoutingNone),
 		observer.NopTracer{},
 		observer.NopMeter{},
 		nil,
@@ -114,7 +114,7 @@ func newDeliveryCloudWatchLogsFailureHandlerConfig(root string) DeliveryCloudWat
 		},
 		LogGroupName:  "/app/delivery",
 		LogStreamName: "delivery-stream",
-	}, streamrouting.None)
+	}, pkgcloudwatchlogs.StreamRoutingNone)
 }
 
 func newDeliveryCloudWatchLogsFileArchiveConfig(root string) pkgdurable.DeliveryFileArchiveConfig {
@@ -136,7 +136,7 @@ func newDeliveryCloudWatchLogsFileArchiveConfig(root string) pkgdurable.Delivery
 		CompressFormat:             pkgfsstore.CompressGzip,
 		RotationType:               pkgfsstore.FileRotationDaily,
 		RotationDayOfWeek:          time.Sunday,
-		MaxWriteAttempts:           1,
+		MaxWriteRetries:            0,
 		FileOperationRetryWaitTime: time.Millisecond,
 		OverloadPolicyConfig: pkgdurable.FileArchiveOverloadPolicyConfig{
 			OverloadPolicy:        pkgdurable.OverloadPolicyDrop,

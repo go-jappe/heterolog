@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
@@ -111,7 +110,7 @@ func TestDeliveryCloudWatchLogsLoggerErrorWithStackWithoutErrorPutsStack(t *test
 				ServiceName: "delivery-stack-test",
 				Cloud:       &logger.CloudResourceInfo{},
 			},
-		}, streamrouting.None),
+		}, pkgcloudwatchlogs.StreamRoutingNone),
 		newTestCloudWatchLogsResourceProvider(),
 		nil,
 		observer.NopTracer{},

@@ -60,8 +60,8 @@ func TestPrivateExistingDirectoryChangesOnlySelectedLeaf(t *testing.T) {
 	if got := privateTestSecurity(t, existing).String(); got != fileBefore {
 		t.Fatalf("recursively changed existing child DACL: before %s, after %s", fileBefore, got)
 	}
-	// New children inherit the new policy; existing checkpoint contents must be
-	// secured explicitly before a startup read despite the private parent.
+	// 新しい子は新しい方針を継承します。親がprivateでも、既存のcheckpointの内容は
+	// 起動時に読む前に明示的に保護しなければなりません。
 	data, err := ReadPrivateFile(existing, 0o600)
 	if err != nil {
 		t.Fatal(err)
@@ -86,8 +86,8 @@ func TestPrivateTempFileInheritanceAndReplacement(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer file.Close()
-		// This runs before the setter and before any payload is written. The
-		// inherited DACL must already deny an unrelated reader.
+		// これはsetterを呼ぶ前、payloadを書き込む前に実行します。継承したDACLが、
+		// この時点ですでに無関係な読み手を拒否していなければなりません。
 		privateTestAssertDACL(t, file.Name(), false, false)
 		privateTestCheckAccess(t, privateTestSecurity(t, file.Name()), untrusted, false)
 		if err := SetPrivateFilePermissions(file, 0o640); err != nil {
@@ -125,8 +125,8 @@ func TestPrivateFileSetterUsesOpenObjectAfterRename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Unlike os.CreateTemp's Windows handle, this fixture permits rename while
-	// open so the test can prove permission setup does not reopen file.Name().
+	// os.CreateTempのWindows handleと異なり、このfixtureは開いたままのrenameを許可します。
+	// これにより、権限設定がfile.Name()を開き直さないことを試験で証明できます。
 	handle, err := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE,
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
 		nil, windows.CREATE_NEW, windows.FILE_ATTRIBUTE_NORMAL, 0)
@@ -262,8 +262,8 @@ func TestPrivatePermissionsRejectForeignOwners(t *testing.T) {
 	}
 	for _, owner := range []string{user.User.Sid.String(), "S-1-5-18", "S-1-5-32-544", "S-1-5-21-123-456-789-1001"} {
 		t.Run(owner, func(t *testing.T) {
-			// A foreign owner requires privileges to install on a real file.
-			// Exercise the same owner gate using a real Windows descriptor.
+			// 実際のfileに他者のownerを設定するには特権が必要です。
+			// 実際のWindows descriptorを使って、同じownerの判定を確かめます。
 			sd, err := windows.SecurityDescriptorFromString("O:" + owner + "D:P(A;;FA;;;WD)")
 			if err != nil {
 				t.Fatal(err)
@@ -300,8 +300,8 @@ func TestPrivatePermissionsPropagateAccessDeniedWithoutMutation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Retain this original handle to restore permissions for cleanup.
-			// The later DACL change cannot revoke already-granted handle rights.
+			// 後始末で権限を戻すため、この元のhandleを保持します。後でDACLを変更しても、
+			// すでに付与されたhandleの権限は取り消されません。
 			handle, err := windows.CreateFile(pathName, windows.READ_CONTROL|windows.WRITE_DAC,
 				windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
 				nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
@@ -322,8 +322,8 @@ func TestPrivatePermissionsPropagateAccessDeniedWithoutMutation(t *testing.T) {
 				}
 				runtime.KeepAlive(original)
 			}()
-			// OWNER RIGHTS explicitly limits the owner's implicit rights, so
-			// even the test's own account cannot reopen with WRITE_DAC.
+			// OWNER RIGHTSがownerの暗黙の権限を明示的に制限するため、
+			// 試験自身のaccountでもWRITE_DACで開き直せません。
 			denied, err := windows.SecurityDescriptorFromString("D:P(D;;WD;;;WD)(A;;RC;;;OW)(A;;FA;;;WD)")
 			if err != nil {
 				t.Fatal(err)
@@ -458,10 +458,10 @@ func privateTestAssertDACL(t *testing.T, path string, directory, protected bool)
 	runtime.KeepAlive(sd)
 }
 
-// Disable the application user and both administrative allow-list principals.
-// The token retains Everyone/Users, so the broad-parent positive control proves
-// denial is due to the stored private DACL, without requiring another account or
-// impersonating the test thread. This is a real Windows restricted token.
+// application userと、許可listにある管理用の二つのprincipalを無効にします。
+// tokenはEveryone/Usersを保持するため、権限の広い親での陽性対照により、拒否が
+// 保存されたprivate DACLによるものだと証明できます。別のaccountや試験threadの
+// impersonationは必要ありません。これは実際のWindowsのrestricted tokenです。
 func privateTestUntrustedToken(t *testing.T) windows.Token {
 	t.Helper()
 	var process, impersonation windows.Token
@@ -502,7 +502,7 @@ func privateTestUntrustedToken(t *testing.T) windows.Token {
 
 func privateTestCheckAccess(t *testing.T, sd *windows.SECURITY_DESCRIPTOR, token windows.Token, want bool) {
 	t.Helper()
-	// The same specific bit means read file data or enumerate a directory.
+	// 同じspecific bitが、fileのデータの読み取りとdirectoryの列挙を表します。
 	mapping := [4]uint32{windows.FILE_GENERIC_READ, windows.FILE_GENERIC_WRITE, windows.FILE_GENERIC_EXECUTE, privateTestFullAccess}
 	var privileges [1024]uint32
 	privilegeBytes := uint32(unsafe.Sizeof(privileges))

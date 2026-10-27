@@ -8,7 +8,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 
 	"github.com/stretchr/testify/require"
@@ -86,7 +86,7 @@ func TestFailureSpoolPipelineSetRejectsWriterRegistrationAfterConstruction(t *te
 	created, err := NewLogger(
 		context.Background(),
 		testConstructibleOpenSearchFailureSpoolLoggerConfig(t.TempDir(), "opensearch"),
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		testFailureSpoolRuntimeConfig(),
 		nil,
 		observer.NopTracer{},

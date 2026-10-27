@@ -24,8 +24,8 @@ func (c waitRetryConfig) RetryClientSelection() pkglogger.RetryClientSelection {
 	return (pkglogger.LokiRetryableClientCaseTransportErrorConfig{RetryClientMode: c.mode}).RetryClientSelection()
 }
 
-// Use the real retry chain and sender so a wait cancellation must preserve both
-// request acceptance evidence and the durable disposition of the original record.
+// 実際のretry chainとsenderを使い、待機中のcancelでも、requestの受理を示す証拠と
+// 元recordのdurableな扱いの両方が保たれなければならないことを確認します。
 func TestRetryWaitCancellationPreservesSpoolOutcome(t *testing.T) {
 	for _, mode := range []pkglogger.RetryClientMode{pkglogger.RetryClientModeRetry, pkglogger.RetryClientModeRetryPolicy} {
 		for _, scenario := range []string{"known refusal during wait", "known refusal at cancellation", "EOF during wait", "in-flight cancellation", "invalid response", "before dispatch"} {

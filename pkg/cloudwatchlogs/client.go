@@ -1,6 +1,6 @@
-// Package cloudwatchlogs は、AWS CloudWatch Logs の PutLogEvents API と
-// CreateLogStream API を SigV4 署名付き HTTP リクエストで呼び出すための
-// 軽量クライアントを提供します。
+// Package cloudwatchlogs provides a lightweight client that calls the AWS
+// CloudWatch Logs PutLogEvents and CreateLogStream APIs with SigV4-signed HTTP
+// requests.
 package cloudwatchlogs
 
 import (
@@ -24,7 +24,8 @@ import (
 	"github.com/go-jappe/heterolog/pkg/utils/jsonutil"
 )
 
-// CloudWatch Logs API の既定値、ターゲット名、エラー処理用定数です。
+// These are the defaults, target names, error-handling constants, and request
+// limits of the CloudWatch Logs API.
 const (
 	defaultTimeout               = 10 * time.Second
 	serviceName                  = "logs"
@@ -36,21 +37,25 @@ const (
 	truncatedHTTPStatusErrorBody = "...(body truncated)"
 	// maxPutLogEventsBatchBytes は、一回の PutLogEvents request に含める event size の合計上限です。
 	maxPutLogEventsBatchBytes = 1_048_576
-	// MaxPutLogEventsCount は、一回の PutLogEvents requestへ含められるevent件数の上限です。
+	// MaxPutLogEventsCount is the maximum number of events that one PutLogEvents
+	// request can contain.
 	MaxPutLogEventsCount = 10_000
-	// MaxPutLogEventBytes は、CloudWatch Logs が 1 event に許可する event size の上限です。
-	// event size は request size と同じく、JSON decode後の message の UTF-8 byte数に
-	// event ごとの付加サイズ 26 byte を加えて数えます。message 自体の上限ではないため、
-	// 送信前の message 長の判定には MaxPutLogEventMessageBytes を使用してください。
+	// MaxPutLogEventBytes is the maximum event size that CloudWatch Logs allows
+	// for one event. Like the request size, the event size is counted as the
+	// number of UTF-8 bytes in the message after JSON decoding plus an overhead
+	// of 26 bytes per event. It is not a limit on the message itself, so use
+	// MaxPutLogEventMessageBytes to check the length of a message before sending.
 	MaxPutLogEventBytes = 1_048_576
-	// MaxPutLogEventMessageBytes は、1 event の message として送信できる最大 UTF-8 byte数です。
-	// event が一件だけの request でも付加サイズ 26 byte を含めて MaxPutLogEventBytes と
-	// request size の上限に収める必要があるため、1,048,550 byte です。
+	// MaxPutLogEventMessageBytes is the maximum number of UTF-8 bytes that can
+	// be sent as the message of one event. It is 1,048,550 bytes because even a
+	// request with only one event must fit within MaxPutLogEventBytes and the
+	// request size limit, including the 26-byte overhead.
 	MaxPutLogEventMessageBytes = MaxPutLogEventBytes - putLogEventOverheadBytes
 	putLogEventOverheadBytes   = 26
 )
 
-// HTTPClientはCloudWatch Logs APIへHTTP requestを送るClient実装です。
+// HTTPClient is a Client implementation that sends HTTP requests to the
+// CloudWatch Logs API.
 type HTTPClient struct {
 	endpoint            string
 	region              string
@@ -62,120 +67,134 @@ type HTTPClient struct {
 	compressRequest     bool
 }
 
-// Config は HTTPClient の生成に必要な設定を保持します。
+// Config holds the settings needed to create an HTTPClient.
 type Config struct {
-	// Region はCloudWatch LogsのAWSリージョンです。必須です。
-	// application固有の既定値は、このclientへ渡す前に設定してください。
+	// Region is the AWS Region of CloudWatch Logs. It is required. Set any
+	// application-specific default before passing the Config to this client.
 	Region string
 
-	// Endpoint は送信先の完全な URL です。
-	// 空の場合は Region から AWS の標準エンドポイントを生成します。
+	// Endpoint is the full URL of the destination, with an http or https scheme
+	// and a host, and without user info, a query or a fragment. Surrounding
+	// whitespace and trailing slashes are removed. If it is empty or only
+	// whitespace, https://logs.<Region>.amazonaws.com is used, with
+	// amazonaws.com.cn for a Region that starts with "cn-". Set it explicitly
+	// for a partition that uses another domain.
 	Endpoint string
 
-	// LogGroupName は送信先のロググループ名です。必須です。
+	// LogGroupName is the name of the destination log group. It is required.
 	LogGroupName string
 
-	// Timeout は HTTPClient が nil の場合に生成する HTTP クライアントの
-	// タイムアウトです。0はdefault timeoutを使う未指定sentinel、負値は不正です。
+	// Timeout is the timeout of the HTTP client that is created when HTTPClient
+	// is nil. Zero is the unset sentinel that selects the default timeout, and
+	// a negative value is invalid.
 	Timeout time.Duration
 
-	// AccessKeyID は SigV4 署名に使用するアクセスキー ID です。
-	// CredentialsProvider が nil の場合は必須です。
+	// AccessKeyID is the access key ID used for SigV4 signing. It is required
+	// when CredentialsProvider is nil.
 	AccessKeyID string
 
-	// SecretAccessKey は SigV4 署名に使用するシークレットアクセスキーです。
-	// CredentialsProvider が nil の場合は必須です。
+	// SecretAccessKey is the secret access key used for SigV4 signing. It is
+	// required when CredentialsProvider is nil.
 	SecretAccessKey string
 
-	// SessionToken は一時認証情報を使う場合のセッショントークンです。
+	// SessionToken is the session token used with temporary credentials.
 	SessionToken string
 
-	// CredentialsProvider は SigV4 署名に使用する AWS 認証情報 provider です。
-	// 設定されている場合、AccessKeyID / SecretAccessKey より優先します。
+	// CredentialsProvider is the AWS credentials provider used for SigV4 signing.
+	// If it is set, it takes precedence over AccessKeyID, SecretAccessKey, and
+	// SessionToken.
 	CredentialsProvider aws.CredentialsProvider
 
-	// Headers は各 HTTP リクエストに追加するヘッダーです。
-	// API 必須ヘッダーは、このクライアント側の値で上書きされます。
+	// Headers holds the headers added to each HTTP request. Headers that the API
+	// requires are overwritten with the values of this client.
 	Headers map[string]string
 
-	// AutoCreateLogStream が true の場合、送信先ストリームが存在しないときに
-	// ストリームを作成し、PutLogEvents を 1 回だけ再実行します。
+	// AutoCreateLogStream, if true, creates the destination stream when it does
+	// not exist and retries PutLogEvents only once.
 	AutoCreateLogStream bool
 
-	// CompressRequest が true の場合、JSON リクエスト本文を gzip 圧縮します。
+	// CompressRequest, if true, compresses the JSON request body with gzip.
 	CompressRequest bool
 
-	// HTTPClient は API 呼び出しに使用する HTTP クライアントです。
-	// nil の場合は Timeout を設定したクライアントを生成します。
+	// HTTPClient is the HTTP client used for API calls. If it is nil, a client
+	// configured with Timeout is created.
 	HTTPClient *http.Client
 }
 
-// PutLogEventsRequestは、routing済みの一回分のCloudWatch Logs送信を表します。
-// LogStreamNameはevent発生日時から送信側が事前に確定し、AttemptedAtはretryを通じて
-// 変更しません。Eventsは一つのstreamに属し、Timestamp昇順でなければなりません。
+// PutLogEventsRequest represents one CloudWatch Logs submission that has
+// already been routed. The sender fixes LogStreamName in advance from the time
+// the events occurred and keeps AttemptedAt unchanged across retries. Events
+// belong to one stream and must be sorted by Timestamp in ascending order.
 type PutLogEventsRequest struct {
 	LogStreamName string
 	Events        []Event
 	AttemptedAt   time.Time
 }
 
-// Clientは、確定済みのPutLogEventsRequestをCloudWatch Logsへ送る契約です。
-// retryやcircuit breakerはこの一つのI/O操作を装飾し、stream名の解決には関与しません。
+// Client is the contract for sending a finalized PutLogEventsRequest to
+// CloudWatch Logs. Retries and circuit breakers decorate this single I/O
+// operation and take no part in resolving stream names.
 type Client interface {
 	PutLogEvents(ctx context.Context, request PutLogEventsRequest) (*PutLogEventsOutput, error)
 }
 
-// Event は CloudWatch Logs に送信する 1 件のログイベントです。
+// Event is one log event to send to CloudWatch Logs.
 type Event struct {
-	// Timestamp はイベントの発生時刻です。
-	// ゼロ値の場合は送信処理時の現在時刻を使用します。
+	// Timestamp is the time when the event occurred. If it is the zero value,
+	// HTTPClient.PutLogEvents uses PutLogEventsRequest.AttemptedAt instead.
 	Timestamp time.Time
 
-	// Message は送信するログ本文です。
+	// Message is the log text to send.
 	Message string
 }
 
-// PutLogEventsOutput は PutLogEvents の成功結果を表します。
+// PutLogEventsOutput represents the successful result of PutLogEvents.
 //
-// CloudWatch Logs は HTTP 200 を返しても、batch 内の一部 log event だけを拒否することがあります。
-// 呼び出し元は RejectedLogEventsInfo を見て、受理済み event と拒否 event を分けて扱います。
+// CloudWatch Logs may reject only some of the log events in a batch even when
+// it returns HTTP 200. Callers check RejectedLogEventsInfo and handle accepted
+// events and rejected events separately.
 type PutLogEventsOutput struct {
-	// NextSequenceToken は CloudWatch Logs が返す deprecated field です。
-	// 現在 PutLogEvents では sequence token が無視されますが、互換性のため保持します。
+	// NextSequenceToken is a deprecated field that CloudWatch Logs returns.
+	// PutLogEvents now ignores sequence tokens, but the field is kept for
+	// compatibility.
 	NextSequenceToken string `json:"nextSequenceToken,omitempty"`
 
-	// RejectedLogEventsInfo は、HTTP 200 の中で拒否された log event の index 情報です。
+	// RejectedLogEventsInfo is the index information of the log events that
+	// were rejected within an HTTP 200 response.
 	RejectedLogEventsInfo *RejectedLogEventsInfo `json:"rejectedLogEventsInfo,omitempty"`
 
-	// RejectedEntityInfo は entity だけが拒否された場合の情報です。
-	// この場合でも log event は受理されている可能性があります。
+	// RejectedEntityInfo is the information for the case where only the entity
+	// was rejected. Even in this case, the log events may have been accepted.
 	RejectedEntityInfo *RejectedEntityInfo `json:"rejectedEntityInfo,omitempty"`
 }
 
-// HasRejectedLogEvents は、PutLogEvents response が event 単位の拒否情報を含むかを返します。
+// HasRejectedLogEvents reports whether the PutLogEvents response contains
+// per-event rejection information.
 func (o *PutLogEventsOutput) HasRejectedLogEvents() bool {
 	return o != nil &&
 		o.RejectedLogEventsInfo != nil &&
 		o.RejectedLogEventsInfo.HasRejectedLogEvents()
 }
 
-// RejectedLogEventsInfo は PutLogEvents が HTTP 200 で返す event 単位の拒否情報です。
+// RejectedLogEventsInfo is the per-event rejection information that
+// PutLogEvents returns with HTTP 200.
 //
-// AWS の index は、実際に送信した logEvents 配列に対する位置です。
-// 呼び出し元が送信前に並べ替えた場合は、その送信順を元recordとの対応情報と
-// 一緒に保持し、responseのindexを同じ順序へ適用する必要があります。
+// The AWS indexes are positions in the logEvents array that was actually sent.
+// If the caller reorders the events before sending them, it must keep that
+// sending order together with the mapping to the original records and apply
+// the response indexes to the same order.
 type RejectedLogEventsInfo struct {
 	ExpiredLogEventEndIndex  *int `json:"expiredLogEventEndIndex,omitempty"`
 	TooNewLogEventStartIndex *int `json:"tooNewLogEventStartIndex,omitempty"`
 	TooOldLogEventEndIndex   *int `json:"tooOldLogEventEndIndex,omitempty"`
 }
 
-// RejectedEntityInfo は PutLogEvents の entity 拒否情報です。
+// RejectedEntityInfo is the entity rejection information of PutLogEvents.
 type RejectedEntityInfo struct {
 	ErrorType string `json:"errorType,omitempty"`
 }
 
-// RejectedLogEventReason は、CloudWatch Logs が log event を拒否した理由です。
+// RejectedLogEventReason is the reason CloudWatch Logs rejected a log event.
 type RejectedLogEventReason string
 
 const (
@@ -184,37 +203,40 @@ const (
 	RejectedLogEventReasonTooNew  RejectedLogEventReason = "too_new"
 )
 
-// RejectedLogEvent は、拒否された log event の index と理由です。
+// RejectedLogEvent is the index and the reason of a rejected log event.
 type RejectedLogEvent struct {
 	Index  int
 	Reason RejectedLogEventReason
 }
 
-// Retryable は、この拒否理由を後で再送してよいかを返します。
+// Retryable reports whether an event rejected for this reason may be sent
+// again later.
 //
-// too_new は時間経過で受理可能になるため retryable とし、
-// too_old / expired は再送しても受理されないため permanent とします。
-// infrastructure 層の送信処理では CloudWatch Logs 専用 classifier を使って分類します。
+// too_new is retryable because the event can become acceptable as time passes,
+// and too_old and expired are permanent because sending the event again does
+// not get it accepted. The sending code in the infrastructure layer classifies
+// rejected events with a classifier dedicated to CloudWatch Logs.
 func (r RejectedLogEvent) Retryable() bool {
 	return r.Reason == RejectedLogEventReasonTooNew
 }
 
-// RejectedLogEventErrorは、CloudWatch LogsがHTTP 200の応答内で一件のlog eventを
-// 拒否したことを表します。errors.Asで取り出すと、拒否されたeventの位置と理由を判別できます。
+// RejectedLogEventError reports that CloudWatch Logs rejected one log event
+// within an HTTP 200 response. Extract it with errors.As to determine the
+// position and the reason of the rejected event.
 type RejectedLogEventError struct {
-	// Indexは、拒否されたeventの送信request内での位置です。
+	// Index is the position of the rejected event in the sent request.
 	Index int
-	// Reasonは、CloudWatch Logsが返した拒否理由です。
+	// Reason is the rejection reason that CloudWatch Logs returned.
 	Reason RejectedLogEventReason
 }
 
-// Errorは、拒否されたeventの位置と理由を"cloudwatch logs rejected log event at index
-// <Index>: <Reason>"の形式で返します。
+// Error returns the position and the reason of the rejected event in the form
+// "cloudwatch logs rejected log event at index <Index>: <Reason>".
 func (e *RejectedLogEventError) Error() string {
 	return fmt.Sprintf("cloudwatch logs rejected log event at index %d: %s", e.Index, e.Reason)
 }
 
-// HasRejectedLogEvents は、event 単位の拒否 index が含まれているかを返します。
+// HasRejectedLogEvents reports whether per-event rejection indexes are present.
 func (i *RejectedLogEventsInfo) HasRejectedLogEvents() bool {
 	return i != nil &&
 		(i.ExpiredLogEventEndIndex != nil ||
@@ -222,12 +244,15 @@ func (i *RejectedLogEventsInfo) HasRejectedLogEvents() bool {
 			i.TooOldLogEventEndIndex != nil)
 }
 
-// RejectedEvents は、CloudWatch Logs response の範囲表現を index ごとの拒否情報へ展開します。
+// RejectedEvents expands the range representation of a CloudWatch Logs response
+// into rejection information for each index.
 //
-// tooOldLogEventEndIndex は AWS API 定義どおり exclusive end として扱います。
-// tooNewLogEventStartIndex は inclusive start として扱い、そこから末尾までを拒否扱いにします。
-// expiredLogEventEndIndex も先頭側の拒否範囲を表すexclusive endとして扱います。
-// eventCount の範囲外に出る値は、呼び出し元の配列を壊さないよう clamp します。
+// tooOldLogEventEndIndex is treated as an exclusive end, as the AWS API defines
+// it. tooNewLogEventStartIndex is treated as an inclusive start, and the events
+// from there to the end are treated as rejected. expiredLogEventEndIndex is
+// also treated as an exclusive end that represents a rejected range at the
+// beginning. Values outside the range of eventCount are clamped so that they
+// do not break the caller's slice.
 func (i *RejectedLogEventsInfo) RejectedEvents(eventCount int) []RejectedLogEvent {
 	if i == nil || eventCount <= 0 {
 		return nil
@@ -272,7 +297,7 @@ func clampIndex(value int, eventCount int) int {
 	return value
 }
 
-// New は Config を検証し、CloudWatch Logs クライアントを生成します。
+// New validates the Config and creates a CloudWatch Logs client.
 func New(cfg Config) (*HTTPClient, error) {
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, err
@@ -312,9 +337,9 @@ func New(cfg Config) (*HTTPClient, error) {
 	return client, nil
 }
 
-// PutLogEventsは、呼び出し側でrouting済みの一回分のrequestを送信します。
-// ResourceNotFound後のstream作成と再送でも、requestに確定済みのstream名と
-// AttemptedAtを変更しません。
+// PutLogEvents sends one request that the caller has already routed. Even when
+// it creates the stream after ResourceNotFound and sends the request again, it
+// changes neither the stream name nor AttemptedAt fixed in the request.
 func (c *HTTPClient) PutLogEvents(
 	ctx context.Context,
 	request PutLogEventsRequest,
@@ -341,8 +366,8 @@ func (c *HTTPClient) PutLogEvents(
 	}
 	output, retryErr := c.putLogEventsOnce(ctx, logStreamName, request.Events, request.AttemptedAt)
 	if unsent, ok := retryErr.(*RequestNotSentError); ok {
-		// The second HTTP request never started, but the first request did and
-		// was explicitly refused. Preserve both facts for delivery reporting.
+		// 2回目のHTTP requestは開始されていませんが、1回目のrequestは開始され、明示的に拒否されました。
+		// 配送結果の報告に使えるよう、両方の事実を保持します。
 		withPrevious := *unsent
 		withPrevious.PreviousPutError = err
 		retryErr = &withPrevious
@@ -350,8 +375,8 @@ func (c *HTTPClient) PutLogEvents(
 	return output, retryErr
 }
 
-// CreateLogStreamは、設定済みlog group内に呼び出し側で確定したstreamを作成します。
-// 日付suffixなどのroutingは行いません。
+// CreateLogStream creates, in the configured log group, the stream that the
+// caller has determined. It does not perform routing such as date suffixes.
 func (c *HTTPClient) CreateLogStream(ctx context.Context, logStreamName string) error {
 	if err := ValidateLogStreamName(logStreamName); err != nil {
 		return err
@@ -367,7 +392,7 @@ func (c *HTTPClient) createLogStream(ctx context.Context, logStreamName string) 
 	return c.doJSON(ctx, targetCreateLogStream, req, nil)
 }
 
-// putLogEvents は PutLogEvents API への 1 回分の送信処理を行います。
+// putLogEventsOnce は PutLogEvents API への 1 回分の送信処理を行います。
 func (c *HTTPClient) putLogEventsOnce(
 	ctx context.Context,
 	logStreamName string,
@@ -459,8 +484,8 @@ func (c *HTTPClient) doJSON(ctx context.Context, target string, payload any, out
 	if err := decoder.Decode(output); err != nil {
 		return &ResponseDecodeError{Operation: target, Err: err}
 	}
-	// Verify the entire response before accepting event outcomes, including
-	// gzip checksums and read errors delivered after the JSON value.
+	// eventの結果を受け入れる前に、JSON値の後に届くgzip checksumやread errorも含めて、
+	// response全体を検証します。
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {
@@ -655,8 +680,8 @@ func normalizeEndpoint(endpoint, region string) (string, error) {
 		}
 	}
 
-	// Remove literal trailing delimiters without changing encoded separators
-	// within a proxy path segment, including an encoded terminal slash.
+	// 末尾にあるliteralの区切り文字を取り除きます。proxy pathのsegment内でencodeされた区切り文字は、
+	// 末尾のencodeされたslashも含めて変更しません。
 	parsed.RawPath = strings.TrimRight(parsed.EscapedPath(), "/")
 	parsed.Path, err = url.PathUnescape(parsed.RawPath)
 	if err != nil {
@@ -685,32 +710,35 @@ func copyHeaders(headers map[string]string) map[string]string {
 	return copied
 }
 
-// HTTPStatusError は CloudWatch Logs API が 2xx 以外を返した場合のエラーです。
-// errors.As または AsHTTPStatusError で詳細を取得できます。
+// HTTPStatusError is the error returned when the CloudWatch Logs API returns a
+// status other than 2xx. Its details can be obtained with errors.As or
+// AsHTTPStatusError.
 type HTTPStatusError struct {
-	// Code は HTTP ステータスコードです。
+	// Code is the HTTP status code.
 	Code int
 
-	// Status は "400 Bad Request" のような HTTP ステータス文字列です。
+	// Status is the HTTP status string, such as "400 Bad Request".
 	Status string
 
-	// Body は上限まで読み込んだレスポンス本文です。
+	// Body is the response body, read up to the limit. If reading the body
+	// fails, Body holds the text of the read error instead.
 	Body []byte
 
-	// BodyTruncated は本文が上限を超えて切り詰められたことを示します。
+	// BodyTruncated indicates that the body exceeded the limit and was truncated.
 	BodyTruncated bool
 
-	// AwsErrorType は AWS エラーの種類です。
+	// AwsErrorType is the type of the AWS error.
 	AwsErrorType string
 
-	// AwsMessage は AWS が返したエラーメッセージです。
+	// AwsMessage is the error message that AWS returned.
 	AwsMessage string
 
-	// RetryAfterDur は Retry-After ヘッダーから算出した待機時間です。
+	// RetryAfterDur is the wait duration calculated from the Retry-After header.
 	RetryAfterDur time.Duration
 }
 
-// Error は HTTP エラーと、取得できた AWS エラー情報を文字列で返します。
+// Error returns the HTTP error and the AWS error information that could be
+// obtained, as a string.
 func (e *HTTPStatusError) Error() string {
 	if e == nil {
 		return ""
@@ -729,7 +757,7 @@ func (e *HTTPStatusError) Error() string {
 	return strings.Join(parts, " ")
 }
 
-// StatusCode は HTTP ステータスコードを返します。
+// StatusCode returns the HTTP status code.
 func (e *HTTPStatusError) StatusCode() int {
 	if e == nil {
 		return 0
@@ -737,7 +765,7 @@ func (e *HTTPStatusError) StatusCode() int {
 	return e.Code
 }
 
-// RetryAfter は Retry-After ヘッダーから算出した待機時間を返します。
+// RetryAfter returns the wait duration calculated from the Retry-After header.
 func (e *HTTPStatusError) RetryAfter() time.Duration {
 	if e == nil {
 		return 0
@@ -745,7 +773,7 @@ func (e *HTTPStatusError) RetryAfter() time.Duration {
 	return e.RetryAfterDur
 }
 
-// ErrorType は名前空間や接尾辞を除去した AWS エラー種別を返します。
+// ErrorType returns the AWS error type with its namespace and suffix removed.
 func (e *HTTPStatusError) ErrorType() string {
 	if e == nil {
 		return ""
@@ -787,12 +815,12 @@ type awsErrorBody struct {
 	Message string `json:"message"`
 }
 
-// IsResourceNotFound は err が ResourceNotFoundException かどうかを返します。
+// IsResourceNotFound reports whether err is a ResourceNotFoundException.
 func IsResourceNotFound(err error) bool {
 	return hasAWSErrorType(err, ErrorTypeResourceNotFoundException)
 }
 
-// IsResourceAlreadyExists は err が ResourceAlreadyExistsException かどうかを返します。
+// IsResourceAlreadyExists reports whether err is a ResourceAlreadyExistsException.
 func IsResourceAlreadyExists(err error) bool {
 	return hasAWSErrorType(err, ErrorTypeResourceAlreadyExistsException)
 }
@@ -806,7 +834,7 @@ func hasAWSErrorType(err error, want string) bool {
 	return statusErr.ErrorType() == want
 }
 
-// AsHTTPStatusError はエラー連鎖から HTTPStatusError を取り出します。
+// AsHTTPStatusError extracts an HTTPStatusError from the error chain.
 func AsHTTPStatusError(err error, target **HTTPStatusError) bool {
 	return errors.As(err, target)
 }

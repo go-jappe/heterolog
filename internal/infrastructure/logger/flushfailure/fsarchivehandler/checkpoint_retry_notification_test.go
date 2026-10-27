@@ -17,6 +17,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFailureArchiveInlineCheckpointRetryUsesFactoryErrorHandler(t *testing.T) {
@@ -35,7 +36,7 @@ func TestFailureArchiveInlineCheckpointRetryUsesFactoryErrorHandler(t *testing.T
 				var store checkpointstore.Store
 				cfg := newInlineCheckpointNotificationConfig(t)
 				pipeline, err := newInlineCheckpointNotificationPipeline(cfg, func(
-					callbackCtx context.Context, err error, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter,
+					callbackCtx context.Context, err error, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter,
 				) {
 					_, loadErr := store.Load(callbackCtx, latestKey)
 					notifications <- notification{err: err, entry: entry, loadErr: loadErr}
@@ -104,7 +105,7 @@ func TestFailureArchiveInlineCheckpointRetryHandlerCanRequestShutdown(t *testing
 				var err error
 				cfg := newInlineCheckpointNotificationConfig(t)
 				pipeline, err = newInlineCheckpointNotificationPipeline(cfg, func(
-					_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter,
+					_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter,
 				) {
 					pipeline.RequestShutdown()
 					closed <- err
@@ -158,7 +159,7 @@ func TestFailureArchiveInlineCheckpointConstructorFailureClosesNotificationWorke
 		ctx := context.Background()
 		cfg := newInlineCheckpointNotificationConfig(t)
 		notifications := make(chan error, 4)
-		onError := func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		onError := func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			notifications <- err
 		}
 		initial, err := newInlineCheckpointNotificationPipeline(cfg, onError)
@@ -183,8 +184,8 @@ func TestFailureArchiveInlineCheckpointConstructorFailureClosesNotificationWorke
 		require.NoError(t, err, "failed construction releases the archive root lease")
 		require.NoError(t, restarted.Shutdown(ctx))
 		synctest.Wait()
-		// The synctest bubble also requires the retryable notification worker from
-		// partial construction to exit; an abandoned worker would deadlock here.
+		// synctestのbubbleでは、途中までの構築で作られたretryableの通知workerも終了して
+		// いなければなりません。放置されたworkerがあると、ここでdeadlockします。
 	})
 }
 

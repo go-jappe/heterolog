@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	pkgclock "github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -58,7 +58,7 @@ func TestFileLoggerCandidateInspectionKeepsNormalPeerWhenAnotherPeerIsNotRegular
 					testutil.Symlink(t, target, invalidPeer)
 				}
 				var notified bool
-				logger.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+				logger.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 					notified = true
 				}
 				remote := &recordingArchiveUploader{}

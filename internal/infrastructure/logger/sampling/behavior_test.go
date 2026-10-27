@@ -20,9 +20,9 @@ func requestSamplingConfig() pkglogger.SamplingConfig {
 	}
 }
 
-// Discover examples instead of coupling the contract to particular hash values.
-// The request selector is deterministic; no random draws or distribution bounds
-// are involved in finding a request from each side of the selection.
+// 契約を特定のhash値へ結び付けず、例を探索して見つけます。
+// request selectorは決定的なため、選択される側とされない側のrequestを見つけるのに、
+// 乱数の抽選や分布に基づく範囲は関係しません。
 func requestSamplingExamples(t *testing.T, rate int) (selected, skipped string) {
 	t.Helper()
 	for index := 0; index < 4096 && (selected == "" || skipped == ""); index++ {
@@ -120,13 +120,13 @@ func TestSamplingFallsBackToLevelWhenRequestTrackingIsUnavailable(t *testing.T) 
 		provider := sampling.NewSamplingConfigAdapter(cfg)
 		id := "ignored-request"
 		if requestTracking {
-			id = "" // Missing IDs must not activate the mandatory request-rate path.
+			id = "" // IDがない場合に、request rateによる必須出力の経路を有効にしてはいけません。
 		}
 		for _, level := range samplingLevels {
 			entry := &logging.LogEntry{Level: level, RequestID: id}
 			process, sampled := sampling.ProcessLogSampling(entry, provider)
-			// Either random outcome is valid. Only selected entries are marked
-			// Sampled; neither path is mandatory when every level rate exceeds 1.
+			// 乱数による結果はどちらでも有効です。選ばれたentryだけにSampledが付きます。
+			// level rateがすべて1を超える場合、どちらの経路も必須出力にはなりません。
 			if process != sampled {
 				t.Fatalf("request tracking=%v at %s: process=%v sampled=%v", requestTracking, level, process, sampled)
 			}
@@ -134,13 +134,12 @@ func TestSamplingFallsBackToLevelWhenRequestTrackingIsUnavailable(t *testing.T) 
 	}
 }
 
-// Level sampling draws a random number for every entry, while request selection
-// hashes the request ID: one ID is either always kept or always dropped. Repeating
-// the same entry therefore separates the paths. Each other level gets a rate that
-// keeps almost nothing, so reading another level's rate also leaves the range.
-// The kept count follows Binomial(trials, 1/rate): mean 1000 and a standard
-// deviation of about 27, so the accepted range is more than seven deviations wide
-// on each side and a correct implementation practically never falls outside it.
+// level samplingはentryごとに乱数を引きますが、request selectionはrequest IDをhashするため、
+// 一つのIDは常に残るか常に捨てられるかのどちらかです。そのため、同じentryを繰り返すと
+// 二つの経路を区別できます。他のlevelにはほぼ何も残さないrateを与えるので、別のlevelの
+// rateを読んだ場合も範囲から外れます。残る件数はBinomial(trials, 1/rate)に従い、
+// 平均は1000、標準偏差は約27です。そのため許容範囲は片側で標準偏差の7倍を超える幅があり、
+// 正しい実装が範囲外になることは実質的にありません。
 func TestLevelSamplingKeepsAboutOneInRateEntriesWithoutRequestSelection(t *testing.T) {
 	const (
 		rate      = 4
@@ -155,8 +154,7 @@ func TestLevelSamplingKeepsAboutOneInRateEntriesWithoutRequestSelection(t *testi
 		requestID       string
 	}{
 		{name: "request tracking disabled", requestID: "ignored-request"},
-		// The request rate of 1 would keep every entry if a missing ID selected the
-		// request path.
+		// IDがないのにrequestの経路を選ぶと、request rateが1なのですべてのentryが残ってしまいます。
 		{name: "request ID missing", requestTracking: true},
 	} {
 		for _, level := range samplingLevels {

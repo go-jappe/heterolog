@@ -19,19 +19,20 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
 // inlinePurgeProbeTracerは同期purgeの実削除直前に保護状態と異常終了時の後始末を確認します。
 type inlinePurgeProbeTracer struct {
-	observer.Tracer
+	pkgobserver.Tracer
 	spanName string
 	onPurge  func()
 }
 
 func (p *inlinePurgeProbeTracer) StartSpan(
-	ctx context.Context, name string, attrs ...observer.Attr,
-) (context.Context, observer.Span) {
+	ctx context.Context, name string, attrs ...pkgobserver.Attr,
+) (context.Context, pkgobserver.Span) {
 	if name == p.spanName {
 		p.onPurge()
 	}
@@ -199,7 +200,7 @@ func TestInlinePurgeReleasesCandidatesAfterRemoveErrorOrPanic(t *testing.T) {
 					},
 				}
 				var reportedErrors []error
-				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					reportedErrors = append(reportedErrors, err)
 				}
 				notifications := &cleanupTaskNotificationQueue{}

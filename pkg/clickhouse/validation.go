@@ -4,10 +4,11 @@ import (
 	"strings"
 )
 
-// ValidateConfig はClickHouse clientの生成に必要な設定を検証します。
-// HTTP通信は行いません。Timeout==0はNewがdefault timeoutを適用する
-// 未指定sentinelですが、負値は設定エラーです。不正の種類はErrNegativeTimeout、
-// ErrEndpointRequired、ErrInvalidEndpoint、ErrTableRequiredとerrors.Isで判別できます。
+// ValidateConfig validates the settings required to create a ClickHouse client.
+// It does not make HTTP requests. Timeout==0 is the unset sentinel for which
+// New applies the default timeout, but a negative value is a configuration
+// error. Use errors.Is with ErrNegativeTimeout, ErrEndpointRequired,
+// ErrInvalidEndpoint or ErrTableRequired to identify the kind of problem.
 func ValidateConfig(cfg Config) error {
 	if cfg.Timeout < 0 {
 		return newValidationError(ErrNegativeTimeout, nil, "clickhouse timeout must not be negative: %s", cfg.Timeout)

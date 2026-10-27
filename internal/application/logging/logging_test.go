@@ -15,8 +15,8 @@ import (
 
 	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	infralogger "github.com/go-jappe/heterolog/internal/infrastructure/logger"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
@@ -24,8 +24,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Exercise the application interface through the real factory and HTTP client.
-// Observing a span created by the test itself cannot prove that a log was sent.
+// 実際のfactoryとHTTP clientを通して、application層のinterfaceを動かします。
+// test自身が作成したspanを観測しても、logが送信されたことは証明できません。
 func TestLoggingApplicationPayloadAndTraceReachBackend(t *testing.T) {
 	backend := newApplicationLogBackend(t)
 	cfg := applicationHTTPLoggerConfig(backend.server.URL)
@@ -38,9 +38,9 @@ func TestLoggingApplicationPayloadAndTraceReachBackend(t *testing.T) {
 		TraceFlags: trace.FlagsSampled,
 	})
 	ctx := trace.ContextWithSpanContext(context.Background(), sc)
-	fields := []applogging.Field{
-		applogging.WithRequestID("request-42"),
-		applogging.MustFieldKey("attempt").Int(2),
+	fields := []pkglogger.Field{
+		pkglogger.WithRequestID("request-42"),
+		pkglogger.MustFieldKey("attempt").Int(2),
 	}
 	require.NoError(t, logger.Info(ctx, "application information", fields...))
 	require.NoError(t, logger.ErrorWithStack(ctx, "application failure", errors.New("database unavailable"), fields...))
@@ -76,7 +76,7 @@ func TestLoggingCloseFlushesAcceptedMessagesAndRejectsFurtherWrites(t *testing.T
 	require.Equal(t, "accepted first", docs[0]["message"])
 	require.Equal(t, "accepted second", docs[1]["message"])
 	require.NoError(t, logger.Close())
-	require.ErrorIs(t, logger.Info(ctx, "after close"), applogging.ErrLoggerClosed)
+	require.ErrorIs(t, logger.Info(ctx, "after close"), pkglogger.ErrLoggerClosed)
 	require.Len(t, backend.documents(), 2, "Close and rejected writes must not resend records")
 }
 
@@ -100,13 +100,13 @@ func TestLoggingDirectSendReturnsBackendFailure(t *testing.T) {
 
 func applicationHTTPLoggerConfig(endpoint string) pkglogger.LoggerConfig {
 	cfg := durableOpenSearchLoggerConfig(endpoint, durableTestDirs{}, []durable.DurableType{durable.DurableTypeNone})
-	cfg.OpenSearch.MaxBulkDocument = 100 // The timer and size trigger cannot hide a broken Close.
+	cfg.OpenSearch.MaxBulkDocument = 100 // timerとsizeのtriggerでは、壊れたCloseを隠せません。
 	return cfg
 }
 
 func newApplicationHTTPLogger(t *testing.T, cfg pkglogger.LoggerConfig) applogging.CloseableLogger {
 	t.Helper()
-	logger, err := infralogger.NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+	logger, err := infralogger.NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 	require.NoError(t, err)
 	closeable, ok := logger.(applogging.CloseableLogger)
 	require.True(t, ok)

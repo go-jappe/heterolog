@@ -16,6 +16,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // newFallbackLoggerはfallback送信用のclient、FlushManager、bufferを構築し、
@@ -27,8 +28,8 @@ func newFallbackLogger(
 	fmCfg LokiFlushManagerRuntimeConfigProvider,
 	resourceProvider resource.ResourceProvider,
 	retryCfg wrapper.RetryConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	opts ...LokiLoggerOption,
 ) (*FallbackLogger, error) {
 	if err := validateLokiBufferedConfig(cfg); err != nil {

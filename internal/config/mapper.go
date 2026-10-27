@@ -15,10 +15,6 @@ import (
 	configloki "github.com/go-jappe/heterolog/internal/config/loki"
 	"github.com/go-jappe/heterolog/internal/config/objectstoragecompressedlog"
 	configopensearch "github.com/go-jappe/heterolog/internal/config/opensearch"
-	"github.com/go-jappe/heterolog/internal/config/spool"
-	"github.com/go-jappe/heterolog/internal/config/spool/spoollifecycle"
-	"github.com/go-jappe/heterolog/internal/config/spool/spoolrunner"
-	"github.com/go-jappe/heterolog/internal/config/spool/spoolsupervisor"
 	mappedvalidation "github.com/go-jappe/heterolog/internal/config/validation/mapped"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
@@ -32,6 +28,10 @@ import (
 	"github.com/go-jappe/heterolog/pkg/opensearch"
 	"github.com/go-jappe/heterolog/pkg/otel"
 	"github.com/go-jappe/heterolog/pkg/path/appstatepath"
+	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
+	pkgspoollifecycle "github.com/go-jappe/heterolog/pkg/spool/spoollifecycle"
+	pkgspoolrunner "github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
+	pkgspoolsupervisor "github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 )
 
 type archiveCheckpointSourcePrefix string
@@ -319,7 +319,7 @@ func ToLoggerConfig(cfg AppConfig) logger.LoggerConfig {
 		loggerConfig.OpenSearch.OpenSearchRetryableClientCaseTransportErrorConfig =
 			&logger.OpenSearchRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.Logger.OpenSearchConfig.OpenSearchRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.Logger.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.Logger.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.Logger.OpenSearchConfig.OpenSearchRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.Logger.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxDelay,
 			}
@@ -334,7 +334,7 @@ func ToLoggerConfig(cfg AppConfig) logger.LoggerConfig {
 		loggerConfig.Loki.LokiRetryableClientCaseTransportErrorConfig =
 			&logger.LokiRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.Logger.LokiConfig.LokiRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.Logger.LokiConfig.LokiRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.Logger.LokiConfig.LokiRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.Logger.LokiConfig.LokiRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.Logger.LokiConfig.LokiRetryAbleClientConfig.MaxDelay,
 			}
@@ -348,7 +348,7 @@ func ToLoggerConfig(cfg AppConfig) logger.LoggerConfig {
 		loggerConfig.CloudWatchLogs.CloudWatchLogsRetryableClientCaseTransportErrorConfig =
 			&logger.CloudWatchLogsRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.Logger.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.Logger.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.Logger.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.Logger.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.Logger.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxDelay,
 			}
@@ -362,7 +362,7 @@ func ToLoggerConfig(cfg AppConfig) logger.LoggerConfig {
 		loggerConfig.ClickHouse.ClickHouseRetryableClientCaseTransportErrorConfig =
 			&logger.ClickHouseRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.Logger.ClickHouseConfig.ClickHouseRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.Logger.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.Logger.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.Logger.ClickHouseConfig.ClickHouseRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.Logger.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxDelay,
 			}
@@ -415,7 +415,7 @@ func ToAsyncBestEffortMultiLoggerConfig(cfg AppConfig) logger.AsyncBestEffortMul
 		loggerConfig.OpenSearch.OpenSearchRetryableClientCaseTransportErrorConfig =
 			&logger.OpenSearchRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.OpenSearchRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.OpenSearchRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxDelay,
 			}
@@ -430,7 +430,7 @@ func ToAsyncBestEffortMultiLoggerConfig(cfg AppConfig) logger.AsyncBestEffortMul
 		loggerConfig.Loki.LokiRetryableClientCaseTransportErrorConfig =
 			&logger.LokiRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.AsyncBestEffortMultiLoggerConfig.LokiConfig.LokiRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.AsyncBestEffortMultiLoggerConfig.LokiConfig.LokiRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.AsyncBestEffortMultiLoggerConfig.LokiConfig.LokiRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.AsyncBestEffortMultiLoggerConfig.LokiConfig.LokiRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.AsyncBestEffortMultiLoggerConfig.LokiConfig.LokiRetryAbleClientConfig.MaxDelay,
 			}
@@ -444,7 +444,7 @@ func ToAsyncBestEffortMultiLoggerConfig(cfg AppConfig) logger.AsyncBestEffortMul
 		loggerConfig.CloudWatchLogs.CloudWatchLogsRetryableClientCaseTransportErrorConfig =
 			&logger.CloudWatchLogsRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxDelay,
 			}
@@ -458,7 +458,7 @@ func ToAsyncBestEffortMultiLoggerConfig(cfg AppConfig) logger.AsyncBestEffortMul
 		loggerConfig.ClickHouse.ClickHouseRetryableClientCaseTransportErrorConfig =
 			&logger.ClickHouseRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.AsyncBestEffortMultiLoggerConfig.ClickHouseConfig.ClickHouseRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.AsyncBestEffortMultiLoggerConfig.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.AsyncBestEffortMultiLoggerConfig.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.AsyncBestEffortMultiLoggerConfig.ClickHouseConfig.ClickHouseRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.AsyncBestEffortMultiLoggerConfig.ClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxDelay,
 			}
@@ -517,7 +517,7 @@ func ToDeliveryLoggerConfig(cfg AppConfig) logger.DeliveryLoggerConfig {
 		loggerConfig.OpenSearch.OpenSearchRetryableClientCaseTransportErrorConfig =
 			&logger.OpenSearchRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.DeliveryLogger.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.DeliveryLogger.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.DeliveryLogger.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.DeliveryLogger.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.DeliveryLogger.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig.MaxDelay,
 			}
@@ -532,7 +532,7 @@ func ToDeliveryLoggerConfig(cfg AppConfig) logger.DeliveryLoggerConfig {
 		loggerConfig.Loki.LokiRetryableClientCaseTransportErrorConfig =
 			&logger.LokiRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.DeliveryLogger.DeliveryLokiConfig.LokiRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.DeliveryLogger.DeliveryLokiConfig.LokiRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.DeliveryLogger.DeliveryLokiConfig.LokiRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.DeliveryLogger.DeliveryLokiConfig.LokiRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.DeliveryLogger.DeliveryLokiConfig.LokiRetryAbleClientConfig.MaxDelay,
 			}
@@ -546,7 +546,7 @@ func ToDeliveryLoggerConfig(cfg AppConfig) logger.DeliveryLoggerConfig {
 		loggerConfig.CloudWatchLogs.CloudWatchLogsRetryableClientCaseTransportErrorConfig =
 			&logger.CloudWatchLogsRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.DeliveryLogger.DeliveryCloudWatchLogsConfig.CloudWatchLogsRetryAbleClientConfig.MaxDelay,
 			}
@@ -560,7 +560,7 @@ func ToDeliveryLoggerConfig(cfg AppConfig) logger.DeliveryLoggerConfig {
 		loggerConfig.ClickHouse.ClickHouseRetryableClientCaseTransportErrorConfig =
 			&logger.ClickHouseRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: cfg.DeliveryLogger.DeliveryClickHouseConfig.ClickHouseRetryAbleClientConfig.RetryClientMode,
-				MaxAttempts:     cfg.DeliveryLogger.DeliveryClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxAttempts,
+				MaxRetries:      cfg.DeliveryLogger.DeliveryClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxRetries,
 				BaseDelay:       cfg.DeliveryLogger.DeliveryClickHouseConfig.ClickHouseRetryAbleClientConfig.BaseDelay,
 				MaxDelay:        cfg.DeliveryLogger.DeliveryClickHouseConfig.ClickHouseRetryAbleClientConfig.MaxDelay,
 			}
@@ -651,7 +651,7 @@ func NewFileLoggerConfig(a *AppConfig) *logger.FileLoggerConfig {
 				WriteFileLatencyEnabled:         a.Logger.FileConfig.WriteFileLatencyEnabled,
 			},
 			Retry: fsstore.RetryConfig{
-				MaxWriteAttempts:           a.Logger.FileConfig.FileSystemStoreConfig.MaxWriteAttempts,
+				MaxWriteRetries:            a.Logger.FileConfig.FileSystemStoreConfig.MaxWriteRetries,
 				FileOperationRetryWaitTime: a.Logger.FileConfig.FileSystemStoreConfig.FileOperationRetryWaitTime,
 			},
 		},
@@ -746,7 +746,7 @@ func NewAsyncFileLoggerConfig(a *AppConfig) *logger.FileLoggerConfig {
 				WriteFileLatencyEnabled:         a.AsyncBestEffortMultiLoggerConfig.FileConfig.WriteFileLatencyEnabled,
 			},
 			Retry: fsstore.RetryConfig{
-				MaxWriteAttempts:           a.AsyncBestEffortMultiLoggerConfig.FileConfig.FileSystemStoreConfig.MaxWriteAttempts,
+				MaxWriteRetries:            a.AsyncBestEffortMultiLoggerConfig.FileConfig.FileSystemStoreConfig.MaxWriteRetries,
 				FileOperationRetryWaitTime: a.AsyncBestEffortMultiLoggerConfig.FileConfig.FileSystemStoreConfig.FileOperationRetryWaitTime,
 			},
 		},
@@ -826,7 +826,7 @@ func NewDeliveryFileLoggerConfig(a *AppConfig) *logger.DeliveryFileLoggerConfig 
 				WriteFileLatencyEnabled:         a.DeliveryLogger.DeliveryFileConfig.WriteFileLatencyEnabled,
 			},
 			Retry: fsstore.RetryConfig{
-				MaxWriteAttempts:           a.DeliveryLogger.DeliveryFileConfig.FileSystemStoreConfig.MaxWriteAttempts,
+				MaxWriteRetries:            a.DeliveryLogger.DeliveryFileConfig.FileSystemStoreConfig.MaxWriteRetries,
 				FileOperationRetryWaitTime: a.DeliveryLogger.DeliveryFileConfig.FileSystemStoreConfig.FileOperationRetryWaitTime,
 			},
 		},
@@ -915,9 +915,8 @@ func NewStdoutLoggerConfig(a *AppConfig) *logger.StdoutLoggerConfig {
 	}
 }
 
-// NewAsyncStdoutLoggerConfig maps the stdout settings loaded for
-// LoggerContractAsyncBestEffort. Stdout uses the same implementation as the synchronous logger,
-// but its clock and destination settings still belong to that contract kind.
+// NewAsyncStdoutLoggerConfigは、LoggerContractAsyncBestEffort用に読み込んだstdout設定をmapします。
+// stdoutの実装は同期loggerと同じですが、時刻と出力先の設定はあくまでこの契約種別に属します。
 func NewAsyncStdoutLoggerConfig(a *AppConfig) *logger.StdoutLoggerConfig {
 	return &logger.StdoutLoggerConfig{
 		TimeConfig: logger.TimeConfig{
@@ -1120,7 +1119,7 @@ func NewOpenSearchFlushManagerConfig(a *AppConfig) logger.OpenSearchFlushManager
 		PostWarnThresholdDuration:  a.Logger.OpenSearchConfig.PostWarnThresholdDuration,
 		PostErrorThresholdDuration: a.Logger.OpenSearchConfig.PostErrorThresholdDuration,
 		IndexLatencyEnabled:        a.Logger.OpenSearchConfig.IndexLatencyEnabled,
-		MaxRetryAttempts:           a.Logger.OpenSearchConfig.MaxRetryAttempts,
+		MaxItemRetries:             a.Logger.OpenSearchConfig.MaxItemRetries,
 		RetryWaitTime:              a.Logger.OpenSearchConfig.RetryWaitTime,
 		Resource:                   newLoggerResource(a),
 		FailureStoreConfig: newFailureStoreConfig(
@@ -1141,7 +1140,7 @@ func NewAsyncOpenSearchFlushManagerConfig(a *AppConfig) logger.OpenSearchFlushMa
 		PostWarnThresholdDuration:  a.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.PostWarnThresholdDuration,
 		PostErrorThresholdDuration: a.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.PostErrorThresholdDuration,
 		IndexLatencyEnabled:        a.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.IndexLatencyEnabled,
-		MaxRetryAttempts:           a.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.MaxRetryAttempts,
+		MaxItemRetries:             a.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.MaxItemRetries,
 		RetryWaitTime:              a.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.RetryWaitTime,
 		Resource:                   newLoggerResource(a),
 		FailureStoreConfig: newFailureStoreConfig(
@@ -1355,7 +1354,7 @@ func newFailureStoreConfig(
 				CompressFormat:             fh.Fsstore.FileArchiveConfig.CompressFormat,
 				RotationType:               fh.Fsstore.FileArchiveConfig.FileRotation,
 				RotationDayOfWeek:          fh.Fsstore.FileArchiveConfig.FileRotationDayOfWeek,
-				MaxWriteAttempts:           fh.Fsstore.FileArchiveConfig.MaxWriteAttempts,
+				MaxWriteRetries:            fh.Fsstore.FileArchiveConfig.MaxWriteRetries,
 				FileOperationRetryWaitTime: fh.Fsstore.FileArchiveConfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig: attachCompressedLogFileUploadFailureStoreForUploadTarget(
 					a, fh.Fsstore.FileArchiveConfig.ObjectStorageUploadConfig, contract,
@@ -1434,7 +1433,7 @@ func newDeliveryFailureStoreConfig(
 			CompressFormat:             fh.FileArchiveConfig.CompressFormat,
 			RotationType:               fh.FileArchiveConfig.FileRotation,
 			RotationDayOfWeek:          fh.FileArchiveConfig.FileRotationDayOfWeek,
-			MaxWriteAttempts:           fh.FileArchiveConfig.MaxWriteAttempts,
+			MaxWriteRetries:            fh.FileArchiveConfig.MaxWriteRetries,
 			FileOperationRetryWaitTime: fh.FileArchiveConfig.FileOperationRetryWaitTime,
 			ObjectStorageUploadConfig: attachCompressedLogFileUploadFailureStoreForUploadTarget(
 				a, fh.FileArchiveConfig.ObjectStorageUploadConfig, logger.LoggerContractDelivery,
@@ -2079,13 +2078,13 @@ func NewOtelResourceConfig(a *AppConfig) *otel.Resource {
 	}
 }
 
-func NewSpoolConfig(a *AppConfig) *spool.SpoolConfig {
-	return &spool.SpoolConfig{
-		SupervisorConfig: spoolsupervisor.RunnerSupervisorConfig{
+func NewSpoolConfig(a *AppConfig) *pkgspool.SpoolConfig {
+	return &pkgspool.SpoolConfig{
+		SupervisorConfig: pkgspoolsupervisor.RunnerSupervisorConfig{
 			RestartDelay: a.SpoolConfig.SupervisorConfig.RestartDelay,
 			MaxRestarts:  a.SpoolConfig.SupervisorConfig.MaxRestarts,
 		},
-		RunnerConfig: spoolrunner.SpoolRunnerConfig{
+		RunnerConfig: pkgspoolrunner.SpoolRunnerConfig{
 			OpensearchConfig:     mapBackendSpoolRunnerConfig(a.SpoolConfig.RunnerConfig.OpensearchConfig),
 			LokiConfig:           mapBackendSpoolRunnerConfig(a.SpoolConfig.RunnerConfig.LokiConfig),
 			CloudWatchLogsConfig: mapBackendSpoolRunnerConfig(a.SpoolConfig.RunnerConfig.CloudWatchLogsConfig),
@@ -2094,13 +2093,13 @@ func NewSpoolConfig(a *AppConfig) *spool.SpoolConfig {
 	}
 }
 
-func mapBackendSpoolRunnerConfig(cfg spoolrunner.BackendSpoolRunnerConfig) spoolrunner.BackendSpoolRunnerConfig {
-	return spoolrunner.BackendSpoolRunnerConfig{
-		Runner: spoolrunner.RunnerConfig{
+func mapBackendSpoolRunnerConfig(cfg pkgspoolrunner.BackendSpoolRunnerConfig) pkgspoolrunner.BackendSpoolRunnerConfig {
+	return pkgspoolrunner.BackendSpoolRunnerConfig{
+		Runner: pkgspoolrunner.RunnerConfig{
 			Interval:    cfg.Runner.Interval,
 			StopOnError: cfg.Runner.StopOnError,
 		},
-		LifeCycle: spoollifecycle.LifecycleConfig{
+		LifeCycle: pkgspoollifecycle.LifecycleConfig{
 			EnablePurgeDone:          cfg.LifeCycle.EnablePurgeDone,
 			DoneMaxFileAge:           cfg.LifeCycle.DoneMaxFileAge,
 			DoneMaxDirSize:           cfg.LifeCycle.DoneMaxDirSize,
@@ -2115,8 +2114,8 @@ func mapBackendSpoolRunnerConfig(cfg spoolrunner.BackendSpoolRunnerConfig) spool
 			SizeFullScanEveryNChecks: cfg.LifeCycle.SizeFullScanEveryNChecks,
 			SizeFullScanMaxInterval:  cfg.LifeCycle.SizeFullScanMaxInterval,
 		},
-		Worker: spoolrunner.WorkerConfig{
-			Finalize: spoolrunner.FinalizeConfig{
+		Worker: pkgspoolrunner.WorkerConfig{
+			Finalize: pkgspoolrunner.FinalizeConfig{
 				RetryDelay: cfg.Worker.Finalize.RetryDelay,
 				MaxEntries: cfg.Worker.Finalize.MaxEntries,
 			},

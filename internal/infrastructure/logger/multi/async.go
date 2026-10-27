@@ -109,7 +109,7 @@ func (m *AsyncBestEffortMultiLogger) log(
 	message string,
 	err error,
 	stackTraceRequested bool,
-	fields []applogging.Field,
+	fields []pkglogger.Field,
 ) {
 	if m == nil {
 		return
@@ -141,7 +141,7 @@ func (m *AsyncBestEffortMultiLogger) log(
 func (m *AsyncBestEffortMultiLogger) Debug(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) {
 	m.log(ctx, pkglogger.LogLevelDebug, message, nil, false, fields)
 }
@@ -149,7 +149,7 @@ func (m *AsyncBestEffortMultiLogger) Debug(
 func (m *AsyncBestEffortMultiLogger) Info(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) {
 	m.log(ctx, pkglogger.LogLevelInfo, message, nil, false, fields)
 }
@@ -157,7 +157,7 @@ func (m *AsyncBestEffortMultiLogger) Info(
 func (m *AsyncBestEffortMultiLogger) Warn(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) {
 	m.log(ctx, pkglogger.LogLevelWarn, message, nil, false, fields)
 }
@@ -165,7 +165,7 @@ func (m *AsyncBestEffortMultiLogger) Warn(
 func (m *AsyncBestEffortMultiLogger) Error(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) {
 	m.log(ctx, pkglogger.LogLevelError, message, nil, false, fields)
 }
@@ -174,7 +174,7 @@ func (m *AsyncBestEffortMultiLogger) ErrorWithStack(
 	ctx context.Context,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) {
 	m.log(ctx, pkglogger.LogLevelError, message, err, true, fields)
 }

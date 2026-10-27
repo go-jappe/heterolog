@@ -1,8 +1,12 @@
 package memorypressure
 
-// MeetsCriticalThresholdsは信頼できる各観測の使用率・残量を独立して確認します。
-// 一つでも閾値に達すればtrueです。使用率0以下・残量0の閾値はそれぞれ無効です。
-// 最大使用率だけを選ぶと、別の小さい上限で残量が不足している状況を見落とします。
+// MeetsCriticalThresholds checks the usage ratio and the remaining amount of
+// each reliable observation independently. It returns true if any of them
+// reaches its threshold. A usage ratio threshold of 0 or less and a remaining
+// amount threshold of 0 are each disabled. An AvailableBytes of 0 in the
+// primary observation counts as not obtained, so it never reaches the
+// remaining amount threshold. Choosing only the highest usage ratio would miss
+// a shortage of remaining memory under another, smaller limit.
 func MeetsCriticalThresholds(p MemoryPressure, criticalRatio float64, minAvailableBytes uint64) bool {
 	if criticalRatio > 0 && IsCriticalOverload(p, criticalRatio) {
 		return true
@@ -24,59 +28,69 @@ func MeetsCriticalThresholds(p MemoryPressure, criticalRatio float64, minAvailab
 	return limit.Reliable && limit.LimitBytes-min(limit.UsedBytes, limit.LimitBytes) <= minAvailableBytes
 }
 
-// CriticalPolicy は、メモリ逼迫を critical と判定するための設定です。
+// CriticalPolicy holds the settings for judging memory pressure as critical.
 type CriticalPolicy struct {
-	// CriticalRatio は、使用率・逼迫率がこの値以上なら critical 候補とする閾値です。
+	// CriticalRatio is the threshold at or above which the usage ratio or the
+	// pressure ratio makes a reading a critical candidate.
 	//
-	// 例:
-	//   0.90 なら 90%以上で critical 候補
+	// For example:
+	//   0.90 makes 90% or more a critical candidate
 	//
-	// 0 以下の場合、この条件は無効です。
+	// When it is 0 or less, this condition is disabled.
 	CriticalRatio float64
 
-	// MinAvailableBytes は、利用可能メモリがこの値以下なら critical 候補とする閾値です。
+	// MinAvailableBytes is the threshold at or below which the available
+	// memory makes a reading a critical candidate.
 	//
-	// 例:
-	//   512 * 1024 * 1024 なら available が 512MiB 以下で critical 候補
+	// For example:
+	//   512 * 1024 * 1024 makes available memory of 512MiB or less a critical
+	//   candidate
 	//
-	// 0 の場合、この条件は無効です。
+	// When it is 0, this condition is disabled. It applies to the primary
+	// observation and to the remaining amount of each reliable additional
+	// limit. An AvailableBytes of 0 in the primary observation counts as not
+	// obtained and never reaches it, while a remaining amount of 0 under an
+	// additional limit does; see MeetsCriticalThresholds.
 	MinAvailableBytes uint64
 
-	// ConsecutiveCriticalHits は、critical 候補が何回連続したら
-	// 本当に critical とみなすかを指定します。
+	// ConsecutiveCriticalHits specifies how many critical candidates in a row
+	// are needed before the state is really considered critical.
 	//
-	// 例:
-	//   1: 1回でも条件を満たしたら即 critical
-	//   3: 3回連続で条件を満たしたら critical
+	// For example:
+	//   1: critical as soon as the conditions are met even once
+	//   3: critical when the conditions are met 3 times in a row
 	//
-	// 瞬間的なスパイクで過剰反応しないための設定です。
+	// It keeps momentary spikes from causing an overreaction. CriticalState
+	// treats 0 or less as 1.
 	ConsecutiveCriticalHits int
 }
 
-// CriticalState は、critical 判定のための状態を保持します。
+// CriticalState holds the state for critical evaluation.
 //
-// ConsecutiveCriticalHits を使うため、前回までに何回連続で
-// critical 候補になったかを覚えておく必要があります。
+// Because ConsecutiveCriticalHits is used, it needs to remember how many times
+// in a row the readings up to the previous one were critical candidates.
 type CriticalState struct {
-	// ConsecutiveHits は、critical 候補が連続して発生した回数です。
+	// ConsecutiveHits is the number of critical candidates that occurred in a
+	// row.
 	ConsecutiveHits int
 }
 
-// Reset は、連続 critical 候補回数をリセットします。
+// Reset resets the count of consecutive critical candidates.
 func (s *CriticalState) Reset() {
 	s.ConsecutiveHits = 0
 }
 
-// Evaluate は、現在の MemoryPressure が policy に照らして
-// critical 状態かどうかを判定します。
+// Evaluate judges whether the current MemoryPressure is in a critical state
+// according to policy.
 //
-// 戻り値:
+// Return value:
 //
-//	true  = critical と判定
-//	false = critical ではない
+//	true  = judged critical
+//	false = not critical
 //
-// 信頼できる観測にcritical候補がなければ、連続回数もリセットします。
-// 主観測と追加制約の複数が危険でも、一観測につき一回だけ数えます。
+// If no reliable observation is a critical candidate, it also resets the
+// consecutive count. Even when several of the primary observation and the
+// additional constraints are in danger, it counts only once per reading.
 func (s *CriticalState) Evaluate(p MemoryPressure, policy CriticalPolicy) bool {
 	// 今回 critical 候補でなければ、連続回数をリセットする。
 	if !MeetsCriticalThresholds(p, policy.CriticalRatio, policy.MinAvailableBytes) {

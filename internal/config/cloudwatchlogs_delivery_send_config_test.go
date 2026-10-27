@@ -17,7 +17,7 @@ func TestDeliveryCloudWatchLogsSendSettingsBelongToFlushManagerConfig(t *testing
 		"PostWarnThresholdDuration",
 		"PostErrorThresholdDuration",
 		"PutLatencyEnabled",
-		"MaxRetryAttempts",
+		"MaxItemRetries",
 		"RetryWaitTime",
 	} {
 		if _, ok := baseType.FieldByName(field); ok {
@@ -52,7 +52,7 @@ func TestDeliveryCloudWatchLogsSendSettingsBelongToFlushManagerConfig(t *testing
 
 func TestDeliveryCloudWatchLogsFlushManagerConfigExcludesUnusedRetrySettings(t *testing.T) {
 	typeOf := reflect.TypeOf(pkglogger.DeliveryCloudWatchLogsFlushManagerConfig{})
-	for _, field := range []string{"MaxRetryAttempts", "RetryWaitTime"} {
+	for _, field := range []string{"MaxItemRetries", "RetryWaitTime"} {
 		if _, ok := typeOf.FieldByName(field); ok {
 			t.Fatalf("%s is unused; retry client config owns transport retry", field)
 		}

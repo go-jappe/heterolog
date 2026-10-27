@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestLogFileProcessingRecoveryForceCloseDiscardsPendingAndStaleWake(t *testing.T) {
@@ -27,9 +27,9 @@ func TestLogFileProcessingRecoveryForceCloseDiscardsPendingAndStaleWake(t *testi
 		recovery.mu.Lock()
 		staleWake := recovery.wake
 		recovery.mu.Unlock()
-		require.ErrorIs(t, recovery.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, recovery.ForceClose(), pkgshutdown.ErrForcedClose)
 		boundedwait.ReceiveInBubble(t, recovery.Done(), "receive from recovery.Done()")
-		require.ErrorIs(t, boundedwait.CloseInBubble(t, "recovery.Close()", recovery.Close, recovery.ForceClose), shutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.CloseInBubble(t, "recovery.Close()", recovery.Close, recovery.ForceClose), pkgshutdown.ErrForcedClose)
 		// Stopより先に実行待ちへ入っていた旧timerも再開できません。
 		recovery.runRound(staleWake)
 		time.Sleep(2 * time.Hour)
@@ -41,7 +41,7 @@ func TestLogFileProcessingRecoveryForceCloseDiscardsPendingAndStaleWake(t *testi
 			t.Fatal("accepted an operation after ForceClose")
 			return true, nil
 		}, nil, nil))
-		require.ErrorIs(t, recovery.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, recovery.ForceClose(), pkgshutdown.ErrForcedClose)
 	})
 }
 
@@ -73,7 +73,7 @@ func TestLogFileProcessingRecoveryForceCloseRetainsProtectionUntilAcceptedIORetu
 			go func() { closed <- recovery.Close() }()
 		}
 		synctest.Wait()
-		require.ErrorIs(t, recovery.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, recovery.ForceClose(), pkgshutdown.ErrForcedClose)
 		require.ErrorIs(t, ctx.Err(), context.Canceled)
 		synctest.Wait()
 		require.Empty(t, closed, "primitive Close must protect dependencies until accepted I/O returns")
@@ -87,7 +87,7 @@ func TestLogFileProcessingRecoveryForceCloseRetainsProtectionUntilAcceptedIORetu
 		require.Zero(t, releases)
 		releaseIO()
 		for range cap(closed) {
-			require.ErrorIs(t, boundedwait.ReceiveInBubble(t, closed, "receive from closed"), shutdown.ErrForcedClose)
+			require.ErrorIs(t, boundedwait.ReceiveInBubble(t, closed, "receive from closed"), pkgshutdown.ErrForcedClose)
 		}
 		boundedwait.ReceiveInBubble(t, recovery.Done(), "receive from recovery.Done()")
 		require.Equal(t, 2, releases)
@@ -113,8 +113,8 @@ func TestLogFileProcessingRecoveryForceCloseCancelsOwnerLockWait(t *testing.T) {
 			return true, nil
 		}, nil, func() { releases++ }))
 		boundedwait.ReceiveInBubble(t, entered, "receive from entered")
-		require.ErrorIs(t, recovery.ForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, boundedwait.CloseInBubble(t, "recovery.Close()", recovery.Close, recovery.ForceClose), shutdown.ErrForcedClose)
+		require.ErrorIs(t, recovery.ForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.CloseInBubble(t, "recovery.Close()", recovery.Close, recovery.ForceClose), pkgshutdown.ErrForcedClose)
 		require.Equal(t, 1, releases)
 	})
 }
@@ -134,13 +134,13 @@ func TestLogFileProcessingRecoveryForceCloseWaitsForProtectionRelease(t *testing
 			<-finishRelease
 		}))
 		boundedwait.ReceiveInBubble(t, releaseStarted, "receive from releaseStarted")
-		require.ErrorIs(t, recovery.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, recovery.ForceClose(), pkgshutdown.ErrForcedClose)
 		closed := make(chan error, 1)
 		go func() { closed <- recovery.Close() }()
 		synctest.Wait()
 		require.Empty(t, closed)
 		allowRelease()
-		require.ErrorIs(t, boundedwait.ReceiveInBubble(t, closed, "receive from closed"), shutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.ReceiveInBubble(t, closed, "receive from closed"), pkgshutdown.ErrForcedClose)
 		boundedwait.ReceiveInBubble(t, recovery.Done(), "receive from recovery.Done()")
 	})
 }

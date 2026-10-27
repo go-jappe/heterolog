@@ -3,11 +3,7 @@ package logging
 import (
 	"errors"
 	"io"
-
-	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
-
-var ErrForcedClose = pkgshutdown.ErrForcedClose
 
 var ErrForceCloseUnsupported = errors.New("logger does not support forced shutdown")
 

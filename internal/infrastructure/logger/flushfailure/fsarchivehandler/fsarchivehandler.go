@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
@@ -26,6 +25,7 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 	pkgtime "github.com/go-jappe/heterolog/pkg/time"
 )
@@ -47,8 +47,8 @@ type archiveDirectoryRuntime struct {
 	lastAgePurgeAt time.Time
 
 	directorySizeTracker *directorysize.Tracker
-	// appendRollback keeps a failed append from contaminating the next record.
-	// Fsstore.Mu protects it; rotation waits until the original boundary is restored.
+	// appendRollbackは、失敗したappendが次のrecordを汚さないようにします。
+	// Fsstore.Muが保護し、rotationは元の境界が復元されるまで待ちます。
 	appendRollback *archiveAppendRollback
 	// uploadCheckpointsは、このruntimeが表す一つのfailure archive系列について、
 	// 圧縮log fileごとにupload成功済みの宛先を永続化します。
@@ -89,8 +89,8 @@ type FsArchiveHandler struct {
 	OnWarn          logging.LoggerHandlerFunc
 	OnInfo          logging.LoggerHandlerFunc
 	OnDebug         logging.LoggerHandlerFunc
-	Tracer          observer.Tracer // observebility計装用
-	Meter           observer.Meter  // observebility計装用
+	Tracer          pkgobserver.Tracer // observebility計装用
+	Meter           pkgobserver.Meter  // observebility計装用
 	OverloadHandler overload.Handler
 
 	// uploaderとその宛先は構築時に確定し、稼働開始後は変更しません。
@@ -100,8 +100,8 @@ type FsArchiveHandler struct {
 	// appendJSONLWriterはactive archiveへ実際に書けたbyte数を返します。
 	// nilの場合はproduction実装を使用し、testではpartial writeを注入できます。
 	appendJSONLWriter appendJSONLWriterFunc
-	// truncateArchiveAppend is the filesystem boundary for failed-append recovery.
-	// nil uses truncateFailedArchiveAppend; tests may inject a transient I/O failure.
+	// truncateArchiveAppendは、失敗したappendを回復するためのfilesystem境界です。
+	// nilの場合はtruncateFailedArchiveAppendを使い、testでは一時的なI/O失敗を注入できます。
 	truncateArchiveAppend func(*os.File, int64) error
 	// globArchiveFiles/inspectArchiveFilesはfull/target-only観測のfilesystem境界です。
 	// 一回の観測で名前、通常fileの情報、個別pathの検査errorを確定します。

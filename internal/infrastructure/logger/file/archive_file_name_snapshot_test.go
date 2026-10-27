@@ -78,7 +78,7 @@ func TestFileLoggerConsecutiveRotationsKeepArchiveFileNameSnapshots(t *testing.T
 		}
 		waitBackgroundForTest(t, logger)
 
-		// Later rotations wait behind earlier in-flight generations until the next retry.
+		// 後のrotationは、次のretryまで、処理中の先行世代の後ろで待ちます。
 		logger.Clock = pkgclock.NewFixedClock(now.Add(2 * logger.inlinePurge.config.UsageCacheTTL()))
 		require.NoError(t, purgeFileLoggerForTest(context.Background(), logger))
 		requireArchiveRecoveryClosesForTest(t, logger)
@@ -140,7 +140,7 @@ func TestFileLoggerRecoveryAndPendingRetriesKeepFileNameSnapshotsDuringRotation(
 			waitBackgroundForTest(t, logger)
 		}
 
-		// Later rotations wait behind earlier in-flight generations until the next retry.
+		// 後のrotationは、次のretryまで、処理中の先行世代の後ろで待ちます。
 		logger.Clock = pkgclock.NewFixedClock(now.Add(2 * logger.inlinePurge.config.UsageCacheTTL()))
 		require.NoError(t, purgeFileLoggerForTest(context.Background(), logger))
 		requireArchiveRecoveryClosesForTest(t, logger)

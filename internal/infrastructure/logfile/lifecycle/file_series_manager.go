@@ -20,6 +20,7 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -59,8 +60,8 @@ type FileSeriesManagerOptions struct {
 	CheckpointStore checkpointstore.Store
 	// Clockが返す時刻とタイムゾーンを、ファイル名の日付・保持期限の判定にそのまま使います。
 	Clock  clock.Clock
-	Tracer observer.Tracer
-	Meter  observer.Meter
+	Tracer pkgobserver.Tracer
+	Meter  pkgobserver.Meter
 	// Reporterは受理済みファイル処理の復旧結果の通知先です。構築時に固定します。
 	// RunOnceの結果は戻り値で返し、この通知先には自動で渡しません。
 	Reporter RunReporter

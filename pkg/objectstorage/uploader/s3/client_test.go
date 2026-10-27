@@ -147,7 +147,7 @@ func TestClientUploadSendsExactContentLengthOnWire(t *testing.T) {
 				t.Errorf("wire ContentLength=%d Content-Length=%q TransferEncoding=%v, want explicit length %d without chunked encoding", got.length, got.header.Get("Content-Length"), got.transferEncoding, len(body))
 			}
 			assertS3RequestSignature(t, got.header, got.host, got.uri, len(body))
-			// Upload borrows the source file; completion must leave its contents intact.
+			// Uploadは送信元のfileを借りるだけなので、完了後もその内容がそのまま残っている必要があります。
 			source, err := os.ReadFile(filePath)
 			if err != nil || string(source) != body {
 				t.Fatalf("source after upload = %q, %v; want %q", source, err, body)
@@ -234,7 +234,7 @@ func TestClientUploadReturnsRedirectWithoutFollowingOrChangingHTTPClientPolicy(t
 				if want := []string{"PUT /archive-bucket/archive.gz " + body}; !slices.Equal(gotRequests, want) || policyCalls.Load() != 0 {
 					t.Fatalf("requests=%q policy calls=%d, want only %q without following the redirect", gotRequests, policyCalls.Load(), want)
 				}
-				// A shared client must retain the caller's redirect policy after Upload.
+				// 共有するclientは、Uploadの後も呼び出し元のredirect方針を保っている必要があります。
 				resp, err := httpClient.Get(server.URL + "/check-client-policy")
 				if err != nil {
 					t.Fatal(err)

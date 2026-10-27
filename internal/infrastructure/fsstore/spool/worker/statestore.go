@@ -2,9 +2,9 @@ package worker
 
 import (
 	"errors"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type StateStore struct {
@@ -15,8 +15,8 @@ type StateStore struct {
 	OnWarn  logging.LoggerHandlerFunc
 	OnInfo  logging.LoggerHandlerFunc
 	OnDebug logging.LoggerHandlerFunc
-	Tracer  observer.Tracer // observebility計装用
-	Meter   observer.Meter  // observebility計装用
+	Tracer  pkgobserver.Tracer // observebility計装用
+	Meter   pkgobserver.Meter  // observebility計装用
 
 }
 

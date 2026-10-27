@@ -277,7 +277,7 @@ func (c lokiLoggerSpoolTestConfig) FileNameFormat() string {
 func (c lokiLoggerSpoolTestConfig) FileDateFormat() string {
 	return "20060102"
 }
-func (c lokiLoggerSpoolTestConfig) MaxWriteAttempts() int {
+func (c lokiLoggerSpoolTestConfig) MaxWriteRetries() int {
 	return 1
 }
 func (c lokiLoggerSpoolTestConfig) FileOperationRetryWaitTime() time.Duration {

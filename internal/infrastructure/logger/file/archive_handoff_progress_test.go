@@ -87,7 +87,7 @@ func TestInlineHandoffResumesOnlyUnfinishedStoreAfterRestart(t *testing.T) {
 			archived, err := os.ReadFile(archivedPath)
 			require.NoError(t, err)
 			require.Equal(t, payload, archived)
-			// Reusing the archive would refresh its timestamp. A saved step must be skipped entirely.
+			// archiveを再利用するとtimestampが更新されてしまいます。保存済みのstepは完全にskipしなければなりません。
 			unchangedTime := now.AddDate(-1, 0, 0)
 			require.NoError(t, os.Chtimes(archivedPath, unchangedTime, unchangedTime))
 			require.True(t, logger.processRemainingLogFiles(ctx, archiveUploadGroupsForTest(t, []string{path}, logger.Fsstore.FileName), runNotificationImmediately))
@@ -96,7 +96,7 @@ func TestInlineHandoffResumesOnlyUnfinishedStoreAfterRestart(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, info.ModTime().Equal(unchangedTime))
 
-			// Reopen both the producer checkpoint and its uploader, as on process restart.
+			// process再起動時と同じように、producerのcheckpointとそのuploaderの両方を開き直します。
 			restartInlineRecoveryForTest(t, logger)
 			require.NoError(t, closeArchiveUploader(managed))
 			require.NoError(t, store.Close())

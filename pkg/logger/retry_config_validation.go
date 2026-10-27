@@ -4,8 +4,9 @@ import (
 	"time"
 )
 
-// IsValidは、modeが利用可能なretry client構成を表す場合にtrueを返します。
-// 空文字は設定オブジェクト上では未確定な値であり、有効なmodeとは扱いません。
+// IsValid returns true when the mode represents an available retry client
+// configuration. In a configuration object, the empty string is a value that
+// has not been decided yet, and it is not treated as a valid mode.
 func (m RetryClientMode) IsValid() bool {
 	switch m {
 	case RetryClientModeNone,
@@ -20,15 +21,20 @@ func (m RetryClientMode) IsValid() bool {
 	}
 }
 
-// ValidateRetryClientConfigはretry client wrapperを組み立てるための設定を検証します。
+// ValidateRetryClientConfig validates the settings for building the retry
+// client wrappers.
 //
-// retryを実行するmodeでは、試行回数とbackoff遅延をすべて正の値にする必要があります。
-// noneとcircuit_breakerではこれらの値を使用しないため、未設定値を許容します。
-// 未対応のmodeはErrUnsupportedRetryClientMode、0以下の値はErrNonPositiveSettingを持つ
-// ConfigFieldErrorです。
+// maxRetries is the number of retries after the first request, so 0 sends
+// once without retrying. In modes that retry, the number of retries must not
+// be negative and the backoff delays must be positive. The none and
+// circuit_breaker modes do not use these values, so they accept unset values.
+// An unsupported mode is reported as a ConfigFieldError with the kind
+// ErrUnsupportedRetryClientMode, a negative number of retries as one with the
+// kind ErrNegativeSetting, and a delay of 0 or less as one with the kind
+// ErrNonPositiveSetting.
 func ValidateRetryClientConfig(
 	mode RetryClientMode,
-	maxAttempts int,
+	maxRetries int,
 	baseDelay time.Duration,
 	maxDelay time.Duration,
 ) error {
@@ -42,10 +48,10 @@ func ValidateRetryClientConfig(
 	if !selection.UseRetryingClient && !selection.UseRetryPolicyClient {
 		return nil
 	}
-	if maxAttempts <= 0 {
+	if maxRetries < 0 {
 		return settingError(
-			ConfigFieldRetryMaxAttempts, ErrNonPositiveSetting, maxAttempts,
-			"retry max attempts must be greater than zero: %d", maxAttempts,
+			ConfigFieldRetryMaxRetries, ErrNegativeSetting, maxRetries,
+			"retry max retries must not be negative: %d", maxRetries,
 		)
 	}
 	if baseDelay <= 0 {

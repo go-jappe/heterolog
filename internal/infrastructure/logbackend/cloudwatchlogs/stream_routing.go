@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 )
 
 // ErrEventTimeRequiredは、stream名の解決にevent発生日時が必要なのにzero値だったことを表します。
@@ -16,7 +17,7 @@ var ErrEventTimeRequired = errors.New("cloudwatch logs event time is required to
 // runtimeで実装を差し替える契約はなく、CloudWatch Logsのrequest計画が使用する具象型です。
 type LogStreamNameResolver struct {
 	baseName           string
-	routingGranularity streamrouting.Granularity
+	routingGranularity pkgcloudwatchlogs.StreamRouting
 }
 
 // NewLogStreamNameResolverは、基準stream名とrouting granularityから、
@@ -24,9 +25,9 @@ type LogStreamNameResolver struct {
 // CloudWatch Logsへの通信やretry状態も持ちません。
 func NewLogStreamNameResolver(
 	baseName string,
-	routingGranularity streamrouting.Granularity,
+	routingGranularity pkgcloudwatchlogs.StreamRouting,
 ) (*LogStreamNameResolver, error) {
-	routingGranularity = streamrouting.Normalize(routingGranularity)
+	routingGranularity = routingGranularity.Normalize()
 	if _, err := ResolveLogStreamName(
 		baseName,
 		routingGranularity,
@@ -54,7 +55,7 @@ func (r *LogStreamNameResolver) ResolveLogStreamNameForEvent(at time.Time) (stri
 // atのLocationをそのまま使用し、生成後の名前はAWS制約とapplicationの運用制約で検証します。
 func ResolveLogStreamName(
 	baseName string,
-	routingGranularity streamrouting.Granularity,
+	routingGranularity pkgcloudwatchlogs.StreamRouting,
 	at time.Time,
 ) (string, error) {
 	suffix, err := streamrouting.Suffix(routingGranularity, at)

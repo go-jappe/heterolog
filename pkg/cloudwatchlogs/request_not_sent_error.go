@@ -9,8 +9,8 @@ type RequestNotSentError struct {
 	Operation string
 	Err       error
 	// PreviousPutError is the confirmed ResourceNotFound refusal when automatic
-	// stream creation succeeded but signing the second PutLogEvents failed.
-	// It is nil if no earlier PutLogEvents was dispatched by this call.
+	// stream creation succeeded but credential retrieval or signing for the
+	// second PutLogEvents failed. It is nil otherwise.
 	PreviousPutError error
 }
 

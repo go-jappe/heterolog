@@ -49,7 +49,7 @@ func TestSpoolDirectoryPreparationRetriesPendingSyncAcrossCallers(t *testing.T) 
 	directoryPreparationRegistry.mu.Unlock()
 	require.False(t, retained, "release finished callers instead of retaining a growing registry")
 
-	// A pending root must not block an unrelated spool root.
+	// 同期待ちのrootが、無関係なspool rootを妨げてはいけません。
 	otherRoot := t.TempDir()
 	require.NoError(t, EnsureDirectoryNoSymlinks(otherRoot, filepath.Join(otherRoot, "active")))
 	restore()

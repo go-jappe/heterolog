@@ -320,25 +320,25 @@ func mapperValidationTestConfig() AppConfig {
 
 	openSearchRetry := logconfig.OpenSearchRetryAbleClientConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicy,
-		MaxAttempts:     3,
+		MaxRetries:      2,
 		BaseDelay:       200 * time.Millisecond,
 		MaxDelay:        time.Second,
 	}
 	lokiRetry := logconfig.LokiRetryAbleClientConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicy,
-		MaxAttempts:     3,
+		MaxRetries:      2,
 		BaseDelay:       200 * time.Millisecond,
 		MaxDelay:        time.Second,
 	}
 	cloudWatchLogsRetry := logconfig.CloudWatchLogsRetryAbleClientConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicy,
-		MaxAttempts:     3,
+		MaxRetries:      2,
 		BaseDelay:       200 * time.Millisecond,
 		MaxDelay:        time.Second,
 	}
 	clickHouseRetry := logconfig.ClickHouseRetryAbleClientConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicy,
-		MaxAttempts:     3,
+		MaxRetries:      2,
 		BaseDelay:       200 * time.Millisecond,
 		MaxDelay:        time.Second,
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/circuitbreaker"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/retryclassifier"
 	"github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // CircuitBreakerClientはraw clientを内包する子wrapperです。
@@ -23,16 +24,16 @@ var _ cloudwatchlogs.Client = (*circuitBreakerClient)(nil)
 
 func newCircuitBreakerClient(
 	next cloudwatchlogs.Client,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *circuitBreakerClient {
 	return newCircuitBreakerClientWithCircuitBreaker(next, tracer, meter, retryable.NewCircuitBreaker(retryable.CircuitBreakerOptions{}))
 }
 
 func newCircuitBreakerClientWithCircuitBreaker(
 	next cloudwatchlogs.Client,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	circuitBreaker *retryable.CircuitBreaker,
 ) *circuitBreakerClient {
 	tracer = observer.EnsureTracer(tracer)

@@ -1,4 +1,4 @@
 package logtemplate
 
-// ErrMessageSlack adds the application name to an error notification.
+// ErrMessageSlackは、levelにかかわらず、Slackへ送るmessageにapplication名を付け加えます。
 const ErrMessageSlack = "%v - by %v"

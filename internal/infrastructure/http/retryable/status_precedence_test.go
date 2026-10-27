@@ -20,8 +20,8 @@ func TestClassifyRetryKeepsHTTPStatusAcrossErrorWrappers(t *testing.T) {
 				"direct": statusErr,
 				"fmt":    fmt.Errorf("request failed: %w", statusErr),
 				"url":    &url.Error{Op: "Post", URL: "https://example.test", Err: statusErr},
-				// The status may be on an outer wrapper or another joined branch.
-				// Unwrapping url.Error must not re-enable message heuristics.
+				// statusは、外側のwrapperや、joinされた別の枝にある場合があります。
+				// url.Errorをunwrapしても、messageによる推測を再び有効にしてはいけません。
 				"status wrapping url": &statusPrecedenceError{
 					code: code, message: message, after: 3 * time.Second,
 					cause: &url.Error{Op: "Post", URL: "https://example.test", Err: errors.New(message)},

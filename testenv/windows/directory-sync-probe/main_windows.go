@@ -1,5 +1,5 @@
-// directory-sync-probe compares Windows directory flush APIs on a newly created
-// test directory. It is not a power-loss test and does not change product code.
+// directory-sync-probeは、新しく作成したtest directoryで、Windowsのdirectory flush APIを
+// 比較します。電源断のtestではなく、product codeも変更しません。
 package main
 
 import (
@@ -56,8 +56,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// Refuse existing targets, including previous test runs. Each removal below
-	// affects only a file this invocation creates; test directories are retained.
+	// 以前のtest実行で作ったものも含め、既存の対象は拒否します。以下の各削除が作用するのは、
+	// この実行で作成したfileだけです。test directoryは残します。
 	if err := os.Mkdir(directory, 0700); err != nil {
 		return fmt.Errorf("create new test directory: %w", err)
 	}
@@ -110,8 +110,8 @@ func run() error {
 				results.Observations = append(results.Observations, observation{mode.name, iteration, stage, result})
 			}
 			observe("after_file_create")
-			// Continue after a failed flush to record OS API behavior at every
-			// stage. This diagnostic is NOT the production commit protocol.
+			// すべての段階でOS APIの挙動を記録するため、flushが失敗しても続行します。この診断は、
+			// 本番のcommit protocolではありません。
 			if err := os.Rename(source, pending); err != nil {
 				return fmt.Errorf("rename probe file: %w", err)
 			}
@@ -141,8 +141,8 @@ func run() error {
 	if err := writeSyncedFile(filepath.Join(directory, "results.json"), append(encoded, '\n')); err != nil {
 		return err
 	}
-	// Exit zero means the comparison completed, not that directory flushes
-	// succeeded. Each API outcome is recorded independently in results.json.
+	// 終了code 0は、directoryのflushが成功したことではなく、比較が完了したことを意味します。
+	// 各APIの結果は、results.jsonにそれぞれ独立して記録します。
 	fmt.Printf("Probe complete: elevated=%t filesystem=%s file_syncs=%d observations=%d\n", results.Elevated, results.FileSystem, results.FileSyncs, len(results.Observations))
 	for _, mode := range modes {
 		var succeeded, failed int

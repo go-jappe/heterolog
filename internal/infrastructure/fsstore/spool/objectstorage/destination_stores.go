@@ -100,7 +100,7 @@ func (s *DestinationStores) Existing(ctx context.Context) ([]*Store, error) {
 			errs = append(errs, fmt.Errorf("inspect destination spool %q: %w", entry.Name(), err))
 			continue
 		}
-		// ResolveAndValidateManagedDirectory also rejects Windows junctions/reparse points.
+		// ResolveAndValidateManagedDirectoryは、Windowsのjunction/reparse pointも拒否します。
 		if _, err := s.root.ForDestination(objectstorage.DestinationID(entry.Name())); err != nil {
 			errs = append(errs, err)
 			continue

@@ -6,6 +6,7 @@ import (
 
 	infracloudwatchlogs "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -17,7 +18,7 @@ import (
 func ValidateCloudWatchLogsStreamRoutingForLogger(
 	sourceLabel string,
 	cfg pkglogger.LoggerConfig,
-	granularity streamrouting.Granularity,
+	granularity pkgcloudwatchlogs.StreamRouting,
 ) error {
 	routes := make([]cloudWatchLogsStreamRoute, 0, 2)
 	if cfg.CloudWatchLogs != nil {
@@ -43,7 +44,7 @@ func ValidateCloudWatchLogsStreamRoutingForLogger(
 func ValidateCloudWatchLogsStreamRoutingForDeliveryLogger(
 	sourceLabel string,
 	cfg pkglogger.DeliveryLoggerConfig,
-	granularity streamrouting.Granularity,
+	granularity pkgcloudwatchlogs.StreamRouting,
 ) error {
 	routes := make([]cloudWatchLogsStreamRoute, 0, 2)
 	if cfg.CloudWatchLogs != nil {
@@ -76,7 +77,7 @@ type cloudWatchLogsStreamRoute struct {
 // 書式制御文字、ASCII space以外の空白、先頭・末尾の空白も参照先のvalidatorで拒否します。
 // 不正な名前は設定元ごとにまとめて返します。複数設定が同じstream名でも衝突とは扱いません。
 func validateMappedCloudWatchLogsStreamRoutes(
-	granularity streamrouting.Granularity,
+	granularity pkgcloudwatchlogs.StreamRouting,
 	routes []cloudWatchLogsStreamRoute,
 ) error {
 	if len(routes) == 0 {

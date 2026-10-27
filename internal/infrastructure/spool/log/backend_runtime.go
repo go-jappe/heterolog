@@ -6,9 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
-	configspoolrunner "github.com/go-jappe/heterolog/internal/config/spool/spoolrunner"
-	configspoolsupervisor "github.com/go-jappe/heterolog/internal/config/spool/spoolsupervisor"
 	fsstorelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/lifecycle"
 	fsstoreretryafter "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/retryafter"
 	fsstorestore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/store"
@@ -19,9 +16,11 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/log/worker"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 	lifecyclefsstore "github.com/go-jappe/heterolog/pkg/spool/lifecyclemanager/lifecyclefsstore"
 	pkgspoolrunner "github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
+	pkgspoolsupervisor "github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 )
 
 // BackendRuntimeOptionsは、一つのspoolからbackendへ再送するための送信処理と、
@@ -29,8 +28,8 @@ import (
 type BackendRuntimeOptions struct {
 	Backend          string
 	SpoolConfig      pkgdurable.SpoolConfig
-	RunnerConfig     configspoolrunner.BackendSpoolRunnerConfig
-	SupervisorConfig configspoolsupervisor.RunnerSupervisorConfig
+	RunnerConfig     pkgspoolrunner.BackendSpoolRunnerConfig
+	SupervisorConfig pkgspoolsupervisor.RunnerSupervisorConfig
 	Sender           worker.Sender
 	// OnWarnは再送後の保存先を塞いでいた項目の保全成功を通知します。
 	// runnerの終了を待つcallbackは、呼び出し側で別goroutineへ通知を登録してください。
@@ -42,8 +41,8 @@ type BackendRuntimeOptions struct {
 func NewBackendRunnerSupervisor(
 	clk clock.Clock,
 	opts BackendRuntimeOptions,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*RunnerSupervisor, error) {
 	backend := strings.TrimSpace(opts.Backend)
 	if backend == "" {

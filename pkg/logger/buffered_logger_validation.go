@@ -4,9 +4,10 @@ import (
 	"time"
 )
 
-// ValidateBufferedFlushIntervalは、buffered loggerの時間flush間隔を検証します。
-// 定期flushが必ず進行するよう、正の値だけを受け付けます。0以下の値は
-// ErrNonPositiveSettingを持つConfigFieldErrorです。
+// ValidateBufferedFlushInterval validates the interval of the time-based
+// flushes of a buffered logger. It accepts only positive values, so that
+// periodic flushes always make progress. A value of 0 or less is reported as a
+// ConfigFieldError with the kind ErrNonPositiveSetting.
 func ValidateBufferedFlushInterval(flushInterval time.Duration) error {
 	if flushInterval <= 0 {
 		return settingError(

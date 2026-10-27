@@ -555,8 +555,8 @@ func (w *Worker) RunOnceProcessingFileTransitionRetry(
 		}
 
 	case ProcessingFileTransitionRetryOpRemoveProcessingFileAfterRedistribution:
-		// Even an already absent file may still need its parent directory synced
-		// after a prior remove succeeded but its durability confirmation failed.
+		// 以前のremoveが成功してdurabilityの確認だけが失敗した場合は、fileがすでになくても
+		// 親directoryのsyncが必要なことがあります。
 		err = w.Store.RemoveProcessingFile(ctx, path)
 		if err != nil {
 			report.Status = ProcessingFileTransitionRetryStatusFailed

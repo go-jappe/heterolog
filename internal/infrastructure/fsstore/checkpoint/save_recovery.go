@@ -7,6 +7,7 @@ import (
 
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // SaveRecoveryIntervalは保存失敗後の再試行間隔です。purgeの周期とは独立しています。
@@ -143,7 +144,7 @@ func (r *SaveRecovery) Stop() error {
 	shutdown.Wait("checkpoint saves", r.done)
 	select {
 	case <-r.forceDone:
-		return shutdown.ErrForcedClose
+		return pkgshutdown.ErrForcedClose
 	default:
 		return nil
 	}
@@ -169,7 +170,7 @@ func (r *SaveRecovery) ForceClose() error {
 	case <-r.done:
 		select {
 		case <-r.forceDone:
-			return shutdown.ErrForcedClose
+			return pkgshutdown.ErrForcedClose
 		default:
 			return nil
 		}
@@ -184,7 +185,7 @@ func (r *SaveRecovery) ForceClose() error {
 		}
 	}
 	r.beginStopLocked()
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 // Doneは終了要求後に保存callbackとエラー通知登録が実際に戻ると閉じます。

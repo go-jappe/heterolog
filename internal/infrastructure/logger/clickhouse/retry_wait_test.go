@@ -39,7 +39,7 @@ func TestRetryWaitCancellationPreservesFailureRecords(t *testing.T) {
 						require.Equal(t, "keep record", records[0].Message)
 						return nil, attempt()
 					}}
-					client, err := wrapper.BuildClientChain(raw, NewRetryConfigProvider(&pkglogger.ClickHouseRetryableClientCaseTransportErrorConfig{RetryClientMode: mode, MaxAttempts: 3, BaseDelay: 100 * time.Millisecond, MaxDelay: 100 * time.Millisecond}), nil, nil)
+					client, err := wrapper.BuildClientChain(raw, NewRetryConfigProvider(&pkglogger.ClickHouseRetryableClientCaseTransportErrorConfig{RetryClientMode: mode, MaxRetries: 2, BaseDelay: 100 * time.Millisecond, MaxDelay: 100 * time.Millisecond}), nil, nil)
 					require.NoError(t, err)
 					saved := &cancellationClickHouseHandler{}
 					composite, err := flushfailure.NewCompositeFailureHandler([]flushfailure.FailureHandler{saved}, 1)
@@ -67,8 +67,9 @@ func TestRetryWaitCancellationPreservesFailureRecords(t *testing.T) {
 						require.ErrorIs(t, record.Cause, context.Canceled)
 						require.Equal(t, record.Cause.Error(), record.FailureReason)
 					}
-					// ClickHouse has no public Delivery backend. Its flush result
-					// must retain causes for durable handling and diagnostics.
+					// ClickHouseのDelivery loggerはbackendの結果ではなくDeliveryEnqueuedを返すため、
+					// flushの結果を呼び出し元へreportする経路がありません。そのflush結果は、
+					// durable処理と診断のために原因を保持する必要があります。
 					require.ErrorIs(t, result.TerminalError, lastErr)
 					require.ErrorIs(t, result.TerminalError, context.Canceled)
 				})

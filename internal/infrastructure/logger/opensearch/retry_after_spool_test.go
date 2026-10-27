@@ -129,8 +129,8 @@ func TestOpenSearchNormalSendRetryAfterDelaysFirstSpoolReplay(t *testing.T) {
 						DurableType:        []pkgdurable.DurableType{pkgdurable.DurableTypeSpool},
 						DurableStoreConfig: pkgdurable.DurableStoreConfig{SpoolConfig: spoolConfig},
 					},
-					Resource:         pkglogger.Resource{ServiceName: "retry-after-test", Cloud: &pkglogger.CloudResourceInfo{}},
-					MaxRetryAttempts: 1,
+					Resource:       pkglogger.Resource{ServiceName: "retry-after-test", Cloud: &pkglogger.CloudResourceInfo{}},
+					MaxItemRetries: 0,
 				}), nil, tracer, meter, nil, nil, nil)
 				require.NoError(t, err)
 				// 途中のassertionが失敗してもspool handlerを終了し、bubble内の処理を残しません。

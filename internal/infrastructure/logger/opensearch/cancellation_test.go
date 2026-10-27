@@ -209,7 +209,7 @@ func TestOpenSearchCancellationPreservesPlannedRequests(t *testing.T) {
 		return nil, context.Canceled
 	}
 	cfg := NewMockOpenSearchFlushManagerConfig()
-	cfg.maxBulkRequestBytes = 300 // Each 150-byte message fits alone, but no pair fits.
+	cfg.maxBulkRequestBytes = 300 // 150 byteの各messageは単独なら収まりますが、どの二件の組も収まりません。
 	fm := newTestFlushManager(client, cfg, observer.NopTracer{}, observer.NopMeter{})
 	docs := []map[string]any{{"message": "first" + strings.Repeat("x", 150)}, {"message": "second" + strings.Repeat("x", 150)}, {"message": "third" + strings.Repeat("x", 150)}}
 	result, err := fm.sendDocumentsToOpenSearch(ctx, docs)

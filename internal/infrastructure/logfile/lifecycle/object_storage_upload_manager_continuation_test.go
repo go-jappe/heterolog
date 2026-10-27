@@ -155,8 +155,8 @@ func TestObjectStorageUploadManagerCheckpointCursorKeepsFailedDestinationBehindE
 	require.Equal(t, []string{firstRaw, secondCompressed}, remote.pathsFor(primary))
 	require.Equal(t, []string{firstRaw}, remote.pathsFor(secondary))
 
-	// The failed raw generation is compressed before the next run. Neither the
-	// path change nor a new scan permits secondary to jump over that failure.
+	// 失敗したraw generationは次のrunの前に圧縮されます。path変更があっても新しいscanでも、
+	// secondaryがその失敗を飛び越えることは許されません。
 	manager.pruneUploadedPaths(map[string]struct{}{
 		pathidentity.ComparisonKey(firstCompressed): {}, pathidentity.ComparisonKey(secondCompressed): {},
 	})

@@ -16,8 +16,8 @@ func captureOriginForTest(entry *LogEntry, remaining int) {
 
 func TestCapturedStackPreservesOriginAcrossWorkersAndBackendDepths(t *testing.T) {
 	original := &LogEntry{StackTraceRequested: true}
-	// A deep application stack also checks that capture is not silently
-	// limited to the initial buffer when a backend requests more frames.
+	// 深いapplication stackを使い、backendがより多くのframeを要求したときに、captureが
+	// 初期bufferの大きさへ黙って制限されないことも確認します。
 	captureOriginForTest(original, 40)
 	for _, depth := range []int{0, 2, 40} {
 		entry := CloneLogEntry(original)

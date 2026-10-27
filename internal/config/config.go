@@ -23,12 +23,11 @@ import (
 	"github.com/go-jappe/heterolog/internal/config/opensearch"
 	"github.com/go-jappe/heterolog/internal/config/runtime"
 	"github.com/go-jappe/heterolog/internal/config/slack"
-	"github.com/go-jappe/heterolog/internal/config/spool"
 	"github.com/go-jappe/heterolog/internal/config/spool/spoollifecycle"
 	"github.com/go-jappe/heterolog/internal/config/spool/spoolrunner"
 	"github.com/go-jappe/heterolog/internal/config/spool/spoolsupervisor"
 	"github.com/go-jappe/heterolog/internal/config/timeoutbudget"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgenv "github.com/go-jappe/heterolog/pkg/env"
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 	"github.com/go-jappe/heterolog/pkg/fsstore"
@@ -39,6 +38,10 @@ import (
 	"github.com/go-jappe/heterolog/pkg/path/appstatepath"
 	"github.com/go-jappe/heterolog/pkg/path/logpath"
 	pkgslack "github.com/go-jappe/heterolog/pkg/slack"
+	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
+	pkgspoollifecycle "github.com/go-jappe/heterolog/pkg/spool/spoollifecycle"
+	pkgspoolrunner "github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
+	pkgspoolsupervisor "github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 
 	"github.com/joho/godotenv"
 )
@@ -70,7 +73,7 @@ type AppConfig struct {
 	// CompressedLogFileUploadFailureStoreはrecord spoolとは独立した、
 	// compressed log fileのupload失敗用file archive／spool設定です。
 	CompressedLogFileUploadFailureStore objectstoragecompressedlog.Config
-	SpoolConfig                         spool.SpoolConfig
+	SpoolConfig                         pkgspool.SpoolConfig
 	Slack                               slack.SlackConfig
 	OpenSearchClient                    opensearch.OpenSearchClientConfig
 	AsyncOpenSearchClient               opensearch.OpenSearchClientConfig // 非同期ロガー用設定
@@ -85,6 +88,8 @@ type AppConfig struct {
 	AsyncClickHouseClient               clickhousecfg.ClientConfig
 	DeliveryClickHouseClient            clickhousecfg.ClientConfig
 	ObservabilityCfg                    observability.ObservabilityConfig
+	// AdminServerは、管理用APIの管理用サーバーの設定です。loggerの設定には含めません。
+	AdminServer AdminServerConfig
 }
 
 // envSourceは、設定値の参照先です。process environmentの値を優先し、process environmentに
@@ -107,7 +112,7 @@ func newEnvSource(path string, required bool) (envSource, error) {
 		if !required && errors.Is(err, os.ErrNotExist) {
 			return envSource{}, nil
 		}
-		return envSource{}, &EnvFileError{Path: path, Err: err}
+		return envSource{}, &pkgenv.EnvFileError{Path: path, Err: err}
 	}
 	return envSource{file: values}, nil
 }
@@ -137,19 +142,6 @@ func (s envSource) keys() []string {
 	}
 	return keys
 }
-
-// EnvFileErrorは、LoadConfigが環境設定fileを読み込めないことを表します。Pathは読み込もうと
-// したfile、Errは原因です。fileが存在しない場合はerrors.Is(err, fs.ErrNotExist)です。
-type EnvFileError struct {
-	Path string
-	Err  error
-}
-
-func (e *EnvFileError) Error() string {
-	return fmt.Sprintf("load environment file %q: %v", e.Path, e.Err)
-}
-
-func (e *EnvFileError) Unwrap() error { return e.Err }
 
 // loadLogCompressFormatは読み込み済みの圧縮形式を解析します。keyはエラー表示にだけ使います。
 func loadLogCompressFormat(value, key string, defaultValue fsstore.CompressFormat) (fsstore.CompressFormat, error) {
@@ -339,9 +331,9 @@ func LoadRuntimeEnv(env pkgenv.Lookup) runtime.RuntimeEnv {
 		CoreInfo: runtime.CoreRuntimeEnv{
 			HostName:          host,
 			OSType:            goruntime.GOOS,
-			Environment:       env.GetEnvString("HETEROLOG_APP_ENV", "DEV"),          // dev / stg / prod
-			RuntimeType:       env.GetEnvString("HETEROLOG_RUNTIME_TYPE", "unknown"), // ecs / ec2 / k8s / docker / local
-			RuntimeInstanceID: env.GetEnvString("HETEROLOG_INSTANCE_ID", "unknown"),  // task id / pod name / instance id / hostname
+			Environment:       env.GetEnvString("HETEROLOG_APP_ENV", "DEV"),          // 例: dev・stg・prod
+			RuntimeType:       env.GetEnvString("HETEROLOG_RUNTIME_TYPE", "unknown"), // 例: ecs・ec2・k8s・docker・local
+			RuntimeInstanceID: env.GetEnvString("HETEROLOG_INSTANCE_ID", "unknown"),  // 例: task ID・pod名・instance ID・hostname
 		},
 		Cloud: &runtime.CloudInfo{
 			Provider: env.GetEnvString("HETEROLOG_CLOUD_PROVIDER", ""),
@@ -1083,9 +1075,9 @@ func loadTimeoutBudgetPolicy(value, key string) (timeoutbudget.TimeoutBudgetPoli
 	return policy, nil
 }
 
-func loadSpoolConfig(env pkgenv.Lookup, appCfg AppConfig) (spool.SpoolConfig, error) {
+func loadSpoolConfig(env pkgenv.Lookup, appCfg AppConfig) (pkgspool.SpoolConfig, error) {
 	var environmentErrors []error
-	var cfg spool.SpoolConfig
+	var cfg pkgspool.SpoolConfig
 	spoolSelected := false
 
 	if failureSpoolSelectedForBackend(
@@ -1150,7 +1142,7 @@ func loadSpoolConfig(env pkgenv.Lookup, appCfg AppConfig) (spool.SpoolConfig, er
 		if maxRestartSpoolTimesErr != nil {
 			environmentErrors = append(environmentErrors, maxRestartSpoolTimesErr)
 		}
-		cfg.SupervisorConfig = spoolsupervisor.RunnerSupervisorConfig{
+		cfg.SupervisorConfig = pkgspoolsupervisor.RunnerSupervisorConfig{
 			RestartDelay: spoolsupervisor.DefaultRestartDelay,
 			MaxRestarts:  maxRestartSpoolTimes,
 		}
@@ -1281,7 +1273,7 @@ func loadDeliveryFailureHandlerSelection(
 	return cfg, errors.Join(environmentErrors...)
 }
 
-func loadOpensearchSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoolRunnerConfig, error) {
+func loadOpensearchSpoolRunnerConfig(env pkgenv.Lookup) (pkgspoolrunner.BackendSpoolRunnerConfig, error) {
 	var environmentErrors []error
 	opensearchSpoolRunnerIntervalMillisecond, opensearchSpoolRunnerIntervalMillisecondErr := env.GetEnvDurationMillisecond("HETEROLOG_OPENSEARCH_SPOOL_RUNNER_INTERVAL_MILLISECOND", spoolrunner.DefaultRunnerInterval)
 	if opensearchSpoolRunnerIntervalMillisecondErr != nil {
@@ -1358,12 +1350,12 @@ func loadOpensearchSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoo
 	if opensearchSpoolRunnerMaxRetryAfterSecondErr != nil {
 		environmentErrors = append(environmentErrors, opensearchSpoolRunnerMaxRetryAfterSecondErr)
 	}
-	return spoolrunner.BackendSpoolRunnerConfig{
-		Runner: spoolrunner.RunnerConfig{
+	return pkgspoolrunner.BackendSpoolRunnerConfig{
+		Runner: pkgspoolrunner.RunnerConfig{
 			Interval:    opensearchSpoolRunnerIntervalMillisecond,
 			StopOnError: enableOpensearchSpoolRunnerStopOnError,
 		},
-		LifeCycle: spoollifecycle.LifecycleConfig{
+		LifeCycle: pkgspoollifecycle.LifecycleConfig{
 			EnablePurgeDone:          enablePurgeOpensearchSpoolDone,
 			DoneMaxFileAge:           maxOpensearchSpoolDoneAge,
 			DoneMaxDirSize:           maxOpensearchSpoolDoneDirSizeMb,
@@ -1378,8 +1370,8 @@ func loadOpensearchSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoo
 			SizeFullScanEveryNChecks: opensearchSpoolDirFullScanEveryNChecks,
 			SizeFullScanMaxInterval:  opensearchSpoolFullScanMaxInterval,
 		},
-		Worker: spoolrunner.WorkerConfig{
-			Finalize: spoolrunner.FinalizeConfig{
+		Worker: pkgspoolrunner.WorkerConfig{
+			Finalize: pkgspoolrunner.FinalizeConfig{
 				RetryDelay: opensearchSpoolRunnerRetryFinalizeDelayMillisecond,
 				MaxEntries: maxOpensearchSpoolFinalizeFailureEntries,
 			},
@@ -1388,7 +1380,7 @@ func loadOpensearchSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoo
 	}, errors.Join(environmentErrors...)
 }
 
-func loadLokiSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoolRunnerConfig, error) {
+func loadLokiSpoolRunnerConfig(env pkgenv.Lookup) (pkgspoolrunner.BackendSpoolRunnerConfig, error) {
 	var environmentErrors []error
 	lokiSpoolRunnerIntervalMillisecond, lokiSpoolRunnerIntervalMillisecondErr := env.GetEnvDurationMillisecond("HETEROLOG_LOKI_SPOOL_RUNNER_INTERVAL_MILLISECOND", spoolrunner.DefaultRunnerInterval)
 	if lokiSpoolRunnerIntervalMillisecondErr != nil {
@@ -1465,12 +1457,12 @@ func loadLokiSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoolRunne
 	if lokiSpoolRunnerMaxRetryAfterSecondErr != nil {
 		environmentErrors = append(environmentErrors, lokiSpoolRunnerMaxRetryAfterSecondErr)
 	}
-	return spoolrunner.BackendSpoolRunnerConfig{
-		Runner: spoolrunner.RunnerConfig{
+	return pkgspoolrunner.BackendSpoolRunnerConfig{
+		Runner: pkgspoolrunner.RunnerConfig{
 			Interval:    lokiSpoolRunnerIntervalMillisecond,
 			StopOnError: enableLokiSpoolRunnerStopOnError,
 		},
-		LifeCycle: spoollifecycle.LifecycleConfig{
+		LifeCycle: pkgspoollifecycle.LifecycleConfig{
 			EnablePurgeDone:          enablePurgeLokiSpoolDone,
 			DoneMaxFileAge:           maxLokiSpoolDoneAge,
 			DoneMaxDirSize:           maxLokiSpoolDoneDirSizeMb,
@@ -1485,8 +1477,8 @@ func loadLokiSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoolRunne
 			SizeFullScanEveryNChecks: lokiSpoolDirFullScanEveryNChecks,
 			SizeFullScanMaxInterval:  lokiSpoolFullScanMaxInterval,
 		},
-		Worker: spoolrunner.WorkerConfig{
-			Finalize: spoolrunner.FinalizeConfig{
+		Worker: pkgspoolrunner.WorkerConfig{
+			Finalize: pkgspoolrunner.FinalizeConfig{
 				RetryDelay: lokiSpoolRunnerRetryFinalizeDelayMillisecond,
 				MaxEntries: maxLokiSpoolFinalizeFailureEntries,
 			},
@@ -1495,7 +1487,7 @@ func loadLokiSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoolRunne
 	}, errors.Join(environmentErrors...)
 }
 
-func loadCloudWatchLogsSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoolRunnerConfig, error) {
+func loadCloudWatchLogsSpoolRunnerConfig(env pkgenv.Lookup) (pkgspoolrunner.BackendSpoolRunnerConfig, error) {
 	var environmentErrors []error
 	cloudwatchSpoolRunnerIntervalMillisecond, cloudwatchSpoolRunnerIntervalMillisecondErr := env.GetEnvDurationMillisecond("HETEROLOG_CLOUDWATCH_SPOOL_RUNNER_INTERVAL_MILLISECOND", spoolrunner.DefaultRunnerInterval)
 	if cloudwatchSpoolRunnerIntervalMillisecondErr != nil {
@@ -1572,12 +1564,12 @@ func loadCloudWatchLogsSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.Backend
 	if cloudwatchSpoolRunnerMaxRetryAfterSecondErr != nil {
 		environmentErrors = append(environmentErrors, cloudwatchSpoolRunnerMaxRetryAfterSecondErr)
 	}
-	return spoolrunner.BackendSpoolRunnerConfig{
-		Runner: spoolrunner.RunnerConfig{
+	return pkgspoolrunner.BackendSpoolRunnerConfig{
+		Runner: pkgspoolrunner.RunnerConfig{
 			Interval:    cloudwatchSpoolRunnerIntervalMillisecond,
 			StopOnError: enableCloudwatchSpoolRunnerStopOnError,
 		},
-		LifeCycle: spoollifecycle.LifecycleConfig{
+		LifeCycle: pkgspoollifecycle.LifecycleConfig{
 			EnablePurgeDone:          enablePurgeCloudwatchSpoolDone,
 			DoneMaxFileAge:           maxCloudwatchSpoolDoneAge,
 			DoneMaxDirSize:           maxCloudwatchSpoolDoneDirSizeMb,
@@ -1592,8 +1584,8 @@ func loadCloudWatchLogsSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.Backend
 			SizeFullScanEveryNChecks: cloudwatchSpoolDirFullScanEveryNChecks,
 			SizeFullScanMaxInterval:  cloudWatchSpoolFullScanMaxInterval,
 		},
-		Worker: spoolrunner.WorkerConfig{
-			Finalize: spoolrunner.FinalizeConfig{
+		Worker: pkgspoolrunner.WorkerConfig{
+			Finalize: pkgspoolrunner.FinalizeConfig{
 				RetryDelay: cloudwatchSpoolRunnerRetryFinalizeDelayMillisecond,
 				MaxEntries: maxCloudwatchSpoolFinalizeFailureEntries,
 			},
@@ -1602,7 +1594,7 @@ func loadCloudWatchLogsSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.Backend
 	}, errors.Join(environmentErrors...)
 }
 
-func loadClickHouseSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoolRunnerConfig, error) {
+func loadClickHouseSpoolRunnerConfig(env pkgenv.Lookup) (pkgspoolrunner.BackendSpoolRunnerConfig, error) {
 	var environmentErrors []error
 	clickhouseSpoolRunnerIntervalMillisecond, clickhouseSpoolRunnerIntervalMillisecondErr := env.GetEnvDurationMillisecond("HETEROLOG_CLICKHOUSE_SPOOL_RUNNER_INTERVAL_MILLISECOND", spoolrunner.DefaultRunnerInterval)
 	if clickhouseSpoolRunnerIntervalMillisecondErr != nil {
@@ -1679,12 +1671,12 @@ func loadClickHouseSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoo
 	if clickhouseSpoolRunnerMaxRetryAfterSecondErr != nil {
 		environmentErrors = append(environmentErrors, clickhouseSpoolRunnerMaxRetryAfterSecondErr)
 	}
-	return spoolrunner.BackendSpoolRunnerConfig{
-		Runner: spoolrunner.RunnerConfig{
+	return pkgspoolrunner.BackendSpoolRunnerConfig{
+		Runner: pkgspoolrunner.RunnerConfig{
 			Interval:    clickhouseSpoolRunnerIntervalMillisecond,
 			StopOnError: enableClickhouseSpoolRunnerStopOnError,
 		},
-		LifeCycle: spoollifecycle.LifecycleConfig{
+		LifeCycle: pkgspoollifecycle.LifecycleConfig{
 			EnablePurgeDone:          enablePurgeClickhouseSpoolDone,
 			DoneMaxFileAge:           maxClickhouseSpoolDoneAge,
 			DoneMaxDirSize:           maxClickhouseSpoolDoneDirSizeMb,
@@ -1699,8 +1691,8 @@ func loadClickHouseSpoolRunnerConfig(env pkgenv.Lookup) (spoolrunner.BackendSpoo
 			SizeFullScanEveryNChecks: clickhouseSpoolDirFullScanEveryNChecks,
 			SizeFullScanMaxInterval:  clickHouseSpoolFullScanMaxInterval,
 		},
-		Worker: spoolrunner.WorkerConfig{
-			Finalize: spoolrunner.FinalizeConfig{
+		Worker: pkgspoolrunner.WorkerConfig{
+			Finalize: pkgspoolrunner.FinalizeConfig{
 				RetryDelay: clickhouseSpoolRunnerRetryFinalizeDelayMillisecond,
 				MaxEntries: maxClickhouseSpoolFinalizeFailureEntries,
 			},
@@ -2103,7 +2095,7 @@ func loadFileConfig(env pkgenv.Lookup) (logconfig.FileConfig, error) {
 		WriteLogFileErrorThresholdDuration: fsstoreconfig.WriteLogFileErrorThresholdDuration,
 		CompressWarnThresholdDuration:      fsstoreconfig.CompressWarnThresholdDuration,
 		CompressErrorThresholdDuration:     fsstoreconfig.CompressErrorThresholdDuration,
-		MaxWriteAttempts:                   fsstoreconfig.MaxFileOperationnRetryAttempts,
+		MaxWriteRetries:                    fsstoreconfig.MaxFileOperationRetries,
 		FileOperationRetryWaitTime:         fsstoreconfig.FileOperationRetryWaitTime,
 		IsSeparateErrorLogsEnabled:         enableLogFileSeparateErrorLogs,
 		SeparateErrorLogsPrefix:            logconfig.SeparateErrorLogsPrefix,
@@ -2292,7 +2284,7 @@ func loadAsyncFileConfig(env pkgenv.Lookup) (logconfig.FileConfig, error) {
 		WriteLogFileErrorThresholdDuration: fsstoreconfig.WriteLogFileErrorThresholdDuration,
 		CompressWarnThresholdDuration:      fsstoreconfig.CompressWarnThresholdDuration,
 		CompressErrorThresholdDuration:     fsstoreconfig.CompressErrorThresholdDuration,
-		MaxWriteAttempts:                   fsstoreconfig.MaxFileOperationnRetryAttempts,
+		MaxWriteRetries:                    fsstoreconfig.MaxFileOperationRetries,
 		FileOperationRetryWaitTime:         fsstoreconfig.FileOperationRetryWaitTime,
 		IsSeparateErrorLogsEnabled:         enableAsyncLogFileSeparateErrorLogs,
 		SeparateErrorLogsPrefix:            logconfig.SeparateErrorLogsPrefix,
@@ -2477,7 +2469,7 @@ func loadDeliveryFileConfig(env pkgenv.Lookup) (logconfig.DeliveryFileConfig, er
 		WriteLogFileErrorThresholdDuration: fsstoreconfig.WriteLogFileErrorThresholdDuration,
 		CompressWarnThresholdDuration:      fsstoreconfig.CompressWarnThresholdDuration,
 		CompressErrorThresholdDuration:     fsstoreconfig.CompressErrorThresholdDuration,
-		MaxWriteAttempts:                   fsstoreconfig.MaxFileOperationnRetryAttempts,
+		MaxWriteRetries:                    fsstoreconfig.MaxFileOperationRetries,
 		FileOperationRetryWaitTime:         fsstoreconfig.FileOperationRetryWaitTime,
 		IsSeparateErrorLogsEnabled:         enableDeliveryLogFileSeparateErrorLogs,
 		SeparateErrorLogsPrefix:            logconfig.SeparateErrorLogsPrefix,
@@ -2924,7 +2916,7 @@ func loadOpenSearchConfig(env pkgenv.Lookup) (logconfig.OpenSearchLoggerBaseConf
 		PostWarnThresholdDuration:  logconfig.PostLogWarnThresholdDuration,
 		PostErrorThresholdDuration: logconfig.PostLogErrorThresholdDuration,
 		IndexLatencyEnabled:        enableIndexOpensearchLatency,
-		MaxRetryAttempts:           logconfig.MaxOpenSearchLoggerRetryAttempts,
+		MaxItemRetries:             logconfig.MaxOpenSearchLoggerItemRetries,
 		RetryWaitTime:              logconfig.OpenSearchRetryWaitTime,
 		HandlerConfig: internalerror.RoutingConfig{
 			OnErrorConfig: env.GetEnvSliceString("HETEROLOG_OPENSEARCH_LOGGER_ERROR_HANDLER", nil),
@@ -3017,7 +3009,7 @@ func loadAsyncOpenSearchConfig(env pkgenv.Lookup) (logconfig.OpenSearchLoggerBas
 		PostWarnThresholdDuration:  logconfig.PostLogWarnThresholdDuration,
 		PostErrorThresholdDuration: logconfig.PostLogErrorThresholdDuration,
 		IndexLatencyEnabled:        enableAsyncIndexOpensearchLatency,
-		MaxRetryAttempts:           logconfig.MaxOpenSearchLoggerRetryAttempts,
+		MaxItemRetries:             logconfig.MaxOpenSearchLoggerItemRetries,
 		RetryWaitTime:              logconfig.OpenSearchRetryWaitTime,
 		HandlerConfig: internalerror.RoutingConfig{
 			OnErrorConfig: env.GetEnvSliceString("HETEROLOG_ASYNC_OPENSEARCH_LOGGER_ERROR_HANDLER", nil),
@@ -3807,7 +3799,7 @@ func loadOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandl
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_OPENSEARCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -3950,7 +3942,7 @@ func loadAsyncOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.Failure
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultAsyncFileArchiveRotation)), failure.DefaultAsyncFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultAsyncFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -4099,7 +4091,7 @@ func loadDeliveryOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.Deli
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -4263,7 +4255,7 @@ func loadLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandlerConf
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_LOKI_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -4399,7 +4391,7 @@ func loadAsyncLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandle
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_ASYNC_LOKI_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -4542,7 +4534,7 @@ func loadDeliveryLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.DeliveryFa
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_DELIVERY_LOKI_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -4635,8 +4627,8 @@ func loadDeliveryCloudWatchLogsFlushManagerConfig(env pkgenv.Lookup) (logconfig.
 
 // loadCloudWatchLogsStreamRoutingGranularityは読み込み済みの値の前後空白と英字の大小を
 // 正規化します。対応値かどうかはmapping後のvalidationで検証します。
-func loadCloudWatchLogsStreamRoutingGranularity(value string) streamrouting.Granularity {
-	return streamrouting.Normalize(streamrouting.Granularity(value))
+func loadCloudWatchLogsStreamRoutingGranularity(value string) pkgcloudwatchlogs.StreamRouting {
+	return pkgcloudwatchlogs.StreamRouting(value).Normalize()
 }
 
 func loadCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandlerConfig, error) {
@@ -4701,7 +4693,7 @@ func loadCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureH
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_CLOUDWATCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -4830,7 +4822,7 @@ func loadAsyncCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.Fai
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_ASYNC_CLOUDWATCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -4958,7 +4950,7 @@ func loadDeliveryCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_DELIVERY_CLOUDWATCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -5094,7 +5086,7 @@ func loadClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandl
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -5223,7 +5215,7 @@ func loadAsyncClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.Failure
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -5351,7 +5343,7 @@ func loadDeliveryClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.Deli
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_DELIVERY_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
-				MaxWriteAttempts:           fsstoreconfig.MaxFileOperationnRetryAttempts,
+				MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 				FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
 				ObjectStorageUploadConfig:  objectStorageUploadConfig,
 				OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
@@ -5413,15 +5405,15 @@ func loadOpenSearchRetryableClientConfig(env pkgenv.Lookup) (logconfig.OpenSearc
 		"HETEROLOG_OPENSEARCH_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(opensearch.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_OPENSEARCH_RETRYABLE_CLIENT_ATTEMPTS", opensearch.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_OPENSEARCH_RETRYABLE_CLIENT_MILLISECOND", opensearch.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_OPENSEARCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", opensearch.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_OPENSEARCH_RETRYABLE_CLIENT_RETRIES", opensearch.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_OPENSEARCH_RETRYABLE_CLIENT_MILLISECOND", opensearch.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_OPENSEARCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", opensearch.DefaultMaxDelay)
 	return logconfig.OpenSearchRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadAsyncOpenSearchRetryableClientConfig(env pkgenv.Lookup) (logconfig.OpenSearchRetryAbleClientConfig, error) {
@@ -5430,15 +5422,15 @@ func loadAsyncOpenSearchRetryableClientConfig(env pkgenv.Lookup) (logconfig.Open
 		"HETEROLOG_ASYNC_OPENSEARCH_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(opensearch.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_ASYNC_OPENSEARCH_RETRYABLE_CLIENT_ATTEMPTS", opensearch.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_ASYNC_OPENSEARCH_RETRYABLE_CLIENT_MILLISECOND", opensearch.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_ASYNC_OPENSEARCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", opensearch.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_ASYNC_OPENSEARCH_RETRYABLE_CLIENT_RETRIES", opensearch.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_ASYNC_OPENSEARCH_RETRYABLE_CLIENT_MILLISECOND", opensearch.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_ASYNC_OPENSEARCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", opensearch.DefaultMaxDelay)
 	return logconfig.OpenSearchRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadDeliveryOpenSearchRetryableClientConfig(env pkgenv.Lookup) (logconfig.OpenSearchRetryAbleClientConfig, error) {
@@ -5447,15 +5439,15 @@ func loadDeliveryOpenSearchRetryableClientConfig(env pkgenv.Lookup) (logconfig.O
 		"HETEROLOG_DELIVERY_OPENSEARCH_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(opensearch.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_ATTEMPTS", opensearch.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_MILLISECOND", opensearch.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", opensearch.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_RETRIES", opensearch.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_MILLISECOND", opensearch.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", opensearch.DefaultMaxDelay)
 	return logconfig.OpenSearchRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadLokiRetryableClientConfig(env pkgenv.Lookup) (logconfig.LokiRetryAbleClientConfig, error) {
@@ -5464,15 +5456,15 @@ func loadLokiRetryableClientConfig(env pkgenv.Lookup) (logconfig.LokiRetryAbleCl
 		"HETEROLOG_LOKI_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(lokicfg.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_LOKI_RETRYABLE_CLIENT_ATTEMPTS", lokicfg.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_LOKI_RETRYABLE_CLIENT_MILLISECOND", lokicfg.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_LOKI_RETRYABLE_CLIENT_DELAY_MILLISECOND", lokicfg.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_LOKI_RETRYABLE_CLIENT_RETRIES", lokicfg.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_LOKI_RETRYABLE_CLIENT_MILLISECOND", lokicfg.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_LOKI_RETRYABLE_CLIENT_DELAY_MILLISECOND", lokicfg.DefaultMaxDelay)
 	return logconfig.LokiRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadAsyncLokiRetryableClientConfig(env pkgenv.Lookup) (logconfig.LokiRetryAbleClientConfig, error) {
@@ -5481,15 +5473,15 @@ func loadAsyncLokiRetryableClientConfig(env pkgenv.Lookup) (logconfig.LokiRetryA
 		"HETEROLOG_ASYNC_LOKI_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(lokicfg.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_ASYNC_LOKI_RETRYABLE_CLIENT_ATTEMPTS", lokicfg.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_ASYNC_LOKI_RETRYABLE_CLIENT_MILLISECOND", lokicfg.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_ASYNC_LOKI_RETRYABLE_CLIENT_DELAY_MILLISECOND", lokicfg.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_ASYNC_LOKI_RETRYABLE_CLIENT_RETRIES", lokicfg.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_ASYNC_LOKI_RETRYABLE_CLIENT_MILLISECOND", lokicfg.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_ASYNC_LOKI_RETRYABLE_CLIENT_DELAY_MILLISECOND", lokicfg.DefaultMaxDelay)
 	return logconfig.LokiRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadDeliveryLokiRetryableClientConfig(env pkgenv.Lookup) (logconfig.LokiRetryAbleClientConfig, error) {
@@ -5498,15 +5490,15 @@ func loadDeliveryLokiRetryableClientConfig(env pkgenv.Lookup) (logconfig.LokiRet
 		"HETEROLOG_DELIVERY_LOKI_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(lokicfg.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_DELIVERY_LOKI_RETRYABLE_CLIENT_ATTEMPTS", lokicfg.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_DELIVERY_LOKI_RETRYABLE_CLIENT_MILLISECOND", lokicfg.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_DELIVERY_LOKI_RETRYABLE_CLIENT_DELAY_MILLISECOND", lokicfg.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_DELIVERY_LOKI_RETRYABLE_CLIENT_RETRIES", lokicfg.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_DELIVERY_LOKI_RETRYABLE_CLIENT_MILLISECOND", lokicfg.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_DELIVERY_LOKI_RETRYABLE_CLIENT_DELAY_MILLISECOND", lokicfg.DefaultMaxDelay)
 	return logconfig.LokiRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadCloudWatchLogsRetryableClientConfig(env pkgenv.Lookup) (logconfig.CloudWatchLogsRetryAbleClientConfig, error) {
@@ -5515,15 +5507,15 @@ func loadCloudWatchLogsRetryableClientConfig(env pkgenv.Lookup) (logconfig.Cloud
 		"HETEROLOG_CLOUDWATCH_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(cloudwatchlogscfg.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_CLOUDWATCH_RETRYABLE_CLIENT_ATTEMPTS", cloudwatchlogscfg.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_CLOUDWATCH_RETRYABLE_CLIENT_MILLISECOND", cloudwatchlogscfg.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_CLOUDWATCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", cloudwatchlogscfg.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_CLOUDWATCH_RETRYABLE_CLIENT_RETRIES", cloudwatchlogscfg.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_CLOUDWATCH_RETRYABLE_CLIENT_MILLISECOND", cloudwatchlogscfg.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_CLOUDWATCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", cloudwatchlogscfg.DefaultMaxDelay)
 	return logconfig.CloudWatchLogsRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadAsyncCloudWatchLogsRetryableClientConfig(env pkgenv.Lookup) (logconfig.CloudWatchLogsRetryAbleClientConfig, error) {
@@ -5532,15 +5524,15 @@ func loadAsyncCloudWatchLogsRetryableClientConfig(env pkgenv.Lookup) (logconfig.
 		"HETEROLOG_ASYNC_CLOUDWATCH_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(cloudwatchlogscfg.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_ASYNC_CLOUDWATCH_RETRYABLE_CLIENT_ATTEMPTS", cloudwatchlogscfg.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_ASYNC_CLOUDWATCH_RETRYABLE_CLIENT_MILLISECOND", cloudwatchlogscfg.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_ASYNC_CLOUDWATCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", cloudwatchlogscfg.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_ASYNC_CLOUDWATCH_RETRYABLE_CLIENT_RETRIES", cloudwatchlogscfg.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_ASYNC_CLOUDWATCH_RETRYABLE_CLIENT_MILLISECOND", cloudwatchlogscfg.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_ASYNC_CLOUDWATCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", cloudwatchlogscfg.DefaultMaxDelay)
 	return logconfig.CloudWatchLogsRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadDeliveryCloudWatchLogsRetryableClientConfig(env pkgenv.Lookup) (logconfig.CloudWatchLogsRetryAbleClientConfig, error) {
@@ -5549,15 +5541,15 @@ func loadDeliveryCloudWatchLogsRetryableClientConfig(env pkgenv.Lookup) (logconf
 		"HETEROLOG_DELIVERY_CLOUDWATCH_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(cloudwatchlogscfg.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_DELIVERY_CLOUDWATCH_RETRYABLE_CLIENT_ATTEMPTS", cloudwatchlogscfg.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_DELIVERY_CLOUDWATCH_RETRYABLE_CLIENT_MILLISECOND", cloudwatchlogscfg.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_DELIVERY_CLOUDWATCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", cloudwatchlogscfg.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_DELIVERY_CLOUDWATCH_RETRYABLE_CLIENT_RETRIES", cloudwatchlogscfg.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_DELIVERY_CLOUDWATCH_RETRYABLE_CLIENT_MILLISECOND", cloudwatchlogscfg.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_DELIVERY_CLOUDWATCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", cloudwatchlogscfg.DefaultMaxDelay)
 	return logconfig.CloudWatchLogsRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadClickHouseRetryableClientConfig(env pkgenv.Lookup) (logconfig.ClickHouseRetryAbleClientConfig, error) {
@@ -5566,15 +5558,15 @@ func loadClickHouseRetryableClientConfig(env pkgenv.Lookup) (logconfig.ClickHous
 		"HETEROLOG_CLICKHOUSE_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(clickhousecfg.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS", clickhousecfg.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND", clickhousecfg.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND", clickhousecfg.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_CLICKHOUSE_RETRYABLE_CLIENT_RETRIES", clickhousecfg.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND", clickhousecfg.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND", clickhousecfg.DefaultMaxDelay)
 	return logconfig.ClickHouseRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadAsyncClickHouseRetryableClientConfig(env pkgenv.Lookup) (logconfig.ClickHouseRetryAbleClientConfig, error) {
@@ -5583,15 +5575,15 @@ func loadAsyncClickHouseRetryableClientConfig(env pkgenv.Lookup) (logconfig.Clic
 		"HETEROLOG_ASYNC_CLICKHOUSE_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(clickhousecfg.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS", clickhousecfg.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND", clickhousecfg.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND", clickhousecfg.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_RETRIES", clickhousecfg.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND", clickhousecfg.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND", clickhousecfg.DefaultMaxDelay)
 	return logconfig.ClickHouseRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 func loadDeliveryClickHouseRetryableClientConfig(env pkgenv.Lookup) (logconfig.ClickHouseRetryAbleClientConfig, error) {
@@ -5600,15 +5592,15 @@ func loadDeliveryClickHouseRetryableClientConfig(env pkgenv.Lookup) (logconfig.C
 		"HETEROLOG_DELIVERY_CLICKHOUSE_RETRY_CLIENT_MODE",
 		pkglogger.RetryClientMode(clickhousecfg.DefaultRetryClientMode),
 	)
-	maxAttempts, maxAttemptsErr := env.GetEnvPositiveInt("HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS", clickhousecfg.DefaultMaxAttempts)
-	baseDelay, baseDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND", clickhousecfg.DefaultBaseDelay)
-	maxDelay, maxDelayErr := env.GetEnvPositiveMilliseconds("HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND", clickhousecfg.DefaultMaxDelay)
+	maxRetries, maxRetriesErr := env.GetEnvInt("HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_RETRIES", clickhousecfg.DefaultMaxRetries)
+	baseDelay, baseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND", clickhousecfg.DefaultBaseDelay)
+	maxDelay, maxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND", clickhousecfg.DefaultMaxDelay)
 	return logconfig.ClickHouseRetryAbleClientConfig{
 		RetryClientMode: mode,
-		MaxAttempts:     maxAttempts,
+		MaxRetries:      maxRetries,
 		BaseDelay:       baseDelay,
 		MaxDelay:        maxDelay,
-	}, errors.Join(modeErr, maxAttemptsErr, baseDelayErr, maxDelayErr)
+	}, errors.Join(modeErr, maxRetriesErr, baseDelayErr, maxDelayErr)
 }
 
 // Slack設定を読み込む
@@ -5662,7 +5654,7 @@ func loadTracingOtlpConfig(env pkgenv.Lookup) (*observability.OtlpClientConfig, 
 	}
 	return &observability.OtlpClientConfig{
 		Endpoint: env.GetEnvString("HETEROLOG_OTEL_SPAN_ENDPOINT", observability.DefaultTracingEndpoint),
-		Protocol: env.GetEnvString("HETEROLOG_OTEL_SPAN_PROTOCOL", "grcp"),
+		Protocol: env.GetEnvString("HETEROLOG_OTEL_SPAN_PROTOCOL", observability.DefaultTracingProtocol),
 		Insecure: otelSpanInsecure,
 		Headers:  otelSpanHeaders,
 	}, errors.Join(environmentErrors...)
@@ -6076,7 +6068,8 @@ func loadConfig(source envSource) (AppConfig, error) {
 		ArchiveCheckpointAutoRecovery: archiveCheckpointAutoRecovery,
 		// Slackの遅延閾値は出力先の選択とは無関係なapplication共通設定なので、
 		// Slack loggerが選択されているかにかかわらず初期化します。
-		Slack: loadSlackAppConfig(),
+		Slack:       loadSlackAppConfig(),
+		AdminServer: loadAdminServerConfig(env),
 	}
 
 	// 明示的に必要な構成だけ読み込む。

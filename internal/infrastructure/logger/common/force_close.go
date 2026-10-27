@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // ForceClosePanicErrorは、強制終了を転送した依存先がpanicしたことを表します。Ownerは
@@ -47,7 +48,7 @@ func ForceCloseIfSupported(value any) (err error) {
 // WaitForForcedShutdownは公開Closeの待機解除と実際の資源解放を区別します。
 // 親所有者はchildの実処理が戻るまで、その処理が使用する依存資源を保持します。
 func WaitForForcedShutdown(value any, err error) {
-	if !errors.Is(err, shutdown.ErrForcedClose) {
+	if !errors.Is(err, pkgshutdown.ErrForcedClose) {
 		return
 	}
 	if owner, ok := value.(interface{ ShutdownDone() <-chan struct{} }); ok {

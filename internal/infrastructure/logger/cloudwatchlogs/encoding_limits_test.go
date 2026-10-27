@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
@@ -26,9 +25,9 @@ func TestCloudWatchLogsFlushFitsDecodedUTF8WithoutRejectingNormalNeighbor(t *tes
 			}
 			want := make([]string, len(entries))
 			for i, entry := range entries {
-				// Both messages fit the public entry limit; their combined decoded
-				// messages exceed AWS's batch limit only after JSON replacement.
-				size, err := applogging.MeasureLogEntrySize(entry.Message, nil)
+				// どちらのmessageも公開のentry上限に収まります。decodeしたmessageの合計は、
+				// JSONでの置換を経た後でだけAWSのbatch上限を超えます。
+				size, err := pkglogger.MeasureLogEntrySize(entry.Message, nil)
 				if err != nil || size > pkglogger.DefaultMaxLogEntryBytes {
 					t.Fatalf("fixture entry %d does not fit the public limit: bytes=%d error=%v", i, size, err)
 				}

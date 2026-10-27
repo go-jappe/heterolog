@@ -10,7 +10,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -57,7 +56,7 @@ var _ infralogging.DeliveryBackendLogEntryHandler = (*deliveryHandlerStub)(nil)
 
 func TestDeliveryMultiLoggerAcceptsHandlerWithoutApplicationMethods(t *testing.T) {
 	child := &deliveryHandlerStub{backend: "handler-only"}
-	_, childIsApplicationLogger := any(child).(applogging.DeliveryLogger)
+	_, childIsApplicationLogger := any(child).(pkglogger.DeliveryLogger)
 	require.False(t, childIsApplicationLogger)
 
 	multi := newTestDeliveryMultiLogger(child)
@@ -140,8 +139,8 @@ func TestDeliveryMultiLoggerPropagatesTargetErrorsFromSuccessfulStatuses(t *test
 			report, err := logger.Info(context.Background(), "target error")
 			require.NoError(t, logger.Close())
 
-			// The child returned no operation error; the target error alone must
-			// prevent the aggregate call from reporting success.
+			// childは操作のerrorを返していません。target errorだけで、集約した呼び出しが
+			// 成功を報告しないようにしなければなりません。
 			require.ErrorIs(t, err, cause)
 			require.ErrorIs(t, err, pkglogger.ErrTargetDeliveryNotRegistered)
 			require.Len(t, report.Targets, 1)
@@ -344,7 +343,7 @@ func TestDeliveryMultiLoggerCloseWaitsForTimedOutHandlerAndRejectsNewEntries(t *
 		}
 
 		report, err := m.runAll(context.Background(), testLogEntry(pkglogger.LogLevelInfo, "closing"))
-		require.ErrorIs(t, err, applogging.ErrLoggerClosed)
+		require.ErrorIs(t, err, pkglogger.ErrLoggerClosed)
 		var opErr *OperationError
 		require.ErrorAs(t, err, &opErr)
 		require.Equal(t, "delivery.Info", opErr.Op)
@@ -446,7 +445,7 @@ func TestDeliveryMultiLoggerSynthesizedResultsUseLogicalBackendNames(t *testing.
 		require.NoError(t, m.Close())
 
 		report, err := m.Info(ctx, "after close")
-		require.ErrorIs(t, err, applogging.ErrLoggerClosed)
+		require.ErrorIs(t, err, pkglogger.ErrLoggerClosed)
 		requireTargets(t, report,
 			pkglogger.DeliveryResult{Backend: "first-output", Status: pkglogger.DeliveryRejected},
 			pkglogger.DeliveryResult{Backend: "second-output", Status: pkglogger.DeliveryRejected},
@@ -460,7 +459,7 @@ func TestDeliveryMultiLoggerSynthesizedResultsUseLogicalBackendNames(t *testing.
 		t.Cleanup(func() { _ = m.Close() })
 
 		report, err := m.Info(ctx, strings.Repeat("x", 128))
-		require.ErrorIs(t, err, applogging.ErrLogEntryTooLarge)
+		require.ErrorIs(t, err, pkglogger.ErrLogEntryTooLarge)
 		requireTargets(t, report,
 			pkglogger.DeliveryResult{Backend: "first-output", Status: pkglogger.DeliveryRejected},
 			pkglogger.DeliveryResult{Backend: "second-output", Status: pkglogger.DeliveryRejected},

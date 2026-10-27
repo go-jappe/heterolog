@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/log/lifecycle/report"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
@@ -39,14 +39,14 @@ type Manager struct {
 
 	// purge結果とエラーはRunOnceから返します。Loggerへの内部通知はrunnerの
 	// Reporterが担当するため、ここでは個別に通知しません。
-	Tracer observer.Tracer
-	Meter  observer.Meter
+	Tracer pkgobserver.Tracer
+	Meter  pkgobserver.Meter
 }
 
 func NewManager(
 	store Store,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*Manager, error) {
 	if store == nil {
 		return nil, ErrNilStore

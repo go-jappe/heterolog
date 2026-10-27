@@ -16,6 +16,7 @@ import (
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // newFallbackLoggerはfallback送信用のclient、FlushManager、bufferを構築し、
@@ -27,8 +28,8 @@ func newFallbackLogger(
 	fmCfg ClickHouseFlushManagerRuntimeConfigProvider,
 	resourceProvider resource.ResourceProvider,
 	retryCfg wrapper.RetryConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*FallbackLogger, error) {
 	if err := validateClickHouseBatchConfig(cfg); err != nil {
 		return nil, err

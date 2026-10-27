@@ -7,61 +7,72 @@ import (
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 )
 
-// DurableTypeErrorは、durable store選択の不正です。ValidateFailureStoreDurableTypesと
-// ValidateDeliveryFailureStoreDurableTypesが返す、failurestore.DurableTypeErrorと同じ型です。
+// DurableTypeError is an invalid durable store selection. It is the same type
+// as failurestore.DurableTypeError, which ValidateFailureStoreDurableTypes and
+// ValidateDeliveryFailureStoreDurableTypes return.
 type DurableTypeError = failurestore.DurableTypeError
 
 var (
-	// ErrDurableTypesRequiredは、failurestore.ErrDurableTypesRequiredと同じsentinelです。
+	// ErrDurableTypesRequired is the same sentinel as
+	// failurestore.ErrDurableTypesRequired.
 	ErrDurableTypesRequired = failurestore.ErrDurableTypesRequired
-	// ErrDurableTypeNoneNotAloneは、failurestore.ErrDurableTypeNoneNotAloneと同じsentinelです。
+	// ErrDurableTypeNoneNotAlone is the same sentinel as
+	// failurestore.ErrDurableTypeNoneNotAlone.
 	ErrDurableTypeNoneNotAlone = failurestore.ErrDurableTypeNoneNotAlone
-	// ErrUnsupportedDurableTypeは、failurestore.ErrUnsupportedDurableTypeと同じsentinelです。
+	// ErrUnsupportedDurableType is the same sentinel as
+	// failurestore.ErrUnsupportedDurableType.
 	ErrUnsupportedDurableType = failurestore.ErrUnsupportedDurableType
-	// ErrDuplicateDurableTypeは、failurestore.ErrDuplicateDurableTypeと同じsentinelです。
+	// ErrDuplicateDurableType is the same sentinel as
+	// failurestore.ErrDuplicateDurableType.
 	ErrDuplicateDurableType = failurestore.ErrDuplicateDurableType
 )
 
 var (
-	// ErrInvalidFailureHandlerMaxConcurrentは、failure handlerの同時実行数が0以下であることを
-	// 表します。
+	// ErrInvalidFailureHandlerMaxConcurrent reports that the number of
+	// concurrent executions of the failure handler is 0 or less.
 	ErrInvalidFailureHandlerMaxConcurrent = errors.New("failure handler max concurrent must be positive")
-	// ErrNegativeSpoolActiveBacklogWarnAfterDaysは、active spoolの滞留警告を開始する
-	// 経過日数が負値であることを表します。
+	// ErrNegativeSpoolActiveBacklogWarnAfterDays reports that the number of
+	// days after which the backlog warning of the active spool starts is
+	// negative.
 	ErrNegativeSpoolActiveBacklogWarnAfterDays = errors.New(
 		"spool active backlog warn-after days must not be negative",
 	)
 )
 
 var (
-	// ErrSpillTypesRequiredは、直接退避先の選択が一つもないことを表します。
+	// ErrSpillTypesRequired reports that no direct evacuation destination is
+	// selected.
 	ErrSpillTypesRequired = errors.New("direct degrade spill types are required")
-	// ErrSpillTypeNoneNotAloneは、SpillTypeNoneがほかのspill typeと同時に選択されたことを
-	// 表します。
+	// ErrSpillTypeNoneNotAlone reports that SpillTypeNone was not specified
+	// alone, for example together with another spill type.
 	ErrSpillTypeNoneNotAlone = errors.New(`direct degrade spill type "none" must be specified alone`)
-	// ErrSpillTypeNoneWithDegradeは、直接退避が有効なのにSpillTypeNoneが選択されたことを
-	// 表します。SpillTypeNoneは直接退避を無効にする場合だけ指定できます。
+	// ErrSpillTypeNoneWithDegrade reports that SpillTypeNone was selected
+	// although direct evacuation is enabled. SpillTypeNone can be specified
+	// only when direct evacuation is disabled.
 	ErrSpillTypeNoneWithDegrade = errors.New(
 		`direct degrade spill type "none" requires degrade to be disabled`,
 	)
-	// ErrUnsupportedSpillTypeは、未実装の予約値または未知の値がspill typeに選択されたことを
-	// 表します。
+	// ErrUnsupportedSpillType reports that a reserved value that is not
+	// implemented, or an unknown value, was selected as a spill type.
 	ErrUnsupportedSpillType = errors.New("unsupported direct degrade spill type")
-	// ErrDuplicateSpillTypeは、同じspill typeが複数回選択されたことを表します。
+	// ErrDuplicateSpillType reports that the same spill type was selected more
+	// than once.
 	ErrDuplicateSpillType = errors.New("duplicate direct degrade spill type")
 )
 
-// SpillTypeErrorは、直接退避先の選択が不正であることを表します。不正の種類はErrで、
-// errors.Isで判別できます。
+// SpillTypeError reports that the selection of direct evacuation destinations
+// is invalid. Err is the kind of problem, which errors.Is can identify.
 type SpillTypeError struct {
-	// Typeは不正なspill typeです。ErrSpillTypesRequiredでは空です。
+	// Type is the invalid spill type. It is empty for ErrSpillTypesRequired.
 	Type SpillType
-	// Errは、ErrSpillTypesRequired、ErrSpillTypeNoneNotAlone、ErrSpillTypeNoneWithDegrade、
-	// ErrUnsupportedSpillType、ErrDuplicateSpillTypeのいずれかです。
+	// Err is one of ErrSpillTypesRequired, ErrSpillTypeNoneNotAlone,
+	// ErrSpillTypeNoneWithDegrade, ErrUnsupportedSpillType and
+	// ErrDuplicateSpillType.
 	Err error
 }
 
-// Errorは、不正の種類に応じて、Typeを含む説明を返します。
+// Error returns a description that depends on the kind of problem and
+// includes Type.
 func (e *SpillTypeError) Error() string {
 	switch e.Err {
 	case ErrSpillTypesRequired:
@@ -79,7 +90,7 @@ func (e *SpillTypeError) Error() string {
 	}
 }
 
-// Unwrapは、不正の種類を表すErrを返します。
+// Unwrap returns Err, which is the kind of problem.
 func (e *SpillTypeError) Unwrap() error { return e.Err }
 
 // validationErrorは、従来のmessageを保ったまま、errors.Isで種類を判別できる検証errorです。

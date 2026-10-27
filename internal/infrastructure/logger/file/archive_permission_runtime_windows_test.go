@@ -12,7 +12,7 @@ func denyArchiveRuntimeDirectoryAccess(t *testing.T, directory string, write boo
 	t.Helper()
 	access := uint32(windows.FILE_LIST_DIRECTORY)
 	if write {
-		access = windows.FILE_WRITE_DATA // FILE_ADD_FILE for a directory.
+		access = windows.FILE_WRITE_DATA // directoryに対してはFILE_ADD_FILEに当たります。
 	}
 	return testutil.DenyWindowsAccess(t, directory, access)
 }

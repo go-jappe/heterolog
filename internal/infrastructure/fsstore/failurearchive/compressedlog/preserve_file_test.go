@@ -26,7 +26,7 @@ func TestStorePreserveFileReusesContentAndKeepsChangedContentSeparate(t *testing
 	before, err := os.Stat(preserved)
 	require.NoError(t, err)
 
-	// A retry with nil context reuses the existing file without replacing it.
+	// nil contextでの再試行は、既存のfileを置き換えずに再利用します。
 	retried, err := store.PreserveFile(nil, source)
 	require.NoError(t, err)
 	require.Equal(t, preserved, retried)

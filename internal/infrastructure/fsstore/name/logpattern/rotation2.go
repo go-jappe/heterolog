@@ -71,7 +71,7 @@ func rotateBySize(
 	return nil
 }
 
-// ローテーション締め日を過ぎたら新しいファイルを作成
+// rotateByDateは、現在時刻が新しいrotation期間に入っていれば新しいファイルを作成します。
 func rotateByDate(
 	ctx context.Context,
 	file *os.File,

@@ -8,9 +8,6 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	configspoollifecycle "github.com/go-jappe/heterolog/internal/config/spool/spoollifecycle"
-	configspoolrunner "github.com/go-jappe/heterolog/internal/config/spool/spoolrunner"
-	configspoolsupervisor "github.com/go-jappe/heterolog/internal/config/spool/spoolsupervisor"
 	spoolpath "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool"
 	fsstorestore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/store"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
@@ -18,6 +15,9 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
+	pkgspoollifecycle "github.com/go-jappe/heterolog/pkg/spool/spoollifecycle"
+	pkgspoolrunner "github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
+	pkgspoolsupervisor "github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 )
 
 func TestNewBackendRunnerSupervisorRejectsInvalidRunAndRestartSettings(t *testing.T) {
@@ -159,21 +159,21 @@ func TestNewBackendRunnerSupervisorDrainsConfiguredActiveSpool(t *testing.T) {
 		BackendRuntimeOptions{
 			Backend:     "opensearch",
 			SpoolConfig: spoolConfig,
-			RunnerConfig: configspoolrunner.BackendSpoolRunnerConfig{
-				Runner: configspoolrunner.RunnerConfig{
+			RunnerConfig: pkgspoolrunner.BackendSpoolRunnerConfig{
+				Runner: pkgspoolrunner.RunnerConfig{
 					Interval: time.Second,
 				},
-				LifeCycle: configspoollifecycle.LifecycleConfig{
+				LifeCycle: pkgspoollifecycle.LifecycleConfig{
 					SizePurgeInterval: time.Second,
 				},
-				Worker: configspoolrunner.WorkerConfig{
-					Finalize: configspoolrunner.FinalizeConfig{
+				Worker: pkgspoolrunner.WorkerConfig{
+					Finalize: pkgspoolrunner.FinalizeConfig{
 						RetryDelay: time.Second,
 						MaxEntries: 100,
 					},
 				},
 			},
-			SupervisorConfig: configspoolsupervisor.RunnerSupervisorConfig{
+			SupervisorConfig: pkgspoolsupervisor.RunnerSupervisorConfig{
 				RestartDelay: time.Second,
 			},
 			Sender: sender,

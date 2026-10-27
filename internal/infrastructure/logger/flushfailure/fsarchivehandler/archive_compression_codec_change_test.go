@@ -11,11 +11,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFailureArchiveReusesPublishedGzipAfterZstdConfigurationChange(t *testing.T) {
@@ -78,7 +78,7 @@ func TestFailureArchiveRecoveryPreservesUnverifiableFilesThroughPurge(t *testing
 			pipeline := newTestArchiveHandler(t, now, func(cfg *testArchiveConfig) {
 				cfg.enableFileCompress = true
 				cfg.compressionCodec = codec
-			}, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			}, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				errorsReported <- err
 			}})
 			handler := pipeline.handler

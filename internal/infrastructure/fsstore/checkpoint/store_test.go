@@ -168,7 +168,7 @@ func TestFilesystemStoreRecordsActualSuccessesWithoutDestinationSnapshot(t *test
 	require.False(t, checkpoint.Complete(nil))
 	assertDestinationIDs(t, checkpoint.PendingDestinationIDs([]objectstorage.DestinationID{"secondary", "primary", "new"}), "secondary", "new")
 
-	// A new active destination needs no reconciliation or registration before its success can be recorded.
+	// 新しいactiveな宛先は、照合や登録をしなくても成功を記録できます。
 	checkpoint, err = store.AdvanceCompletionCursor(ctx, checkpoint.Key, []objectstorage.DestinationID{"secondary"})
 	require.NoError(t, err)
 	require.True(t, checkpoint.Complete([]objectstorage.DestinationID{"secondary"}))

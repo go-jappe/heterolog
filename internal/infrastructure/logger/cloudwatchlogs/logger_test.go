@@ -16,7 +16,6 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	infracloudwatchlogs "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/formatter"
@@ -26,6 +25,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 var cloudWatchLogsTestPlainTextFormatter = formatter.NewPlainTextFormatter(
@@ -212,7 +212,7 @@ func TestCloudWatchLogsFlushManagerKeepsBackendCauseForPartiallyAcceptedFlush(t 
 		client,
 		mustNewCloudWatchLogsFailureComposite(t, []flushfailure.FailureHandler{handler}),
 		"stream-a",
-		streamrouting.Hourly,
+		pkgcloudwatchlogs.StreamRoutingHourly,
 	)
 	occurredAt := time.Date(2026, 6, 23, 12, 34, 56, 0, time.UTC)
 	entries := []*logging.LogEntry{
@@ -590,8 +590,8 @@ func TestCloudWatchLogsFlushManagerFlushSendsMultiplePhysicalRequests(t *testing
 		ctx context.Context,
 		err error,
 		entry *logging.LogEntry,
-		tracer observer.Tracer,
-		meter observer.Meter,
+		tracer pkgobserver.Tracer,
+		meter pkgobserver.Meter,
 	) {
 		gotErr = err
 	}
@@ -692,7 +692,7 @@ func TestCloudWatchLogsFlushManagerFlushContinuesAfterDurableFailureWithoutResen
 		client,
 		composite,
 		"stream-a",
-		streamrouting.Hourly,
+		pkgcloudwatchlogs.StreamRoutingHourly,
 	)
 	base := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
 
@@ -761,7 +761,7 @@ func TestCloudWatchLogsFlushManagerPutEntryClassifiesNilOutputAsQuarantine(t *te
 			len(res.DeadRecords),
 		)
 	}
-	if quarantined := res.QuarantineRecords[0]; !errors.Is(quarantined.Cause, errCloudWatchLogsNilPutLogEventsOutput) ||
+	if quarantined := res.QuarantineRecords[0]; !errors.Is(quarantined.Cause, pkgcloudwatchlogs.ErrNilPutLogEventsOutput) ||
 		quarantined.FailureReason != quarantined.Cause.Error() {
 		t.Fatalf("quarantined record = %+v, want the nil output error kept as its cause", quarantined)
 	}
@@ -1194,7 +1194,7 @@ func newTestCloudWatchLogsFlushManager(
 		client,
 		failureHandler,
 		"stream-a",
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 	)
 }
 
@@ -1202,7 +1202,7 @@ func newTestCloudWatchLogsFlushManagerWithStreamRouting(
 	client pkgcloudwatchlogs.Client,
 	failureHandler *flushfailure.CompositeFailureHandler,
 	baseStreamName string,
-	routingGranularity streamrouting.Granularity,
+	routingGranularity pkgcloudwatchlogs.StreamRouting,
 ) *CloudWatchLogsFlushManager {
 	loggerConfig := newTestCloudWatchLogsLoggerConfig(100, time.Hour, false)
 	flushConfig := newTestCloudWatchLogsFlushManagerConfig()
@@ -1298,7 +1298,7 @@ func newTestCloudWatchLogsFlushManagerConfig() CloudWatchLogsFlushManagerConfigP
 			Environment: "prd",
 			Cloud:       &pkglogger.CloudResourceInfo{},
 		},
-	}, streamrouting.None)
+	}, pkgcloudwatchlogs.StreamRoutingNone)
 }
 
 func newTestCloudWatchLogsResourceProvider() resource.ResourceProvider {

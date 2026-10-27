@@ -3,13 +3,13 @@ package loki
 import (
 	"context"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/formatter"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type LoggerBase struct {
@@ -23,8 +23,8 @@ type LoggerBase struct {
 	OnInfo  logging.LoggerHandlerFunc
 	OnDebug logging.LoggerHandlerFunc
 
-	Tracer observer.Tracer
-	Meter  observer.Meter
+	Tracer pkgobserver.Tracer
+	Meter  pkgobserver.Meter
 
 	// internalLogReentryは、On*へ渡すcontextへこのloggerの印を付け、通知を実行するgoroutineを記録します。
 	// LoggerBaseはlogger instanceとそのFlushManagerだけが共有します。On*の中から同じloggerへの
@@ -42,8 +42,8 @@ func (b *LoggerBase) notifyError(
 	ctx context.Context,
 	err error,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) {
 	b.internalLogReentry.CallErrorHandler(b.OnError, ctx, err, entry, tracer, meter, b.directInternalLog)
 }
@@ -51,8 +51,8 @@ func (b *LoggerBase) notifyError(
 func (b *LoggerBase) notifyWarn(
 	ctx context.Context,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) {
 	b.internalLogReentry.CallWarnHandler(b.OnWarn, ctx, entry, tracer, meter, b.directInternalLog)
 }

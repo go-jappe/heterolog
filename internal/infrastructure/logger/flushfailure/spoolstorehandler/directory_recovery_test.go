@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	spooldir "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/testutil"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestHandleFailurePreservesActiveObstructionBeforeOverloadScan(t *testing.T) {
@@ -43,11 +43,11 @@ func TestHandleFailurePreservesActiveObstructionBeforeOverloadScan(t *testing.T)
 			}
 
 			var warnings []*logging.LogEntry
-			handler.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			handler.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				warnings = append(warnings, entry)
 			}
 			var reportedErrors []error
-			handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				reportedErrors = append(reportedErrors, err)
 			}
 			scanned := false
@@ -113,10 +113,10 @@ func TestHandleFailureReportsUnrecoverableDirectoryObstruction(t *testing.T) {
 		t.Fatal(err)
 	}
 	var reportedErrors []error
-	handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		reportedErrors = append(reportedErrors, err)
 	}
-	handler.OnWarn = func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {
+	handler.OnWarn = func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 		t.Fatal("failed preservation must not notify success")
 	}
 	handler.dirStatsScanner = func(spooldir.StateDir) (DirStats, error) {

@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/clickhouse/wrapper"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // NewClientが失敗した段階を表すerrorの種類です。原因のerrorはerrors.Is・errors.Asで辿れます。
@@ -21,8 +21,8 @@ var (
 func NewClient(
 	cfg pkgclickhouse.Config,
 	retryCfg wrapper.RetryConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (wrapper.Client, error) {
 	client, err := pkgclickhouse.New(cfg)
 	if err != nil {

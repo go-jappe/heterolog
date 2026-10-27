@@ -37,8 +37,8 @@ func TestInlineFilenameAgePurgeUsesCalendarDateAndIgnoresModTime(t *testing.T) {
 				expiredPath := filepath.Join(directory, "test-app_20420504_2."+extension)
 				cutoffPath := filepath.Join(directory, "test-app_20420505_2."+extension)
 				currentPath := filepath.Join(directory, "test-app_20420506_2."+extension)
-				// Give the expired filename a future mtime, and both retained
-				// filenames old mtimes, so mtime-based age checks fail this test.
+				// 期限切れのfilenameには未来のmtimeを、保持する2つのfilenameには古いmtimeを
+				// 与え、mtimeに基づく経過日数の判定ではこのtestが失敗するようにします。
 				writeArchiveSizedFile(t, expiredPath, 1, now.AddDate(1, 0, 0))
 				writeArchiveSizedFile(t, cutoffPath, 1, now.AddDate(-1, 0, 0))
 				writeArchiveSizedFile(t, currentPath, 1, now.AddDate(-1, 0, 0))
@@ -74,8 +74,8 @@ func TestInlineFilenameGenerationPurgeUsesNumericIndexPerSeries(t *testing.T) {
 			for _, extension := range []string{"jsonl", "jsonl.gz", "jsonl.zst"} {
 				for _, index := range []int{2, 10, 11} {
 					path := filepath.Join(directory, fmt.Sprintf("test-app_20420506_%d.%s", index, extension))
-					// Reverse index order in mtime as well as exposing the
-					// lexical ordering trap where 10 sorts before 2.
+					// 10が2より前に並ぶ辞書順の罠を表面化させるとともに、
+					// mtimeでもindexの順序を逆にします。
 					writeArchiveSizedFile(t, path, 1, now.Add(-time.Duration(index)*time.Hour))
 					if index == 2 {
 						expiredPaths = append(expiredPaths, path)
@@ -89,7 +89,7 @@ func TestInlineFilenameGenerationPurgeUsesNumericIndexPerSeries(t *testing.T) {
 			for _, path := range expiredPaths {
 				require.NoFileExists(t, path)
 			}
-			// Each of raw, gzip, and zstd keeps two backups independently.
+			// raw、gzip、zstdは、それぞれ独立に2つのbackupを保持します。
 			for _, path := range retainedPaths {
 				require.FileExists(t, path)
 			}
@@ -139,8 +139,8 @@ func TestInlineFilenameCapacityPurgeOrdersNamesAndKeepsProtectedBytes(t *testing
 				require.NoError(t, handler.triggerArchiveCleanup(context.Background(), category))
 				require.NoFileExists(t, olderDatePath)
 				require.NoFileExists(t, lowerIndexPath)
-				// 20 MiB becomes 12 MiB only when active and retained bytes
-				// count toward the limit without becoming deletion candidates.
+				// activeと保持対象のbyteが、削除候補にならずに上限へ数えられる場合にだけ、
+				// 20 MiBが12 MiBになります。
 				var remainingBytes int64
 				for _, path := range []string{activePath, retainedPath, newestPath} {
 					info, err := os.Stat(path)

@@ -12,21 +12,20 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 )
 
-// ErrTerminalSpoolConflict means a prior terminal file cannot be reused for this
-// save. Preserve both the existing outcome and the processing source for review.
+// ErrTerminalSpoolConflictは、既存のterminal fileを今回の保存に再利用できないことを
+// 表します。確認のため、既存の結果とprocessingの元fileの両方を保全します。
 var ErrTerminalSpoolConflict = errors.New("terminal spool file conflicts with requested records")
 
-// terminalSpoolFileMode is the Unix mode of terminal spool files. It keeps the
-// owner-only 0600 used by os.CreateTemp so records are not exposed to others.
+// terminalSpoolFileModeは、terminal spool fileのUnix modeです。os.CreateTempが使う
+// 所有者だけの0600を維持し、recordを他者へ公開しません。
 const terminalSpoolFileMode = 0o600
 
-// writeSpoolFileAtPath keeps the processing file's relative name in a terminal
-// state. Restrict the temporary file before writing records: Unix keeps the
-// owner-only mode from os.CreateTemp, and Windows allows only the current user,
-// SYSTEM and Administrators. Publish only after syncing the data and
-// permissions, then sync the directory before allowing the caller to retire its
-// source. A published file survives a directory-sync error; retrying verifies
-// and syncs it without overwriting it.
+// writeSpoolFileAtPathは、processing fileの相対名のままterminal stateへ保存します。
+// recordを書き込む前に一時fileの権限を制限します。Unixではos.CreateTempの所有者だけの
+// modeを維持し、Windowsでは現在のuser・SYSTEM・Administratorsだけを許可します。
+// データと権限を同期してから公開し、呼び出し元が元fileを処分できるようにする前に
+// directoryを同期します。directory同期のerrorでも公開済みのfileは残り、再試行では
+// 上書きせずに検証して同期します。
 func writeSpoolFileAtPath(rootDirectory, finalPath string, body []byte) error {
 	if filepath.Ext(finalPath) != spooldir.SpoolExt {
 		return fmt.Errorf("path is not a spool file: %s", finalPath)
@@ -112,9 +111,9 @@ func sameTerminalSpoolRecords(storedBody, requestedBody []byte) bool {
 		if stored[i].FinalizedAt.IsZero() {
 			return false
 		}
-		// Finalization time belongs to the first published result. A retry may
-		// supply a new time, but must match every other field, including attempts
-		// and failure reason; do not merge different outcomes at the same path.
+		// 確定時刻には、最初に公開した結果のものを使います。再試行では新しい時刻を渡しても
+		// かまいませんが、試行回数や失敗理由を含む他のfieldはすべて一致しなければなりません。
+		// 同じpathで異なる結果を統合しません。
 		requested[i].FinalizedAt = stored[i].FinalizedAt
 	}
 	return sameStoredRecords(stored, requested)

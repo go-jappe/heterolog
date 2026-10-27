@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // failureArchiveHangTimeoutは、圧縮・fsync・送信を含む非同期処理が止まったことを検出する上限です。
@@ -87,7 +87,7 @@ func countArchiveDirectoryObservations(handler *FsArchiveHandler) func() int {
 
 // rotationPanicReportHandlersは、rotation taskが回復したpanicの通知だけをreportedへ送るhandlerです。
 func rotationPanicReportHandlers(reported chan<- error) InternalLogHandlers {
-	return InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	return InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		var internalErr *FailureArchiveInternalError
 		if errors.As(err, &internalErr) && internalErr.Op == OperationRotationArchive {
 			select {

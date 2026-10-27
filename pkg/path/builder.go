@@ -6,11 +6,15 @@ import (
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
-// BuildApplicationDataDirectoryPath は、基準パス配下にアプリ用ディレクトリ名を付与したパスを返します。
-// すでに path のいずれかの階層に appName が含まれている場合は、二重に付与せず path をそのまま返します。
-// 各階層の名前は、その親ディレクトリのfilesystemの規則（pathidentity.DirectoryNameCase）で照合し、
-// 大小文字を区別しないディレクトリでは大小文字だけが異なる名前も同じディレクトリとして扱います。
-// 返却pathの元表記は変更しません。ディレクトリの作成や存在確認は行いません。
+// BuildApplicationDataDirectoryPath returns the path made by appending the
+// application directory name under the base path. If a level of path is
+// already named appName, it returns path, cleaned by filepath.Clean, instead
+// of appending appName twice. The name at each level is matched by the
+// filesystem rule of its parent directory (pathidentity.DirectoryNameCase),
+// and in a case-insensitive directory a name that differs only in case is also
+// treated as the same directory. Apart from filepath.Clean, the returned path
+// keeps its original spelling. It neither creates directories nor checks that
+// they exist.
 func BuildApplicationDataDirectoryPath(path, appName string) string {
 	return buildApplicationDataDirectoryPath(path, appName, pathidentity.DirectoryNameCase)
 }

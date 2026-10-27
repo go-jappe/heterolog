@@ -66,12 +66,12 @@ type BulkFailureClassification struct {
 // concrete/backing indexへ解決された名前になり得るため、requestとの完全一致は要求しません。
 // resp.Errorsはitem単位の対応関係を保証しないため、falseの場合も全itemを検証します。
 //
-// Contract:
-// - RetryableFailures contains only failed requests that are retryable.
-// - DeadFailures contains terminal failures that do not prove a record payload is unsafe.
-// - QuarantineFailures contains known record-specific payload failures.
-// - Successful requests and idempotent create conflicts are excluded from every failure slice.
-// - A malformed or incomplete response returns an error instead of guessing a terminal result.
+// 契約:
+// - RetryableFailuresは、retryできる失敗したrequestだけを含みます。
+// - DeadFailuresは、record payloadが安全でないことを証明しないterminal failureを含みます。
+// - QuarantineFailuresは、既知のrecord固有のpayload failureを含みます。
+// - 成功したrequestと冪等なcreateのconflictは、どのfailure sliceからも除外されます。
+// - 不正な形式や不完全なresponseでは、terminalな結果を推測せずerrorを返します。
 func ClassifyFailedBulkDocs(
 	resp *pkgopensearch.BulkResponse,
 	reqs []pkgopensearch.DocumentWriteRequest,
@@ -177,8 +177,8 @@ func validateBulkSuccessResult(
 	result pkgopensearch.BulkItemResult,
 ) error {
 	valid := false
-	// A configured ingest pipeline may drop either write operation without
-	// error. The original action and document identity were validated above.
+	// 設定されたingest pipelineは、どちらのwrite operationもerrorなしでdropすることがあります。
+	// 元のactionとdocumentの識別情報は、上で検証済みです。
 	droppedByPipeline := result.Status == http.StatusOK && result.Result == "noop"
 	switch action {
 	case string(pkgopensearch.WriteOpCreate):

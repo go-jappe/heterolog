@@ -110,7 +110,7 @@ func (m *DeliveryMultiLogger) log(
 	message string,
 	err error,
 	stackTraceRequested bool,
-	fields []applogging.Field,
+	fields []logger.Field,
 ) (logger.DeliveryReport, error) {
 	op := deliveryLoggerOperation(level, stackTraceRequested)
 	if report, closeErr, rejected := m.rejectIfClosing(op); rejected {
@@ -142,7 +142,7 @@ func (m *DeliveryMultiLogger) log(
 func (m *DeliveryMultiLogger) Debug(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...logger.Field,
 ) (logger.DeliveryReport, error) {
 	return m.log(ctx, logger.LogLevelDebug, message, nil, false, fields)
 }
@@ -150,7 +150,7 @@ func (m *DeliveryMultiLogger) Debug(
 func (m *DeliveryMultiLogger) Info(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...logger.Field,
 ) (logger.DeliveryReport, error) {
 	return m.log(ctx, logger.LogLevelInfo, message, nil, false, fields)
 }
@@ -158,7 +158,7 @@ func (m *DeliveryMultiLogger) Info(
 func (m *DeliveryMultiLogger) Warn(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...logger.Field,
 ) (logger.DeliveryReport, error) {
 	return m.log(ctx, logger.LogLevelWarn, message, nil, false, fields)
 }
@@ -166,7 +166,7 @@ func (m *DeliveryMultiLogger) Warn(
 func (m *DeliveryMultiLogger) Error(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...logger.Field,
 ) (logger.DeliveryReport, error) {
 	return m.log(ctx, logger.LogLevelError, message, nil, false, fields)
 }
@@ -175,7 +175,7 @@ func (m *DeliveryMultiLogger) ErrorWithStack(
 	ctx context.Context,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...logger.Field,
 ) (logger.DeliveryReport, error) {
 	return m.log(ctx, logger.LogLevelError, message, err, true, fields)
 }
@@ -256,8 +256,8 @@ func (m *DeliveryMultiLogger) runAll(
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					panicErr := deliveryLoggerPanicError(recovered)
-					// A handler may panic after sending or receiving an acknowledgement.
-					// Without its completed report, the delivery outcome is unknown.
+					// handlerは、送信した後や確認応答を受け取った後にpanicすることがあります。
+					// 完了したreportがなければ、配送結果は不明です。
 					result.report = logger.DeliveryReport{
 						Targets: []logger.DeliveryResult{
 							{
@@ -365,7 +365,7 @@ func deliveryClosingReport(
 ) (logger.DeliveryReport, error) {
 	err := &OperationError{
 		Op:  op,
-		Err: fmt.Errorf("delivery multi logger is closing: %w", applogging.ErrLoggerClosed),
+		Err: fmt.Errorf("delivery multi logger is closing: %w", logger.ErrLoggerClosed),
 	}
 	return deliveryRejectedReport(backends, err), err
 }

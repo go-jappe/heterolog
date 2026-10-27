@@ -89,8 +89,8 @@ func PlanPushRequests(records []PushRecord, limits PushLimits) (PushPlan, error)
 	}
 	candidates := make([]PushRecord, 0, len(records))
 	for _, record := range records {
-		// JSON replaces invalid UTF-8 bytes with U+FFFD; apply the limit to
-		// the decoded line Loki receives, rather than the original Go bytes.
+		// JSONは不正なUTF-8のbyteをU+FFFDに置き換えます。上限は、元のGoのbyte列ではなく、
+		// Lokiが受け取るdecode後のlineに適用します。
 		lineBytes := jsonutil.UTF8StringBytes(record.Entry.Line)
 		if lineBytes > limits.MaxLineBytes {
 			plan.Rejected = append(plan.Rejected, RejectedPushRecord{

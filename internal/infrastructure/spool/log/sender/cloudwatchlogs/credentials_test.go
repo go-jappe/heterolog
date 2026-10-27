@@ -213,7 +213,7 @@ func TestCredentialFailureAfterRetryPreservesEarlierDispatchEvidence(t *testing.
 								body, err := io.ReadAll(r.Body)
 								require.NoError(t, err)
 								bodies = append(bodies, body)
-								time.Sleep(2 * time.Second) // expire short-lived credentials before retry
+								time.Sleep(2 * time.Second) // retry前に短命なcredentialsを期限切れにします
 								if httpCalls == 1 && priorUnknown {
 									return nil, io.EOF
 								}

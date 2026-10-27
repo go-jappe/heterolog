@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
@@ -23,6 +22,7 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFileLoggerReportsUnconfirmedArchiveDurabilityAndContinuesWriting(t *testing.T) {
@@ -41,7 +41,7 @@ func TestFileLoggerReportsUnconfirmedArchiveDurabilityAndContinuesWriting(t *tes
 			uploader.Destination{ID: "primary", Uploader: remote},
 		)
 		notified := make(chan error, 1)
-		logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			if errors.Is(err, pkgfsstore.ErrDurabilityUnconfirmed) {
 				notified <- err
 			}

@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 
 	"github.com/stretchr/testify/require"
@@ -82,7 +81,7 @@ func TestNewAsyncBestEffortMultiLoggerRejectsInvalidConfig(t *testing.T) {
 }
 
 func TestMultiLoggersApplyApplicationEntryLimitBeforeDispatch(t *testing.T) {
-	acceptedBytes, err := applogging.MeasureLogEntrySize("ok", nil)
+	acceptedBytes, err := pkglogger.MeasureLogEntrySize("ok", nil)
 	require.NoError(t, err)
 	oversizedMessage := "this entry is larger than ok"
 
@@ -96,7 +95,7 @@ func TestMultiLoggersApplyApplicationEntryLimitBeforeDispatch(t *testing.T) {
 
 		err = logger.Info(context.Background(), oversizedMessage)
 
-		require.ErrorIs(t, err, applogging.ErrLogEntryTooLarge)
+		require.ErrorIs(t, err, pkglogger.ErrLogEntryTooLarge)
 		require.Zero(t, child.handleCalls.Load())
 	})
 
@@ -126,13 +125,13 @@ func TestMultiLoggersApplyApplicationEntryLimitBeforeDispatch(t *testing.T) {
 
 		report, err := logger.Info(context.Background(), oversizedMessage)
 
-		require.ErrorIs(t, err, applogging.ErrLogEntryTooLarge)
+		require.ErrorIs(t, err, pkglogger.ErrLogEntryTooLarge)
 		require.Zero(t, first.handleCalls.Load())
 		require.Zero(t, second.handleCalls.Load())
 		require.Len(t, report.Targets, 2)
 		for _, target := range report.Targets {
 			require.Equal(t, pkglogger.DeliveryRejected, target.Status)
-			require.ErrorIs(t, target.Err, applogging.ErrLogEntryTooLarge)
+			require.ErrorIs(t, target.Err, pkglogger.ErrLogEntryTooLarge)
 		}
 	})
 }
@@ -195,5 +194,5 @@ func TestDeliveryMultiLoggerConvertsTopLevelValidationFailureBeforeDispatch(t *t
 }
 
 func fmtTestEntryTooLargeError() error {
-	return errors.Join(applogging.ErrLogEntryTooLarge, errors.New("test application boundary"))
+	return errors.Join(pkglogger.ErrLogEntryTooLarge, errors.New("test application boundary"))
 }

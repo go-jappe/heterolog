@@ -8,6 +8,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/circuitbreaker"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/loki/retryclassifier"
 	"github.com/go-jappe/heterolog/pkg/loki"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // CircuitBreakerClientはraw clientを内包する子wrapperです。
@@ -21,16 +22,16 @@ type CircuitBreakerClient struct {
 
 func newCircuitBreakerClient(
 	next Client,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *CircuitBreakerClient {
 	return newCircuitBreakerClientWithCircuitBreaker(next, tracer, meter, retryable.NewCircuitBreaker(retryable.CircuitBreakerOptions{}))
 }
 
 func newCircuitBreakerClientWithCircuitBreaker(
 	next Client,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	circuitBreaker *retryable.CircuitBreaker,
 ) *CircuitBreakerClient {
 	tracer = observer.EnsureTracer(tracer)

@@ -86,7 +86,7 @@ func TestTerminalDurabilityFailureRetainsSourceAndRetriesWithoutSend(t *testing.
 							require.ErrorIs(t, err, pkgfsstore.ErrDurabilityUnconfirmed)
 							require.Equal(t, worker.ProcessStatusFailed, report.Status)
 							require.FileExists(t, source)
-							// A normal cycle must not send this already classified file again.
+							// 通常のcycleで、分類済みのこのfileを再送してはなりません。
 							_, err = w.RunOnceSpoolFileProcess(ctx)
 							require.NoError(t, err)
 							require.Equal(t, 1, sender.calls)

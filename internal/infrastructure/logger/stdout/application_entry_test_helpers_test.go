@@ -3,7 +3,6 @@ package stdout
 import (
 	"context"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	loggerfield "github.com/go-jappe/heterolog/internal/infrastructure/logger/field"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -17,7 +16,7 @@ func newTestApplicationLogEntry(
 	message string,
 	err error,
 	stackTraceRequested bool,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) *logging.LogEntry {
 	ids, extra := loggerfield.ResolveIDsAndExtraFields(ctx, fields)
 	return &logging.LogEntry{
@@ -32,25 +31,25 @@ func newTestApplicationLogEntry(
 	}
 }
 
-func (s *StdoutLogger) testDebug(ctx context.Context, message string, fields ...applogging.Field) error {
+func (s *StdoutLogger) testDebug(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return s.HandleLogEntry(ctx, newTestApplicationLogEntry(
 		ctx, pkglogger.LogLevelDebug, message, nil, false, fields...,
 	))
 }
 
-func (s *StdoutLogger) testInfo(ctx context.Context, message string, fields ...applogging.Field) error {
+func (s *StdoutLogger) testInfo(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return s.HandleLogEntry(ctx, newTestApplicationLogEntry(
 		ctx, pkglogger.LogLevelInfo, message, nil, false, fields...,
 	))
 }
 
-func (s *StdoutLogger) testWarn(ctx context.Context, message string, fields ...applogging.Field) error {
+func (s *StdoutLogger) testWarn(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return s.HandleLogEntry(ctx, newTestApplicationLogEntry(
 		ctx, pkglogger.LogLevelWarn, message, nil, false, fields...,
 	))
 }
 
-func (s *StdoutLogger) testError(ctx context.Context, message string, fields ...applogging.Field) error {
+func (s *StdoutLogger) testError(ctx context.Context, message string, fields ...pkglogger.Field) error {
 	return s.HandleLogEntry(ctx, newTestApplicationLogEntry(
 		ctx, pkglogger.LogLevelError, message, nil, false, fields...,
 	))
@@ -60,7 +59,7 @@ func (s *StdoutLogger) testErrorWithStack(
 	ctx context.Context,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return s.HandleLogEntry(ctx, newTestApplicationLogEntry(
 		ctx, pkglogger.LogLevelError, message, err, true, fields...,
@@ -70,7 +69,7 @@ func (s *StdoutLogger) testErrorWithStack(
 func (s *DeliveryStdoutLogger) testDebug(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return s.HandleLogEntry(ctx, newTestApplicationLogEntry(
 		ctx, pkglogger.LogLevelDebug, message, nil, false, fields...,
@@ -80,7 +79,7 @@ func (s *DeliveryStdoutLogger) testDebug(
 func (s *DeliveryStdoutLogger) testInfo(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return s.HandleLogEntry(ctx, newTestApplicationLogEntry(
 		ctx, pkglogger.LogLevelInfo, message, nil, false, fields...,
@@ -90,7 +89,7 @@ func (s *DeliveryStdoutLogger) testInfo(
 func (s *DeliveryStdoutLogger) testWarn(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return s.HandleLogEntry(ctx, newTestApplicationLogEntry(
 		ctx, pkglogger.LogLevelWarn, message, nil, false, fields...,
@@ -100,7 +99,7 @@ func (s *DeliveryStdoutLogger) testWarn(
 func (s *DeliveryStdoutLogger) testError(
 	ctx context.Context,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return s.HandleLogEntry(ctx, newTestApplicationLogEntry(
 		ctx, pkglogger.LogLevelError, message, nil, false, fields...,
@@ -111,7 +110,7 @@ func (s *DeliveryStdoutLogger) testErrorWithStack(
 	ctx context.Context,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return s.HandleLogEntry(ctx, newTestApplicationLogEntry(
 		ctx, pkglogger.LogLevelError, message, err, true, fields...,

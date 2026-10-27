@@ -212,15 +212,15 @@ func TestMapperPropagatesSharedSettingsToEveryConsumer(t *testing.T) {
 			attempts int
 			wait     time.Duration
 		}
-		want := retry{fsstoreconfig.MaxFileOperationnRetryAttempts, fsstoreconfig.FileOperationRetryWaitTime}
+		want := retry{fsstoreconfig.MaxFileOperationRetries, fsstoreconfig.FileOperationRetryWaitTime}
 		requireEveryMappedValue(t, roots, everyContractValues(1, 1), func(got pkgfsstore.RetryConfig) string {
-			return mismatch(retry{got.MaxWriteAttempts, got.FileOperationRetryWaitTime}, want)
+			return mismatch(retry{got.MaxWriteRetries, got.FileOperationRetryWaitTime}, want)
 		})
 		requireEveryMappedValue(t, roots, syncAndAsyncValues(backends, backends), func(got loggerdurable.FileArchiveConfig) string {
-			return mismatch(retry{got.MaxWriteAttempts, got.FileOperationRetryWaitTime}, want)
+			return mismatch(retry{got.MaxWriteRetries, got.FileOperationRetryWaitTime}, want)
 		})
 		requireEveryMappedValue(t, roots, deliveryValues(backends, backends), func(got loggerdurable.DeliveryFileArchiveConfig) string {
-			return mismatch(retry{got.MaxWriteAttempts, got.FileOperationRetryWaitTime}, want)
+			return mismatch(retry{got.MaxWriteRetries, got.FileOperationRetryWaitTime}, want)
 		})
 	})
 	t.Run("target", func(t *testing.T) {
@@ -301,8 +301,8 @@ func TestMapperPropagatesSharedSettingsToEveryConsumer(t *testing.T) {
 			wait     time.Duration
 		}
 		requireEveryMappedValue(t, roots, syncAndAsyncValues(1, 1), func(got pkglogger.OpenSearchFlushManagerConfig) string {
-			return mismatch(bulkRetry{got.MaxRetryAttempts, got.RetryWaitTime},
-				bulkRetry{logconfig.MaxOpenSearchLoggerRetryAttempts, logconfig.OpenSearchRetryWaitTime})
+			return mismatch(bulkRetry{got.MaxItemRetries, got.RetryWaitTime},
+				bulkRetry{logconfig.MaxOpenSearchLoggerItemRetries, logconfig.OpenSearchRetryWaitTime})
 		})
 		// spool runnerの再起動待機はloaderの固定値で、spool設定（NewSpoolConfig）へ変換します。
 		if problem := mismatch(NewSpoolConfig(&cfg).SupervisorConfig.RestartDelay, spoolsupervisor.DefaultRestartDelay); problem != "" {

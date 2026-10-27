@@ -20,7 +20,7 @@ func TestRetryConfigProviderPreservesInvalidModeForChainValidation(t *testing.T)
 		t.Run(string(mode), func(t *testing.T) {
 			provider := NewRetryConfigProvider(&pkglogger.ClickHouseRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: mode,
-				MaxAttempts:     2,
+				MaxRetries:      1,
 				BaseDelay:       time.Millisecond,
 				MaxDelay:        time.Second,
 			})
@@ -53,7 +53,7 @@ func TestNewRetryConfigProviderMapsSelectedClientChain(t *testing.T) {
 
 	cfg := &pkglogger.ClickHouseRetryableClientCaseTransportErrorConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicyWithBreaker,
-		MaxAttempts:     4,
+		MaxRetries:      3,
 		BaseDelay:       50 * time.Millisecond,
 		MaxDelay:        2 * time.Second,
 	}
@@ -64,7 +64,7 @@ func TestNewRetryConfigProviderMapsSelectedClientChain(t *testing.T) {
 	if got := provider.RetryClientSelection(); !got.UseRetryPolicyClient || !got.UseCircuitBreakerClient {
 		t.Fatalf("RetryClientSelection() = %+v, want retry policy with breaker", got)
 	}
-	if provider.MaxAttempts() != cfg.MaxAttempts || provider.BaseDelay() != cfg.BaseDelay || provider.MaxDelay() != cfg.MaxDelay {
+	if provider.MaxAttempts() != cfg.MaxRetries+1 || provider.BaseDelay() != cfg.BaseDelay || provider.MaxDelay() != cfg.MaxDelay {
 		t.Fatalf("retry delay config was not preserved")
 	}
 }

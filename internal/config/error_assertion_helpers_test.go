@@ -21,7 +21,7 @@ func environmentErrorKeys(err error) []string {
 	for _, variableErr := range errortree.All[*env.VariableError](err) {
 		keys = append(keys, variableErr.Key)
 	}
-	for _, valueErr := range errortree.All[*InvalidEnvironmentValueError](err) {
+	for _, valueErr := range errortree.All[*env.InvalidEnvironmentValueError](err) {
 		keys = append(keys, valueErr.Key)
 	}
 	return keys
@@ -34,7 +34,7 @@ func environmentKeyError(err error, key string) error {
 			return variableErr
 		}
 	}
-	for _, valueErr := range errortree.All[*InvalidEnvironmentValueError](err) {
+	for _, valueErr := range errortree.All[*env.InvalidEnvironmentValueError](err) {
 		if valueErr.Key == key {
 			return valueErr
 		}

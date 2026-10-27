@@ -15,7 +15,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
@@ -26,7 +26,7 @@ func TestLoggerStartupUsesMissingArchiveCheckpointRecoverySetting(t *testing.T) 
 	for _, contract := range []string{"sync", "async", "delivery"} {
 		for _, mode := range []pkgfsstore.FileLifecycleMode{pkgfsstore.FileLifecycleModeInline, pkgfsstore.FileLifecycleModeRunner} {
 			if contract == "delivery" && mode == pkgfsstore.FileLifecycleModeInline {
-				continue // Delivery file loggers support runner lifecycle only.
+				continue // Delivery file loggerはrunner lifecycleだけに対応します。
 			}
 			for _, role := range []string{"default", "error", "debug"} {
 				for _, recoverMissing := range []bool{false, true} {
@@ -49,7 +49,7 @@ func TestLoggerStartupUsesMissingArchiveCheckpointRecoverySetting(t *testing.T) 
 								LogOutputDestinations: pkglogger.LogOutputDestinations{pkglogger.LogOutputFile},
 								Timeout:               time.Second, MaxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes, File: file,
 							}
-							created, startupErr = NewDeliveryLogger(ctx, cfg, streamrouting.None, observer.NopTracer{}, observer.NopMeter{})
+							created, startupErr = NewDeliveryLogger(ctx, cfg, pkgcloudwatchlogs.StreamRoutingNone, observer.NopTracer{}, observer.NopMeter{})
 						} else {
 							file := checkpointStartupFileConfig(t, directory)
 							file.LifecycleMode = mode
@@ -62,11 +62,11 @@ func TestLoggerStartupUsesMissingArchiveCheckpointRecoverySetting(t *testing.T) 
 								Timeout:               time.Second, MaxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes, File: file,
 							}
 							if contract == "sync" {
-								created, startupErr = NewLogger(ctx, cfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+								created, startupErr = NewLogger(ctx, cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 							} else {
 								asyncCfg := asyncConfigFromLoggerConfig(cfg)
 								asyncCfg.MaxLogEntryBytes, asyncCfg.MaxParallel = cfg.MaxLogEntryBytes, 1
-								created, startupErr = NewAsyncLogger(ctx, asyncCfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+								created, startupErr = NewAsyncLogger(ctx, asyncCfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 							}
 						}
 						if !recoverMissing {

@@ -3,82 +3,27 @@
 package streamrouting
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 	"time"
+
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 )
-
-// ErrInvalidGranularityは、routing granularityが対応値でないことを表します。
-// 実際に返すerrorはInvalidGranularityErrorです。
-var ErrInvalidGranularity = errors.New("invalid cloudwatch logs stream routing granularity")
-
-// InvalidGranularityErrorは、対応していないrouting granularityを指定したことを表します。
-// errors.Is(err, ErrInvalidGranularity)で判定できます。
-type InvalidGranularityError struct {
-	// Granularityは、指定された値です。
-	Granularity Granularity
-}
-
-func (e *InvalidGranularityError) Error() string {
-	return fmt.Sprintf(
-		"%v %q: must be one of none, monthly, daily, hourly",
-		ErrInvalidGranularity,
-		e.Granularity,
-	)
-}
-
-func (e *InvalidGranularityError) Unwrap() error { return ErrInvalidGranularity }
-
-// Granularityは、基準CloudWatch Logs stream名を分割する時間粒度です。
-// CloudWatch Logs APIのoptionではなく、application側のstream routing policyです。
-type Granularity string
-
-const (
-	// Noneは、設定された基準stream名をそのまま使用します。
-	None Granularity = "none"
-	// Monthlyは、基準stream名へYYYY/MM suffixを付けます。
-	Monthly Granularity = "monthly"
-	// Dailyは、基準stream名へYYYY/MM/DD suffixを付けます。
-	Daily Granularity = "daily"
-	// Hourlyは、基準stream名へYYYY/MM/DD/HH suffixを付けます。
-	Hourly Granularity = "hourly"
-)
-
-// Normalizeはrouting granularityの表記を正規化し、ゼロ値をNoneとして扱います。
-func Normalize(granularity Granularity) Granularity {
-	normalized := Granularity(strings.ToLower(strings.TrimSpace(string(granularity))))
-	if normalized == "" {
-		return None
-	}
-	return normalized
-}
-
-// Validateはrouting granularityが対応値かを検証します。ゼロ値はNoneとして有効です。
-func (g Granularity) Validate() error {
-	switch Normalize(g) {
-	case None, Monthly, Daily, Hourly:
-		return nil
-	default:
-		return &InvalidGranularityError{Granularity: g}
-	}
-}
 
 // Suffixはrouting granularityに対応する先頭slashなしの時間pathを返します。
 // Noneの場合は空文字列を返し、atのLocationはそのまま使用します。
-func Suffix(granularity Granularity, at time.Time) (string, error) {
+func Suffix(granularity pkgcloudwatchlogs.StreamRouting, at time.Time) (string, error) {
 	if err := granularity.Validate(); err != nil {
 		return "", err
 	}
 
-	switch Normalize(granularity) {
-	case None:
+	switch granularity.Normalize() {
+	case pkgcloudwatchlogs.StreamRoutingNone:
 		return "", nil
-	case Monthly:
+	case pkgcloudwatchlogs.StreamRoutingMonthly:
 		return at.Format("2006/01"), nil
-	case Daily:
+	case pkgcloudwatchlogs.StreamRoutingDaily:
 		return at.Format("2006/01/02"), nil
-	case Hourly:
+	case pkgcloudwatchlogs.StreamRoutingHourly:
 		return at.Format("2006/01/02/15"), nil
 	default:
 		// Validateを通過した値だけが到達するため通常は実行されません。

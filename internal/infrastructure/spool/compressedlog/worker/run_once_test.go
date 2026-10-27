@@ -112,8 +112,8 @@ func TestWorkerRunOnceRecoveryFailureBlocksUpload(t *testing.T) {
 	if err != nil || !claimed {
 		t.Fatalf("ClaimOldestActive() = %+v, %t, %v", processing, claimed, err)
 	}
-	// A conflicting active file prevents recovery without relying on platform
-	// permission checks. The waiting active file must not be uploaded either.
+	// 衝突するactive fileが、platformの権限checkに頼らずにrecoveryを妨げます。
+	// 待機中のactive fileもuploadしてはなりません。
 	activePath := filepath.Join(store.Root().ActiveDir(), processing.FileName)
 	activeBytes := []byte("different compressed log payload")
 	if err := os.WriteFile(activePath, activeBytes, 0o640); err != nil {

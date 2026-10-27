@@ -9,18 +9,18 @@ import (
 	cw "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 )
 
-// PreservePriorAttemptOutcome keeps earlier log-dispatch evidence when the
-// latest retry failed during credential retrieval. A new, unsent attempt cannot
-// prove that an earlier request was never accepted.
+// PreservePriorAttemptOutcomeは、最新のretryがcredentialの取得中に失敗したとき、
+// それ以前のlog送信の証拠を保持します。送信されていない新しい試行では、以前の
+// requestが一度も受理されなかったことを証明できません。
 func PreservePriorAttemptOutcome(previous, current error) error {
 	if previous == nil || !hasCredentialFailure(current) {
 		return current
 	}
 	prior := ClassifyDurableRequestOutcome(context.Background(), previous)
 	latest := ClassifyDurableRequestOutcome(context.Background(), current)
-	// Immediate replay policy may permit EOF/timeouts, but these errors carry
-	// no acceptance evidence. Credential failure on the next attempt must not
-	// turn that earlier uncertain dispatch into a confirmed local rejection.
+	// 即時replayのpolicyはEOF/timeoutを許容することがありますが、これらのerrorは受理の
+	// 証拠を持ちません。次の試行でcredentialが失敗しても、それ以前の不確かな送信を、
+	// 確認済みのlocalな拒否に変えてはいけません。
 	if prior.Code == 0 && prior.Reason != retryable.RetryReasonRequestNotSent && prior.Reason != retryable.RetryReasonCircuitBreakerOpen {
 		prior = retryable.RetryDecision{Quarantine: true, Reason: retryable.RetryReasonUnknownOutcome}
 	}
@@ -53,7 +53,7 @@ func (e *requestNotSentAfterAttemptError) Unwrap() []error {
 }
 
 func priorAttemptFailure(err error) *requestNotSentAfterAttemptError {
-	// An arbitrary joined branch may describe an additional uncertain request.
+	// joinされた任意の枝が、結果が不確かな別のrequestを表している可能性があります。
 	for cause := err; cause != nil; cause = errors.Unwrap(cause) {
 		if _, unknown := cause.(*cw.ResponseDecodeError); unknown {
 			return nil

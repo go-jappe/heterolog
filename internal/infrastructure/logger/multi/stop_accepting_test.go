@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 
 	"github.com/stretchr/testify/require"
@@ -19,7 +18,7 @@ func TestMultiLoggerStopAcceptingRejectsWithoutClosingChildren(t *testing.T) {
 	logger.StopAccepting()
 
 	err := logger.Info(context.Background(), "rejected after intake stopped")
-	require.ErrorIs(t, err, applogging.ErrLoggerClosed)
+	require.ErrorIs(t, err, pkglogger.ErrLoggerClosed)
 	require.Equal(t, int32(0), child.handleCalls.Load())
 	require.Equal(t, int32(0), child.closeCalls.Load())
 
@@ -61,7 +60,7 @@ func TestDeliveryMultiLoggerStopAcceptingRejectsWithoutClosingChildren(t *testin
 	logger.StopAccepting()
 
 	report, err := logger.Info(context.Background(), "rejected after intake stopped")
-	require.ErrorIs(t, err, applogging.ErrLoggerClosed)
+	require.ErrorIs(t, err, pkglogger.ErrLoggerClosed)
 	require.Len(t, report.Targets, 1)
 	require.Equal(t, pkglogger.DeliveryRejected, report.Targets[0].Status)
 	require.Equal(t, int32(0), child.handleCalls.Load())

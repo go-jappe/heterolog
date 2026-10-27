@@ -1,20 +1,20 @@
-// Package failure defines the backend-neutral result passed from logger sends
-// to durable failure handlers.
+// Package failureは、loggerの送信からdurable failure handlerへ渡す、
+// backendに依存しない結果を定義します。
 package failure
 
-// SendResult contains terminal send evidence and the records that require
-// durable handling. Each failed record is assigned exactly one handling
-// disposition at the point where its backend result becomes known:
+// SendResultは、送信のterminalな結果を示す証拠と、durableな処理が必要な
+// recordを保持します。失敗した各recordには、backendの結果が判明した時点で、
+// 処理のdispositionがちょうど1つ割り当てられます。
 //
-//   - RetryableRecords can be sent again without changing the stored record.
-//   - DeadRecords are structurally trustworthy records with a confirmed
-//     terminal delivery result.
-//   - QuarantineRecords must not be replayed automatically without inspecting
-//     or repairing the record, its backend representation, or its result.
+//   - RetryableRecordsは、保存したrecordを変更せずに再送できます。
+//   - DeadRecordsは、構造的に信頼でき、terminalなdelivery結果が確定した
+//     recordです。
+//   - QuarantineRecordsは、record、そのbackendでの表現、またはその結果を
+//     調査・修復しないまま、自動でreplayしてはいけません。
 //
-// FailureCode and FailureReason preserve why the record received that
-// disposition. Durable handlers consume the completed classification and do
-// not reinterpret backend-specific failure codes.
+// FailureCodeとFailureReasonは、recordがそのdispositionになった理由を保持します。
+// durable handlerは確定済みの分類をそのまま使い、backend固有のfailure codeを
+// 解釈し直しません。
 type SendResult struct {
 	Meta              Meta
 	TerminalError     error
@@ -23,24 +23,24 @@ type SendResult struct {
 	QuarantineRecords []FailedRecord
 }
 
-// HasFailedRecords reports whether there is payload data to handle durably.
+// HasFailedRecordsは、durableに処理すべきpayload dataがあるかを返します。
 func (r SendResult) HasFailedRecords() bool {
 	return len(r.RetryableRecords) > 0 || len(r.DeadRecords) > 0 || len(r.QuarantineRecords) > 0
 }
 
-// HasSendFailure reports terminal send failure or failed-record evidence.
+// HasSendFailureは、送信のterminal failure、または失敗recordの証拠があるかを返します。
 func (r SendResult) HasSendFailure() bool {
 	return r.TerminalError != nil || r.HasFailedRecords()
 }
 
-// FailedCount returns the number of records requiring durable handling,
-// including unconfirmed delivery and local rejection.
+// FailedCountは、durableな処理が必要なrecordの数を返します。deliveryが
+// 未確認のrecordとlocal rejectionのrecordも含みます。
 func (r SendResult) FailedCount() int {
 	return len(r.RetryableRecords) + len(r.DeadRecords) + len(r.QuarantineRecords)
 }
 
-// SuccessCount returns confirmed successful inputs. A terminal send error means
-// unlisted inputs cannot be considered successful.
+// SuccessCountは、成功が確定したinputの数を返します。terminalな送信errorが
+// ある場合は、一覧にないinputも成功とはみなせません。
 func (r SendResult) SuccessCount() int {
 	if r.TerminalError != nil || r.Meta.InputCount <= 0 {
 		return 0

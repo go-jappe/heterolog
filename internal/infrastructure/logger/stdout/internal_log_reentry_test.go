@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler/reentrytest"
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	stdouterrors "github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout/errors"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func reentryTestStdoutConfig() pkglogger.StdoutLoggerConfig {
@@ -87,7 +87,7 @@ func TestStdoutLoggerHandlerWriteFailureIsWrittenDirectlyInsteadOfRedispatched(t
 			probe := reentrytest.NewProbe(t)
 			var mu sync.Mutex
 			var nestedErrs []error
-			logger.OnError = func(ctx context.Context, _ error, _ *infralogging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			logger.OnError = func(ctx context.Context, _ error, _ *infralogging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				depth, ok := probe.Enter()
 				defer probe.Exit()
 				if !ok {
@@ -149,7 +149,7 @@ func TestDeliveryStdoutLoggerHandlerWriteFailureIsNotRedispatched(t *testing.T) 
 			probe := reentrytest.NewProbe(t)
 			var mu sync.Mutex
 			var nestedErrs []error
-			logger.OnError = func(ctx context.Context, _ error, _ *infralogging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			logger.OnError = func(ctx context.Context, _ error, _ *infralogging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				depth, ok := probe.Enter()
 				defer probe.Exit()
 				if !ok {
@@ -203,7 +203,7 @@ func TestDeliveryStdoutLoggerReentrantWriteErrorIsWrittenToItsOwnOutput(t *testi
 		t.Fatal(err)
 	}
 	var calls atomic.Int32
-	logger.OnError = func(context.Context, error, *infralogging.LogEntry, observer.Tracer, observer.Meter) {
+	logger.OnError = func(context.Context, error, *infralogging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 		calls.Add(1)
 	}
 	failure := errors.New("injected stdout write failure")

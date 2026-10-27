@@ -75,11 +75,26 @@ func TestIndexUploadReport(t *testing.T) {
 			},
 		},
 		{
-			name:      "requested destinations are a set",
+			// 同じ宛先の重複には意味がなく設定の誤りと考えられるため、宛先の結果があってもerrorにします。
+			name:      "duplicate requested destination",
 			requested: []objectstorage.DestinationID{"first", "first"},
 			results:   []DestinationResult{{DestinationID: "first"}},
 			want: map[objectstorage.DestinationID]DestinationResult{
 				"first": {DestinationID: "first"},
+			},
+			wantErr: []UploadReportError{{Destination: "first", Err: ErrDuplicateDestinationID}},
+		},
+		{
+			// 何回重なっても重複と結果の欠けは宛先ごとに一度だけ報告し、重複を先に報告します。
+			name:      "repeated requested destination without result",
+			requested: []objectstorage.DestinationID{"first", "second", "first", "first"},
+			results:   []DestinationResult{{DestinationID: "second"}},
+			want: map[objectstorage.DestinationID]DestinationResult{
+				"second": {DestinationID: "second"},
+			},
+			wantErr: []UploadReportError{
+				{Destination: "first", Err: ErrDuplicateDestinationID},
+				{Destination: "first", Err: ErrMissingDestinationResult},
 			},
 		},
 	} {
@@ -126,6 +141,10 @@ func TestUploadErrorFormats(t *testing.T) {
 			err: &UploadReportError{Destination: "unknown", Index: 2, Err: ErrUnrequestedDestinationResult},
 			want: `object storage destination upload report is invalid: ` +
 				`result[2] contains unrequested destination "unknown"`,
+		},
+		{
+			err:  &UploadReportError{Destination: "first", Err: ErrDuplicateDestinationID},
+			want: `object storage destination upload report is invalid: destination "first" is requested more than once`,
 		},
 		{
 			err:  &UploadReportError{Destination: "first", Err: ErrDuplicateDestinationResult},

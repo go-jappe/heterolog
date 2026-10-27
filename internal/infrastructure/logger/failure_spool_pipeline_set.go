@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
-	configspool "github.com/go-jappe/heterolog/internal/config/spool"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/spoolstorehandler"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
 type failureSpoolPipelineID struct {
@@ -112,9 +112,9 @@ type failureSpoolPipelineSet struct {
 func newFailureSpoolPipelineSet(
 	ctx context.Context,
 	plan []failureSpoolPipelinePlan,
-	spoolConfig *configspool.SpoolConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	spoolConfig *pkgspool.SpoolConfig,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*failureSpoolPipelineSet, error) {
 	if len(plan) == 0 {
 		return nil, nil
@@ -176,7 +176,7 @@ func newFailureSpoolPipelineSet(
 
 // failureSpoolMaxRetryAfterは、backendのspool runnerに設定したRetry-After待機の上限を返します。
 func failureSpoolMaxRetryAfter(
-	spoolConfig *configspool.SpoolConfig,
+	spoolConfig *pkgspool.SpoolConfig,
 	backend pkglogger.LogOutputDestination,
 ) time.Duration {
 	if spoolConfig == nil {

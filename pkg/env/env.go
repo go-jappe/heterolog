@@ -1,11 +1,16 @@
-// Package envは、環境変数の値を型付きの設定値として読み込みます。
+// Package env reads the values of environment variables as typed configuration
+// values.
 //
-// errorを返すGetEnv*とParseEnvは、未設定または空文字なら未設定時の値（default）を
-// 返します。明示値が不正な場合も、未設定時と同じ値をerrorとともに返します。呼び出し側は
-// errorを設定errorとして扱い、返された値で処理を続けないでください。
+// The GetEnv* functions that return an error, and ParseEnv, return the value
+// for the unset case (the default) when a variable is unset or empty. When an
+// explicit value is invalid, they also return the same value as in the unset
+// case, together with an error. Callers should treat the error as a
+// configuration error and not continue processing with the returned value.
 //
-// package関数はprocess environmentを読みます。環境設定fileの値などprocess environment
-// 以外から読む場合は、同じ規則のLookupのmethodとParseEnvFrom・GetEnvJSONFromを使います。
+// The package functions read the process environment. To read from somewhere
+// other than the process environment, such as the values of an env file, use
+// the methods of Lookup and ParseEnvFrom and GetEnvJSONFrom, which follow the
+// same rules.
 package env
 
 import (
@@ -20,11 +25,13 @@ import (
 	"time"
 )
 
-// Lookupは、keyの値と、keyが設定されているかを返す関数です。os.LookupEnvと同じ形です。
-// methodはpackage関数と同じ規則で、Lookupが返す値を型付きの設定値へ変換します。
+// Lookup is a function that returns the value of key and whether key is set.
+// It has the same shape as os.LookupEnv. Its methods convert the values that
+// the Lookup returns to typed configuration values by the same rules as the
+// package functions.
 type Lookup func(key string) (value string, ok bool)
 
-// ProcessEnvironmentは、process environmentを読むLookupを返します。
+// ProcessEnvironment returns a Lookup that reads the process environment.
 func ProcessEnvironment() Lookup { return os.LookupEnv }
 
 // valueはkeyの値を返します。未設定の場合は空文字です。
@@ -33,14 +40,16 @@ func (l Lookup) value(key string) string {
 	return value
 }
 
-// ParseEnvは明示されたenvironment値をparseで変換します。
-// 未設定または空文字ならdefaultValueを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// ParseEnv converts an explicitly set environment value with parse. If the
+// variable is unset or empty, it returns defaultValue. On error it also returns
+// defaultValue, as when the variable is unset, but callers should treat the
+// error as a configuration error.
 func ParseEnv[T any](key string, defaultValue T, parse func(string) (T, error)) (T, error) {
 	return ParseEnvFrom(ProcessEnvironment(), key, defaultValue, parse)
 }
 
-// ParseEnvFromは、lookupが返す値をParseEnvと同じ規則で変換します。
+// ParseEnvFrom converts the value that lookup returns by the same rules as
+// ParseEnv.
 func ParseEnvFrom[T any](lookup Lookup, key string, defaultValue T, parse func(string) (T, error)) (T, error) {
 	raw := lookup.value(key)
 	if raw == "" {
@@ -60,9 +69,10 @@ func ParseEnvFrom[T any](lookup Lookup, key string, defaultValue T, parse func(s
 	return value, nil
 }
 
-// GetEnvDurationはenvironmentの整数値を秒として読み込みます。
-// 未設定または空文字ならdefaultValueを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvDuration reads an integer value from the environment as seconds. If
+// the variable is unset or empty, it returns defaultValue. On error it also
+// returns defaultValue, as when the variable is unset, but callers should treat
+// the error as a configuration error.
 func GetEnvDuration(
 	key string,
 	defaultValue time.Duration,
@@ -70,7 +80,8 @@ func GetEnvDuration(
 	return ProcessEnvironment().GetEnvDuration(key, defaultValue)
 }
 
-// GetEnvDurationは、lookupが返す値をpackage関数GetEnvDurationと同じ規則で読み込みます。
+// GetEnvDuration reads the value that l returns by the same rules as the
+// package function GetEnvDuration.
 func (l Lookup) GetEnvDuration(
 	key string,
 	defaultValue time.Duration,
@@ -78,9 +89,10 @@ func (l Lookup) GetEnvDuration(
 	return l.getEnvDuration(key, defaultValue, time.Second)
 }
 
-// GetEnvDurationMinuteはenvironmentの整数値を分として読み込みます。
-// 未設定または空文字ならdefaultValueを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvDurationMinute reads an integer value from the environment as minutes.
+// If the variable is unset or empty, it returns defaultValue. On error it also
+// returns defaultValue, as when the variable is unset, but callers should treat
+// the error as a configuration error.
 func GetEnvDurationMinute(
 	key string,
 	defaultValue time.Duration,
@@ -88,7 +100,8 @@ func GetEnvDurationMinute(
 	return ProcessEnvironment().GetEnvDurationMinute(key, defaultValue)
 }
 
-// GetEnvDurationMinuteは、lookupが返す値をpackage関数GetEnvDurationMinuteと同じ規則で読み込みます。
+// GetEnvDurationMinute reads the value that l returns by the same rules as the
+// package function GetEnvDurationMinute.
 func (l Lookup) GetEnvDurationMinute(
 	key string,
 	defaultValue time.Duration,
@@ -96,9 +109,10 @@ func (l Lookup) GetEnvDurationMinute(
 	return l.getEnvDuration(key, defaultValue, time.Minute)
 }
 
-// GetEnvDurationMillisecondはenvironmentの整数値をミリ秒として読み込みます。
-// 未設定または空文字ならdefaultValueを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvDurationMillisecond reads an integer value from the environment as
+// milliseconds. If the variable is unset or empty, it returns defaultValue. On
+// error it also returns defaultValue, as when the variable is unset, but
+// callers should treat the error as a configuration error.
 func GetEnvDurationMillisecond(
 	key string,
 	defaultValue time.Duration,
@@ -106,7 +120,8 @@ func GetEnvDurationMillisecond(
 	return ProcessEnvironment().GetEnvDurationMillisecond(key, defaultValue)
 }
 
-// GetEnvDurationMillisecondは、lookupが返す値をpackage関数GetEnvDurationMillisecondと同じ規則で読み込みます。
+// GetEnvDurationMillisecond reads the value that l returns by the same rules as
+// the package function GetEnvDurationMillisecond.
 func (l Lookup) GetEnvDurationMillisecond(
 	key string,
 	defaultValue time.Duration,
@@ -162,9 +177,10 @@ func (l Lookup) getEnvDuration(
 	return time.Duration(value) * unit, nil
 }
 
-// GetEnvDurationSliceはcomma区切りの整数をunit単位のdurationへ変換します。
-// 未設定または空文字ならdefaultValueを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvDurationSlice converts comma-separated integers to durations in units
+// of unit. If the variable is unset or empty, it returns defaultValue. On error
+// it also returns defaultValue, as when the variable is unset, but callers
+// should treat the error as a configuration error.
 func GetEnvDurationSlice(
 	key string,
 	defaultValue []time.Duration,
@@ -173,7 +189,8 @@ func GetEnvDurationSlice(
 	return ProcessEnvironment().GetEnvDurationSlice(key, defaultValue, unit)
 }
 
-// GetEnvDurationSliceは、lookupが返す値をpackage関数GetEnvDurationSliceと同じ規則で読み込みます。
+// GetEnvDurationSlice reads the value that l returns by the same rules as the
+// package function GetEnvDurationSlice.
 func (l Lookup) GetEnvDurationSlice(
 	key string,
 	defaultValue []time.Duration,
@@ -240,14 +257,16 @@ func durationUnitLabel(unit time.Duration) string {
 	}
 }
 
-// GetEnvBoolはenvironmentのboolean値を読み込みます。
-// 未設定または空文字ならdefaultValueを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvBool reads a boolean value from the environment. If the variable is
+// unset or empty, it returns defaultValue. On error it also returns
+// defaultValue, as when the variable is unset, but callers should treat the
+// error as a configuration error.
 func GetEnvBool(key string, defaultValue bool) (bool, error) {
 	return ProcessEnvironment().GetEnvBool(key, defaultValue)
 }
 
-// GetEnvBoolは、lookupが返す値をpackage関数GetEnvBoolと同じ規則で読み込みます。
+// GetEnvBool reads the value that l returns by the same rules as the package
+// function GetEnvBool.
 func (l Lookup) GetEnvBool(key string, defaultValue bool) (bool, error) {
 	val, exists := l(key)
 	if !exists || val == "" {
@@ -260,8 +279,9 @@ func (l Lookup) GetEnvBool(key string, defaultValue bool) (bool, error) {
 	return value, nil
 }
 
-// ParseBoolは読み込み済みのboolean値を解析します。環境変数は参照しません。
-// true/1/yes/onとfalse/0/no/offを受け付けます。空文字の既定値や継承は呼び出し側で扱います。
+// ParseBool parses a boolean value that has already been read. It does not
+// look up environment variables. It accepts true/1/yes/on and false/0/no/off.
+// Callers handle defaults and inheritance for an empty string.
 func ParseBool(val string) (bool, error) {
 	switch val {
 	case "true", "1", "yes", "on":
@@ -273,14 +293,16 @@ func ParseBool(val string) (bool, error) {
 	}
 }
 
-// GetEnvIntはenvironmentの整数値を読み込みます。
-// 未設定または空文字ならdefaultValueを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvInt reads an integer value from the environment. If the variable is
+// unset or empty, it returns defaultValue. On error it also returns
+// defaultValue, as when the variable is unset, but callers should treat the
+// error as a configuration error.
 func GetEnvInt(key string, defaultValue int) (int, error) {
 	return ProcessEnvironment().GetEnvInt(key, defaultValue)
 }
 
-// GetEnvIntは、lookupが返す値をpackage関数GetEnvIntと同じ規則で読み込みます。
+// GetEnvInt reads the value that l returns by the same rules as the package
+// function GetEnvInt.
 func (l Lookup) GetEnvInt(key string, defaultValue int) (int, error) {
 	envVal := l.value(key)
 	if envVal == "" {
@@ -299,15 +321,18 @@ func (l Lookup) GetEnvInt(key string, defaultValue int) (int, error) {
 	return val, nil
 }
 
-// GetEnvPositiveIntはenvironmentから正の整数を読み込みます。
-// keyが未設定または空の場合はdefaultValueを返します。明示値が整数でない場合、
-// または0以下の場合は、defaultで置き換えて成功とはせず設定errorを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvPositiveInt reads a positive integer from the environment. If key is
+// unset or empty, it returns defaultValue. If an explicit value is not an
+// integer, or is zero or less, it returns a configuration error instead of
+// replacing the value with the default and succeeding. On error it also
+// returns defaultValue, as when the variable is unset, but callers should treat
+// the error as a configuration error.
 func GetEnvPositiveInt(key string, defaultValue int) (int, error) {
 	return ProcessEnvironment().GetEnvPositiveInt(key, defaultValue)
 }
 
-// GetEnvPositiveIntは、lookupが返す値をpackage関数GetEnvPositiveIntと同じ規則で読み込みます。
+// GetEnvPositiveInt reads the value that l returns by the same rules as the
+// package function GetEnvPositiveInt.
 func (l Lookup) GetEnvPositiveInt(key string, defaultValue int) (int, error) {
 	raw := l.value(key)
 	if raw == "" {
@@ -335,11 +360,13 @@ func (l Lookup) GetEnvPositiveInt(key string, defaultValue int) (int, error) {
 	return value, nil
 }
 
-// GetEnvPositiveMillisecondsはenvironmentの正の整数をmillisecondとして読み込み、
-// time.Durationへ変換します。keyが未設定または空の場合はdefaultValueを返します。
-// 明示値が整数でない場合、0以下の場合、time.Durationへ安全に変換できない場合は、
-// defaultで置き換えて成功とはせず設定errorを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvPositiveMilliseconds reads a positive integer from the environment as
+// milliseconds and converts it to a time.Duration. If key is unset or empty, it
+// returns defaultValue. If an explicit value is not an integer, is zero or
+// less, or cannot be converted to a time.Duration safely, it returns a
+// configuration error instead of replacing the value with the default and
+// succeeding. On error it also returns defaultValue, as when the variable is
+// unset, but callers should treat the error as a configuration error.
 func GetEnvPositiveMilliseconds(
 	key string,
 	defaultValue time.Duration,
@@ -347,8 +374,8 @@ func GetEnvPositiveMilliseconds(
 	return ProcessEnvironment().GetEnvPositiveMilliseconds(key, defaultValue)
 }
 
-// GetEnvPositiveMillisecondsは、lookupが返す値をpackage関数GetEnvPositiveMillisecondsと同じ規則で
-// 読み込みます。
+// GetEnvPositiveMilliseconds reads the value that l returns by the same rules
+// as the package function GetEnvPositiveMilliseconds.
 func (l Lookup) GetEnvPositiveMilliseconds(
 	key string,
 	defaultValue time.Duration,
@@ -389,14 +416,16 @@ func (l Lookup) GetEnvPositiveMilliseconds(
 	return time.Duration(value) * time.Millisecond, nil
 }
 
-// GetEnvUint64はenvironmentの符号なし整数値を読み込みます。
-// 未設定または空文字ならdefaultValueを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvUint64 reads an unsigned integer value from the environment. If the
+// variable is unset or empty, it returns defaultValue. On error it also returns
+// defaultValue, as when the variable is unset, but callers should treat the
+// error as a configuration error.
 func GetEnvUint64(key string, defaultValue uint64) (uint64, error) {
 	return ProcessEnvironment().GetEnvUint64(key, defaultValue)
 }
 
-// GetEnvUint64は、lookupが返す値をpackage関数GetEnvUint64と同じ規則で読み込みます。
+// GetEnvUint64 reads the value that l returns by the same rules as the package
+// function GetEnvUint64.
 func (l Lookup) GetEnvUint64(key string, defaultValue uint64) (uint64, error) {
 	envVal := l.value(key)
 	if envVal == "" {
@@ -415,11 +444,13 @@ func (l Lookup) GetEnvUint64(key string, defaultValue uint64) (uint64, error) {
 	return val, nil
 }
 
-// GetEnvUint64Scaledはenvironmentの符号なし整数値をmultiplier倍して返します。
-// 未設定または空文字ならdefaultValueを使用し、乗算がuint64の範囲を超える場合はerrorを返します。
-// error時も未設定時と同じ値、つまりdefaultValueのmultiplier倍を返します。default自体の
-// 乗算がuint64の範囲を超える場合、その値は未設定時と同じく0です。errorは設定errorとして
-// 扱ってください。
+// GetEnvUint64Scaled reads an unsigned integer value from the environment and
+// returns it multiplied by multiplier. If the variable is unset or empty, it
+// uses defaultValue, and it returns an error if the multiplication exceeds the
+// range of uint64. On error it also returns the same value as when the variable
+// is unset, that is, defaultValue multiplied by multiplier. If multiplying the
+// default itself exceeds the range of uint64, that value is 0, as when the
+// variable is unset. Callers should treat the error as a configuration error.
 func GetEnvUint64Scaled(
 	key string,
 	defaultValue uint64,
@@ -428,7 +459,8 @@ func GetEnvUint64Scaled(
 	return ProcessEnvironment().GetEnvUint64Scaled(key, defaultValue, multiplier)
 }
 
-// GetEnvUint64Scaledは、lookupが返す値をpackage関数GetEnvUint64Scaledと同じ規則で読み込みます。
+// GetEnvUint64Scaled reads the value that l returns by the same rules as the
+// package function GetEnvUint64Scaled.
 func (l Lookup) GetEnvUint64Scaled(
 	key string,
 	defaultValue uint64,
@@ -473,12 +505,14 @@ func scaleEnvUint64(key, raw string, value uint64, multiplier uint64) (uint64, e
 	return value * multiplier, nil
 }
 
-// GetEnvStringは環境変数の値を返します。未設定または空文字ならdefaultValueを返します。
+// GetEnvString returns the value of an environment variable. If the variable
+// is unset or empty, it returns defaultValue.
 func GetEnvString(key, defaultValue string) string {
 	return ProcessEnvironment().GetEnvString(key, defaultValue)
 }
 
-// GetEnvStringは、lookupが返す値をpackage関数GetEnvStringと同じ規則で読み込みます。
+// GetEnvString reads the value that l returns by the same rules as the package
+// function GetEnvString.
 func (l Lookup) GetEnvString(key, defaultValue string) string {
 	envVal := l.value(key)
 	if envVal == "" {
@@ -487,16 +521,18 @@ func (l Lookup) GetEnvString(key, defaultValue string) string {
 	return envVal
 }
 
-// GetEnvSliceStringは、環境変数をcommaで分割し、各要素の前後の空白を除いて返します。
-// keyが未設定、空文字、空白だけの場合はdefaultSliceをそのまま返します。
+// GetEnvSliceString splits an environment variable at commas and returns the
+// elements with leading and trailing whitespace removed. If key is unset,
+// empty or only whitespace, it returns defaultSlice as is.
 //
-// 空要素の許可・拒否は利用側の設定契約に依存するため、この関数では除去も検証も
-// 行いません。
+// Whether empty elements are allowed or rejected depends on the configuration
+// contract of the caller, so this function neither removes nor validates them.
 func GetEnvSliceString(key string, defaultSlice []string) []string {
 	return ProcessEnvironment().GetEnvSliceString(key, defaultSlice)
 }
 
-// GetEnvSliceStringは、lookupが返す値をpackage関数GetEnvSliceStringと同じ規則で読み込みます。
+// GetEnvSliceString reads the value that l returns by the same rules as the
+// package function GetEnvSliceString.
 func (l Lookup) GetEnvSliceString(key string, defaultSlice []string) []string {
 	envVal := strings.TrimSpace(l.value(key))
 	if envVal == "" {
@@ -534,9 +570,10 @@ func parseCommaSeparatedInts(s string) ([]int, error) {
 	return result, nil
 }
 
-// GetEnvJSONはenvironmentのJSONを型付き値へ変換します。
-// 未設定または空文字ならdefaultValueを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvJSON converts JSON in the environment to a typed value. If the
+// variable is unset or empty, it returns defaultValue. On error it also returns
+// defaultValue, as when the variable is unset, but callers should treat the
+// error as a configuration error.
 func GetEnvJSON[T any](
 	key string,
 	defaultValue T,
@@ -545,7 +582,8 @@ func GetEnvJSON[T any](
 	return GetEnvJSONFrom(ProcessEnvironment(), key, defaultValue, strictUnknownFields)
 }
 
-// GetEnvJSONFromは、lookupが返す値をGetEnvJSONと同じ規則で変換します。
+// GetEnvJSONFrom converts the value that lookup returns by the same rules as
+// GetEnvJSON.
 func GetEnvJSONFrom[T any](
 	lookup Lookup,
 	key string,
@@ -592,14 +630,16 @@ func GetEnvJSONFrom[T any](
 	return out, nil
 }
 
-// GetEnvFloat64はenvironmentの有限な浮動小数点値を読み込みます。
-// 未設定または空文字ならdefaultValueを返します。
-// error時も未設定時と同じdefaultValueを返しますが、errorは設定errorとして扱ってください。
+// GetEnvFloat64 reads a finite floating-point value from the environment. If
+// the variable is unset or empty, it returns defaultValue. On error it also
+// returns defaultValue, as when the variable is unset, but callers should treat
+// the error as a configuration error.
 func GetEnvFloat64(key string, defaultValue float64) (float64, error) {
 	return ProcessEnvironment().GetEnvFloat64(key, defaultValue)
 }
 
-// GetEnvFloat64は、lookupが返す値をpackage関数GetEnvFloat64と同じ規則で読み込みます。
+// GetEnvFloat64 reads the value that l returns by the same rules as the
+// package function GetEnvFloat64.
 func (l Lookup) GetEnvFloat64(key string, defaultValue float64) (float64, error) {
 	envVal := l.value(key)
 	if envVal == "" {

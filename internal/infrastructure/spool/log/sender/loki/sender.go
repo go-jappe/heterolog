@@ -59,9 +59,9 @@ type replayRecord struct {
 	entry      pkgloki.Entry
 }
 
-// LokiSpoolSender replays records at-least-once. Loki has no idempotent
-// document ID in this path, so a crash after Push and before the processing
-// file transition is persisted can resend the same log line.
+// LokiSpoolSenderはrecordをat-least-onceで再送します。この経路のLokiには冪等な
+// document IDがないため、Pushの後、processing file transitionの永続化前にcrashすると、
+// 同じlog lineを再送することがあります。
 type LokiSpoolSender struct {
 	Clock      clock.Clock
 	client     Client
@@ -238,8 +238,8 @@ func (s *LokiSpoolSender) pushRequest(
 		}
 	}
 
-	// Cancellation does not override a confirmed refusal. Classify the backend
-	// result independently, then quarantine cancellation during dispatch.
+	// cancelは確定した拒否を上書きしません。backendの結果をcancelとは独立に分類し、
+	// そのうえでdispatch中のcancelはquarantineとして扱います。
 	decision := retryable.ClassifyDurableRequestOutcome(ctx, pushErr, infraloki.ClassifyDurableRequestFailure)
 	ctxErr := ctx.Err()
 	status := spool.RecordOutcomeStatusPermanent

@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 )
 
@@ -17,7 +16,7 @@ func TestPlanPutLogEventsRequestsRoutesSortsAndKeepsInputIndexes(t *testing.T) {
 	base := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
 	streamATime := base.Add(100 * time.Nanosecond)
 	streamBTime := base.Add(time.Hour + 200*time.Nanosecond)
-	resolver := newRequestPlannerResolver(t, "stream", streamrouting.Hourly)
+	resolver := newRequestPlannerResolver(t, "stream", pkgcloudwatchlogs.StreamRoutingHourly)
 	input := []IndexedEvent{
 		{InputIndex: 7, Event: pkgcloudwatchlogs.Event{Timestamp: streamBTime, Message: "b-first"}},
 		{InputIndex: 3, Event: pkgcloudwatchlogs.Event{Timestamp: streamATime, Message: "a-first"}},
@@ -111,7 +110,7 @@ func TestPlanPutLogEventsRequestsSplitsPhysicalRequestLimits(t *testing.T) {
 		},
 	}
 
-	resolver := newRequestPlannerResolver(t, "stream-a", streamrouting.None)
+	resolver := newRequestPlannerResolver(t, "stream-a", pkgcloudwatchlogs.StreamRoutingNone)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -142,7 +141,7 @@ func TestPlanPutLogEventsRequestsReturnsSingleEventFailuresByInputIndex(t *testi
 	t.Parallel()
 
 	base := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
-	resolver := newRequestPlannerResolver(t, "stream-a", streamrouting.None)
+	resolver := newRequestPlannerResolver(t, "stream-a", pkgcloudwatchlogs.StreamRoutingNone)
 	input := []IndexedEvent{
 		{InputIndex: 10, Event: pkgcloudwatchlogs.Event{Timestamp: base, Message: "valid"}},
 		{InputIndex: 20, Event: pkgcloudwatchlogs.Event{Timestamp: base, Message: ""}},
@@ -181,7 +180,7 @@ func TestPlanPutLogEventsRequestsAgreesWithEventMessageClassifierAtSizeLimit(t *
 	t.Parallel()
 
 	base := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
-	resolver := newRequestPlannerResolver(t, "stream-a", streamrouting.None)
+	resolver := newRequestPlannerResolver(t, "stream-a", pkgcloudwatchlogs.StreamRoutingNone)
 	for _, tc := range []struct {
 		name         string
 		messageBytes int
@@ -212,7 +211,7 @@ func TestPlanPutLogEventsRequestsAgreesWithEventMessageClassifierAtSizeLimit(t *
 func TestPlanPutLogEventsRequestsRejectsInvalidInputIndexes(t *testing.T) {
 	t.Parallel()
 
-	resolver := newRequestPlannerResolver(t, "stream-a", streamrouting.None)
+	resolver := newRequestPlannerResolver(t, "stream-a", pkgcloudwatchlogs.StreamRoutingNone)
 	validEvent := pkgcloudwatchlogs.Event{
 		Timestamp: time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC),
 		Message:   "valid",
@@ -267,7 +266,7 @@ func TestPlanPutLogEventsRequestsHandlesEmptyInputBeforeResolverValidation(t *te
 func newRequestPlannerResolver(
 	t *testing.T,
 	baseName string,
-	granularity streamrouting.Granularity,
+	granularity pkgcloudwatchlogs.StreamRouting,
 ) *LogStreamNameResolver {
 	t.Helper()
 

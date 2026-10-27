@@ -5,17 +5,17 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	spoolfsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/store"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/degradehandler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/fsarchivehandler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/spoolstorehandler"
 	loggerhandler "github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
-	"github.com/go-jappe/heterolog/internal/infrastructure/memory/pressure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
+	"github.com/go-jappe/heterolog/pkg/memorypressure"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // deliveryFailureHandlerMaxConcurrentは、Deliveryのfailure処理を一度に実行する上限です。
@@ -50,6 +50,10 @@ var (
 	_ HandlerShutdown          = (*fsarchivehandler.FailureArchivePipeline)(nil)
 )
 
+// newMemoryPressureProviderは、監視を渡されなかったspoolが自ら起動する監視で、OSのmemoryを
+// 読むproviderを作ります。試験では差し替えて、決まった値を返すproviderにします。
+var newMemoryPressureProvider = memorypressure.New
+
 // FactoryOptionsはinternal log routingとspool handlerのShutdown責任の移譲先です。
 type FactoryOptions struct {
 	InternalLogHandlerFactory InternalLogHandlerFactory
@@ -72,9 +76,9 @@ func Build(
 	ctx context.Context,
 	timeSource clock.Clock,
 	cfg loggerdurable.FailureStoreConfigProvider,
-	memoryMonitor pressure.MemoryPressureMonitor,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	memoryMonitor memorypressure.Monitor,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	opts FactoryOptions,
 ) (*CompositeFailureHandler, error) {
 	if cfg == nil {
@@ -134,6 +138,20 @@ func Build(
 				errs = append(errs, fmt.Errorf("failed to create spool overload handler: %w", err))
 				continue
 			}
+			// 呼び出し元が監視を渡さなければ、spoolの閾値でOSのmemoryを読む監視を
+			// このhandler用に起動し、handlerのShutdownで止めます。
+			spoolMemoryMonitor := memoryMonitor
+			var stopSpoolMemoryMonitor func()
+			if spoolMemoryMonitor == nil {
+				spoolMemoryMonitor, stopSpoolMemoryMonitor, err = spoolstorehandler.StartMemoryPressureMonitor(
+					spoolCfg,
+					newMemoryPressureProvider(),
+				)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+			}
 			internalHandlers := buildInternalHandlers(
 				opts.InternalLogHandlerFactory,
 				pkgdurable.DurableTypeSpool,
@@ -144,7 +162,7 @@ func Build(
 				timeSource,
 				spoolStore,
 				spoolCfg,
-				memoryMonitor,
+				spoolMemoryMonitor,
 				overloadHandler,
 				tracer,
 				meter,
@@ -155,6 +173,7 @@ func Build(
 					OnDebug: internalHandlers.OnDebug,
 				},
 			)
+			spooler.StopMemoryMonitorOnShutdown(stopSpoolMemoryMonitor)
 			if opts.SpoolHandlerRegistrar == nil {
 				handlers = append(handlers, spooler)
 				continue
@@ -210,8 +229,8 @@ func BuildDelivery(
 	ctx context.Context,
 	timeSource clock.Clock,
 	cfg loggerdurable.DeliveryFailureStoreConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	opts FactoryOptions,
 ) (*ReportingCompositeFailureHandler, error) {
 	if cfg == nil {
@@ -352,8 +371,8 @@ func newFailureArchivePipeline(
 	ctx context.Context,
 	timeSource clock.Clock,
 	cfg loggerdurable.FileArchiveConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	opts FactoryOptions,
 ) (*fsarchivehandler.FailureArchivePipeline, error) {
 	handlers := buildInternalHandlers(

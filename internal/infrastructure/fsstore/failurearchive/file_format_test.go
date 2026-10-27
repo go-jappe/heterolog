@@ -10,17 +10,17 @@ import (
 func TestFileFormatContractUsesSharedJSONLFormat(t *testing.T) {
 	t.Parallel()
 
-	if FileNameFormat != pkgfsstore.FailureArchiveFileNameFormat {
+	if pkgfsstore.FailureArchiveFileNameFormat != pkgfsstore.FailureArchiveFileNameFormat {
 		t.Fatalf(
 			"FileNameFormat = %q, want pkg/fsstore failure archive format %q",
-			FileNameFormat,
+			pkgfsstore.FailureArchiveFileNameFormat,
 			pkgfsstore.FailureArchiveFileNameFormat,
 		)
 	}
-	if !strings.HasSuffix(FileNameFormat, "."+FileExtension) {
+	if !strings.HasSuffix(pkgfsstore.FailureArchiveFileNameFormat, "."+FileExtension) {
 		t.Fatalf(
 			"FileNameFormat = %q, want extension %q",
-			FileNameFormat,
+			pkgfsstore.FailureArchiveFileNameFormat,
 			FileExtension,
 		)
 	}

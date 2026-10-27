@@ -7,13 +7,13 @@ import (
 	"log"
 	"sync"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // DeliveryLoggerSetは、一つのtop-level Delivery loggerが使うdefault/error/debug roleの
@@ -23,8 +23,8 @@ import (
 // DeliveryFileLoggerを生成しません。
 type DeliveryLoggerSet struct {
 	config DeliveryFileLoggerConfigProvider
-	tracer observer.Tracer
-	meter  observer.Meter
+	tracer pkgobserver.Tracer
+	meter  pkgobserver.Meter
 
 	// muは生成済みloggerの取得・公開と設定状態だけを保護します。
 	// 初回生成やCloseの完了待ちでは保持せず、別roleの既存logger取得を妨げません。
@@ -63,8 +63,8 @@ var _ logging.DeliveryBackendLogEntryHandler = (*deliveryRoleLogger)(nil)
 // 行いません。各accessorまたはfallback handlerの初回利用時に必要なroleだけを作成します。
 func NewDeliveryLoggerSet(
 	cfg DeliveryFileLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*DeliveryLoggerSet, error) {
 	return NewDeliveryLoggerSetWithDirectoryScopeLabel(
 		defaultDeliveryLoggerSetDirectoryScopeLabel,
@@ -79,8 +79,8 @@ func NewDeliveryLoggerSet(
 func NewDeliveryLoggerSetWithDirectoryScopeLabel(
 	directoryScopeLabel directorylease.ScopeLabel,
 	cfg DeliveryFileLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*DeliveryLoggerSet, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf(ErrorMsgInvalidConfigStatus, errors.New("delivery file logger config is nil"))
@@ -202,7 +202,7 @@ func (l *deliveryRoleLogger) HandleLogEntry(
 
 func deliveryRoleSelectionFailure(err error) (pkglogger.DeliveryReport, error) {
 	status := pkglogger.DeliveryFailed
-	if errors.Is(err, applogging.ErrLoggerClosed) {
+	if errors.Is(err, pkglogger.ErrLoggerClosed) {
 		status = pkglogger.DeliveryRejected
 	}
 	return pkglogger.NewTargetDeliveryReport(pkglogger.DeliveryResult{
@@ -291,8 +291,8 @@ func (s *DeliveryLoggerSet) fallbackHandler(level pkglogger.LogLevel) logging.Lo
 	return func(
 		ctx context.Context,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		if entry == nil {
 			return
@@ -300,7 +300,7 @@ func (s *DeliveryLoggerSet) fallbackHandler(level pkglogger.LogLevel) logging.Lo
 		role := resolveInternalLogFileRole(s.config.Fsstore().Layout(), level)
 		logger, err := s.getOrCreateFileLogger(ctx, role)
 		if err != nil {
-			if errors.Is(err, applogging.ErrLoggerClosed) {
+			if errors.Is(err, pkglogger.ErrLoggerClosed) {
 				return
 			}
 			log.Printf(MsgFailedCreateFallbackFileLogger, err)
@@ -312,7 +312,7 @@ func (s *DeliveryLoggerSet) fallbackHandler(level pkglogger.LogLevel) logging.Lo
 		localEntry := *entry
 		logging.EnsureEntryOccurredAt(&localEntry, logger.Clock)
 		if err := logger.writeFallbackEntry(ctx, &localEntry); err != nil {
-			if errors.Is(err, applogging.ErrLoggerClosed) {
+			if errors.Is(err, pkglogger.ErrLoggerClosed) {
 				return
 			}
 			log.Printf(ErrorMsgWriteLog, err)
@@ -328,8 +328,8 @@ func (s *DeliveryLoggerSet) NewNamedErrorFallbackHandler() logging.NamedLoggerEr
 			ctx context.Context,
 			_ error,
 			entry *logging.LogEntry,
-			tracer observer.Tracer,
-			meter observer.Meter,
+			tracer pkgobserver.Tracer,
+			meter pkgobserver.Meter,
 		) {
 			handler(ctx, entry, tracer, meter)
 		},

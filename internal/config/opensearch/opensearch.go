@@ -37,14 +37,15 @@ const (
 	// 固定ID createの409はmodeに関係なくbackendの単件・bulk結果分類で成功扱いにします。
 	// defaultではbreakerを暗黙に有効化せず、エラー分類に応じた有界retryだけを適用します。
 	DefaultRetryClientMode = "retry_policy"
-	DefaultMaxAttempts     = 3
-	DefaultBaseDelay       = 200 * time.Millisecond
-	DefaultMaxDelay        = 1 * time.Second
+	// DefaultMaxRetriesは、初回の送信に加える再試行の既定の回数です。初回と合わせて最大3回送ります。
+	DefaultMaxRetries = 2
+	DefaultBaseDelay  = 200 * time.Millisecond
+	DefaultMaxDelay   = 1 * time.Second
 )
 
-// OpenSearchConfig はOpenSearchの設定を保持する構造体
+// OpenSearchClientConfig はOpenSearch clientの設定を保持する構造体
 type OpenSearchClientConfig struct {
-	Endpoint        string               // e.g., "https://localhost:9200"
+	Endpoint        string               // 例: "https://localhost:9200"
 	Timeout         time.Duration        // クライアントタイムアウト
 	SkipVerifySSL   bool                 // 証明書検証をスキップするか（開発環境用）
 	Auth            OpenSearchAuthConfig //

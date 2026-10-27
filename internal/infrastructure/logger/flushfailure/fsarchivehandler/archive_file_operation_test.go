@@ -10,12 +10,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFinishArchiveUploadOperationCompletionResult(t *testing.T) {
@@ -64,7 +64,7 @@ func TestFinishArchiveUploadOperationCompletionResult(t *testing.T) {
 				destinations = nil
 			}
 			var notifications atomic.Int64
-			handler.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+			handler.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 				notifications.Add(1)
 			}
 

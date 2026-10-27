@@ -342,7 +342,7 @@ func (c clickHouseLoggerSpoolTestConfig) FileNameFormat() string {
 func (c clickHouseLoggerSpoolTestConfig) FileDateFormat() string {
 	return "20060102"
 }
-func (c clickHouseLoggerSpoolTestConfig) MaxWriteAttempts() int {
+func (c clickHouseLoggerSpoolTestConfig) MaxWriteRetries() int {
 	return 1
 }
 func (c clickHouseLoggerSpoolTestConfig) FileOperationRetryWaitTime() time.Duration {

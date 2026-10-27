@@ -8,9 +8,8 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 
 	"github.com/stretchr/testify/require"
@@ -93,7 +92,7 @@ func TestDeliveryCloudWatchLogsLoggerHandleLogEntryPreservesApplicationFieldsInP
 				ServiceName: "delivery-cloudwatch-application-fields-test",
 				Cloud:       &pkglogger.CloudResourceInfo{},
 			},
-		}, streamrouting.None),
+		}, pkgcloudwatchlogs.StreamRoutingNone),
 		newTestCloudWatchLogsResourceProvider(),
 		nil,
 		observer.NopTracer{},
@@ -151,10 +150,10 @@ func TestDeliveryCloudWatchLogsLoggerHandleLogEntryPreservesApplicationFieldsInP
 	}
 }
 
-func cloudWatchLogsApplicationFields(t *testing.T) []applogging.Field {
+func cloudWatchLogsApplicationFields(t *testing.T) []pkglogger.Field {
 	t.Helper()
 
-	contextField, err := applogging.Any("context", map[string]any{
+	contextField, err := pkglogger.Any("context", map[string]any{
 		"labels": []string{"primary", "audit"},
 		"retry": map[string]any{
 			"enabled": false,
@@ -163,13 +162,13 @@ func cloudWatchLogsApplicationFields(t *testing.T) []applogging.Field {
 	})
 	require.NoError(t, err)
 
-	return []applogging.Field{
-		applogging.WithRequestID("field-request"),
-		applogging.MustFieldKey("trace_id").String("field-trace"),
-		applogging.MustFieldKey("span_id").String("field-span"),
-		applogging.MustFieldKey("region").String("ap-northeast-1"),
-		applogging.MustFieldKey("enabled").Bool(true),
-		applogging.MustFieldKey("attempt").Int(2),
+	return []pkglogger.Field{
+		pkglogger.WithRequestID("field-request"),
+		pkglogger.MustFieldKey("trace_id").String("field-trace"),
+		pkglogger.MustFieldKey("span_id").String("field-span"),
+		pkglogger.MustFieldKey("region").String("ap-northeast-1"),
+		pkglogger.MustFieldKey("enabled").Bool(true),
+		pkglogger.MustFieldKey("attempt").Int(2),
 		contextField,
 	}
 }

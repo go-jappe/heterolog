@@ -80,7 +80,7 @@ func TestNewPushManagerDefaultsCanDeliverSyncAndAsyncMetrics(t *testing.T) {
 			if err := pm.PushAsync(); err != nil {
 				t.Fatalf("asynchronous push with accepted configuration: %v", err)
 			}
-			// Stop must drain the accepted async request even without Start.
+			// Startしていなくても、Stopは受け付けた非同期requestを処理し終えなければなりません。
 			if err := pm.Stop(); err != nil {
 				t.Fatalf("Stop before Start: %v", err)
 			}

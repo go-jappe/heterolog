@@ -18,14 +18,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	filelogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler/reentrytest"
 	stdoutlogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // このfileとself_notification_network_wiring_test.goの試験は、本番と同じ配線
@@ -65,8 +66,8 @@ type selfNotificationTracer struct {
 func (tr *selfNotificationTracer) StartSpan(
 	ctx context.Context,
 	name string,
-	attrs ...observer.Attr,
-) (context.Context, observer.Span) {
+	attrs ...pkgobserver.Attr,
+) (context.Context, pkgobserver.Span) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -88,11 +89,11 @@ type selfNotificationMeter struct {
 	totals map[string]int64
 }
 
-func (m *selfNotificationMeter) Counter(name string) observer.Counter {
+func (m *selfNotificationMeter) Counter(name string) pkgobserver.Counter {
 	return selfNotificationCounter{meter: m, name: name}
 }
 
-func (m *selfNotificationMeter) Gauge(string) observer.Gauge {
+func (m *selfNotificationMeter) Gauge(string) pkgobserver.Gauge {
 	return observer.NopGauge{}
 }
 
@@ -107,7 +108,7 @@ type selfNotificationCounter struct {
 	name  string
 }
 
-func (c selfNotificationCounter) Add(_ context.Context, value int64, _ ...observer.Attr) {
+func (c selfNotificationCounter) Add(_ context.Context, value int64, _ ...pkgobserver.Attr) {
 	c.meter.mu.Lock()
 	defer c.meter.mu.Unlock()
 	if c.meter.totals == nil {
@@ -321,7 +322,7 @@ func newSelfNotificationLogger(
 	case selfNotificationSync:
 		cfg.Timeout = time.Minute
 		cfg.MaxLogEntryBytes = pkglogger.DefaultMaxLogEntryBytes
-		logger, err := NewLogger(ctx, cfg, streamrouting.None, nil, nil, env.tracer, env.meter)
+		logger, err := NewLogger(ctx, cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, env.tracer, env.meter)
 		require.NoError(t, err)
 		runtime, ok := logger.(*topLevelLoggerRuntime)
 		require.True(t, ok)
@@ -352,7 +353,7 @@ func newSelfNotificationLogger(
 			ClickHouseClient:        cfg.ClickHouseClient,
 			InternalLogDestinations: cfg.InternalLogDestinations,
 		}
-		logger, err := NewAsyncLogger(ctx, asyncCfg, streamrouting.None, nil, nil, env.tracer, env.meter)
+		logger, err := NewAsyncLogger(ctx, asyncCfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, env.tracer, env.meter)
 		require.NoError(t, err)
 		runtime, ok := logger.(*topLevelAsyncLoggerRuntime)
 		require.True(t, ok)
@@ -368,7 +369,7 @@ func newSelfNotificationLogger(
 	case selfNotificationDelivery:
 		deliveryCfg.Timeout = time.Minute
 		deliveryCfg.MaxLogEntryBytes = pkglogger.DefaultMaxLogEntryBytes
-		logger, err := NewDeliveryLogger(ctx, deliveryCfg, streamrouting.None, env.tracer, env.meter)
+		logger, err := NewDeliveryLogger(ctx, deliveryCfg, pkgcloudwatchlogs.StreamRoutingNone, env.tracer, env.meter)
 		require.NoError(t, err)
 		runtime, ok := logger.(*topLevelDeliveryLoggerRuntime)
 		require.True(t, ok)
@@ -698,7 +699,7 @@ func TestSelfSelectedFileNotificationsAreWrittenWithoutRenotifying(t *testing.T)
 			name:       "sync/write_failure",
 			contract:   selfNotificationSync,
 			failWrites: true,
-			// MaxWriteAttemptsは1です。attemptの失敗と書き込みの失敗の二件を通知します。
+			// MaxWriteRetriesは0です。attemptの失敗と書き込みの失敗の二件を通知します。
 			notificationsPerWrite: 2,
 			verify:                requireSelfNotificationFailedFileWrites,
 		},

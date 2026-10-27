@@ -10,12 +10,12 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/spoolstorehandler"
 	infraspool "github.com/go-jappe/heterolog/internal/infrastructure/spool/log"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 
 	"github.com/stretchr/testify/require"
@@ -29,7 +29,7 @@ func TestNewLoggerRejectsEnabledSpoolWithoutRuntimeConfig(t *testing.T) {
 	created, err := NewLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -54,7 +54,7 @@ func TestNewAsyncLoggerRejectsEnabledSpoolWithoutRuntimeConfig(t *testing.T) {
 	created, err := NewAsyncLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -83,7 +83,7 @@ func TestNewLoggerOwnsRootUntilClose(t *testing.T) {
 	first, err := NewLogger(
 		ctx,
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		runtimeCfg,
 		nil,
 		observer.NopTracer{},
@@ -107,7 +107,7 @@ func TestNewLoggerOwnsRootUntilClose(t *testing.T) {
 	second, err := NewLogger(
 		ctx,
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		runtimeCfg,
 		nil,
 		observer.NopTracer{},
@@ -135,7 +135,7 @@ func TestNewLoggerOwnsRootUntilClose(t *testing.T) {
 	replacement, err := NewLogger(
 		ctx,
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		runtimeCfg,
 		nil,
 		observer.NopTracer{},
@@ -158,7 +158,7 @@ func TestNewLoggerKeepsFailureSpoolRunnerActiveAfterCallerContextCancellation(t 
 		created, err := NewLogger(
 			ctx,
 			cfg,
-			streamrouting.None,
+			pkgcloudwatchlogs.StreamRoutingNone,
 			testFailureSpoolRuntimeConfig(),
 			nil,
 			observer.NopTracer{},
@@ -191,7 +191,7 @@ func TestNewLoggerRejectsAlreadyCanceledContextBeforeAcquiringFailureSpoolRoot(t
 	created, err := NewLogger(
 		ctx,
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		testFailureSpoolRuntimeConfig(),
 		nil,
 		observer.NopTracer{},
@@ -220,7 +220,7 @@ func TestNewLoggerRejectsInvalidFailureSpoolRunnerConfigBeforeReturning(t *testi
 	created, err := NewLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		runtimeCfg,
 		nil,
 		observer.NopTracer{},
@@ -249,7 +249,7 @@ func TestNewAsyncLoggerRejectsInvalidFailureSpoolRunnerConfigBeforeReturning(t *
 	created, err := NewAsyncLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		runtimeCfg,
 		nil,
 		observer.NopTracer{},
@@ -279,7 +279,7 @@ func TestNewAsyncLoggerOwnsRootUntilClose(t *testing.T) {
 	first, err := NewAsyncLogger(
 		ctx,
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		runtimeCfg,
 		nil,
 		observer.NopTracer{},
@@ -303,7 +303,7 @@ func TestNewAsyncLoggerOwnsRootUntilClose(t *testing.T) {
 	second, err := NewAsyncLogger(
 		ctx,
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		runtimeCfg,
 		nil,
 		observer.NopTracer{},
@@ -322,7 +322,7 @@ func TestNewAsyncLoggerOwnsRootUntilClose(t *testing.T) {
 	replacement, err := NewAsyncLogger(
 		ctx,
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		runtimeCfg,
 		nil,
 		observer.NopTracer{},
@@ -344,7 +344,7 @@ func TestNewAsyncLoggerKeepsFailureSpoolRunnerActiveAfterCallerContextCancellati
 		created, err := NewAsyncLogger(
 			ctx,
 			testAsyncFailureSpoolLoggerConfig(base),
-			streamrouting.None,
+			pkgcloudwatchlogs.StreamRoutingNone,
 			testFailureSpoolRuntimeConfig(),
 			nil,
 			observer.NopTracer{},
@@ -375,7 +375,7 @@ func TestSyncAndAsyncPairedRuntimesCannotShareFailureSpoolRoot(t *testing.T) {
 	syncLogger, err := NewLogger(
 		ctx,
 		syncCfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		testFailureSpoolRuntimeConfig(),
 		nil,
 		observer.NopTracer{},
@@ -387,7 +387,7 @@ func TestSyncAndAsyncPairedRuntimesCannotShareFailureSpoolRoot(t *testing.T) {
 	asyncLogger, err := NewAsyncLogger(
 		ctx,
 		testAsyncFailureSpoolLoggerConfig(syncCfg),
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		testFailureSpoolRuntimeConfig(),
 		nil,
 		observer.NopTracer{},

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	infraopensearch "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/opensearch"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
@@ -17,6 +16,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/sampling"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/opensearch"
 )
 
@@ -56,8 +56,8 @@ type OpenSearchLogger struct {
 	// flushManagerは構築完了前に設定し、運用中は差し替えないLogger所有の送信依存です。
 	// FlushとCloseの実行順序はflushMuで保護します。
 	flushManager FlushManager
-	Tracer       observer.Tracer
-	Meter        observer.Meter
+	Tracer       pkgobserver.Tracer
+	Meter        pkgobserver.Meter
 }
 
 // OpenSearchLoggerOption はOpenSearchLoggerのオプション設定用の関数型
@@ -72,8 +72,8 @@ func NewOpenSearchLogger(
 	fmCfg OpenSearchFlushManagerConfigProvider,
 	resource resource.ResourceProvider,
 	failureHandler *flushfailure.CompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 	opts ...OpenSearchLoggerOption,
 ) (*OpenSearchLogger, error) {
@@ -394,7 +394,7 @@ func (l *OpenSearchLogger) enqueueNormalEntry(entry *logging.LogEntry) (bool, er
 	defer l.mu.Unlock()
 
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
-		return false, applogging.ErrLoggerClosed
+		return false, pkglogger.ErrLoggerClosed
 	}
 
 	l.entries = append(l.entries, entry)
@@ -527,7 +527,7 @@ func (l *OpenSearchLogger) indexImmediately(ctx context.Context, entry *logging.
 	l.mu.Lock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
 		l.mu.Unlock()
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	flushManager := l.flushManager
 	l.inFlight.Add(1)
@@ -576,7 +576,7 @@ func (l *OpenSearchLogger) loggerClosedError() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	return nil
 }

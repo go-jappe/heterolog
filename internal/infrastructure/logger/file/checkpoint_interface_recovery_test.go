@@ -52,7 +52,7 @@ func TestInlineCheckpointPersistenceFailureDoesNotBlockCompletedFileRemoval(t *t
 				require.Equal(t, []objectstorage.DestinationID{"primary"}, checkpoint.CompletedDestinationIDs)
 				logger.lifecycleGuard.WithProtectedPaths(func(protected map[string]struct{}) { require.NotContains(t, protected, path) })
 
-				// Another file progresses while the same checkpoint file remains unwritable.
+				// 同じcheckpoint fileに書き込めないままでも、別のfileの処理は進みます。
 				nextPath := writePendingCompressedLog(t, logger, "20260920", 2, time.Now())
 				require.False(t, logger.processRemainingLogFiles(ctx, archiveUploadGroupsForTest(t, []string{nextPath}, logger.Fsstore.FileName), notifications.enqueue))
 				require.NoFileExists(t, nextPath)
@@ -60,7 +60,7 @@ func TestInlineCheckpointPersistenceFailureDoesNotBlockCompletedFileRemoval(t *t
 				require.EqualValues(t, 2, store.records.Load())
 				require.Equal(t, 2, remote.attemptCount())
 				expected := []checkpointstore.Checkpoint{{Key: inlineCompressedLogCheckpointKey(t, logger, nextPath), CompletedDestinationIDs: []objectstorage.DestinationID{"primary"}}}
-				// No caller retry or new mutation: the Store saves the latest state on its own.
+				// callerによるretryも新しい変更もありません。Storeが自ら最新の状態を保存します。
 				requireArchiveRecoveryClosesForTest(t, logger)
 				restarted := checkpointtest.WaitForContentsAndRestart(t, checkpointPath, "nonblocking_save", filesystem, expected)
 				checkpoint, err = restarted.Load(ctx, key)

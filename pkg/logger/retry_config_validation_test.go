@@ -72,7 +72,8 @@ func TestValidateRetryClientConfigRejectsUnknownAndEmptyModes(t *testing.T) {
 	}
 }
 
-func TestValidateRetryClientConfigRequiresPositiveRetryValues(t *testing.T) {
+// 再試行の回数は0を有効な値（再試行なし）とし、負の値だけを拒否します。待機時間は正の値が必要です。
+func TestValidateRetryClientConfigRejectsNegativeRetriesAndNonPositiveDelays(t *testing.T) {
 	retryModes := []RetryClientMode{
 		RetryClientModeRetry,
 		RetryClientModeRetryPolicy,
@@ -80,71 +81,74 @@ func TestValidateRetryClientConfigRequiresPositiveRetryValues(t *testing.T) {
 		RetryClientModeRetryPolicyWithBreaker,
 	}
 	invalidValues := []struct {
-		name        string
-		maxAttempts int
-		baseDelay   time.Duration
-		maxDelay    time.Duration
-		// wantFieldとwantValueは、0以下として報告される項目と値です。
+		name       string
+		maxRetries int
+		baseDelay  time.Duration
+		maxDelay   time.Duration
+		// wantField・wantKind・wantValueは、不正として報告される項目、不正の種類、値です。
 		wantField ConfigField
+		wantKind  error
 		wantValue any
 	}{
 		{
-			name:        "zero attempts",
-			maxAttempts: 0,
-			baseDelay:   time.Millisecond,
-			maxDelay:    time.Millisecond,
-			wantField:   ConfigFieldRetryMaxAttempts,
-			wantValue:   0,
+			name:       "negative retries",
+			maxRetries: -1,
+			baseDelay:  time.Millisecond,
+			maxDelay:   time.Millisecond,
+			wantField:  ConfigFieldRetryMaxRetries,
+			wantKind:   ErrNegativeSetting,
+			wantValue:  -1,
 		},
 		{
-			name:        "negative attempts",
-			maxAttempts: -1,
-			baseDelay:   time.Millisecond,
-			maxDelay:    time.Millisecond,
-			wantField:   ConfigFieldRetryMaxAttempts,
-			wantValue:   -1,
+			name:       "zero base delay",
+			maxRetries: 0,
+			baseDelay:  0,
+			maxDelay:   time.Millisecond,
+			wantField:  ConfigFieldRetryBaseDelay,
+			wantKind:   ErrNonPositiveSetting,
+			wantValue:  time.Duration(0),
 		},
 		{
-			name:        "zero base delay",
-			maxAttempts: 1,
-			baseDelay:   0,
-			maxDelay:    time.Millisecond,
-			wantField:   ConfigFieldRetryBaseDelay,
-			wantValue:   time.Duration(0),
+			name:       "negative base delay",
+			maxRetries: 0,
+			baseDelay:  -time.Millisecond,
+			maxDelay:   time.Millisecond,
+			wantField:  ConfigFieldRetryBaseDelay,
+			wantKind:   ErrNonPositiveSetting,
+			wantValue:  -time.Millisecond,
 		},
 		{
-			name:        "negative base delay",
-			maxAttempts: 1,
-			baseDelay:   -time.Millisecond,
-			maxDelay:    time.Millisecond,
-			wantField:   ConfigFieldRetryBaseDelay,
-			wantValue:   -time.Millisecond,
+			name:       "zero max delay",
+			maxRetries: 0,
+			baseDelay:  time.Millisecond,
+			maxDelay:   0,
+			wantField:  ConfigFieldRetryMaxDelay,
+			wantKind:   ErrNonPositiveSetting,
+			wantValue:  time.Duration(0),
 		},
 		{
-			name:        "zero max delay",
-			maxAttempts: 1,
-			baseDelay:   time.Millisecond,
-			maxDelay:    0,
-			wantField:   ConfigFieldRetryMaxDelay,
-			wantValue:   time.Duration(0),
-		},
-		{
-			name:        "negative max delay",
-			maxAttempts: 1,
-			baseDelay:   time.Millisecond,
-			maxDelay:    -time.Millisecond,
-			wantField:   ConfigFieldRetryMaxDelay,
-			wantValue:   -time.Millisecond,
+			name:       "negative max delay",
+			maxRetries: 0,
+			baseDelay:  time.Millisecond,
+			maxDelay:   -time.Millisecond,
+			wantField:  ConfigFieldRetryMaxDelay,
+			wantKind:   ErrNonPositiveSetting,
+			wantValue:  -time.Millisecond,
 		},
 	}
 
 	for _, mode := range retryModes {
+		t.Run(string(mode)+"/zero retries", func(t *testing.T) {
+			if err := ValidateRetryClientConfig(mode, 0, time.Millisecond, time.Millisecond); err != nil {
+				t.Fatalf("ValidateRetryClientConfig() error = %v, want nil for no retries", err)
+			}
+		})
 		for _, tt := range invalidValues {
 			t.Run(string(mode)+"/"+tt.name, func(t *testing.T) {
-				err := ValidateRetryClientConfig(mode, tt.maxAttempts, tt.baseDelay, tt.maxDelay)
-				fieldErr := findFieldError(err, tt.wantField, ErrNonPositiveSetting)
+				err := ValidateRetryClientConfig(mode, tt.maxRetries, tt.baseDelay, tt.maxDelay)
+				fieldErr := findFieldError(err, tt.wantField, tt.wantKind)
 				if fieldErr == nil || fieldErr.Value != tt.wantValue {
-					t.Fatalf("ValidateRetryClientConfig() error = %v, want non-positive %s %v", err, tt.wantField, tt.wantValue)
+					t.Fatalf("ValidateRetryClientConfig() error = %v, want %v for %s %v", err, tt.wantKind, tt.wantField, tt.wantValue)
 				}
 			})
 		}

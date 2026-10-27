@@ -1,10 +1,10 @@
 package wrapper
 
 import (
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // RetryConfigProviderは、CloudWatch Logs client chainの構成とretry待機設定を返します。
@@ -20,17 +20,19 @@ type RetryConfigProvider interface {
 func BuildClientChain(
 	client pkgcloudwatchlogs.Client,
 	retryCfg RetryConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (pkgcloudwatchlogs.Client, error) {
 	if client == nil || retryCfg == nil {
 		return client, nil
 	}
 
 	selection := retryCfg.RetryClientSelection()
+	// providerのMaxAttemptsは初回を含む試行回数です。公開の検証は再試行の回数を受け取るため、
+	// 初回の1回を引いて渡し、試行回数が0以下ならerrorにします。
 	if err := pkglogger.ValidateRetryClientConfig(
 		selection.Mode,
-		retryCfg.MaxAttempts(),
+		retryCfg.MaxAttempts()-1,
 		retryCfg.BaseDelay(),
 		retryCfg.MaxDelay(),
 	); err != nil {

@@ -21,6 +21,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestInlineDirectorySizeIsolatedByFailureCategoryAndSkipsScansBelowLimit(t *testing.T) {
@@ -967,7 +968,7 @@ func TestArchivePurgeWithoutRuntimeGuardUsesSharedProtection(t *testing.T) {
 				Target:    "test-app",
 				Extension: "jsonl",
 			}
-			// Direct construction deliberately has no directory runtime registration.
+			// 直接構築したhandlerには、意図的にdirectory runtimeを登録していません。
 			handler := &FsArchiveHandler{
 				Config: cfg,
 				Clock:  archiveFixedClock{now: now},
@@ -976,11 +977,11 @@ func TestArchivePurgeWithoutRuntimeGuardUsesSharedProtection(t *testing.T) {
 			}
 			var files []fsstore.FileInfo
 			for index, name := range []string{
-				"test-app_20260901_1.jsonl",    // another writer's active file
-				"test-app_20260901_2.jsonl.gz", // another owner's retained upload
-				"test-app_20260901_2.jsonl",    // its raw generation peer
-				"test-app_20260901_3.jsonl.gz", // this task's pending upload
-				"test-app_20260901_3.jsonl",    // its raw generation peer
+				"test-app_20260901_1.jsonl",    // 別のwriterのactive file
+				"test-app_20260901_2.jsonl.gz", // 別のownerが保持しているupload
+				"test-app_20260901_2.jsonl",    // その世代のraw peer
+				"test-app_20260901_3.jsonl.gz", // このtaskが保留中のupload
+				"test-app_20260901_3.jsonl",    // その世代のraw peer
 				"test-app_20260901_4.jsonl",
 				"test-app_20260901_5.jsonl",
 				"test-app_20260901_6.jsonl",
@@ -1050,8 +1051,8 @@ func TestInlineDirectorySizeWarnsWhenActiveArchivesAloneExceedLimit(t *testing.T
 		InternalLogHandlers{OnWarn: func(
 			_ context.Context,
 			entry *logging.LogEntry,
-			_ observer.Tracer,
-			_ observer.Meter,
+			_ pkgobserver.Tracer,
+			_ pkgobserver.Meter,
 		) {
 			warnings = append(warnings, entry)
 		}},
@@ -1102,8 +1103,8 @@ func TestInlineDirectorySizeWarnsWhenNoArchivesAreEligibleForPurge(t *testing.T)
 		InternalLogHandlers{OnWarn: func(
 			_ context.Context,
 			entry *logging.LogEntry,
-			_ observer.Tracer,
-			_ observer.Meter,
+			_ pkgobserver.Tracer,
+			_ pkgobserver.Meter,
 		) {
 			warnings = append(warnings, entry)
 		}},
@@ -1162,8 +1163,8 @@ func TestArchiveDirectorySizeRemovalFailureDelegatesOnErrorOnce(t *testing.T) {
 			_ context.Context,
 			err error,
 			entry *logging.LogEntry,
-			_ observer.Tracer,
-			_ observer.Meter,
+			_ pkgobserver.Tracer,
+			_ pkgobserver.Meter,
 		) {
 			delegatedErrors = append(delegatedErrors, err)
 			delegatedEntries = append(delegatedEntries, entry)
@@ -1209,8 +1210,8 @@ func TestArchiveDirectorySizeRemovalFailureThroughCleanupDelegatesOnErrorOnce(t 
 			_ context.Context,
 			err error,
 			_ *logging.LogEntry,
-			_ observer.Tracer,
-			_ observer.Meter,
+			_ pkgobserver.Tracer,
+			_ pkgobserver.Meter,
 		) {
 			delegatedErrors = append(delegatedErrors, err)
 		}},
@@ -1291,8 +1292,8 @@ type blockingArchivePurgeTracer struct {
 func (t *blockingArchivePurgeTracer) StartSpan(
 	ctx context.Context,
 	name string,
-	_ ...observer.Attr,
-) (context.Context, observer.Span) {
+	_ ...pkgobserver.Attr,
+) (context.Context, pkgobserver.Span) {
 	if name == t.spanName {
 		t.once.Do(func() { close(t.entered) })
 		<-t.release
@@ -1357,8 +1358,8 @@ type inlineArchivePurgeStageRecorder struct {
 func (r *inlineArchivePurgeStageRecorder) StartSpan(
 	ctx context.Context,
 	name string,
-	_ ...observer.Attr,
-) (context.Context, observer.Span) {
+	_ ...pkgobserver.Attr,
+) (context.Context, pkgobserver.Span) {
 	switch name {
 	case SpanFilePurgeByAge, SpanFilePurgeByGeneration, SpanFilePurgeByDirectorySize:
 		r.mu.Lock()

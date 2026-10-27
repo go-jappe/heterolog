@@ -185,16 +185,16 @@ func (w *Worker) runOnceSpoolFileProcess(ctx context.Context) (ProcessReport, er
 		}
 	}
 
-	// A previous process may have saved its terminal outcome but failed to
-	// remove this processing file. Reconcile that durable decision before send.
+	// 前のprocessがterminal outcomeを保存した後、このprocessing fileの削除に失敗した
+	// 可能性があります。送信の前に、そのdurableな決定をreconcileします。
 	if recovery, ok := w.Store.(ProcessingTerminalReconciler); ok {
 		state, err := recovery.ReconcileProcessingTerminal(ctx, path, records)
 		if err != nil {
 			report.Status = ProcessStatusFailed
 			report.Err = err
 			if errors.Is(err, spool.ErrRemoveProcessingSpoolFile) {
-				// The saved decision was verified and synced. Even if unlink
-				// succeeded, its parent sync may need retry after the path vanished.
+				// 保存済みの決定は検証済みで、syncも済んでいます。unlinkが成功していても、
+				// pathが消えた後に親directoryのsyncのretryが必要なことがあります。
 				w.blockProcessingFileTransitionRetry(path, ProcessingFileTransitionRetryOpRemoveProcessingFileAfterRedistribution, err)
 			} else if !isContextError(err) {
 				w.blockProcessingPath(path, ProcessingPathBackoffOpReconcileProcessingTerminal, err)

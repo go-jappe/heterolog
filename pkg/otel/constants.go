@@ -19,7 +19,7 @@ const (
 	LogLevelFatal = 21
 )
 
-// LogLevel から文字列へのマッピング
+// LogLevelToString maps a LogLevel to its string.
 var LogLevelToString = map[LogLevel]string{
 	LogLevelTrace: "TRACE",
 	LogLevelDebug: "DEBUG",
@@ -29,7 +29,7 @@ var LogLevelToString = map[LogLevel]string{
 	LogLevelFatal: "FATAL",
 }
 
-// 文字列から LogLevel へのマッピング
+// LogLevelMaps maps a level name to its severity number.
 var LogLevelMaps = map[string]int{
 	"TRACE": LogLevelTrace,
 	"DEBUG": LogLevelDebug,

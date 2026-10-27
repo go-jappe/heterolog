@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
@@ -78,7 +78,7 @@ func TestDirectLoggerConstructorsRejectInvalidInlineFileUpload(t *testing.T) {
 			syncLogger, err := NewLogger(
 				context.Background(),
 				cfg,
-				streamrouting.None,
+				pkgcloudwatchlogs.StreamRoutingNone,
 				nil,
 				nil,
 				observer.NopTracer{},
@@ -93,7 +93,7 @@ func TestDirectLoggerConstructorsRejectInvalidInlineFileUpload(t *testing.T) {
 			asyncLogger, err := NewAsyncLogger(
 				context.Background(),
 				asyncCfg,
-				streamrouting.None,
+				pkgcloudwatchlogs.StreamRoutingNone,
 				nil,
 				nil,
 				observer.NopTracer{},

@@ -6,8 +6,10 @@ type compressedLogFileUploadSpoolConfigAdapter struct {
 	config CompressedLogFileUploadSpoolConfig
 }
 
-// NewCompressedLogFileUploadSpoolConfigAdapterは、構築側の設定をコピーしてproviderへ変換します。
-// 既定値の補完や検証は行いません。変換後に元の設定を書き換えてもproviderには反映しません。
+// NewCompressedLogFileUploadSpoolConfigAdapter copies the configuration of the
+// constructing side and converts it into a provider. It neither fills in
+// defaults nor validates. Changes made to the original configuration after
+// the conversion are not reflected in the provider.
 func NewCompressedLogFileUploadSpoolConfigAdapter(config CompressedLogFileUploadSpoolConfig) CompressedLogFileUploadSpoolConfigProvider {
 	return compressedLogFileUploadSpoolConfigAdapter{config: config}
 }

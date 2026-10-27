@@ -9,11 +9,11 @@ import (
 	"testing/synctest"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
 )
 
@@ -38,7 +38,7 @@ func TestOpenSearchLoggerCloseWaitsForTimerErrorNotification(t *testing.T) {
 		logger.mu.Lock()
 		// managerの欠落を検出した実際のOnError経路を、timerから実行します。
 		logger.flushManager = nil
-		logger.OnError = func(ctx context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		logger.OnError = func(ctx context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			if err == nil {
 				t.Error("missing flush manager did not produce an error notification")
 			}
@@ -107,7 +107,7 @@ func TestOpenSearchLoggerCloseWaitsForThresholdFlushErrorNotification(t *testing
 		t.Cleanup(func() { _ = logger.Close(context.Background()) })
 		t.Cleanup(releaseNotification)
 		var notificationCtx context.Context
-		logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			notificationCtx = ctx
 			close(entered)
 			<-release
@@ -223,14 +223,14 @@ func TestOpenSearchLoggerCloseWaitsForTimerFlushAndSerializesFlushManager(t *tes
 		// 所まで進んだ後に、Closeが戻っていないことを確認できます。
 		synctest.Wait()
 
-		if err := logger.testInfo(context.Background(), "after close started"); !errors.Is(err, applogging.ErrLoggerClosed) {
+		if err := logger.testInfo(context.Background(), "after close started"); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Info() while closing error = %v, want ErrLoggerClosed", err)
 		}
 		// DebugはLogLevelInfo設定では通常filterされるが、Close後はclosed errorを優先する。
-		if err := logger.testDebug(context.Background(), "filtered after close started"); !errors.Is(err, applogging.ErrLoggerClosed) {
+		if err := logger.testDebug(context.Background(), "filtered after close started"); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("filtered Debug() while closing error = %v, want ErrLoggerClosed", err)
 		}
-		if err := logger.testErrorWithStack(context.Background(), "stack without error after close started", nil); !errors.Is(err, applogging.ErrLoggerClosed) {
+		if err := logger.testErrorWithStack(context.Background(), "stack without error after close started", nil); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("ErrorWithStack(nil) while closing error = %v, want ErrLoggerClosed", err)
 		}
 		if got := entryCount(logger); got != queuedBeforeClose {
@@ -304,7 +304,7 @@ func TestOpenSearchLoggerCloseJoinsFlushAndManagerErrorsWithoutResendingSnapshot
 		t.Fatalf("entries after failed final flush = %d, want 0", got)
 	}
 
-	if err := logger.testInfo(context.Background(), "rejected while manager close is pending"); !errors.Is(err, applogging.ErrLoggerClosed) {
+	if err := logger.testInfo(context.Background(), "rejected while manager close is pending"); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 		t.Fatalf("Info() while closing error = %v, want ErrLoggerClosed", err)
 	}
 	if got := entryCount(logger); got != 0 {
@@ -553,7 +553,7 @@ func TestDeliveryOpenSearchLoggerCloseWaitsForInFlightIndex(t *testing.T) {
 		}
 
 		rejectedReport, rejectedErr := logger.testInfo(context.Background(), "delivery after close started")
-		if !errors.Is(rejectedErr, applogging.ErrLoggerClosed) {
+		if !errors.Is(rejectedErr, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Delivery Info() while closing error = %v, want ErrLoggerClosed", rejectedErr)
 		}
 		if len(rejectedReport.Targets) != 1 || rejectedReport.Targets[0].Status != pkglogger.DeliveryRejected {
@@ -583,14 +583,14 @@ func TestDeliveryOpenSearchLoggerCloseWaitsForInFlightIndex(t *testing.T) {
 		}
 
 		report, err := logger.testInfo(context.Background(), "delivery after close")
-		if !errors.Is(err, applogging.ErrLoggerClosed) {
+		if !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Delivery Info() after Close error = %v, want ErrLoggerClosed", err)
 		}
 		if len(report.Targets) != 1 || report.Targets[0].Status != pkglogger.DeliveryRejected {
 			t.Fatalf("Delivery Info() after Close report = %+v, want rejected target", report)
 		}
 		stackReport, stackErr := logger.testErrorWithStack(context.Background(), "stack without error after delivery close", nil)
-		if !errors.Is(stackErr, applogging.ErrLoggerClosed) {
+		if !errors.Is(stackErr, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Delivery ErrorWithStack(nil) after Close error = %v, want ErrLoggerClosed", stackErr)
 		}
 		if len(stackReport.Targets) != 1 || stackReport.Targets[0].Status != pkglogger.DeliveryRejected {
@@ -816,7 +816,7 @@ func waitOpenSearchLoggerClosedError(t *testing.T, result <-chan error, message 
 	t.Helper()
 	select {
 	case err := <-result:
-		if !errors.Is(err, applogging.ErrLoggerClosed) {
+		if !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("%s: error = %v, want ErrLoggerClosed", message, err)
 		}
 	case <-time.After(lifecycleHangTimeout):

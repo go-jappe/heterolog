@@ -24,8 +24,8 @@ type flushManagerRuntimeConfigAdapter struct {
 }
 
 type bulkFlushManagerConfigAdapter struct {
-	maxRetryAttempts int
-	retryWaitTime    time.Duration
+	maxItemRetries int
+	retryWaitTime  time.Duration
 }
 
 type flushManagerConfigAdapter struct {
@@ -57,8 +57,10 @@ func NewRetryConfigProvider(
 	return retryClientChainConfigAdapter{cfg: *cfg}
 }
 
+// MaxAttemptsは、wrapperが数える初回を含む試行回数です。設定は再試行の回数なので、
+// 初回の1回を足します。負の再試行回数は、adapterを作る前の設定検証で拒否しています。
 func (a retryClientChainConfigAdapter) MaxAttempts() int {
-	return a.cfg.MaxAttempts
+	return a.cfg.MaxRetries + 1
 }
 
 func (a retryClientChainConfigAdapter) BaseDelay() time.Duration {
@@ -84,8 +86,8 @@ func NewFlushManagerConfigAdapter(cfg logger.OpenSearchFlushManagerConfig) flush
 			cfg.IndexLatencyEnabled,
 		),
 		bulkFlushManagerConfigAdapter: bulkFlushManagerConfigAdapter{
-			maxRetryAttempts: cfg.MaxRetryAttempts,
-			retryWaitTime:    cfg.RetryWaitTime,
+			maxItemRetries: cfg.MaxItemRetries,
+			retryWaitTime:  cfg.RetryWaitTime,
 		},
 		failureStoreConfig: loggerdurable.NewFailureStoreConfigAdapter(cfg.FailureStoreConfig),
 	}
@@ -153,8 +155,8 @@ func (f flushManagerRuntimeConfigAdapter) IndexLatencyEnabled() bool {
 	return f.indexLatencyEnabled
 }
 
-func (f bulkFlushManagerConfigAdapter) MaxRetryAttempts() int {
-	return f.maxRetryAttempts
+func (f bulkFlushManagerConfigAdapter) MaxItemRetries() int {
+	return f.maxItemRetries
 }
 func (f bulkFlushManagerConfigAdapter) RetryWaitTime() time.Duration {
 	return f.retryWaitTime
@@ -195,7 +197,7 @@ func NewOpenSearchLoggerConfigAdapter(
 		timeConfig:     loggertime.NewTimeConfigAdapter(cfg.TimeConfig),
 		runtimeConfig:  NewRuntimeConfigAdapter(cfg.RuntimeConfig),
 		logBodyConfig:  NewLogBodyConfigAdapter(cfg.LogBodyConfig),
-		samplingConfig: sampling.NewSamplingConfigAdapter(cfg.SamplingConfig),
+		samplingConfig: sampling.NewConfigProvider(cfg.SamplingConfig, cfg.RuntimeConfig.Live),
 		handlerConfig:  handler.NewConfigAdapter(cfg.HandlerConfig),
 	}
 }
@@ -277,6 +279,8 @@ type RuntimeConfigAdapter struct {
 	isDebug  bool
 	target   string
 	logLevel logger.LogLevel
+	// liveを設定した場合は、logLevelの代わりにその現在のlevelを使います。
+	live *logger.LiveSettings
 }
 
 func NewRuntimeConfigAdapter(cfg logger.RuntimeConfig) RuntimeConfigAdapter {
@@ -285,6 +289,7 @@ func NewRuntimeConfigAdapter(cfg logger.RuntimeConfig) RuntimeConfigAdapter {
 		isDebug:  cfg.IsDebug,
 		target:   cfg.Target,
 		logLevel: cfg.LogLevel,
+		live:     cfg.Live,
 	}
 }
 
@@ -301,6 +306,9 @@ func (a RuntimeConfigAdapter) Target() string {
 }
 
 func (a RuntimeConfigAdapter) LogLevel() logger.LogLevel {
+	if a.live != nil {
+		return a.live.Level()
+	}
 	return a.logLevel
 }
 

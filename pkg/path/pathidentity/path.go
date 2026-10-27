@@ -1,9 +1,13 @@
-// Package pathidentityは、保存先の初期化時の実体パス解決と、パスの比較キー生成を行います。
-// ResolveDirectoryでリンクを解決した結果を保持し、通常処理ではComparisonKeyで比較します。
-// 比較時にリンク・8.3短縮名の解決は行いません。DarwinとLinuxでは既存祖先のfilesystem特性を読み取ります。
-// Windowsの比較は標準のcase-insensitive directoryを対象とします。
-// directory直下のfile名を比較する大小文字の規則は、同じ判定からDirectoryNameCaseで取得します。
-// identity keyを実際のfile操作へ渡さず、操作対象の元pathは別に保持してください。
+// Package pathidentity resolves the real path of a storage location when the
+// location is initialized, and generates comparison keys for paths. The result
+// of resolving links with ResolveDirectory is kept, and normal processing
+// compares paths with ComparisonKey. Comparison does not resolve links or 8.3
+// short names. On Darwin and Linux, the filesystem characteristics of the
+// existing ancestors are read. Comparison on Windows targets standard
+// case-insensitive directories. The case rule for comparing the file names
+// directly under a directory is obtained from the same decision with
+// DirectoryNameCase. Do not pass identity keys to actual file operations; keep
+// the original path to operate on separately.
 package pathidentity
 
 import (
@@ -14,9 +18,10 @@ import (
 	"github.com/go-jappe/heterolog/internal/pathcaserule"
 )
 
-// AbsoluteKeyは、パスを絶対化・正規化した比較用キーを返します。
-// Windowsの通常directoryでは大小文字とextended path表記を統一します。
-// DarwinとLinuxでは対象filesystemのcase特性を使用します。リンクの解決は行いません。
+// AbsoluteKey returns a comparison key made by making the path absolute and
+// normalizing it. For ordinary directories on Windows, it unifies the case and
+// the extended path notation. On Darwin and Linux, it uses the case
+// characteristics of the target filesystem. It does not resolve links.
 func AbsoluteKey(path string) (string, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
@@ -25,11 +30,13 @@ func AbsoluteKey(path string) (string, error) {
 	return platformKey(absolute), nil
 }
 
-// ComparisonKeyは、パス同士の比較に使うキーを返します。
-// パスを絶対化して整理し、Windowsでは大小文字と通常の拡張パス表記の違いを揃えます。
-// 空のパスは空のまま返します。絶対化に失敗した場合は、Clean済みのパスからキーを作ります。
-// DarwinとLinuxでは既存祖先を読み取り、未作成の子にも同じcase特性を適用します。
-// 戻り値は実際のファイル操作には使わないでください。
+// ComparisonKey returns the key used to compare paths with each other. It makes
+// the path absolute and cleans it, and on Windows it evens out differences in
+// case and in the ordinary extended path notation. An empty path is returned
+// empty. If making the path absolute fails, the key is built from the cleaned
+// path. On Darwin and Linux, it reads the existing ancestors and applies the
+// same case characteristics to children that do not exist yet. Do not use the
+// returned value for actual file operations.
 func ComparisonKey(path string) string {
 	if path == "" {
 		return ""
@@ -41,9 +48,11 @@ func ComparisonKey(path string) string {
 	return key
 }
 
-// Containsは、Clean+Abs済みの元表記をkeyに持つsnapshotとのpath照合に使います。
-// 完全一致を優先し、filesystem上のcase aliasやWindows extended表記も照合します。
-// mapのkeyは書き換えないため、callerは元表記をfile操作に使い続けられます。
+// Contains matches a path against a snapshot whose keys are original
+// spellings already processed by Clean and Abs. It prefers an exact match, and
+// it also matches case aliases on the filesystem and the Windows extended
+// notation. It does not rewrite the keys of the map, so the caller can keep
+// using the original spellings for file operations.
 func Contains(paths map[string]struct{}, path string) bool {
 	if len(paths) == 0 {
 		return false

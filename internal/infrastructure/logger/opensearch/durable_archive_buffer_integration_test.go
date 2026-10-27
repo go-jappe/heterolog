@@ -83,7 +83,7 @@ func TestOpenSearchLoggerDurableArchiveFailureDropsDetachedSnapshot(t *testing.T
 				MaxFileBackups:             infrafsstore.MinAllowedMaxFileBackups,
 				UsageCacheTTL:              time.Hour,
 				CompressFormat:             pkgfsstore.CompressGzip,
-				MaxWriteAttempts:           1,
+				MaxWriteRetries:            0,
 				FileOperationRetryWaitTime: time.Millisecond,
 				OverloadPolicyConfig: pkgdurable.FileArchiveOverloadPolicyConfig{
 					OverloadPolicy:        pkgdurable.OverloadPolicyDrop,
@@ -106,7 +106,7 @@ func TestOpenSearchLoggerDurableArchiveFailureDropsDetachedSnapshot(t *testing.T
 		Index:              "test-index",
 		FailureStoreConfig: failureStoreConfig,
 		Resource:           resourceConfig,
-		MaxRetryAttempts:   1,
+		MaxItemRetries:     0,
 	})
 	failureHandler, err := BuildFailureHandler(
 		ctx,

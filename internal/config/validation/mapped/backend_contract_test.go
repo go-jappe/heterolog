@@ -205,7 +205,7 @@ func TestMappedConfigIgnoresUnusedHandlerTargetRetrySettings(t *testing.T) {
 		OpenSearch: &pkglogger.OpenSearchConfig{
 			OpenSearchRetryableClientCaseTransportErrorConfig: &pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: pkglogger.RetryClientMode("unsupported"),
-				MaxAttempts:     -1,
+				MaxRetries:      -1,
 				BaseDelay:       -time.Second,
 				MaxDelay:        -time.Second,
 			},

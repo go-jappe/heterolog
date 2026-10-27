@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
@@ -14,6 +13,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // FailureArchiveRunnerConfigProviderは、archiveの保存・保持設定とrunnerの実行設定を
@@ -31,8 +31,8 @@ type FailureArchiveRunnerConfigProvider interface {
 type FailureArchiveOptions struct {
 	Config FailureArchiveRunnerConfigProvider
 	Clock  clock.Clock
-	Tracer observer.Tracer
-	Meter  observer.Meter
+	Tracer pkgobserver.Tracer
+	Meter  pkgobserver.Meter
 	// SpoolRuntimesは呼び出し元が構築・所有する送信backend別の共有spoolです。
 	// spool退避を使うbackendのruntimeは必須です。spool退避が無効ならnilを渡せます。
 	// 呼び出し元は、生成した全DirectoryLifecycleの終了後にruntimeを閉じてください。
@@ -241,7 +241,7 @@ func newFailureArchiveLifecycleConfigAdapter(
 			CompressFormat:     source.CompressFormat(),
 		},
 		Retry: pkgfsstore.RetryConfig{
-			MaxWriteAttempts:           source.MaxWriteAttempts(),
+			MaxWriteRetries:            source.MaxWriteRetries(),
 			FileOperationRetryWaitTime: source.FileOperationRetryWaitTime(),
 		},
 	})

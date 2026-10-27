@@ -76,12 +76,12 @@ func TestPushPreservesEndpointPathSegments(t *testing.T) {
 
 func TestNewRejectsEncodedPushPathSeparators(t *testing.T) {
 	for _, path := range []string{
-		"/%2F",                // Encoded root slash is a segment, not an empty path.
-		"/loki%2Fapi/v1/push", // The API requires four distinct segments.
+		"/%2F",                // encodeされたroot slashは、空のpathではなくsegmentです。
+		"/loki%2Fapi/v1/push", // APIには4つの別々のsegmentが必要です。
 		"/loki/api%2Fv1/push/",
 		"/loki/api/v1%2Fpush",
-		"/proxy%2Floki/api/v1/push/", // The leading API delimiter must also be literal.
-		"/loki/api/v1/push%2F",       // An encoded terminal slash belongs to "push/".
+		"/proxy%2Floki/api/v1/push/", // APIの先頭の区切りもliteralである必要があります。
+		"/loki/api/v1/push%2F",       // encodeされた末尾のslashは"push/"に含まれます。
 		"/loki/api/v1/push%2F/",
 	} {
 		t.Run(path, func(t *testing.T) {

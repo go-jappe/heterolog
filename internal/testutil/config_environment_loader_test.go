@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/config"
 	"github.com/go-jappe/heterolog/internal/testutil"
+	pkgenv "github.com/go-jappe/heterolog/pkg/env"
 )
 
 // 開発者の環境に旧名のkeyが残っていても、設定項目を外した後の設定読込は
@@ -57,7 +58,7 @@ func renamedEnvironmentKeys(err error) []string {
 	walk = func(err error) {
 		switch node := err.(type) {
 		case nil:
-		case *config.RenamedEnvironmentKeyError:
+		case *pkgenv.RenamedEnvironmentKeyError:
 			keys = append(keys, node.Old)
 		case interface{ Unwrap() []error }:
 			for _, child := range node.Unwrap() {

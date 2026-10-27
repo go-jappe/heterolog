@@ -41,8 +41,9 @@ func TestMultiTypeLoggersUseConfigFixture(t *testing.T) {
 	syncLogPath := filepath.Join(t.TempDir(), "sync")
 	syncCfg = fileSlackAndStdoutLoggerConfig(t, appCfg, syncCfg, syncLogPath)
 	requireSlackLoggerConfigForTest(t, syncCfg.Slack)
-	// Slack's actual-.env mapping is verified above and its HTTP boundary has a
-	// dedicated mock-transport test. Keep this multi-logger I/O test hermetic.
+	// Slackについて、fixtureの.envからのmappingは直前のrequireSlackLoggerConfigForTestで
+	// 確認済みで、HTTP境界には専用のmock transport testがあります。このmulti-loggerの
+	// I/O testは外部に依存させません。
 	syncCfg.Slack = nil
 	syncCfg.LogOutputDestinations = pkglogger.LogOutputDestinations{
 		pkglogger.LogOutputFile,

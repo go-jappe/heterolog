@@ -62,10 +62,10 @@ type ActiveSpoolWriter interface {
 	StoreActive(ctx context.Context, records []pkgspool.SpoolRecord) error
 }
 
-// ProcessingTerminalReconciler recovers a saved terminal decision after restart.
-// It is optional for non-filesystem stores. An empty state with no error means no
-// evidence was found; a nonempty state with no error means cleanup completed.
-// Any error must stop sending, preserving ambiguous or partially split data.
+// ProcessingTerminalReconcilerは、再起動後に保存済みのterminal decisionを回復します。
+// filesystem以外のstoreでは実装は任意です。errorなしで空のstateを返した場合は証拠が
+// 見つからなかったこと、errorなしで空でないstateを返した場合はcleanupが完了したことを
+// 意味します。errorはどれも送信を止め、曖昧なdataや一部だけ分割されたdataを保持しなければなりません。
 type ProcessingTerminalReconciler interface {
 	ReconcileProcessingTerminal(ctx context.Context, processingPath string, records []pkgspool.SpoolRecord) (pkgspool.State, error)
 }

@@ -47,7 +47,7 @@ func TestLinuxMemoryPressureResolvesProcessCgroup(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			filesystem := linuxMemoryFixture(tc.group, tc.root, tc.mount)
 			setLinuxTestLimit(filesystem, tc.directory, "99614720", "104857600")
-			// This root-looking decoy must not override the process's actual cgroup.
+			// rootに見えるこのおとりが、processの実際のcgroupを上書きしてはいけません。
 			if tc.directory != "/sys/fs/cgroup" {
 				setLinuxTestLimit(filesystem, "/sys/fs/cgroup", "104857600", "1073741824")
 			}
@@ -69,7 +69,7 @@ func TestLinuxMemoryPressureResolvesProcessCgroup(t *testing.T) {
 
 func TestLinuxMemoryPressureChecksAncestorConstraintsIndependently(t *testing.T) {
 	filesystem := linuxMemoryFixture("/tenant/app", "/", "/sys/fs/cgroup")
-	// The child has the smallest remaining budget; its parent has the highest ratio.
+	// 子は残りの予算が最も小さく、その親は使用率が最も高い状態です。
 	setLinuxTestLimit(filesystem, "/sys/fs/cgroup/tenant/app", "80", "100")
 	setLinuxTestLimit(filesystem, "/sys/fs/cgroup/tenant", "900", "1000")
 	p, err := readLinuxMemoryPressure(context.Background(), filesystem)

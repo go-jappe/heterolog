@@ -13,9 +13,10 @@ type HTTPStatusError struct {
 	After  time.Duration
 }
 
-// ResponseDecodeErrorは、OpenSearchが成功statusで返したresponse bodyの読取り、
-// 解析、またはrequestとの対応検証に失敗し、書込み結果を確認できなかったことを表します。
-// Operationには"index"または"bulk"が入り、Errには具体的な原因を保持します。
+// ResponseDecodeError reports that reading or parsing the response body that
+// OpenSearch returned with a success status, or checking that the response
+// corresponds to the request, failed, so the result of the write could not be
+// confirmed. Operation is "index" or "bulk", and Err holds the specific cause.
 type ResponseDecodeError struct {
 	Operation string
 	Err       error

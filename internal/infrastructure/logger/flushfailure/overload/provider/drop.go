@@ -7,13 +7,14 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type dropHandler struct {
-	meter observer.Meter
+	meter pkgobserver.Meter
 }
 
-func NewOverloadDropHandler(meter observer.Meter) *dropHandler {
+func NewOverloadDropHandler(meter pkgobserver.Meter) *dropHandler {
 	return &dropHandler{meter: meter}
 }
 
@@ -27,13 +28,13 @@ func (h *dropHandler) Handle(ctx context.Context, result loggerfailure.SendResul
 	if span != nil {
 		span.AddEvent(
 			SpanEventDrop,
-			observer.Attr{Key: "reason", Value: "overload"},
-			observer.Attr{Key: "retryable_records", Value: len(result.RetryableRecords)},
-			observer.Attr{Key: "dead_records", Value: len(result.DeadRecords)},
-			observer.Attr{Key: "quarantine_records", Value: len(result.QuarantineRecords)},
+			pkgobserver.Attr{Key: "reason", Value: "overload"},
+			pkgobserver.Attr{Key: "retryable_records", Value: len(result.RetryableRecords)},
+			pkgobserver.Attr{Key: "dead_records", Value: len(result.DeadRecords)},
+			pkgobserver.Attr{Key: "quarantine_records", Value: len(result.QuarantineRecords)},
 		)
 		span.SetAttributes(
-			observer.Attr{Key: DropOccurredAttribute, Value: true},
+			pkgobserver.Attr{Key: DropOccurredAttribute, Value: true},
 		)
 	}
 

@@ -21,8 +21,8 @@ type OpenSearchFlushManagerRuntimeConfigProvider interface {
 // OpenSearchBulkRetryConfigProviderは、bulk応答で失敗した項目の再送設定を提供します。
 // 送信先indexや遅延通知などの共通設定は含みません。
 type OpenSearchBulkRetryConfigProvider interface {
-	// MaxRetryAttemptsは初回を含む総送信試行回数です。
-	MaxRetryAttempts() int
+	// MaxItemRetriesは、retryableと分類されたBulk itemを、初回の送信に加えて再送する回数です。
+	MaxItemRetries() int
 	// RetryWaitTimeはretryableと分類されたBulk itemを次に送信するまでの待機時間です。
 	RetryWaitTime() time.Duration
 }

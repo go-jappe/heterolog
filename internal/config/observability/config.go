@@ -4,7 +4,7 @@ const (
 	DefaultTracingProvider     = "noop"
 	DefaultTracingExporterType = "none"
 	DefaultTracingEndpoint     = "localhost:4317"
-	DefaultTracingProtocol     = "grcp" //grcp or http
+	DefaultTracingProtocol     = "grpc" // grpcまたはhttp
 )
 
 type ObservabilityConfig struct {
@@ -16,7 +16,7 @@ type TracingConfig struct {
 	Enabled bool
 
 	// どの実装を使うか（OTelとは限らない）
-	Provider string // "otel" | "noop" | "vendorX" etc
+	Provider string // "otel" | "noop" | "vendorX" など
 
 	// どこへ送るか（OTLPなら共通化できる）
 	Exporter TraceExporterConfig

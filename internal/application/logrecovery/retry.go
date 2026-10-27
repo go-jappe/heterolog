@@ -12,8 +12,8 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	"github.com/go-jappe/heterolog/internal/infrastructure/notification"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // recoveryLifecycleは復旧sessionが利用する、一巡処理と終了制御の契約です。
@@ -235,7 +235,7 @@ func runRetryRecovery(ctx context.Context, specs []retryRecoverySpec, opts Optio
 		}, nil)
 		if !accepted {
 			session.finishJob()
-			job.latestErr = shutdown.ErrForcedClose
+			job.latestErr = pkgshutdown.ErrForcedClose
 		}
 	}
 	session.mu.Lock()
@@ -280,7 +280,7 @@ func runRetryRecovery(ctx context.Context, specs []retryRecoverySpec, opts Optio
 	forced := session.forced
 	session.mu.Unlock()
 	if forced {
-		errs = append(errs, context.Canceled, shutdown.ErrForcedClose)
+		errs = append(errs, context.Canceled, pkgshutdown.ErrForcedClose)
 	}
 	for _, err := range errs {
 		report.Errors = appendUnique(report.Errors, err.Error())

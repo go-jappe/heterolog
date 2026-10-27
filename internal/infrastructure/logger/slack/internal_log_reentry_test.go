@@ -14,6 +14,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler/reentrytest"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // slowSlackAPITransportは、Slack APIへのrequestをdelayだけ遅らせてから記録し、成功応答を
@@ -58,11 +59,11 @@ func TestDeliverySlackLoggerHandlerWriteDoesNotRedispatchPostDelay(t *testing.T)
 				if err != nil {
 					t.Fatal(err)
 				}
-				logger.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					t.Errorf("unexpected warn internal log notification: %s", entry.Message)
 				}
 				probe := reentrytest.NewProbe(t)
-				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					depth, ok := probe.Enter()
 					defer probe.Exit()
 					if !ok {
@@ -104,7 +105,7 @@ func TestSlackLoggerOnWarnWriteDoesNotRedispatchLevelWarning(t *testing.T) {
 		t.Run(mode.Name, func(t *testing.T) {
 			logger := newSlackLevelTestLogger(t, pkglogger.LogLevelFatal)
 			probe := reentrytest.NewProbe(t)
-			logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				_, ok := probe.Enter()
 				defer probe.Exit()
 				if !ok {
@@ -181,7 +182,7 @@ func runSlackOnDebugReentry(t *testing.T, mode reentrytest.Mode, loggerLevel, wr
 	probe := reentrytest.NewProbe(t)
 	var mu sync.Mutex
 	var nestedErrs []error
-	logger.OnDebug = func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	logger.OnDebug = func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		depth, ok := probe.Enter()
 		defer probe.Exit()
 		if !ok {
@@ -269,11 +270,11 @@ func TestDeliverySlackLoggerReentrantDirectSendAppliesLogLevel(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					t.Errorf("unexpected error internal log notification: %v", err)
 				}
 				probe := reentrytest.NewProbe(t)
-				logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					depth, ok := probe.Enter()
 					defer probe.Exit()
 					if !ok {

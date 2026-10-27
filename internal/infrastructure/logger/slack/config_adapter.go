@@ -30,7 +30,7 @@ func NewConfigAdapter(cfg logger.SlackLoggerConfig) configAdapter {
 		timeConfig:     loggertime.NewTimeConfigAdapter(cfg.TimeConfig),
 		runtimeConfig:  newRuntimeConfigAdapter(cfg.RuntimeConfig),
 		logBodyConfig:  newLogBodyConfigAdapter(cfg.LogBodyConfig),
-		samplingConfig: sampling.NewSamplingConfigAdapter(cfg.SamplingConfig),
+		samplingConfig: sampling.NewConfigProvider(cfg.SamplingConfig, cfg.RuntimeConfig.Live),
 		handlerConfig:  handler.NewConfigAdapter(cfg.HandlerConfig),
 	}
 }
@@ -222,6 +222,8 @@ type runtimeConfigAdapter struct {
 	IsDebugConfig  bool
 	TargetConfig   string
 	LogLevelConfig logger.LogLevel
+	// LiveConfigを設定した場合は、LogLevelConfigの代わりにその現在のlevelを使います。
+	LiveConfig *logger.LiveSettings
 }
 
 func newRuntimeConfigAdapter(cfg logger.RuntimeConfig) RuntimeConfigProvider {
@@ -230,6 +232,7 @@ func newRuntimeConfigAdapter(cfg logger.RuntimeConfig) RuntimeConfigProvider {
 		IsDebugConfig:  cfg.IsDebug,
 		TargetConfig:   cfg.Target,
 		LogLevelConfig: cfg.LogLevel,
+		LiveConfig:     cfg.Live,
 	}
 }
 
@@ -243,6 +246,9 @@ func (a runtimeConfigAdapter) Target() string {
 	return a.TargetConfig
 }
 func (a runtimeConfigAdapter) LogLevel() logger.LogLevel {
+	if a.LiveConfig != nil {
+		return a.LiveConfig.Level()
+	}
 	return a.LogLevelConfig
 }
 

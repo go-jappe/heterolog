@@ -149,8 +149,8 @@ func TestMapFileRolePurgePreservesContractsAndInternalOverrides(t *testing.T) {
 		"HETEROLOG_LOG_TYPE=file,stdout", "HETEROLOG_ASYNC_LOG_TYPE=file,stdout", "HETEROLOG_DELIVERY_LOG_TYPE=file,stdout",
 	}
 	for i, prefix := range []string{"", "ASYNC_", "DELIVERY_"} {
-		// Both roles share the main directory here. Internal log overrides below
-		// separate them again, so mapping must preserve their configured capacity.
+		// ここではerrorとdebugの両roleがmain directoryを共有します。下のinternal logの上書きで
+		// 再び別directoryに分かれるため、mappingは各roleに設定した容量を保持しなければなりません。
 		for _, dir := range []string{"LOG_DIR", "ERROR_LOG_DIR", "DEBUG_LOG_DIR"} {
 			lines = append(lines, "HETEROLOG_"+prefix+dir+"="+prefix+"logs")
 		}
@@ -252,8 +252,8 @@ func TestFileRolePurgeMappingDoesNotReplaceExplicitZero(t *testing.T) {
 		"HETEROLOG_MAX_DELIVERY_ERROR_LOG_FILE_BACKUPS=0", "HETEROLOG_MAX_DELIVERY_ERROR_LOG_FILE_AGE=0", "HETEROLOG_MAX_DELIVERY_ERROR_LOG_FILE_DIR_SIZE_MB=0",
 		"HETEROLOG_MAX_DELIVERY_DEBUG_LOG_FILE_BACKUPS=0", "HETEROLOG_MAX_DELIVERY_DEBUG_LOG_FILE_AGE=0", "HETEROLOG_MAX_DELIVERY_DEBUG_LOG_FILE_DIR_SIZE_MB=0",
 	})
-	// The constructors map values before semantic validation. Explicit zero must
-	// reach that validation unchanged, even though common limits remain positive.
+	// 各constructorは、値の意味を検証する前にmapします。共通の上限が正の値のままでも、
+	// 明示した0は変更されずにその検証まで届かなければなりません。
 	syncCfg := NewFileLoggerConfig(&cfg)
 	asyncCfg := NewAsyncFileLoggerConfig(&cfg)
 	deliveryCfg := NewDeliveryFileLoggerConfig(&cfg)

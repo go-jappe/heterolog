@@ -17,15 +17,17 @@ import (
 )
 
 type LoggerConfig struct {
-	// LogOutputDestinations は、設定を保持しているbackendのうち、
-	// application logの通常出力先として起動するbackendを表します。
-	// fallback handlerだけに使うbackendはconfig pointerを持っていても、ここには含めません。
-	// 明示したbackendのconfig pointerは必須です。空の場合だけ、non-nilのconfigを
-	// 通常出力として扱う直接構築互換の挙動になります。
+	// LogOutputDestinations lists the backends, among those whose settings are
+	// held, that are started as regular outputs of application logs. A backend
+	// used only by fallback handlers is not listed here, even if its config
+	// pointer is set. The config pointer of each listed backend is required. Only
+	// an empty list selects the behavior compatible with direct construction,
+	// which treats each non-nil config as a regular output.
 	LogOutputDestinations LogOutputDestinations
 	Timeout               time.Duration
-	// MaxLogEntryBytesは、backendへ分配する前に受理できる一件のapplication logの
-	// 上限です。message、error、fieldsをJSONとして数え、正の値を必須とします。
+	// MaxLogEntryBytes is the maximum size of a single application log entry that
+	// can be accepted before it is distributed to the backends. The message, error
+	// and fields are counted as JSON, and the value must be positive.
 	MaxLogEntryBytes     int
 	File                 *FileLoggerConfig
 	Stdout               *StdoutLoggerConfig
@@ -38,25 +40,31 @@ type LoggerConfig struct {
 	CloudWatchLogsClient *cloudwatchlogs.Config
 	ClickHouse           *ClickHouseConfig
 	ClickHouseClient     *clickhouse.Config
-	// InternalLogDestinationsは、internal log handlerだけが使用する保存先設定です。
-	// nilのbackendは通常設定を使い、non-nilのbackendだけ保存先identityを置き換えます。
+	// InternalLogDestinations holds destination settings used only by internal
+	// log handlers. A nil backend uses the regular settings, and only a non-nil
+	// backend replaces the destination identity.
 	InternalLogDestinations *InternalLogDestinationConfig
 	Resource                *otel.Resource
 }
 
 type AsyncBestEffortMultiLoggerConfig struct {
-	// LogOutputDestinations は、設定を保持しているbackendのうち、
-	// application logの通常出力先として起動するbackendを表します。
-	// fallback handlerだけに使うbackendはconfig pointerを持っていても、ここには含めません。
-	// 明示したbackendのconfig pointerは必須です。空の場合だけ、non-nilのconfigを
-	// 通常出力として扱う直接構築互換の挙動になります。
+	// LogOutputDestinations lists the backends, among those whose settings are
+	// held, that are started as regular outputs of application logs. A backend
+	// used only by fallback handlers is not listed here, even if its config
+	// pointer is set. The config pointer of each listed backend is required. Only
+	// an empty list selects the behavior compatible with direct construction,
+	// which treats each non-nil config as a regular output.
 	LogOutputDestinations LogOutputDestinations
 	Timeout               time.Duration
-	// MaxLogEntryBytesは、goroutine起動前に受理できる一件のapplication logの
-	// 上限です。超過したlogはbest-effort契約に従い、childへ渡さず破棄します。
+	// MaxLogEntryBytes is the maximum size of a single application log entry that
+	// can be accepted before a goroutine is started. Following the best-effort
+	// contract, an entry over the limit is dropped without being passed to the
+	// children.
 	MaxLogEntryBytes int
-	// MaxParallelはchild Logger処理の同時実行数です。上限到達だけを理由にchildを
-	// 破棄せず、実行中のchildが完了するまで受付側へbackpressureをかけます。
+	// MaxParallel is the number of child Logger operations that can run at the
+	// same time. Reaching the limit alone does not drop a child; instead,
+	// backpressure is applied to the accepting side until a running child
+	// completes.
 	MaxParallel             int
 	File                    *FileLoggerConfig
 	Stdout                  *StdoutLoggerConfig
@@ -74,15 +82,17 @@ type AsyncBestEffortMultiLoggerConfig struct {
 }
 
 type DeliveryLoggerConfig struct {
-	// LogOutputDestinations は、設定を保持しているbackendのうち、
-	// application logの通常出力先として起動するbackendを表します。
-	// fallback handlerだけに使うbackendはconfig pointerを持っていても、ここには含めません。
-	// 明示したbackendのconfig pointerは必須です。空の場合だけ、non-nilのconfigを
-	// 通常出力として扱う直接構築互換の挙動になります。
+	// LogOutputDestinations lists the backends, among those whose settings are
+	// held, that are started as regular outputs of application logs. A backend
+	// used only by fallback handlers is not listed here, even if its config
+	// pointer is set. The config pointer of each listed backend is required. Only
+	// an empty list selects the behavior compatible with direct construction,
+	// which treats each non-nil config as a regular output.
 	LogOutputDestinations LogOutputDestinations
 	Timeout               time.Duration
-	// MaxLogEntryBytesは、backendへ分配する前に受理できる一件のapplication logの
-	// 上限です。超過時は全targetをDeliveryRejectedとして返します。
+	// MaxLogEntryBytes is the maximum size of a single application log entry that
+	// can be accepted before it is distributed to the backends. When an entry
+	// exceeds it, every target is returned as DeliveryRejected.
 	MaxLogEntryBytes        int
 	File                    *DeliveryFileLoggerConfig
 	Stdout                  *DeliveryStdoutLoggerConfig
@@ -96,15 +106,17 @@ type DeliveryLoggerConfig struct {
 	ClickHouse              *DeliveryClickHouseConfig
 	ClickHouseClient        *clickhouse.Config
 	InternalLogDestinations *DeliveryInternalLogDestinationConfig
-	// InternalLogBatchConfigはDelivery loggerのinternal-log fallbackだけが使う
-	// enqueue/batch設定です。Delivery本体およびsync/async loggerには適用しません。
+	// InternalLogBatchConfig holds the enqueue and batch settings used only by the
+	// internal-log fallback of the Delivery logger. They do not apply to the
+	// Delivery logger's own sending or to the sync and async loggers.
 	InternalLogBatchConfig DeliveryInternalLogBatchConfig
 
 	Resource *otel.Resource
 }
 
-// DeliveryInternalLogBatchConfigはDelivery internal-log fallbackの送信先ごとの
-// enqueue/batch設定です。ClickHouseは既存のDelivery ClickHouse設定を使用します。
+// DeliveryInternalLogBatchConfig holds the enqueue and batch settings for each
+// destination of the Delivery internal-log fallback. ClickHouse uses the
+// existing Delivery ClickHouse settings.
 type DeliveryInternalLogBatchConfig struct {
 	OpenSearch     DeliveryInternalLogOpenSearchBatchConfig
 	Loki           DeliveryInternalLogLokiBatchConfig
@@ -116,7 +128,8 @@ type DeliveryInternalLogOpenSearchBatchConfig struct {
 	FlushInterval       time.Duration
 	BufferFlushBytes    int
 	MaxBulkRequestBytes int
-	// MaxBulkDocumentは一回のbatch件数とenqueue queueの上限を兼ねます。
+	// MaxBulkDocument limits both the number of documents in one batch and the
+	// enqueue queue.
 	MaxBulkDocument int
 }
 
@@ -136,20 +149,22 @@ type DeliveryInternalLogCloudWatchLogsBatchConfig struct {
 
 type DeliveryInternalLogSlackBatchConfig struct {
 	Intervals []time.Duration
-	// MaxLogsPerNotificationは一回の通知件数とenqueue queueの上限を兼ねます。
+	// MaxLogsPerNotification limits both the number of logs in one notification
+	// and the enqueue queue.
 	MaxLogsPerNotification int
-	// MaxRestThresholdはSlackLoggerConfig.MaxRestThresholdと同じ休止時間です。
+	// MaxRestThreshold is the same idle time as SlackLoggerConfig.MaxRestThreshold.
 	MaxRestThreshold time.Duration
 }
 
-// InternalLogDestinationConfigは、sync/async loggerのinternal logだけが使用する
-// backend設定です。通常設定と異なる保存先を使うbackendだけを保持します。
-// client設定を持つbackendはlogger設定とclient設定を組で指定し、片方だけの指定は
-// 設定errorです。
+// InternalLogDestinationConfig holds backend settings used only by the internal
+// logs of the sync and async loggers. It holds only the backends that use a
+// destination different from the regular settings. A backend that has client
+// settings takes its logger settings and client settings as a pair, and setting
+// only one of them is a configuration error.
 //
-// Fileは保持・圧縮・purge policyを持てますが、internal logのterminal sinkとして扱います。
-// そのappendlog lifecycleのHandlerConfigは実行せず、二次的なinternal log routingを
-// 発生させません。
+// File can have retention, compression and purge policies, but it is treated as
+// a terminal sink for internal logs. The HandlerConfig of its appendlog
+// lifecycle is not run, so it causes no secondary internal log routing.
 type InternalLogDestinationConfig struct {
 	File                 *FileLoggerConfig
 	Slack                *SlackLoggerConfig
@@ -163,7 +178,8 @@ type InternalLogDestinationConfig struct {
 	ClickHouseClient     *clickhouse.Config
 }
 
-// ToLoggerConfigはinternal log保存先をhandler factoryが扱う共通設定へ変換します。
+// ToLoggerConfig converts the internal log destinations into the common
+// configuration that the handler factory handles.
 func (c InternalLogDestinationConfig) ToLoggerConfig() LoggerConfig {
 	return LoggerConfig{
 		File:                 c.File,
@@ -179,9 +195,11 @@ func (c InternalLogDestinationConfig) ToLoggerConfig() LoggerConfig {
 	}
 }
 
-// DeliveryInternalLogDestinationConfigはDelivery loggerのinternal logだけが使用する
-// backend設定です。Fileはsync/asyncと同じterminal sink契約に従い、client設定を持つ
-// backendもsync/asyncと同じくlogger設定とclient設定を組で指定します。
+// DeliveryInternalLogDestinationConfig holds backend settings used only by the
+// internal logs of the Delivery logger. File follows the same terminal sink
+// contract as for sync and async, and a backend that has client settings also
+// takes its logger settings and client settings as a pair, as for sync and
+// async.
 type DeliveryInternalLogDestinationConfig struct {
 	File                 *DeliveryFileLoggerConfig
 	Slack                *DeliverySlackLoggerConfig
@@ -195,7 +213,8 @@ type DeliveryInternalLogDestinationConfig struct {
 	ClickHouseClient     *clickhouse.Config
 }
 
-// ToLoggerConfigはDeliveryのinternal log保存先をhandler factory用設定へ変換します。
+// ToLoggerConfig converts the Delivery internal log destinations into the
+// configuration for the handler factory.
 func (c DeliveryInternalLogDestinationConfig) ToLoggerConfig() DeliveryLoggerConfig {
 	return DeliveryLoggerConfig{
 		File:                 c.File,
@@ -242,6 +261,11 @@ type RuntimeConfig struct {
 	IsDebug  bool
 	Target   string
 	LogLevel LogLevel
+	// Live, when set, makes the output use the values of Live, which can be
+	// changed while the output runs, instead of LogLevel and the SamplingConfig
+	// of the same backend configuration. New and NewAsync of heterolog create one
+	// for each output that does not set Live.
+	Live *LiveSettings
 }
 
 type DeliveryRuntimeConfig struct {
@@ -258,8 +282,9 @@ type TimeConfig struct {
 type SamplingConfig struct {
 	IsSamplingEnabled        bool
 	EnableLoggingByRequestID bool
-	// LoggingByRequestIDRate must be in [1, 2^32-1] when request-ID sampling
-	// is enabled, and must also fit the platform's int type.
+	// LoggingByRequestIDRate is checked when both IsSamplingEnabled and
+	// EnableLoggingByRequestID are true. It must then be at least 1 and at most
+	// 2^32-1; where int is 32 bits wide, the type itself limits it to 2^31-1.
 	LoggingByRequestIDRate int
 	SamplingDebugRate      int
 	SamplingInfoRate       int
@@ -277,24 +302,28 @@ type FileLoggerConfig struct {
 	FsstoreConfig             fsstore.Config
 	ObjectStorageUploadConfig objectstorage.LogFileUploadConfig
 	ArchiveCheckpointConfig   fsstore.ArchiveCheckpointConfig
-	// LifecycleModeの空値はinlineとして扱い、FileLoggerの書込み経路で保守処理を実行します。
+	// LifecycleMode is treated as inline when empty, which runs maintenance in
+	// the write path of the FileLogger.
 	LifecycleMode fsstore.FileLifecycleMode
-	// LifecycleRunnerSettingsはrunner modeの周期loopとoptional Supervisor設定です。
+	// LifecycleRunnerSettings holds the periodic loop and the optional
+	// Supervisor settings of runner mode.
 	LifecycleRunnerSettings fsstore.AppendLogRunnerConfig
 	TimeConfig              TimeConfig
 	RuntimeConfig           RuntimeConfig
 	LogBodyConfig           LogBodyConfig
 	SamplingConfig          SamplingConfig
 	HandlerConfig           handler.HandlerConfig
-	// LifecycleHandlerConfigはrunner modeの周期実行結果を委譲する保存先selectorです。
-	// levelごとのselectorを独立して保持し、発生したinternal logのseverityに応じて委譲します。
+	// LifecycleHandlerConfig holds the destination selectors to which the results
+	// of the periodic runs in runner mode are delegated. It holds the selectors
+	// of each level independently and delegates according to the severity of the
+	// internal log that occurs.
 	LifecycleHandlerConfig handler.HandlerConfig
 }
 
 type DeliveryFileLoggerConfig struct {
 	FsstoreConfig fsstore.DeliveryFileWriteConfig
-	// LifecycleModeの空値は保守処理を起動しません。Deliveryはinline処理を持たないため、
-	// 保守処理が必要な場合はrunnerを明示します。
+	// LifecycleMode starts no maintenance when empty. Delivery has no inline
+	// processing, so specify runner explicitly when maintenance is needed.
 	LifecycleMode           fsstore.FileLifecycleMode
 	LifecycleRunnerSettings DeliveryFileLifecycleRunnerSettings
 	TimeConfig              TimeConfig
@@ -303,34 +332,41 @@ type DeliveryFileLoggerConfig struct {
 	HandlerConfig           handler.HandlerConfig
 }
 
-// DeliveryFileLifecycleRunnerSettingsは、delivery fileの書込み設定から導出できない
-// runner mode固有のretention、圧縮、upload、internal log routingだけを保持します。
+// DeliveryFileLifecycleRunnerSettings holds only the periodic loop, retention,
+// compression, upload and internal log routing settings that are specific to
+// runner mode and cannot be derived from the write settings of the delivery
+// file.
 type DeliveryFileLifecycleRunnerSettings struct {
 	UsageCacheTTL  time.Duration
 	MaxFileBackups int
 	MaxFileAge     int
 	MaxDirSize     uint64
-	// nilなら通常logの保持設定を継承します。directory共有時の容量上限は
-	// fsstore.FileLifecycleConfigと同じ規則で解決します。
+	// ErrorPurge and DebugPurge inherit the retention settings of regular logs
+	// when nil. When a directory is shared, the size limit is resolved by the
+	// same rules as in fsstore.FileLifecycleConfig.
 	ErrorPurge         *fsstore.FilePurgeConfig
 	DebugPurge         *fsstore.FilePurgeConfig
 	EnableFileCompress bool
 	CompressFormat     fsstore.CompressFormat
-	// CompressionCodecはprogrammaticに追加する独自圧縮形式です。nilなら
-	// CompressFormatに対応する組み込みcodecを使用します。
+	// CompressionCodec is a custom compression format added programmatically.
+	// When it is nil, the built-in codec for CompressFormat is used.
 	CompressionCodec               fsstore.CompressionCodec
 	CompressWarnThresholdDuration  time.Duration
 	CompressErrorThresholdDuration time.Duration
 	ObjectStorageUploadConfig      objectstorage.LogFileUploadConfig
 	ArchiveCheckpointConfig        fsstore.ArchiveCheckpointConfig
-	// RunnerConfigはrunner modeの周期loopとoptional Supervisor設定です。
+	// RunnerConfig holds the periodic loop and the optional Supervisor settings
+	// of runner mode.
 	RunnerConfig fsstore.AppendLogRunnerConfig
-	// LifecycleHandlerConfigのlevel別契約はFileLoggerConfigと同じです。
+	// LifecycleHandlerConfig has the same per-level contract as in
+	// FileLoggerConfig.
 	LifecycleHandlerConfig handler.HandlerConfig
 }
 
-// LifecycleRunnerConfigは正規のfile logger設定から専用runner用設定を導出します。
-// path、rotation、duration、retryを複製して保持しないため、呼出側の設定変更と乖離しません。
+// LifecycleRunnerConfig derives the settings for the dedicated runner from the
+// canonical file logger configuration. It keeps no copies of the path, rotation,
+// duration and retry settings, so it does not drift from changes the caller
+// makes to the configuration.
 func (c *FileLoggerConfig) LifecycleRunnerConfig() *fsstore.LogFileLifecycleRunnerConfig {
 	if c == nil || c.LifecycleMode != fsstore.FileLifecycleModeRunner {
 		return nil
@@ -344,8 +380,9 @@ func (c *FileLoggerConfig) LifecycleRunnerConfig() *fsstore.LogFileLifecycleRunn
 	}
 }
 
-// LifecycleRunnerConfigはdelivery fileの書込み設定とrunner固有設定を結合します。
-// layout、rotation、write duration、retryはFsstoreConfigを唯一の正として使用します。
+// LifecycleRunnerConfig combines the write settings of the delivery file with
+// the runner-specific settings. FsstoreConfig is used as the single source of
+// truth for the layout, rotation, write duration and retry.
 func (c *DeliveryFileLoggerConfig) LifecycleRunnerConfig() *fsstore.DeliveryFileLifecycleRunnerConfig {
 	if c == nil || c.LifecycleMode != fsstore.FileLifecycleModeRunner {
 		return nil
@@ -406,13 +443,15 @@ type SlackLoggerConfig struct {
 	TimeConfig    TimeConfig
 	RuntimeConfig RuntimeConfig
 	LogBodyConfig LogBodyConfig
-	// TimeoutはSlack HTTP clientの上限です。正の値が必須です。
+	// Timeout is the time limit of the Slack HTTP client. It must be positive.
 	Timeout time.Duration
-	// HTTPClientはSlack API呼び出しに使うHTTP clientです。nilの場合はnet/httpの
-	// 既定transportを使います。指定した場合はlogger構築時に設定をcopyして
-	// Transport、Jar、CheckRedirectを引き継ぎ、元のclientは変更しません。
-	// TimeoutにはこのconfigのTimeoutを使い、元のclientのTimeoutより優先します。
-	// 通常出力とinternal-log fallbackのSlack送信に同じ設定を使います。
+	// HTTPClient is the HTTP client used to call the Slack API. When it is nil,
+	// the default transport of net/http is used. When it is set, its settings
+	// are copied when the logger is built, carrying over Transport, Jar and
+	// CheckRedirect, and the original client is not modified. The Timeout of
+	// this config is used as the timeout and takes precedence over the Timeout
+	// of the original client. The same settings are used for the Slack posts of
+	// the regular output and of the internal-log fallback.
 	HTTPClient             *http.Client
 	Token                  string
 	Channel                string
@@ -421,34 +460,40 @@ type SlackLoggerConfig struct {
 	InfoChannel            string
 	DebugChannel           string
 	MaxLogsPerNotification int
-	// MaxRestThresholdは、ログの到着が途切れたときに通知間隔をリセットする
-	// 休止時間です。正の値が必須です。この時間を超えて届いたログは、待機中の
-	// ログとともに即時送信を予約します。送信中の通知がある場合はその完了を待ちます。
+	// MaxRestThreshold is the idle time that resets the notification intervals
+	// when logs stop arriving. It must be positive. A log that arrives after
+	// more than this time schedules an immediate send together with the waiting
+	// logs. If a notification is being sent, the send waits for it to complete.
 	MaxRestThreshold time.Duration
-	// Intervalsは初回の即時通知後、Slackへの連続buffer送信を予約する
-	// 待機時間です。各要素に正の値が必須です。
+	// Intervals are the waits used to schedule the successive buffered sends to
+	// Slack after the first immediate notification. Each element must be
+	// positive.
 	Intervals                       []time.Duration
 	MaxMessageLength                int
 	SamplingConfig                  SamplingConfig
 	HandlerConfig                   handler.HandlerConfig
-	SlackPostWarnThresholdDuration  time.Duration // slack送信がこの秒数よりも遅延したら警告
-	SlackPostErrorThresholdDuration time.Duration // slack送信がこの秒数よりも遅延したらエラー
+	SlackPostWarnThresholdDuration  time.Duration // warning when a Slack post takes longer than this
+	SlackPostErrorThresholdDuration time.Duration // error when a Slack post takes longer than this
 }
 
-// DeliverySlackLoggerConfigはDelivery本体の同期・一件送信用です。Slack HTTP応答が
-// Delivery全体の待ち時間を延ばし得るため、低遅延が必要な出力先には非推奨です。
-// internal-log fallbackのenqueue/batch設定はDeliveryInternalLogBatchConfigが所有します。
+// DeliverySlackLoggerConfig configures the Delivery logger's own synchronous
+// sending of one entry at a time. A Slack HTTP response can make the whole
+// Delivery wait longer, so it is not recommended for outputs that need low
+// latency. The enqueue and batch settings of the internal-log fallback are owned
+// by DeliveryInternalLogBatchConfig.
 type DeliverySlackLoggerConfig struct {
 	TimeConfig    TimeConfig
 	RuntimeConfig RuntimeConfig
 	LogBodyConfig LogBodyConfig
-	// TimeoutはSlack HTTP clientの上限です。正の値が必須です。
+	// Timeout is the time limit of the Slack HTTP client. It must be positive.
 	Timeout time.Duration
-	// HTTPClientはSlack API呼び出しに使うHTTP clientです。nilの場合はnet/httpの
-	// 既定transportを使います。指定した場合はlogger構築時に設定をcopyして
-	// Transport、Jar、CheckRedirectを引き継ぎ、元のclientは変更しません。
-	// TimeoutにはこのconfigのTimeoutを使い、元のclientのTimeoutより優先します。
-	// Delivery本体とinternal-log fallbackのSlack送信に同じ設定を使います。
+	// HTTPClient is the HTTP client used to call the Slack API. When it is nil,
+	// the default transport of net/http is used. When it is set, its settings
+	// are copied when the logger is built, carrying over Transport, Jar and
+	// CheckRedirect, and the original client is not modified. The Timeout of
+	// this config is used as the timeout and takes precedence over the Timeout
+	// of the original client. The same settings are used for the Slack posts of
+	// the Delivery logger's own sending and of the internal-log fallback.
 	HTTPClient                      *http.Client
 	Token                           string
 	Channel                         string
@@ -458,8 +503,8 @@ type DeliverySlackLoggerConfig struct {
 	DebugChannel                    string
 	MaxMessageLength                int
 	HandlerConfig                   handler.HandlerConfig
-	SlackPostWarnThresholdDuration  time.Duration // slack送信がこの秒数よりも遅延したら警告
-	SlackPostErrorThresholdDuration time.Duration // slack送信がこの秒数よりも遅延したらエラー
+	SlackPostWarnThresholdDuration  time.Duration // warning when a Slack post takes longer than this
+	SlackPostErrorThresholdDuration time.Duration // error when a Slack post takes longer than this
 }
 
 type OpenSearchConfig struct {
@@ -531,25 +576,30 @@ func ParseRetryClientMode(value string, defaultMode RetryClientMode) RetryClient
 	return mode
 }
 
-// RetryClientSelection は RetryClientMode を、実際に使う client 構成へ解決した結果です。
+// RetryClientSelection is the result of resolving a RetryClientMode into the
+// client composition that is actually used.
 type RetryClientSelection struct {
-	// Mode は env/config で選ばれた retry client mode です。
+	// Mode is the retry client mode selected in env or config.
 	Mode RetryClientMode
 
-	// UseRetryPolicyClient は retry policyを適用するRetryPolicyClientを使う場合にtrueです。
+	// UseRetryPolicyClient is true when the RetryPolicyClient, which applies a
+	// retry policy, is used.
 	UseRetryPolicyClient bool
 
-	// UseRetryingClient は RetryingClient を使う場合に true です。
-	// RetryPolicyClientとは排他です。
+	// UseRetryingClient is true when RetryingClient is used. It is mutually
+	// exclusive with RetryPolicyClient.
 	UseRetryingClient bool
 
-	// UseCircuitBreakerClient は専用 CircuitBreakerClient を使う場合に true です。
-	// retry併用時はRetryingClientまたはRetryPolicyClientの子としてraw clientを内包します。
-	// CircuitBreakerClientは常にopen中の接続を抑制し、cooldown後の1件だけをprobeとして通します。
+	// UseCircuitBreakerClient is true when the dedicated CircuitBreakerClient is
+	// used. When retries are also used, the CircuitBreakerClient wraps the raw
+	// client as the child of RetryingClient or RetryPolicyClient. The
+	// CircuitBreakerClient always suppresses connections while it is open, and
+	// lets only one request through as a probe after the cooldown.
 	UseCircuitBreakerClient bool
 }
 
-// UsesWrapper は、選択されたmodeでclient wrapperを1つ以上使用する場合にtrueです。
+// UsesWrapper reports whether the selected mode uses one or more client
+// wrappers.
 func (s RetryClientSelection) UsesWrapper() bool {
 	return s.UseRetryPolicyClient || s.UseRetryingClient || s.UseCircuitBreakerClient
 }
@@ -586,14 +636,19 @@ func resolveRetryClientSelection(mode RetryClientMode) RetryClientSelection {
 }
 
 type OpenSearchRetryableClientCaseTransportErrorConfig struct {
-	// RetryClientMode は client wrapper 構成を単一値で選びます。
-	// none / retry / retry_policy / circuit_breaker / retry_with_breaker / retry_policy_with_breaker を指定できます。
+	// RetryClientMode selects the client wrapper composition with a single
+	// value. It accepts none / retry / retry_policy / circuit_breaker /
+	// retry_with_breaker / retry_policy_with_breaker.
 	RetryClientMode RetryClientMode
 
-	MaxAttempts int
-	// BaseDelay はリトライごとに加算されるバックオフの基準遅延です。
+	// MaxRetries is how many times a failed request is retried after the first
+	// request. 0 sends once without retrying. In the modes that retry, a
+	// negative value is reported as a ConfigFieldError with the kind
+	// ErrNegativeSetting.
+	MaxRetries int
+	// BaseDelay is the base backoff delay, which is added for each retry.
 	BaseDelay time.Duration
-	// MaxDelay はバックオフの上限です。
+	// MaxDelay is the upper limit of the backoff.
 	MaxDelay time.Duration
 }
 
@@ -602,14 +657,19 @@ func (c OpenSearchRetryableClientCaseTransportErrorConfig) RetryClientSelection(
 }
 
 type LokiRetryableClientCaseTransportErrorConfig struct {
-	// RetryClientMode は client wrapper 構成を単一値で選びます。
-	// none / retry / retry_policy / circuit_breaker / retry_with_breaker / retry_policy_with_breaker を指定できます。
+	// RetryClientMode selects the client wrapper composition with a single
+	// value. It accepts none / retry / retry_policy / circuit_breaker /
+	// retry_with_breaker / retry_policy_with_breaker.
 	RetryClientMode RetryClientMode
 
-	MaxAttempts int
-	// BaseDelay はリトライごとに加算されるバックオフの基準遅延です。
+	// MaxRetries is how many times a failed request is retried after the first
+	// request. 0 sends once without retrying. In the modes that retry, a
+	// negative value is reported as a ConfigFieldError with the kind
+	// ErrNegativeSetting.
+	MaxRetries int
+	// BaseDelay is the base backoff delay, which is added for each retry.
 	BaseDelay time.Duration
-	// MaxDelay はバックオフの上限です。
+	// MaxDelay is the upper limit of the backoff.
 	MaxDelay time.Duration
 }
 
@@ -618,13 +678,18 @@ func (c LokiRetryableClientCaseTransportErrorConfig) RetryClientSelection() Retr
 }
 
 type CloudWatchLogsRetryableClientCaseTransportErrorConfig struct {
-	// RetryClientMode は client wrapper 構成を単一値で選びます。
-	// none / retry / retry_policy / circuit_breaker / retry_with_breaker / retry_policy_with_breaker を指定できます。
+	// RetryClientMode selects the client wrapper composition with a single
+	// value. It accepts none / retry / retry_policy / circuit_breaker /
+	// retry_with_breaker / retry_policy_with_breaker.
 	RetryClientMode RetryClientMode
 
-	MaxAttempts int
-	BaseDelay   time.Duration
-	MaxDelay    time.Duration
+	// MaxRetries is how many times a failed request is retried after the first
+	// request. 0 sends once without retrying. In the modes that retry, a
+	// negative value is reported as a ConfigFieldError with the kind
+	// ErrNegativeSetting.
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
 }
 
 func (c CloudWatchLogsRetryableClientCaseTransportErrorConfig) RetryClientSelection() RetryClientSelection {
@@ -632,13 +697,18 @@ func (c CloudWatchLogsRetryableClientCaseTransportErrorConfig) RetryClientSelect
 }
 
 type ClickHouseRetryableClientCaseTransportErrorConfig struct {
-	// RetryClientMode は client wrapper 構成を単一値で選びます。
-	// none / retry / retry_policy / circuit_breaker / retry_with_breaker / retry_policy_with_breaker を指定できます。
+	// RetryClientMode selects the client wrapper composition with a single
+	// value. It accepts none / retry / retry_policy / circuit_breaker /
+	// retry_with_breaker / retry_policy_with_breaker.
 	RetryClientMode RetryClientMode
 
-	MaxAttempts int
-	BaseDelay   time.Duration
-	MaxDelay    time.Duration
+	// MaxRetries is how many times a failed request is retried after the first
+	// request. 0 sends once without retrying. In the modes that retry, a
+	// negative value is reported as a ConfigFieldError with the kind
+	// ErrNegativeSetting.
+	MaxRetries int
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
 }
 
 func (c ClickHouseRetryableClientCaseTransportErrorConfig) RetryClientSelection() RetryClientSelection {
@@ -649,11 +719,12 @@ type OpenSearchLoggerBaseConfig struct {
 	TimeConfig    TimeConfig
 	RuntimeConfig RuntimeConfig
 	LogBodyConfig LogBodyConfig
-	// FlushIntervalはbufferを時間経過でflushする間隔です。正の値が必須です。
+	// FlushInterval is the interval at which the buffer is flushed as time
+	// passes. It must be positive.
 	FlushInterval          time.Duration
-	MaxBulkDocument        int // バルク送信最大数
-	BufferFlushBytes       int // buffer内document body概算値による早期flush閾値
-	MaxBulkRequestBytes    int // gzip圧縮前のBulk NDJSON request分割上限
+	MaxBulkDocument        int // maximum number of documents per bulk send
+	BufferFlushBytes       int // early-flush threshold on the estimated size of document bodies in the buffer
+	MaxBulkRequestBytes    int // size limit for splitting Bulk NDJSON requests, before gzip compression
 	NoBulkFlushModeEnabled bool
 	SamplingConfig         SamplingConfig
 	HandlerConfig          handler.HandlerConfig
@@ -670,13 +741,14 @@ type LokiLoggerBaseConfig struct {
 	TimeConfig    TimeConfig
 	RuntimeConfig RuntimeConfig
 	LogBodyConfig LogBodyConfig
-	// FlushIntervalの契約はOpenSearchLoggerBaseConfig.FlushIntervalと同じです。
+	// FlushInterval has the same contract as
+	// OpenSearchLoggerBaseConfig.FlushInterval.
 	FlushInterval           time.Duration
 	MaxEntries              int
-	BufferFlushBytes        int // formatter済みline byte概算合計による早期flush閾値
-	FallbackQueueMaxEntries int // fallbackが保持できるentry件数のhard上限
-	MaxLineBytes            int // format後の1行をUTF-8 byte数で制限する
-	MaxPushRequestBytes     int // HTTP圧縮前のPush request bodyをbyte数で制限する
+	BufferFlushBytes        int // early-flush threshold on the estimated total bytes of formatted lines
+	FallbackQueueMaxEntries int // hard limit on the number of entries the fallback can hold
+	MaxLineBytes            int // limit on each line after formatting, in UTF-8 bytes
+	MaxPushRequestBytes     int // limit on the Push request body before HTTP compression, in bytes
 	NoBulkFlushModeEnabled  bool
 	SamplingConfig          SamplingConfig
 	HandlerConfig           handler.HandlerConfig
@@ -686,8 +758,8 @@ type DeliveryLokiLoggerBaseConfig struct {
 	TimeConfig          TimeConfig
 	RuntimeConfig       DeliveryRuntimeConfig
 	LogBodyConfig       LogBodyConfig
-	MaxLineBytes        int // format後の1行をUTF-8 byte数で制限する
-	MaxPushRequestBytes int // HTTP圧縮前のPush request bodyをbyte数で制限する
+	MaxLineBytes        int // limit on each line after formatting, in UTF-8 bytes
+	MaxPushRequestBytes int // limit on the Push request body before HTTP compression, in bytes
 	HandlerConfig       handler.HandlerConfig
 }
 
@@ -695,11 +767,12 @@ type CloudWatchLogsLoggerBaseConfig struct {
 	TimeConfig    TimeConfig
 	RuntimeConfig RuntimeConfig
 	LogBodyConfig LogBodyConfig
-	// FlushIntervalの契約はOpenSearchLoggerBaseConfig.FlushIntervalと同じです。
+	// FlushInterval has the same contract as
+	// OpenSearchLoggerBaseConfig.FlushInterval.
 	FlushInterval          time.Duration
-	BufferFlushMaxEvents   int // buffer flushを開始するevent件数のsoft threshold
-	BufferFlushBytes       int // PutLogEvents計算式によるbuffer byte数のsoft threshold
-	FallbackQueueMaxEvents int // fallbackが保持できるevent件数のhard上限
+	BufferFlushMaxEvents   int // soft threshold on the number of events that starts a buffer flush
+	BufferFlushBytes       int // soft threshold on buffer bytes computed with the PutLogEvents formula
+	FallbackQueueMaxEvents int // hard limit on the number of events the fallback can hold
 	NoBulkFlushModeEnabled bool
 	SamplingConfig         SamplingConfig
 	HandlerConfig          handler.HandlerConfig
@@ -716,7 +789,8 @@ type ClickHouseLoggerBaseConfig struct {
 	TimeConfig    TimeConfig
 	RuntimeConfig RuntimeConfig
 	LogBodyConfig LogBodyConfig
-	// FlushIntervalの契約はOpenSearchLoggerBaseConfig.FlushIntervalと同じです。
+	// FlushInterval has the same contract as
+	// OpenSearchLoggerBaseConfig.FlushInterval.
 	FlushInterval           time.Duration
 	MaxEntries              int
 	BufferFlushBytes        int
@@ -730,7 +804,8 @@ type DeliveryClickHouseLoggerBaseConfig struct {
 	TimeConfig    TimeConfig
 	RuntimeConfig DeliveryRuntimeConfig
 	LogBodyConfig LogBodyConfig
-	// FlushIntervalの契約はOpenSearchLoggerBaseConfig.FlushIntervalと同じです。
+	// FlushInterval has the same contract as
+	// OpenSearchLoggerBaseConfig.FlushInterval.
 	FlushInterval           time.Duration
 	MaxEntries              int
 	BufferFlushBytes        int
@@ -749,13 +824,22 @@ type OpenSearchFlushManagerConfig struct {
 	PostWarnThresholdDuration  time.Duration
 	PostErrorThresholdDuration time.Duration
 	IndexLatencyEnabled        bool
-	MaxRetryAttempts           int
-	RetryWaitTime              time.Duration
+	// MaxItemRetries is how many times the items that a bulk response marks as
+	// retryable are sent again after the first bulk request. 0 sends them once
+	// without retrying, and a negative value is rejected when the logger is
+	// built.
+	MaxItemRetries int
+	// RetryWaitTime is the wait before the retryable items are sent again. A
+	// negative value is rejected when the logger is built.
+	RetryWaitTime time.Duration
 }
 
-// DeliveryOpenSearchFlushManagerConfig は、1件送信時の遅延監視・送信metadataと、
-// applicationの送達結果とは独立して非同期実行するfileArchive設定を保持します。
-// bulk item再送は通常OpenSearchだけが所有し、HTTP再試行はclient wrapperが所有します。
+// DeliveryOpenSearchFlushManagerConfig holds the latency monitoring and send
+// metadata of single-entry sends, and the settings of the fileArchive, which
+// saves an entry whose send failed. The Delivery logger waits for the save and
+// includes its result in the DeliveryReport. Resending bulk items is owned only
+// by the regular OpenSearch logger, and HTTP retries are owned by the client
+// wrapper.
 type DeliveryOpenSearchFlushManagerConfig struct {
 	Index                  string
 	IsDebug                bool
@@ -771,7 +855,8 @@ type DeliveryOpenSearchFlushManagerConfig struct {
 type LokiFlushManagerConfig struct {
 	FailureStoreConfig durable.FailureStoreConfig
 	Resource           Resource
-	// StaticLabelsはappName、loglevel、envに加えて全streamへ付与するlabelです。
+	// StaticLabels are the labels added to every stream in addition to appName,
+	// loglevel and env. A label with one of those three names is ignored.
 	StaticLabels map[string]string
 
 	PostWarnThresholdDuration  time.Duration
@@ -779,9 +864,11 @@ type LokiFlushManagerConfig struct {
 	PushLatencyEnabled         bool
 }
 
-// DeliveryLokiFlushManagerConfig は、1件送信時の遅延監視・送信metadataと、
-// applicationの送達結果とは独立して非同期実行するfileArchive設定を保持します。
-// HTTP再試行はDeliveryLokiConfigのLokiRetryableClientCaseTransportErrorConfigが所有します。
+// DeliveryLokiFlushManagerConfig holds the latency monitoring and send metadata
+// of single-entry sends, and the settings of the fileArchive, which saves an
+// entry whose send failed. The Delivery logger waits for the save and includes
+// its result in the DeliveryReport. HTTP retries are owned by the
+// LokiRetryableClientCaseTransportErrorConfig of DeliveryLokiConfig.
 type DeliveryLokiFlushManagerConfig struct {
 	FailureStoreConfig durable.DeliveryFailureStoreConfig
 	Resource           Resource
@@ -803,9 +890,12 @@ type CloudWatchLogsFlushManagerConfig struct {
 	PutLatencyEnabled          bool
 }
 
-// DeliveryCloudWatchLogsFlushManagerConfig は、1件送信時の遅延監視・送信先と、
-// applicationの送達結果とは独立して非同期実行するfileArchive設定を保持します。
-// HTTP再試行はDeliveryCloudWatchLogsConfigのCloudWatchLogsRetryableClientCaseTransportErrorConfigが所有します。
+// DeliveryCloudWatchLogsFlushManagerConfig holds the latency monitoring and
+// destination of single-entry sends, and the settings of the fileArchive, which
+// saves an entry whose send failed. The Delivery logger waits for the save and
+// includes its result in the DeliveryReport. HTTP retries are owned by the
+// CloudWatchLogsRetryableClientCaseTransportErrorConfig of
+// DeliveryCloudWatchLogsConfig.
 type DeliveryCloudWatchLogsFlushManagerConfig struct {
 	FailureStoreConfig durable.DeliveryFailureStoreConfig
 	Resource           Resource
@@ -826,9 +916,9 @@ type ClickHouseFlushManagerConfig struct {
 	InsertLatencyEnabled       bool
 }
 
-// DeliveryClickHouseFlushManagerConfig は、applicationの送達結果とは独立して
-// 非同期実行するfileArchive設定を保持します。
-// retry用spoolはDelivery loggerでは扱いません。
+// DeliveryClickHouseFlushManagerConfig holds the settings of the fileArchive,
+// which runs asynchronously and independently of the delivery results for the
+// application. The Delivery logger does not handle the spool for retries.
 type DeliveryClickHouseFlushManagerConfig struct {
 	FailureStoreConfig durable.DeliveryFailureStoreConfig
 	Resource           Resource
@@ -838,7 +928,7 @@ type DeliveryClickHouseFlushManagerConfig struct {
 	InsertLatencyEnabled       bool
 }
 
-// 実行した環境を保持
+// Resource holds the environment in which the application runs.
 type Resource struct {
 	ServiceName    string
 	ServiceVersion string

@@ -15,7 +15,7 @@ func TestLoadLogLevelRecordsUnknownValueAsConfigurationError(t *testing.T) {
 		t.Fatalf("loadLogLevel() = %q, want fallback value %q", got, pkglogger.LogLevelInfo)
 	}
 	requireEnvironmentKeyError(t, err, "TEST_LOG_LEVEL", nil)
-	if valueErr := environmentKeyError(err, "TEST_LOG_LEVEL").(*InvalidEnvironmentValueError); valueErr.Value != "verbose" {
+	if valueErr := environmentKeyError(err, "TEST_LOG_LEVEL").(*env.InvalidEnvironmentValueError); valueErr.Value != "verbose" {
 		t.Fatalf("TEST_LOG_LEVEL error value = %q, want verbose", valueErr.Value)
 	}
 }

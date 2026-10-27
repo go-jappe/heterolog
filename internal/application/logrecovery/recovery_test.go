@@ -107,7 +107,7 @@ func TestRecoverLoadedConfigCompressesLatestWithoutPurgeOrWriter(t *testing.T) {
 	require.NoDirExists(t, filepath.Join(cfg.FsstoreConfig.LogPath, "service", "async"))
 	require.NoDirExists(t, filepath.Join(cfg.FsstoreConfig.LogPath, "service", "delivery"))
 
-	// A subsequent explicit pass is harmless; the first call leaves no writer running.
+	// 続けて明示的なpassを実行しても害はありません。最初の呼び出しは、動作中のwriterを残しません。
 	report, err = Recover(context.Background(), cfg, Options{LoggerContract: pkglogger.LoggerContractSync, Scope: RecoveryScopeFileLogger})
 	require.NoError(t, err)
 	require.Len(t, report.Directories, 1)

@@ -16,7 +16,7 @@ func TestDeliveryOpenSearchConfigKeepsSendSettingsOutOfLoggerBase(t *testing.T) 
 		"PostWarnThresholdDuration",
 		"PostErrorThresholdDuration",
 		"IndexLatencyEnabled",
-		"MaxRetryAttempts",
+		"MaxItemRetries",
 		"RetryWaitTime",
 		"MaxRequestBytes",
 	} {
@@ -38,14 +38,14 @@ func TestDeliveryOpenSearchConfigKeepsSendSettingsOutOfLoggerBase(t *testing.T) 
 			t.Fatalf("DeliveryOpenSearchFlushManagerConfig does not contain %s", field)
 		}
 	}
-	for _, field := range []string{"MaxRetryAttempts", "RetryWaitTime"} {
+	for _, field := range []string{"MaxItemRetries", "RetryWaitTime"} {
 		if _, ok := flushType.FieldByName(field); ok {
 			t.Fatalf("DeliveryOpenSearchFlushManagerConfig unexpectedly contains bulk-only %s", field)
 		}
 	}
 
 	mappedType := reflect.TypeOf(pkglogger.DeliveryOpenSearchFlushManagerConfig{})
-	for _, field := range []string{"MaxRetryAttempts", "RetryWaitTime"} {
+	for _, field := range []string{"MaxItemRetries", "RetryWaitTime"} {
 		if _, ok := mappedType.FieldByName(field); ok {
 			t.Fatalf("pkg DeliveryOpenSearchFlushManagerConfig unexpectedly contains bulk-only %s", field)
 		}
@@ -100,7 +100,7 @@ func TestValidateLoggerTimeoutHierarchyCountsOnlyClientWrapperAttemptsForDeliver
 		cfg.DeliveryLogger.Timeout = parentTimeout
 		cfg.DeliveryLogger.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig = logconfig.OpenSearchRetryAbleClientConfig{
 			RetryClientMode: pkglogger.RetryClientModeRetry,
-			MaxAttempts:     2,
+			MaxRetries:      1,
 			BaseDelay:       100 * time.Millisecond,
 			MaxDelay:        100 * time.Millisecond,
 		}

@@ -36,8 +36,8 @@ func TestSpoolFileSyncPrecedesPublicationAndDirectorySync(t *testing.T) {
 			got, err := os.ReadFile(file.Name())
 			require.NoError(t, err)
 			require.Equal(t, body, got)
-			// Permissions are also settled before the file sync, so others can never
-			// read the unpublished temporary file.
+			// 権限もfileの同期より前に確定するため、他者が未公開の一時fileを読むことは
+			// ありません。
 			assertPrivateSpoolFile(t, file.Name())
 			return file.Sync()
 		},
@@ -93,8 +93,9 @@ func TestSpoolDirectorySyncFailurePreservesPublishedFile(t *testing.T) {
 	before, err := os.Stat(path)
 	require.NoError(t, err)
 
-	// A caller may retry an unconfirmed save. Keep the earlier published copy;
-	// at-least-once delivery permits a duplicate but must not overwrite it.
+	// 呼び出し元は、確認できなかった保存を再試行することがあります。先に公開した
+	// copyは残します。at-least-once配信では重複を許しますが、そのcopyを上書きしては
+	// いけません。
 	retried, err := store.writeUniqueFilePath(directory, "03000", spooldir.SpoolExt, body,
 		(*os.File).Sync, infrafsstore.SyncDirectory)
 	require.NoError(t, err)
@@ -151,7 +152,7 @@ func TestStoreByStateDoesNotAcceptUnsyncedNewTimePartition(t *testing.T) {
 	}}
 	err := store.StoreByState(context.Background(), pkgspool.StateActive, records)
 	require.ErrorIs(t, err, pkgfsstore.ErrDurabilityUnconfirmed)
-	// Already-created directories must not let another Store bypass the failure.
+	// 作成済みのdirectoryがあっても、別のStoreがこの失敗を回避できてはいけません。
 	otherStore := newTestSpoolStore(t, fixedClock{now: now}, cfg)
 	err = otherStore.StoreByState(context.Background(), pkgspool.StateActive, records)
 	require.ErrorIs(t, err, pkgfsstore.ErrDurabilityUnconfirmed)

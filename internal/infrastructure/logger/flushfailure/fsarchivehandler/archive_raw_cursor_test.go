@@ -91,7 +91,7 @@ func TestFailureArchiveRawCursorNaturalRetryProtectsExpiredRaw(t *testing.T) {
 		require.NoError(t, os.WriteFile(raw, []byte("old raw generation"), 0o600))
 		old := now.AddDate(0, 0, -handler.Config.MaxFileAge()-1)
 		require.NoError(t, os.Chtimes(raw, old, old))
-		// Rediscovery before a scheduled upload must protect the source during purge.
+		// 予約されたuploadより前に再発見したときも、purgeの間はsourceを保護しなければなりません。
 		require.True(t, state.uploadRetry.claimForAttempt(now, testUsageCacheTTL))
 		handler.invalidateArchiveDirectoryEstimate(category)
 		require.NoError(t, handler.runInlineArchivePurgeIfNeeded(ctx, category))

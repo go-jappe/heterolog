@@ -17,7 +17,7 @@ type CoreRuntimeEnv struct {
 	OSType            string `json:"os.type,omitempty"`
 	Environment       string `json:"deployment.environment,omitempty"` // prd / stg / dev
 	RuntimeType       string `json:"runtime.kind,omitempty"`           // ecs / ec2 / k8s / docker / local
-	RuntimeInstanceID string `json:"execution.unit.id,omitempty"`      // task id / pod name / instance id / hostname
+	RuntimeInstanceID string `json:"execution.unit.id,omitempty"`      // task ID / pod名 / instance ID / hostname
 }
 
 type CloudInfo struct {

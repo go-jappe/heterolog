@@ -13,6 +13,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestInlineArchivePurgeAllowsRotationAndReleasesCandidates(t *testing.T) {
@@ -195,7 +196,7 @@ func newInlineArchivePurgeGate(span string, shouldPanic bool) *inlineArchivePurg
 	}
 }
 
-func (g *inlineArchivePurgeGate) StartSpan(ctx context.Context, name string, _ ...observer.Attr) (context.Context, observer.Span) {
+func (g *inlineArchivePurgeGate) StartSpan(ctx context.Context, name string, _ ...pkgobserver.Attr) (context.Context, pkgobserver.Span) {
 	if name == g.span {
 		first := false
 		g.enterOnce.Do(func() { first = true; close(g.entered) })

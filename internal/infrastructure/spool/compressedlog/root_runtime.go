@@ -15,6 +15,7 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 var (
@@ -314,7 +315,7 @@ func (r *RootRuntime) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closeController.IsForced() {
-		return errors.Join(shutdown.ErrForcedClose, r.runErr)
+		return errors.Join(pkgshutdown.ErrForcedClose, r.runErr)
 	}
 	return r.runErr
 }

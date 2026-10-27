@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/store"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
@@ -18,6 +17,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/runtime/memory"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
@@ -56,13 +56,16 @@ type SpoolStoreHandler struct {
 	retryAfterRecorder RetryAfterRecorder
 
 	MemoryMonitor memory.MemoryCriticalChecker // memoryがcriticalな状況かどうかを判定するinterface
+	// stopMemoryMonitorは、このhandlerのために起動したmemory逼迫の監視を止める関数です。
+	// operationMuで保護し、Shutdownの完了時に一度だけ呼びます。
+	stopMemoryMonitor func()
 
 	OnError         logging.LoggerErrorHandler // 通知用の関数　内部エラー発生時にハンドル
 	OnWarn          logging.LoggerHandlerFunc
 	OnInfo          logging.LoggerHandlerFunc
 	OnDebug         logging.LoggerHandlerFunc
-	Tracer          observer.Tracer // observebility計装用
-	Meter           observer.Meter  // observebility計装用
+	Tracer          pkgobserver.Tracer // observebility計装用
+	Meter           pkgobserver.Meter  // observebility計装用
 	OverloadHandler overload.Handler
 }
 

@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type DeliveryClickHouseLogger struct {
@@ -21,11 +20,12 @@ type DeliveryClickHouseLogger struct {
 
 var _ logging.DeliveryBackendLogEntryHandler = (*DeliveryClickHouseLogger)(nil)
 
-// DeliveryClickHouseLogger returns after accepting an entry into the local queue.
-// It does not report ClickHouse persistence from HandleLogEntry.
-// ClickHouse recommends batched inserts, so actual backend delivery happens later
-// through the flush timer or Close; DeliveryEnqueued must not be treated as
-// "saved to ClickHouse", "delivered", or backend delivery success.
+// NewDeliveryClickHouseLoggerはDelivery用のClickHouse loggerを構築します。この
+// loggerは、entryをlocal queueへ受理した時点で戻ります。
+// HandleLogEntryからClickHouseへの永続化を報告することはありません。
+// ClickHouseはbatchでのinsertを推奨するため、実際のbackendへの配送は後から
+// flush timerまたはCloseを通じて行われます。DeliveryEnqueuedを「ClickHouseへ保存済み」、
+// 「配送済み」、backendへの配送成功として扱ってはいけません。
 func NewDeliveryClickHouseLogger(
 	ctx context.Context,
 	cfg ClickHouseConfigProvider,
@@ -33,8 +33,8 @@ func NewDeliveryClickHouseLogger(
 	fmCfg DeliveryClickHouseFlushManagerConfigProvider,
 	resourceProvider resource.ResourceProvider,
 	failureHandler *flushfailure.ReportingCompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 	opts ...ClickHouseLoggerOption,
 ) (*DeliveryClickHouseLogger, error) {
@@ -113,7 +113,7 @@ func (l *DeliveryClickHouseLogger) enqueueWithReport(
 	l.mu.Lock()
 	if l.closeState != loggercommon.LoggerCloseStateOpen {
 		l.mu.Unlock()
-		err := applogging.ErrLoggerClosed
+		err := pkglogger.ErrLoggerClosed
 		return pkglogger.NewTargetDeliveryReport(clickHouseDeliveryRejectedResult(err)), err
 	}
 

@@ -87,7 +87,7 @@ func TestBulkIngestDropRetriesOnlyRejectedNeighbor(t *testing.T) {
 			client := &pipelineDropBulkClient{rejectEveryAttempt: rejectEveryAttempt}
 			fm := newFlushManagerForDeliveryTest(nil)
 			fm.osClient = client
-			fm.bulkRetryConfig = &MockOpenSearchFlushManagerConfig{maxRetryAttempts: 2}
+			fm.bulkRetryConfig = &MockOpenSearchFlushManagerConfig{maxItemRetries: 1}
 			docs := []map[string]any{{"message": "filtered"}, {"message": "stored"}, {"message": "retry"}}
 			result, err := fm.sendDocumentsToOpenSearch(context.Background(), docs)
 			if err != nil {

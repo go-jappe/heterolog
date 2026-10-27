@@ -44,8 +44,8 @@ func (s *observedAcceptedCheckpointStore) AdvanceCompletionCursor(ctx context.Co
 	return s.Store.AdvanceCompletionCursor(ctx, key, ids)
 }
 
-// A directory at the document path makes atomic replacement fail on every
-// platform, including when tests run with privileges that bypass permissions.
+// document pathにdirectoryがあると、atomicな置き換えはすべてのplatformで失敗します。
+// permissionを迂回する特権でtestを実行した場合も同様です。
 func blockRunnerCheckpointDocument(t *testing.T, path string) func() {
 	t.Helper()
 	if _, err := os.Stat(path); err == nil {

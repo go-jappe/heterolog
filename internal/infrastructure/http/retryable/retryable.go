@@ -27,15 +27,15 @@ const (
 	RetryReasonDisconnect         RetryReason = "transient_disconnect"
 	RetryReasonServiceTransient   RetryReason = "service_transient"
 	RetryReasonCircuitBreakerOpen RetryReason = "circuit_breaker_open"
-	// RetryReasonRequestNotSent requires explicit evidence that the operation
-	// failed before HTTP dispatch, rather than an arbitrary context error.
+	// RetryReasonRequestNotSentには、任意のcontext errorではなく、操作がHTTPの送信前に
+	// 失敗したことを示す明示的な証拠が必要です。
 	RetryReasonRequestNotSent RetryReason = "request_not_sent"
 )
 
 type RetryDecision struct {
 	Retry bool
-	// Quarantine marks an uncertain durable outcome that requires inspection
-	// before replay. It is mutually exclusive with Retry.
+	// Quarantineは、replayの前に確認が必要な、不確かなdurableの結果を表します。
+	// Retryとは相互に排他的です。
 	Quarantine bool
 	Reason     RetryReason
 	Code       int           // HTTP status など。なければ 0
@@ -125,13 +125,13 @@ func classifyByError(err error, allowDisconnectMessage bool) RetryDecision {
 		return RetryDecision{Retry: true, Reason: RetryReasonCtxDeadline}
 	}
 
-	// unwrap url.Error
+	// url.Errorをunwrapします
 	var ue *url.Error
 	if errors.As(err, &ue) && ue != nil && ue.Err != nil {
 		return classifyByError(ue.Err, allowDisconnectMessage)
 	}
 
-	// net timeout
+	// netのtimeout
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
 		return RetryDecision{Retry: true, Reason: RetryReasonNetTimeout}
@@ -144,7 +144,7 @@ func classifyByError(err error, allowDisconnectMessage bool) RetryDecision {
 	}
 
 	// EOF
-	// EOF / unexpected EOF
+	// EOFまたはunexpected EOF
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return RetryDecision{Retry: true, Reason: RetryReasonEOF}
 	}
@@ -154,7 +154,7 @@ func classifyByError(err error, allowDisconnectMessage bool) RetryDecision {
 		return RetryDecision{Retry: true, Reason: RetryReasonDisconnect}
 	}
 
-	// disconnect-ish message
+	// 切断らしいmessage
 	if allowDisconnectMessage && looksLikeTransientDisconnect(err.Error()) {
 		return RetryDecision{Retry: true, Reason: RetryReasonDisconnect}
 	}
@@ -210,7 +210,7 @@ func parseRetryAfter(resp *http.Response) time.Duration {
 		return 0
 	}
 
-	// seconds
+	// 秒数
 	if secs, ok := parseRetryAfterSeconds(v); ok {
 		// time.Durationで表せない秒数は最大値へ飽和させ、呼び出し側の待機上限を適用させます。
 		// 0にすると、serverが長い待機を求めたのに即時再送になります。HTTP-dateも同じく飽和します。

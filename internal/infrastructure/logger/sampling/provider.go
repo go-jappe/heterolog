@@ -22,6 +22,15 @@ type samplingConfigAdapter struct {
 	SamplingErrorRateConfig        int
 }
 
+// NewConfigProviderは、liveがnilならcfgの値を、そうでなければliveの現在の値を返す
+// providerを返します。liveはbackend設定のRuntimeConfig.Liveです。
+func NewConfigProvider(cfg logger.SamplingConfig, live *logger.LiveSettings) SamplingConfigProvider {
+	if live != nil {
+		return liveSamplingConfig{live: live}
+	}
+	return NewSamplingConfigAdapter(cfg)
+}
+
 func NewSamplingConfigAdapter(cfg logger.SamplingConfig) SamplingConfigProvider {
 	return samplingConfigAdapter{
 		IsSamplingEnabledConfig:        cfg.IsSamplingEnabled,
@@ -34,6 +43,17 @@ func NewSamplingConfigAdapter(cfg logger.SamplingConfig) SamplingConfigProvider 
 	}
 }
 
+func (a samplingConfigAdapter) SamplingConfig() logger.SamplingConfig {
+	return logger.SamplingConfig{
+		IsSamplingEnabled:        a.IsSamplingEnabledConfig,
+		EnableLoggingByRequestID: a.EnableLoggingByRequestIDConfig,
+		LoggingByRequestIDRate:   a.LoggingByRequestIDRateConfig,
+		SamplingDebugRate:        a.SamplingDebugRateConfig,
+		SamplingInfoRate:         a.SamplingInfoRateConfig,
+		SamplingWarnRate:         a.SamplingWarnRateConfig,
+		SamplingErrorRate:        a.SamplingErrorRateConfig,
+	}
+}
 func (a samplingConfigAdapter) IsSamplingEnabled() bool {
 	return a.IsSamplingEnabledConfig
 }
@@ -54,4 +74,40 @@ func (a samplingConfigAdapter) SamplingWarnRate() int {
 }
 func (a samplingConfigAdapter) SamplingErrorRate() int {
 	return a.SamplingErrorRateConfig
+}
+
+// liveSamplingConfigは、LiveSettingsの現在のsampling設定を返すproviderです。
+type liveSamplingConfig struct {
+	live *logger.LiveSettings
+}
+
+// samplingSnapshotは、一回の判定で使う設定を一度に読み取れるproviderです。method
+// ごとに読むと、判定の途中で設定が変わった場合に別々の設定の値を組み合わせるためです。
+type samplingSnapshot interface {
+	SamplingConfig() logger.SamplingConfig
+}
+
+func (p liveSamplingConfig) SamplingConfig() logger.SamplingConfig {
+	return p.live.Sampling()
+}
+func (p liveSamplingConfig) IsSamplingEnabled() bool {
+	return p.live.Sampling().IsSamplingEnabled
+}
+func (p liveSamplingConfig) EnableLoggingByRequestID() bool {
+	return p.live.Sampling().EnableLoggingByRequestID
+}
+func (p liveSamplingConfig) LoggingByRequestIDRate() int {
+	return p.live.Sampling().LoggingByRequestIDRate
+}
+func (p liveSamplingConfig) SamplingDebugRate() int {
+	return p.live.Sampling().SamplingDebugRate
+}
+func (p liveSamplingConfig) SamplingInfoRate() int {
+	return p.live.Sampling().SamplingInfoRate
+}
+func (p liveSamplingConfig) SamplingWarnRate() int {
+	return p.live.Sampling().SamplingWarnRate
+}
+func (p liveSamplingConfig) SamplingErrorRate() int {
+	return p.live.Sampling().SamplingErrorRate
 }

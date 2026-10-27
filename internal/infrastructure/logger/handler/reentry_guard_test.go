@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type reentryTestKey struct{}
@@ -239,18 +239,18 @@ func TestReentryGuardDeferredNotificationsRunInOrderAfterRelease(t *testing.T) {
 	var guard ReentryGuard
 	ctx, run := guard.DeferNotifications(context.Background())
 	var order []string
-	record := func(name string) func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {
-		return func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {
+	record := func(name string) func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
+		return func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 			order = append(order, name)
 		}
 	}
 	entry := &logging.LogEntry{Level: pkglogger.LogLevelWarn, Message: "internal log", Internal: true}
-	guard.CallWarnHandler(func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {
+	guard.CallWarnHandler(func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 		order = append(order, "first")
 		// 保留を実行している間に同じcontextで発生した通知も、発生順に続けて実行します。
 		guard.CallInfoHandler(record("raised by first"), ctx, entry, nil, nil, nil)
 	}, ctx, entry, nil, nil, nil)
-	guard.CallErrorHandler(func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+	guard.CallErrorHandler(func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 		order = append(order, "second")
 	}, ctx, errors.New("internal error"), entry, nil, nil, nil)
 	if len(order) != 0 {
@@ -273,22 +273,22 @@ func TestReentryGuardCallHandlersWriteReenteredInternalLogsDirectly(t *testing.T
 	entry := &logging.LogEntry{Level: pkglogger.LogLevelError, Message: "internal log", Internal: true}
 	for name, invoke := range map[string]call{
 		"error": func(guard *ReentryGuard, ctx context.Context, record func(string, context.Context), direct DirectInternalLogFunc) {
-			guard.CallErrorHandler(func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			guard.CallErrorHandler(func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				record("handler", ctx)
 			}, ctx, errors.New("internal error"), entry, nil, nil, direct)
 		},
 		"warn": func(guard *ReentryGuard, ctx context.Context, record func(string, context.Context), direct DirectInternalLogFunc) {
-			guard.CallWarnHandler(func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			guard.CallWarnHandler(func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				record("handler", ctx)
 			}, ctx, entry, nil, nil, direct)
 		},
 		"info": func(guard *ReentryGuard, ctx context.Context, record func(string, context.Context), direct DirectInternalLogFunc) {
-			guard.CallInfoHandler(func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			guard.CallInfoHandler(func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				record("handler", ctx)
 			}, ctx, entry, nil, nil, direct)
 		},
 		"debug": func(guard *ReentryGuard, ctx context.Context, record func(string, context.Context), direct DirectInternalLogFunc) {
-			guard.CallDebugHandler(func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			guard.CallDebugHandler(func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				record("handler", ctx)
 			}, ctx, entry, nil, nil, false, direct)
 		},

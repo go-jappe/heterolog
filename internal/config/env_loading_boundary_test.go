@@ -23,7 +23,7 @@ func TestLoadConfigRejectsUnreadableExplicitEnvPath(t *testing.T) {
 	}
 
 	_, err := LoadConfig()
-	var envFileErr *EnvFileError
+	var envFileErr *env.EnvFileError
 	if !errors.As(err, &envFileErr) || envFileErr.Path != envPath || !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("LoadConfig() error = %v, want missing explicit HETEROLOG_ENV_PATH %q", err, envPath)
 	}
@@ -125,7 +125,7 @@ func TestLoadConfigRejectsExplicitInvalidCompressionFormat(t *testing.T) {
 			cfg, err := loadConfigErrorFromTempEnv(t, storagePathValidationEnv(t, append(lines, tt.selection...)...))
 			if tt.wantErr {
 				requireEnvironmentKeyError(t, err, "HETEROLOG_LOG_COMPRESS_FORMAT", logconfig.ErrUnsupportedLogCompressFormat)
-				if valueErr := environmentKeyError(err, "HETEROLOG_LOG_COMPRESS_FORMAT").(*InvalidEnvironmentValueError); valueErr.Value != "unknown-codec" {
+				if valueErr := environmentKeyError(err, "HETEROLOG_LOG_COMPRESS_FORMAT").(*env.InvalidEnvironmentValueError); valueErr.Value != "unknown-codec" {
 					t.Fatalf("HETEROLOG_LOG_COMPRESS_FORMAT error value = %q, want unknown-codec", valueErr.Value)
 				}
 				return

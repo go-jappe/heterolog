@@ -22,8 +22,8 @@ var (
 	)
 )
 
-// validateRuntimeMemoryHealthConfigは、application全体で共有するmemory-pressure
-// monitorの判定policyを検証します。このapplicationでは各判定条件をすべて
+// validateRuntimeMemoryHealthConfigは、memory逼迫を過負荷の判定に使うspoolが、監視を
+// 渡されなかった場合に使う判定の閾値を検証します。環境設定では各判定条件をすべて
 // 有効にするため、0を無効化sentinelとして扱いません。
 func validateRuntimeMemoryHealthConfig(cfg configruntime.MemoryHealthConfig) error {
 	var errs []error

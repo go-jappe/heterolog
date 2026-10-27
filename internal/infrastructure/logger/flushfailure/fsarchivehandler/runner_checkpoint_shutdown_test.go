@@ -45,8 +45,8 @@ func TestFailureArchiveRunnerShutdownClosesFactoryCheckpointWorkers(t *testing.T
 		require.NoError(t, err, "Shutdown releases the archive root after closing both runner stores")
 		require.NoError(t, restarted.Shutdown(context.Background()))
 		synctest.Wait()
-		// The bubble cannot finish if either factory checkpoint notification worker
-		// outlives the pipeline, even when the store never needed a save retry.
+		// factoryが作ったcheckpoint通知workerのどちらかがpipelineより長く残ると、storeが
+		// 保存のretryを一度も必要としなかった場合でも、bubbleは終了できません。
 	})
 }
 
@@ -84,8 +84,8 @@ func TestFailureArchiveRunnerCheckpointNotificationCanRequestShutdown(t *testing
 		var retryErr *logfile.CheckpointSaveRetryError
 		require.ErrorAs(t, <-reported, &retryErr)
 
-		// Complete the pending save before the callback invokes Shutdown so the
-		// ordinary final scan succeeds, then require all retry workers to stop.
+		// 通常の最終走査が成功するよう、callbackがShutdownを呼ぶ前に保留中の保存を
+		// 完了させます。その後、すべてのretry workerが停止することを要求します。
 		restore()
 		time.Sleep(checkpointstore.SaveRecoveryInterval)
 		synctest.Wait()
@@ -190,8 +190,8 @@ func TestFailureArchiveRunnerReconciliationFailureClosesCheckpointsWithoutStarti
 		require.NoError(t, err, "failed reconciliation releases the root lease after closing both stores")
 		require.NoError(t, restarted.Shutdown(context.Background()))
 		synctest.Wait()
-		// Both stores were constructed before reconciliation failed. Their workers
-		// must also leave this bubble; releasing only the lease is insufficient.
+		// reconciliationが失敗する前に、両方のstoreが構築されています。それらのworkerも
+		// このbubbleから抜けなければならず、leaseを解放するだけでは不十分です。
 	})
 }
 

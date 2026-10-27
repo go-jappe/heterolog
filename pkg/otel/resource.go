@@ -1,36 +1,35 @@
 package otel
 
-// Resource は OpenTelemetry におけるリソース属性を表します。
-// リソースは「どの実行主体からテレメトリが送られたか」を識別するための
-// 不変メタデータ（プロセス単位・サービス単位）です。
+// Resource represents the resource attributes in OpenTelemetry. A resource is
+// immutable metadata, per process and per service, that identifies which
+// entity sent the telemetry.
 type Resource struct {
-	// ServiceName はサービスの論理名を表します。
-	// 例: "payment-api", "heterolog-batch"
-	// OpenTelemetry の service.name に対応します。
+	// ServiceName is the logical name of the service, such as "payment-api" or
+	// "heterolog-batch". It corresponds to service.name in OpenTelemetry.
 	ServiceName string
 
-	// ServiceVersion はデプロイされているサービスのバージョンを表します。
-	// 例: "1.2.3", "2026-02-25"
-	// デプロイ差分や不具合調査時の識別に使用されます。
+	// ServiceVersion is the version of the deployed service, such as "1.2.3" or
+	// "2026-02-25". It is used for identification when looking into differences
+	// between deployments or investigating defects.
 	ServiceVersion string
 
-	// CloudProvider はクラウドプロバイダ名を表します。
-	// 例: "aws", "gcp", "azure", "on-prem"
-	// クラウド環境ごとの可視化や分析で使用されます。
+	// CloudProvider is the name of the cloud provider, such as "aws", "gcp",
+	// "azure" or "on-prem". It is used for visualization and analysis per cloud
+	// environment.
 	CloudProvider string
 
-	// HostName は実行ホスト名を表します。
-	// 例: EC2のインスタンス名、コンテナホスト名など。
-	// ホスト単位の障害分析や負荷分析に使用されます。
+	// HostName is the name of the execution host, such as an EC2 instance name
+	// or a container host name. It is used for failure and load analysis per
+	// host.
 	HostName string
 
-	// OSType は実行環境のOS種別を表します。
-	// 例: "linux", "darwin", "windows"
-	// 環境依存問題の分析に使用されます。
+	// OSType is the OS type of the runtime environment, such as "linux",
+	// "darwin" or "windows". It is used to analyze environment-dependent
+	// problems.
 	OSType string
 
-	// Environment は実行環境の区分を表します。
-	// 例: "production", "staging", "development"
-	// 環境別のフィルタリングや分離に使用されます。
+	// Environment is the category of the runtime environment, such as
+	// "production", "staging" or "development". It is used for filtering and
+	// separation by environment.
 	Environment string
 }

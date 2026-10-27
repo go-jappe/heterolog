@@ -113,7 +113,7 @@ func TestLifecycleHandoffResumesOnlyUnfinishedStoreAfterRestart(t *testing.T) {
 			info, err := os.Stat(archivedPath)
 			require.NoError(t, err)
 			require.True(t, info.ModTime().Equal(unchangedTime))
-			// An unfinished earlier save must keep the same destination's later generations behind it.
+			// 先行する保存が未完了なら、同じdestinationの後続generationをその後ろに留めなければなりません。
 			laterPath := filepath.Join(fileName.Dir, "app_20260927_2.log.gz")
 			laterResult, err := manager.uploadIfPending(ctx, laterPath, laterGeneration, state, true)
 			require.NoError(t, err)

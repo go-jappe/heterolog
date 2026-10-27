@@ -58,8 +58,8 @@ func TestRestartWithOldDocumentDoesNotWaitForAlreadyRemovedCompletedFile(t *test
 		require.NoFileExists(t, first)
 		restore()
 		require.NoError(t, boundedwait.CloseInBubble(t, "manager.Close()", manager.Close, manager.ForceClose))
-		// Simulate an older on-disk snapshot at restart separately from graceful
-		// close, which now persists all accepted checkpoints before returning.
+		// 再起動時にdisk上のsnapshotが古い状況は、graceful closeとは別に再現します。
+		// graceful closeは現在、返る前に受理済みのcheckpointをすべて永続化します。
 		require.NoError(t, os.Rename(path+".before-save-failure", path))
 		restarted, err := checkpointstore.NewFilesystemStore(store.Directory(), store.SourceID())
 		require.NoError(t, err)

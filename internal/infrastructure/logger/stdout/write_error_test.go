@@ -6,11 +6,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout"
 	stdouterrors "github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout/errors"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestStdoutHandlerReturnsWriteFailureAfterNotifying(t *testing.T) {
@@ -18,7 +18,7 @@ func TestStdoutHandlerReturnsWriteFailureAfterNotifying(t *testing.T) {
 		t.Run(level.String(), func(t *testing.T) {
 			var notified error
 			logger, err := stdout.NewStdoutLogger(context.Background(), stdout.NewConfigAdapter(testStdoutConfig()), nil, nil, nil,
-				stdout.WithInternalLogHandlers(func(_ context.Context, err error, _ *infralogging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				stdout.WithInternalLogHandlers(func(_ context.Context, err error, _ *infralogging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					notified = err
 				}, nil, nil, nil))
 			if err != nil {

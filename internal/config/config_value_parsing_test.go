@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/go-jappe/heterolog/internal/config/timeoutbudget"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	"github.com/go-jappe/heterolog/pkg/env"
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 	"github.com/go-jappe/heterolog/pkg/fsstore"
@@ -46,7 +46,7 @@ func TestConfigValueParsersDoNotReadEnvironment(t *testing.T) {
 			}
 			// key自体を値として渡しても、環境変数の値へ置き換えてはならない。
 			_, err := tc.parse(key)
-			var valueErr *InvalidEnvironmentValueError
+			var valueErr *env.InvalidEnvironmentValueError
 			if !errors.As(err, &valueErr) || valueErr.Key != key || valueErr.Value != key {
 				t.Fatalf("parse(key) error = %v, want invalid value with setting key", err)
 			}
@@ -54,10 +54,10 @@ func TestConfigValueParsersDoNotReadEnvironment(t *testing.T) {
 	}
 
 	t.Setenv(key, "hourly")
-	if got := loadCloudWatchLogsStreamRoutingGranularity(" DaIlY "); got != streamrouting.Daily {
+	if got := loadCloudWatchLogsStreamRoutingGranularity(" DaIlY "); got != pkgcloudwatchlogs.StreamRoutingDaily {
 		t.Fatalf("routing = %q, want daily", got)
 	}
-	if got := loadCloudWatchLogsStreamRoutingGranularity(key); got != streamrouting.Granularity(strings.ToLower(key)) {
+	if got := loadCloudWatchLogsStreamRoutingGranularity(key); got != pkgcloudwatchlogs.StreamRouting(strings.ToLower(key)) {
 		t.Fatalf("routing(key) = %q, must normalize the input, not read environment", got)
 	}
 
@@ -88,7 +88,7 @@ func TestConfigValueParsingPreservesEnvironmentDefaultsAndErrors(t *testing.T) {
 					if err != nil {
 						t.Fatalf("default rejected: %v", err)
 					}
-				} else if valueErr := (*InvalidEnvironmentValueError)(nil); !errors.As(err, &valueErr) ||
+				} else if valueErr := (*env.InvalidEnvironmentValueError)(nil); !errors.As(err, &valueErr) ||
 					valueErr.Key != key || valueErr.Value != value {
 					t.Fatalf("invalid value error = %v, want key and value", err)
 				}
@@ -130,8 +130,9 @@ func TestRetryClientModeBlankUsesSuppliedDefault(t *testing.T) {
 	}
 }
 
-func TestOptionalInternalLogBoolParsesValueWithoutReadingEnvironment(t *testing.T) {
+func TestOptionalInternalLogBoolParsesValueFromLookup(t *testing.T) {
 	const key = "TEST_OPTIONAL_INTERNAL_LOG_BOOL"
+	// processの環境変数ではなく、渡したLookupの値だけを解析することを確かめます。
 	t.Setenv(key, "true")
 	for _, tc := range []struct {
 		raw                      string
@@ -146,11 +147,18 @@ func TestOptionalInternalLogBoolParsesValueWithoutReadingEnvironment(t *testing.
 		{raw: " ", wantError: true},
 	} {
 		t.Run(tc.raw, func(t *testing.T) {
-			got, err := loadOptionalInternalLogBool(tc.raw, key)
+			lookup := env.Lookup(func(name string) (string, bool) {
+				if name == key {
+					return tc.raw, true
+				}
+				return "", false
+			})
+			got, err := loadOptionalInternalLogBool(lookup, key)
 			if tc.wantError {
-				var valueErr *InvalidEnvironmentValueError
-				if got != nil || !errors.As(err, &valueErr) || valueErr.Key != key || valueErr.Value != tc.raw {
-					t.Fatalf("got %v, %v; want nil and error identifying key", got, err)
+				var variableErr *env.VariableError
+				if got != nil || !errors.As(err, &variableErr) || variableErr.Key != key ||
+					variableErr.Value != tc.raw || !errors.Is(err, env.ErrNotBoolean) {
+					t.Fatalf("got %v, %v; want nil and a VariableError identifying key", got, err)
 				}
 				return
 			}

@@ -75,7 +75,7 @@ func TestManagedUploaderManualRecoverySavesWithoutMaintainingExistingFiles(t *te
 		if err := managed.Upload(context.Background(), uploadertest.Request(t, source)); err != nil {
 			t.Fatal(err)
 		}
-		// Advance beyond replay and purge intervals; startup cleanup is also forbidden.
+		// replayとpurgeのintervalを超えて時間を進めます。起動時のcleanupも禁止されています。
 		time.Sleep(3 * time.Second)
 		synctest.Wait()
 		if got := remote.callCount(); got != 1 {

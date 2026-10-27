@@ -59,7 +59,7 @@ func TestCheckpointFactoriesConfigureRetryNotificationsBeforeMaintenance(t *test
 						path := filepath.Join(cfg.Directory, sourceID+".log-file-uploads.json")
 						expected[pattern.Dir] = expectedNotification{sourceID: sourceID, path: path}
 						restoreCheckpoints = append(restoreCheckpoints, blockRunnerCheckpointDocument(t, path))
-						// No RunOnce or destination reconciliation has run since construction.
+						// 構築後、RunOnceもdestinationのreconciliationもまだ実行されていません。
 						_, err := store.AdvanceCompletionCursor(context.Background(), checkpointstore.CheckpointKey{
 							Generation: "20260927-1", Compressed: true,
 						}, []objectstorage.DestinationID{"primary"})

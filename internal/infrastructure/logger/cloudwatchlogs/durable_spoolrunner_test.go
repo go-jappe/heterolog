@@ -18,7 +18,6 @@ import (
 	spooldir "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool"
 	fsstorestore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/store"
 	fsworker "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/worker"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/fsarchivehandler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/spoolstorehandler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
@@ -195,7 +194,7 @@ func TestCloudWatchLogsFlushUsesRequestScopedSpoolFilesAndRunnerResendsEach(
 	runCloudWatchLogsRequestScopedSpoolIntegration(
 		t,
 		"cloudwatchlogs-stream-boundary-integration",
-		streamrouting.Hourly,
+		pkgcloudwatchlogs.StreamRoutingHourly,
 		[]cloudWatchLogsRequestBoundaryEntry{
 			{occurredAt: firstOccurrence, message: "hour 12 retryable"},
 			{occurredAt: firstOccurrence.Add(time.Hour), message: "hour 13 retryable"},
@@ -217,7 +216,7 @@ func TestCloudWatchLogsFlushSplitsSameStreamByRequestBytesIntoSpoolFilesAndResen
 	runCloudWatchLogsRequestScopedSpoolIntegration(
 		t,
 		"cloudwatchlogs-request-byte-boundary-integration",
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		[]cloudWatchLogsRequestBoundaryEntry{
 			{occurredAt: occurrence, message: strings.Repeat("a", 600_000)},
 			{occurredAt: occurrence, message: strings.Repeat("b", 600_000)},
@@ -237,7 +236,7 @@ type cloudWatchLogsRequestBoundaryEntry struct {
 func runCloudWatchLogsRequestScopedSpoolIntegration(
 	t *testing.T,
 	target string,
-	routingGranularity streamrouting.Granularity,
+	routingGranularity pkgcloudwatchlogs.StreamRouting,
 	entries []cloudWatchLogsRequestBoundaryEntry,
 	wantStreams []string,
 ) {
@@ -535,7 +534,7 @@ func cloudWatchLogsFailureStoreFlushManagerConfig(
 					CompressFormat:             pkgfsstore.CompressGzip,
 					RotationType:               pkgfsstore.FileRotationDaily,
 					RotationDayOfWeek:          time.Sunday,
-					MaxWriteAttempts:           1,
+					MaxWriteRetries:            0,
 					FileOperationRetryWaitTime: time.Millisecond,
 					Target:                     spoolCfg.target,
 					OverloadPolicyConfig: pkgdurable.FileArchiveOverloadPolicyConfig{
@@ -554,7 +553,7 @@ func cloudWatchLogsFailureStoreFlushManagerConfig(
 				},
 			},
 		},
-	}, streamrouting.None)
+	}, pkgcloudwatchlogs.StreamRoutingNone)
 }
 
 type cloudWatchLogsArchiveRecord struct {
@@ -644,13 +643,13 @@ func cloudWatchLogsSpoolRunnerFlushManagerConfig(
 ) CloudWatchLogsFlushManagerConfigProvider {
 	return cloudWatchLogsSpoolRunnerFlushManagerConfigWithRoutingGranularity(
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 	)
 }
 
 func cloudWatchLogsSpoolRunnerFlushManagerConfigWithRoutingGranularity(
 	cfg cloudWatchLogsLoggerSpoolTestConfig,
-	routingGranularity streamrouting.Granularity,
+	routingGranularity pkgcloudwatchlogs.StreamRouting,
 ) CloudWatchLogsFlushManagerConfigProvider {
 	return NewFlushManagerConfigAdapter(pkglogger.CloudWatchLogsFlushManagerConfig{
 		LogGroupName:  "/app/test",
@@ -687,7 +686,7 @@ func (c cloudWatchLogsLoggerSpoolTestConfig) FileNameFormat() string {
 func (c cloudWatchLogsLoggerSpoolTestConfig) FileDateFormat() string {
 	return "20060102"
 }
-func (c cloudWatchLogsLoggerSpoolTestConfig) MaxWriteAttempts() int {
+func (c cloudWatchLogsLoggerSpoolTestConfig) MaxWriteRetries() int {
 	return 1
 }
 func (c cloudWatchLogsLoggerSpoolTestConfig) FileOperationRetryWaitTime() time.Duration {

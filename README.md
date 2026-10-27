@@ -35,6 +35,7 @@ The other documents in this repository, including the comments in `.env.example`
 - Logs that could not be delivered are kept in a spool or a failure archive and replayed. `Retry-After` is honored, also across restarts.
 - Overload protection with a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
 - Configuration in code, or from `HETEROLOG_` environment variables with `LoadEnvConfig`.
+- The level and sampling of outputs can change while the application runs, in code or through a token-protected HTTP API.
 - A CLI that recovers log files of a stopped application.
 - Tested on Linux, Windows, and macOS, including case-insensitive file systems.
 
@@ -148,7 +149,7 @@ logger := slog.New(heterolog.NewSlogHandler(runtime, &slog.HandlerOptions{
 | `NewSlogHandler` | Uses a synchronous logger as a `slog.Handler` |
 | `DefaultSpoolConfig` / `WithSpool` | Settings for the workers that replay persisted failed logs |
 | `Close` / `Shutdown(ctx)` | Finishes accepted work, flushes buffers, and releases resources |
-| `ForceClose` | Requests recovery and other background work to stop |
+| `ForceClose` | Stops accepting logs, releases waiting `Close` and `Shutdown` calls with `ErrForcedClose`, and requests background and recovery work to stop without waiting |
 
 ### Delivery reports
 
@@ -217,7 +218,7 @@ Configuration errors at construction can be identified with `errors.Is` and `err
 
 ### Side effects and contexts
 
-- Importing the package or calling `New` does not load `.env` files, install signal handlers, or change the global logger or OpenTelemetry providers. Configuration is passed explicitly in code (to build loggers from environment variables and an env file, call `LoadEnvConfig` explicitly, as described below).
+- Importing the package or calling `New` does not load `.env` files, install signal handlers, start servers, or change the global logger or OpenTelemetry providers. Configuration is passed explicitly in code (to build loggers from environment variables and an env file, call `LoadEnvConfig` explicitly, as described below).
 - Do not change the configuration a logger uses after creating the logger.
 - The cancellation and deadline of the context passed to `New`, `NewAsync`, and `NewDelivery` apply only to construction. Periodic sending of buffers continues after the context ends, until `Close` or `Shutdown`.
 
@@ -242,16 +243,88 @@ defer runtime.Close()
 - The settings of the enabled loggers and their consistency with each other (such as shared storage directories) are checked when loading, and all problems found are returned together. Use `errors.As` with `EnvFileError`, `InvalidEnvironmentValueError`, `RenamedEnvironmentKeyError`, or `VariableError` of `pkg/env` to identify the key.
 - To adjust the settings before constructing a logger, get them with `cfg, opts, err := env.Config()` (or `AsyncConfig` and `DeliveryConfig`) and pass them to `heterolog.New(ctx, cfg, opts...)`. `opts` carries the spool replay settings and CloudWatch Logs stream routing read from the environment.
 - A logger disabled with `HETEROLOG_ENABLE_LOGGING=false` or the like cannot be constructed, and `ErrEnvLoggerDisabled` is returned.
-- Tracing (`WithObservers`) and the memory pressure monitor (`WithMemoryPressureMonitor`) are not created from the environment. Pass them as additional options, as in `env.New(ctx, opts...)`.
+- Tracing (`WithObservers`) is not created from the environment. Pass it as an additional option, as in `env.New(ctx, opts...)`. A spool enabled with `HETEROLOG_USE_MEMORY_PRESSURE_*` judges memory pressure with `HETEROLOG_MEMORY_CRITICAL_RATIO`, `HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB` and `HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITS` unless `WithMemoryPressureMonitor` is passed.
+
+### Changing settings while running
+
+The level and sampling of each output of a synchronous or asynchronous logger can change while the application runs, in code or through an HTTP API.
+
+- In code, `runtime.OutputSettings()` returns the current settings, and `runtime.UpdateOutputSettings(changes)` changes them. All changes are checked first, and none is applied if any is invalid: an output the logger does not use is `ErrUnknownOutput`, and an invalid value is a `ConfigFieldError` of `pkg/logger`.
+- Changes take effect from the next entry. An asynchronous logger uses the settings in effect when it processes an entry.
+- Changes are kept in memory only, so a restart returns to the configured settings.
+- Delivery loggers have no such settings: they do not sample, and only their Slack output filters by level, at its configured level. Outputs used only for internal log notifications keep their configured settings.
+
+The HTTP API (admin API) can be called with tools such as curl:
+
+- `NewAdminHandler` returns an `http.Handler` to mount on your own server. `StartAdminServer` starts a dedicated server instead.
+- `GET /settings` returns the current settings of every logger, and `PATCH /settings` changes the fields given in the JSON body. Levels are `DEBUG`, `INFO`, `WARN`, and `ERROR` (case-insensitive), and sampling fields omitted in a `PATCH` keep their values.
+- Every request must send `Authorization: Bearer <token>`. The token must be at least 32 bytes (`MinAdminTokenLength`); generate it randomly, for example with `openssl rand -hex 32`. It is compared in constant time, and errors never contain it.
+- A `PATCH` checks every change of every logger before applying any of them. The body is limited to 64 KiB, and unknown fields are rejected.
+- Each change is passed to `OnChange` for audit logs. Without `OnChange`, it is written as one line to the standard logger of the `log` package.
+- The dedicated server listens on 127.0.0.1 when the host of its address is empty (for example, `:9100`). To listen on another address, give the host explicitly and set a TLS certificate and key, so the token is not sent over a network in clear text.
+- From the environment configuration, `HETEROLOG_ADMIN_ADDR` enables the server, together with `HETEROLOG_ADMIN_TOKEN`, `HETEROLOG_ADMIN_TLS_CERT_FILE`, and `HETEROLOG_ADMIN_TLS_KEY_FILE`. `LoadEnvConfig` checks them, and `env.AdminServerConfig()` returns them.
+
+```go
+env, err := heterolog.LoadEnvConfig(".env")
+if err != nil {
+    log.Fatal(err)
+}
+runtime, err := env.New(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+defer runtime.Close()
+if adminCfg, ok := env.AdminServerConfig(); ok {
+    admin, err := heterolog.StartAdminServer(adminCfg, map[string]heterolog.SettingsController{"app": runtime})
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer admin.Close()
+}
+```
+
+```sh
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/settings
+
+curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
+  -d '{"loggers":{"app":{"outputs":{"stdout":{"level":"DEBUG"}}}}}' \
+  http://127.0.0.1:9100/settings
+```
+
+Both requests return the settings of every logger:
+
+```json
+{
+  "loggers": {
+    "app": {
+      "outputs": {
+        "stdout": {
+          "level": "DEBUG",
+          "sampling": {
+            "enabled": false,
+            "by_request_id": false,
+            "request_id_rate": 0,
+            "debug_rate": 0,
+            "info_rate": 0,
+            "warn_rate": 0,
+            "error_rate": 0
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 ### Memory pressure monitor
 
 - The caller starts and stops the monitor passed to `WithMemoryPressureMonitor`.
+- Without `WithMemoryPressureMonitor`, each spool that enables `UseMemoryPressureForOverload` starts its own monitor. It reads the memory of the operating system every second, judges each reading with the spool's `MemoryCriticalRatio`, `MinAvailableMemoryBytes` and `MemoryCriticalConsecutiveHits` (`HETEROLOG_MEMORY_CRITICAL_RATIO`, `HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB` and `HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITS` in the environment), and stops when the logger closes. The logger fails to start when they enable no threshold or the memory cannot be read.
 - `NewMemoryPressureMonitor(provider, policy, pollInterval)` creates a monitor from a `Provider` and a `CriticalPolicy` of `pkg/memorypressure`.
 - `Start(ctx)` reads once before returning, then reads every `pollInterval`, and stops when `ctx` ends.
 - The evaluation is the same as `memorypressure.CriticalState`: the state is critical when reliable observations reach `CriticalRatio` or `MinAvailableBytes` `ConsecutiveCriticalHits` times in a row (0 and 1 mean the first time).
 - A nil provider, a poll interval of 0 or less, a policy that enables neither threshold, a `CriticalRatio` above 1, or a negative count is an error at creation. Input errors at creation can be identified with `errors.Is(err, heterolog.ErrInvalidMemoryPressureMonitor)`.
-- The monitor is used for the overload decision of destinations whose spool enables `UseMemoryPressureForOverload`. When it reports overload, the overload policy applies; with `drop`, the log is discarded without being saved, and the regular API returns `ErrLogDropped`.
+- The monitor, passed or started by the spool, is used for the overload decision of destinations whose spool enables `UseMemoryPressureForOverload`. When it reports overload, the overload policy applies; with `drop`, the log is discarded without being saved, and the regular API returns `ErrLogDropped`.
 - The Linux provider of `pkg/memorypressure` checks the limits of its cgroup v2 and of the parent levels it can read. It keeps the level with the highest usage as the main observation and the level with the least remaining memory as `CgroupLimit`, and checks both. When only a finite limit can be read, the usage is kept as unknown. Limits of ancestors it cannot read, such as those outside its namespace, cannot be obtained.
 
 ### Internal log notifications
@@ -502,7 +575,7 @@ go build -o log-recovery ./cmd/log-recovery
 ```sh
 go test ./...
 go vet ./...
-go test -race . ./internal/application/logging ./internal/infrastructure/logger/multi
+go test -race . ./internal/application/logging ./internal/application/loggerruntime ./internal/presentation/sloghandler ./internal/infrastructure/logger/multi
 ```
 
 - The regular tests use a dummy configuration generated from the public configuration example and local HTTP servers, and do not need a developer's `.env`.
@@ -580,8 +653,9 @@ Kept failures are not deleted by default. They may be the only copy of a log, so
 - Every key starts with `HETEROLOG_`, so the settings can live in the same environment and `.env` file as the application's own settings without colliding.
 - With no settings, every logger writes only to stdout, so heterolog works without any configuration or external service. Other destinations are enabled only when they are selected, and missing credentials are reported as errors instead of being filled in.
 - Settings are checked when they are loaded or when a logger is constructed, and all problems are reported together, so a wrong setting fails at startup instead of at the first log or the first failure.
+- Only the level and sampling can change while running. The outputs read them for every entry, so a change needs neither rebuilding loggers nor interrupting logging; changing destinations or storage would. The HTTP API needs a token, listens only on 127.0.0.1 unless TLS is configured, and its changes do not survive a restart, so a temporary change, such as switching to DEBUG during an investigation, cannot stay by accident.
 - Configuration errors do not include values that may contain credentials, such as HTTP headers, lists of S3 destinations, and the user info of URLs.
-- Defaults follow the platform: timestamps are in UTC, and on Linux and other Unix systems, storage defaults to the user's state directory (`$XDG_STATE_HOME`, or `~/.local/state`) when the process does not run as root, so a regular user can enable file output without extra settings.
+- Defaults follow the platform: timestamps are in UTC, and on Linux, the BSDs, illumos, Solaris and AIX, storage defaults to the user's state directory (`$XDG_STATE_HOME` if it is an absolute path, or else `~/.local/state`) when the process does not run as root, so a regular user can enable file output without extra settings.
 
 ### Testing on real systems
 

@@ -134,7 +134,7 @@ func TestFilesystemStoreMissingCursorRecoveryResendsPreviouslySkippedAndUploaded
 	defer func() {
 		require.NoError(t, boundedwait.Close(t, "recovered.Close()", recovered.Close, boundedwait.ForceCloserOf(recovered)))
 	}()
-	// Known IDs must not become new destinations with a newly computed initial cursor.
+	// 既知のIDを、新たに計算した初期cursorを持つ新しい宛先にしてはいけません。
 	require.NoError(t, recovered.RegisterDestinations(ctx, active, []CheckpointKey{first, latest}))
 	for _, key := range []CheckpointKey{first, latest} {
 		for _, compressed := range []bool{false, true} {
@@ -159,7 +159,7 @@ func TestFilesystemStoreInterruptedRegistrationRecoversOnlyMissingCursor(t *test
 			key := CheckpointKey{Generation: "20260926-3", Compressed: true}
 			_, err := store.AdvanceCompletionCursor(ctx, key, active[:1])
 			require.NoError(t, err)
-			// Crash after registration metadata publication but before the cursor document.
+			// 登録metadataを公開した後、cursor文書を公開する前にcrashした状態を再現します。
 			store.stateOrSaveMu.Lock()
 			err = store.registerDestinationIDsLocked(ctx, active[1:])
 			store.stateOrSaveMu.Unlock()

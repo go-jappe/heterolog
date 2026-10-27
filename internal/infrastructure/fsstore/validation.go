@@ -222,40 +222,39 @@ func ValidateDurationConfigProvider(cfg ValidationDurationConfigProvider) error 
 }
 
 const (
-	MinWriteRetryAttempts         = 1
 	MinFileOperationRetryWaitTime = 1 * time.Millisecond
 )
 
 const (
-	ErrorMsgMinWriteRetryAttempts         = errorMsgInvalidMaxWriteAttempts + " must be >= %d, got %d"
+	ErrorMsgNegativeWriteRetries          = errorMsgInvalidMaxWriteRetries + " must not be negative, got %d"
 	ErrorMsgMinFileOperationRetryWaitTime = errorMsgInvalidFileOperationRetryWaitTime + errorDetailMinDuration
 )
 
 // 再試行設定の項目ごとの検証エラーです。errors.Isで拒否した項目を判別できます。
 var (
-	ErrInvalidMaxWriteAttempts           = errors.New(errorMsgInvalidMaxWriteAttempts)
+	ErrInvalidMaxWriteRetries            = errors.New(errorMsgInvalidMaxWriteRetries)
 	ErrInvalidFileOperationRetryWaitTime = errors.New(errorMsgInvalidFileOperationRetryWaitTime)
 )
 
 const (
-	errorMsgInvalidMaxWriteAttempts           = "max write retry attempts"
+	errorMsgInvalidMaxWriteRetries            = "max write retries"
 	errorMsgInvalidFileOperationRetryWaitTime = "file operation retry wait time"
 )
 
 type ValidationRetryConfigProvider interface {
-	MaxWriteAttempts() int
+	MaxWriteRetries() int
 	FileOperationRetryWaitTime() time.Duration
 }
 
 func ValidateRetryConfigProvider(cfg ValidationRetryConfigProvider) error {
 	var errs []error
 
-	if cfg.MaxWriteAttempts() < MinWriteRetryAttempts {
+	// MaxWriteRetriesは初回に加える再試行の回数で、0なら再試行しません。
+	if cfg.MaxWriteRetries() < 0 {
 		errs = append(errs, fmt.Errorf(
-			"%w must be >= %d, got %d",
-			ErrInvalidMaxWriteAttempts,
-			MinWriteRetryAttempts,
-			cfg.MaxWriteAttempts(),
+			"%w must not be negative, got %d",
+			ErrInvalidMaxWriteRetries,
+			cfg.MaxWriteRetries(),
 		))
 	}
 

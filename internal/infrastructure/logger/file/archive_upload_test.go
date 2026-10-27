@@ -24,6 +24,7 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 
 	"github.com/stretchr/testify/require"
@@ -206,8 +207,8 @@ func TestArchiveCompressedLogMaintenanceErrorIsDispatchedToOnError(t *testing.T)
 		_ context.Context,
 		err error,
 		_ *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		dispatched <- err
 	}
@@ -234,7 +235,7 @@ func (r archiveUploadTestSavedTargetDetails) String() string               { ret
 func TestManagedFileArchiveUploaderNotifiesSavedTargetsWithoutKnowingTheirKind(t *testing.T) {
 	logger := &FileLogger{logger: DefaultLogger, Clock: clock.NewUTCClock(), Tracer: observer.NopTracer{}, Meter: observer.NopMeter{}}
 	var received []error
-	logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		received = append(received, err)
 	}
 	uploadErr := errors.New("upload unavailable")
@@ -298,8 +299,8 @@ func TestManagedFileArchiveUploaderDoesNotNotifyFailedSaveAsAccepted(t *testing.
 		context.Context,
 		error,
 		*logging.LogEntry,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) {
 		dispatched++
 	}
@@ -319,7 +320,7 @@ func TestManagedFileArchiveUploaderDoesNotNotifyFailedSaveAsAccepted(t *testing.
 func TestManagedFileArchiveUploaderNotifiesExistingFileCheckError(t *testing.T) {
 	logger := &FileLogger{logger: DefaultLogger, Clock: clock.NewUTCClock(), Tracer: observer.NopTracer{}, Meter: observer.NopMeter{}}
 	var received []error
-	logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		received = append(received, err)
 	}
 	injected := errors.New("cannot inspect existing spool")
@@ -339,7 +340,7 @@ func TestManagedFileArchiveUploaderNotifiesExistingFileCheckError(t *testing.T) 
 func TestManagedFileArchiveUploaderNotifiesPreservedConflictEvenWhenSaveFails(t *testing.T) {
 	logger := &FileLogger{logger: DefaultLogger, Clock: clock.NewUTCClock(), Tracer: observer.NopTracer{}, Meter: observer.NopMeter{}}
 	var received []error
-	logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		received = append(received, err)
 	}
 	uploadFailureNotifications := []compressedlogfailure.Notification{{

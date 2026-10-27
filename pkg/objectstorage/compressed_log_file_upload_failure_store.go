@@ -6,25 +6,31 @@ import (
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 )
 
-// CompressedLogFileUploadFailureStoreConfigは、通常ログの.log.<codec>と、backend送信失敗
-// レコードを保存したarchiveの.jsonl.<codec>について、
-// object storageへの直接uploadを完了できなかった場合の保存方式を保持します。
+// CompressedLogFileUploadFailureStoreConfig holds the storage method used when
+// a direct upload to object storage cannot be completed, for both the
+// .log.<codec> files of ordinary logs and the .jsonl.<codec> archives that
+// store records whose backend delivery failed.
 type CompressedLogFileUploadFailureStoreConfig struct {
 	DurableType        []failurestore.DurableType
 	DurableStoreConfig CompressedLogFileUploadFailureDurableStoreConfig
 }
 
-// CompressedLogFileUploadFailureDurableStoreConfigは、routeごとのfile archive設定です。
-// spoolの設定はCompressedLogFileUploadSpoolから取得し、保存先が同じ送信経路でruntimeを共有します。
+// CompressedLogFileUploadFailureDurableStoreConfig holds the file archive
+// settings of each route. Spool settings are taken from
+// CompressedLogFileUploadSpool, and routes with the same storage location
+// share a runtime.
 type CompressedLogFileUploadFailureDurableStoreConfig struct {
 	FileArchiveConfig CompressedLogFileUploadFailureArchiveConfig
 }
 
-// CompressedLogFileUploadFailureArchiveConfigはcompressed log fileのbyte列と元file名を変更せず、
-// 分類directory直下の一fileとして保存するfile archive設定です。
-// RootPathは対象applicationのcompressed log file upload failure archiveまで解決済みのrootです。
-// LoggerContractはlogger、async_logger、delivery_loggerの所有領域を分離します。
-// object storage serviceと宛先の領域は、送信先のmetadataから構築します。
+// CompressedLogFileUploadFailureArchiveConfig configures the file archive,
+// which stores a compressed log file as a single file directly under its
+// category directory without changing its bytes or its original file name.
+// RootPath is the root already resolved down to the compressed log file upload
+// failure archive of the target application. LoggerContract separates the
+// areas owned by logger, async_logger and delivery_logger. The areas of the
+// object storage service and of the destination are built from the metadata of
+// the destination.
 type CompressedLogFileUploadFailureArchiveConfig struct {
 	RootPath          string
 	LoggerContract    string
@@ -33,19 +39,24 @@ type CompressedLogFileUploadFailureArchiveConfig struct {
 	Permanent         CompressedLogFileUploadFailureArchivePurgeConfig
 }
 
-// CompressedLogFileUploadFailureArchivePurgeConfigは一つの失敗分類に対する保持設定です。
-// MaxFileAgeDaysはファイル名の日付で判定し、期限日と同日のファイルは保持します。
-// MaxDirSizeの単位はbyteで、超過時はファイル名の日付・数値indexの古い順に削除します。
+// CompressedLogFileUploadFailureArchivePurgeConfig holds the retention
+// settings for one failure category. MaxFileAgeDays is judged by the date in
+// the file name, and a file dated on the cutoff day is kept. MaxDirSize is in
+// bytes; when it is exceeded, files are deleted oldest first by the date and
+// then the numeric index in their names.
 type CompressedLogFileUploadFailureArchivePurgeConfig struct {
 	Enabled        bool
 	MaxFileAgeDays int
 	MaxDirSize     uint64
 }
 
-// CompressedLogFileUploadSpoolConfigは、圧縮ログの再送用spoolについて構築側で指定する設定値です。
-// 保存先、再送周期、送信先circuit breaker、終了済みstateの保持方針を持ちます。
-// 利用側へはNewCompressedLogFileUploadSpoolConfigAdapterでproviderへ変換して渡します。
-// object storage serviceごとのrootは送信先のmetadataと組み合わせて決定します。
+// CompressedLogFileUploadSpoolConfig holds the settings that the constructing
+// side specifies for the spool that retries uploads of compressed logs. It has
+// the storage location, the retry interval, the destination circuit breaker,
+// and the retention policy for finished states. It is converted into a
+// provider with NewCompressedLogFileUploadSpoolConfigAdapter before it is
+// passed to the consuming side. The root for each object storage service is
+// determined by combining it with the metadata of the destination.
 type CompressedLogFileUploadSpoolConfig struct {
 	SpoolPath      string
 	Target         string
@@ -54,8 +65,9 @@ type CompressedLogFileUploadSpoolConfig struct {
 	RunnerInterval             time.Duration
 	LifecycleInterval          time.Duration
 	CircuitBreakerOpenCooldown time.Duration
-	// MaxRetryAfterは、upload先がRetry-Afterで指定した宛先別の再送待機の上限です。
-	// 0は既定の1時間として扱い、無制限にはしません。負値は設定errorです。
+	// MaxRetryAfter limits the per-destination retry wait that an upload
+	// destination asks for with Retry-After. Zero means the default of one hour
+	// and never means no limit. A negative value is a configuration error.
 	MaxRetryAfter time.Duration
 
 	Done       CompressedLogFileUploadSpoolPurgeConfig
@@ -63,8 +75,10 @@ type CompressedLogFileUploadSpoolConfig struct {
 	Quarantine CompressedLogFileUploadSpoolPurgeConfig
 }
 
-// CompressedLogFileUploadSpoolPurgeConfigは送信処理がterminalになった圧縮log fileだけに適用します。
-// activeとprocessingは未送信dataを含むため、削除設定を公開しません。
+// CompressedLogFileUploadSpoolPurgeConfig applies only to compressed log files
+// whose upload processing has become terminal. The active and processing
+// states contain data that has not been uploaded, so no purge settings are
+// exposed for them.
 type CompressedLogFileUploadSpoolPurgeConfig struct {
 	Enabled        bool
 	MaxFileAgeDays int

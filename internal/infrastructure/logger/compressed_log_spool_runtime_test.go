@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/multi"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -190,7 +190,7 @@ func TestLoggerCompressedLogSpoolSharedByBaseAndInternalFilesUntilClose(t *testi
 				MaxLogEntryBytes:        pkglogger.DefaultMaxLogEntryBytes,
 				InternalLogDestinations: &pkglogger.InternalLogDestinationConfig{File: internal},
 			}
-			created, err := NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+			created, err := NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, created.Close()) })
 			owned := created.(*topLevelLoggerRuntime)
@@ -215,7 +215,7 @@ func TestLoggerCompressedLogSpoolConstructionRollbackReleasesRoot(t *testing.T) 
 		MaxLogEntryBytes:        pkglogger.DefaultMaxLogEntryBytes,
 		File:                    base,
 		InternalLogDestinations: &pkglogger.InternalLogDestinationConfig{File: internal},
-	}, streamrouting.None, nil, observer.NopTracer{}, observer.NopMeter{}, nil)
+	}, pkgcloudwatchlogs.StreamRoutingNone, nil, observer.NopTracer{}, observer.NopMeter{}, nil)
 	// 共有rootを準備した後のinternal log file構築失敗でrollbackします。timeoutなど
 	// 他の不備で早期に失敗するとroot解放の経路を通らないため、errorを特定します。
 	require.ErrorIs(t, err, ErrInternalLogFileLoggerSetCreation)
@@ -231,7 +231,7 @@ func TestLoggerCompressedLogSpoolFanoutFailureClosesPreparedRunners(t *testing.T
 	base.ObjectStorageUploadConfig = sharedCompressedLogSpoolTestUpload(t)
 	cfg := pkglogger.LoggerConfig{File: base}
 	require.NoError(t, prepareLoggerArchiveCheckpointDirectory(cfg))
-	_, err := newLoggerCore(context.Background(), cfg, streamrouting.None, nil, observer.NopTracer{}, observer.NopMeter{}, nil)
+	_, err := newLoggerCore(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, observer.NopTracer{}, observer.NopMeter{}, nil)
 	require.ErrorIs(t, err, multi.ErrInvalidTimeout)
 	replacement, err := compressedlog.NewRootRuntime(compressedlog.NewConfigAdapter(base.ObjectStorageUploadConfig.CompressedLogFileUploadSpool, objectstorage.UploadTargetS3))
 	require.NoError(t, err, "fanout構築失敗でも先に作成したrunnerのrouteを回収する")

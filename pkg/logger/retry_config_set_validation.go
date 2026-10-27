@@ -5,8 +5,9 @@ import (
 	"time"
 )
 
-// ValidateLoggerRetryClientConfigsは、sync/async loggerが実際に構築するbase backendと
-// internal-log専用保存先のretry設定を検証します。
+// ValidateLoggerRetryClientConfigs validates the retry settings of the base
+// backends that a sync or async logger actually constructs and of its
+// dedicated internal-log destinations.
 func ValidateLoggerRetryClientConfigs(sourceLabel string, cfg LoggerConfig) error {
 	var errs []error
 	errs = append(errs, validateActiveLoggerRetryClientConfigs(sourceLabel, cfg))
@@ -19,8 +20,9 @@ func ValidateLoggerRetryClientConfigs(sourceLabel string, cfg LoggerConfig) erro
 	return errors.Join(errs...)
 }
 
-// ValidateDeliveryLoggerRetryClientConfigsは、Delivery loggerが実際に構築する
-// base backendとinternal-log専用保存先のretry設定を検証します。
+// ValidateDeliveryLoggerRetryClientConfigs validates the retry settings of the
+// base backends that a Delivery logger actually constructs and of its
+// dedicated internal-log destinations.
 func ValidateDeliveryLoggerRetryClientConfigs(
 	sourceLabel string,
 	cfg DeliveryLoggerConfig,
@@ -179,7 +181,7 @@ func validateOpenSearchRetryClientConfig(
 		sourceLabel,
 		LogOutputOpenSearch,
 		cfg.RetryClientMode,
-		cfg.MaxAttempts,
+		cfg.MaxRetries,
 		cfg.BaseDelay,
 		cfg.MaxDelay,
 	)
@@ -196,7 +198,7 @@ func validateLokiRetryClientConfig(
 		sourceLabel,
 		LogOutputLoki,
 		cfg.RetryClientMode,
-		cfg.MaxAttempts,
+		cfg.MaxRetries,
 		cfg.BaseDelay,
 		cfg.MaxDelay,
 	)
@@ -213,7 +215,7 @@ func validateCloudWatchLogsRetryClientConfig(
 		sourceLabel,
 		LogOutputCloudWatchLogs,
 		cfg.RetryClientMode,
-		cfg.MaxAttempts,
+		cfg.MaxRetries,
 		cfg.BaseDelay,
 		cfg.MaxDelay,
 	)
@@ -230,7 +232,7 @@ func validateClickHouseRetryClientConfig(
 		sourceLabel,
 		LogOutputClickHouse,
 		cfg.RetryClientMode,
-		cfg.MaxAttempts,
+		cfg.MaxRetries,
 		cfg.BaseDelay,
 		cfg.MaxDelay,
 	)
@@ -240,12 +242,12 @@ func validateRetryClientConfigValues(
 	sourceLabel string,
 	backend LogOutputDestination,
 	mode RetryClientMode,
-	maxAttempts int,
+	maxRetries int,
 	baseDelay time.Duration,
 	maxDelay time.Duration,
 ) error {
 	return wrapBackendSettingErrors(
 		sourceLabel, backend, "retry client config",
-		ValidateRetryClientConfig(mode, maxAttempts, baseDelay, maxDelay),
+		ValidateRetryClientConfig(mode, maxRetries, baseDelay, maxDelay),
 	)
 }

@@ -10,7 +10,7 @@ const (
 	DefaultOpenSearchRecordByTraceIdEnabled = true
 	DefaultRecordByTraceIdRate              = 10
 	DefaultOpenSearchSamplingRate           = 1
-	OpenSearchMaxRetryAttempts              = 3
+	OpenSearchMaxRetries                    = 2
 	OpenSearchRetryWaitTime                 = 100 * time.Millisecond
 )
 
@@ -22,7 +22,7 @@ type OpenSearchSpanConfig struct {
 	RecordByTraceIdEnabled bool
 	RecordByTraceIdRate    int
 	SamplingRate           int
-	MaxRetryAttempts       int
+	MaxRetries             int
 	RetryWaitTime          time.Duration
 	OnFallbackLogConfig    []string
 }

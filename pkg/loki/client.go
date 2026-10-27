@@ -26,7 +26,7 @@ const (
 	truncatedHTTPStatusErrorMessage = "...(body truncated)"
 )
 
-// Client はLokiのHTTP Push APIへログを送信するクライアントです。
+// Client sends logs to the Loki HTTP Push API.
 type Client struct {
 	pushURL     string
 	httpClient  *http.Client
@@ -38,54 +38,59 @@ type Client struct {
 	compressRequest bool
 }
 
-// Config はLokiクライアントの設定です。
+// Config is the configuration of a Loki client.
 type Config struct {
-	// Endpoint はhttp/httpsのLokiベースURL、または /loki/api/v1/push まで含むURLです。
-	// pathが空なら /loki/api/v1/push を補完し、pathがある場合は /loki/api/v1/push で終わる必要があります。
-	// エスケープされたpath segmentは保持し、末尾の非エスケープ / だけを除去します。
-	// Push APIの各segmentを区切る / はエスケープできません。
-	// query、空query、fragmentは受け付けません。
+	// Endpoint is an http or https Loki base URL, or a URL that includes the path
+	// up to /loki/api/v1/push. If the path is empty, /loki/api/v1/push is added; if
+	// there is a path, it must end with /loki/api/v1/push. Escaped path segments
+	// are kept, and only trailing unescaped / characters are removed. The / that
+	// separates the segments of the Push API path cannot be escaped. A query, an
+	// empty query and a fragment are not accepted.
 	Endpoint string
 
-	// Timeout はHTTPClientがnilの場合だけ、新規作成するhttp.ClientのTimeoutとして使われます。
-	// 0はdefault timeoutを使う未指定sentinel、負値は設定エラーです。
+	// Timeout is used as the Timeout of the newly created http.Client only when
+	// HTTPClient is nil. Zero is the unset sentinel that uses the default timeout,
+	// and a negative value is a configuration error.
 	Timeout time.Duration
 
-	// TenantID はマルチテナント環境で X-Scope-OrgID として送信されます。
-	// 空でない場合はLokiのTenant ID制約に従い、150 bytes以内の英数字または ! - _ . * ' ( ) だけを許可します。
+	// TenantID is sent as X-Scope-OrgID in multi-tenant environments. A non-empty
+	// value follows the Loki tenant ID constraints: only alphanumeric characters
+	// and ! - _ . * ' ( ) are allowed, up to 150 bytes, and "." and ".." are
+	// rejected.
 	TenantID string
 
 	BasicAuth   *BasicAuthConfig
 	BearerToken string
 	Headers     map[string]string
 
-	// CompressRequest はLoki Push APIへ送るJSON bodyをgzip圧縮します。
+	// CompressRequest gzip-compresses the JSON body sent to the Loki Push API.
 	CompressRequest bool
 
-	// HTTPClient を指定した場合はその設定を使い、Timeoutは適用されません。
-	// リダイレクトには追加でPOST本文を保持する制限を適用します。元のclientは変更しません。
+	// HTTPClient, if set, is used with its own settings, and Timeout is not
+	// applied. Redirects are additionally restricted so that the POST body is
+	// preserved. The original client is not modified.
 	HTTPClient *http.Client
 }
 
-// BasicAuthConfig はBasic認証の設定です。
+// BasicAuthConfig is the configuration for Basic authentication.
 type BasicAuthConfig struct {
 	Username string
 	Password string
 }
 
-// Stream はLokiの1ストリーム分のログです。
+// Stream holds the logs of one Loki stream.
 type Stream struct {
 	Labels  map[string]string
 	Entries []Entry
 }
 
-// Entry はLokiに送信する1ログ行です。
+// Entry is one log line to send to Loki.
 type Entry struct {
 	Timestamp time.Time
 	Line      string
 }
 
-// New は新しいLokiクライアントを作成します。
+// New creates a new Loki client.
 func New(cfg Config) (*Client, error) {
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, err
@@ -117,7 +122,7 @@ func New(cfg Config) (*Client, error) {
 	}, nil
 }
 
-// PushLog は現在時刻で1行のログを送信します。
+// PushLog sends one log line with the current time.
 func (c *Client) PushLog(ctx context.Context, labels map[string]string, line string) error {
 	return c.PushEntry(ctx, labels, Entry{
 		Timestamp: time.Now(),
@@ -125,7 +130,7 @@ func (c *Client) PushLog(ctx context.Context, labels map[string]string, line str
 	})
 }
 
-// PushEntry は1つのラベルセットに1ログ行を送信します。
+// PushEntry sends one log line with one label set.
 func (c *Client) PushEntry(ctx context.Context, labels map[string]string, entry Entry) error {
 	return c.Push(ctx, []Stream{{
 		Labels:  labels,
@@ -133,7 +138,7 @@ func (c *Client) PushEntry(ctx context.Context, labels map[string]string, entry 
 	}})
 }
 
-// Push はLokiの /loki/api/v1/push へ複数ストリームを送信します。
+// Push sends multiple streams to Loki's /loki/api/v1/push.
 func (c *Client) Push(ctx context.Context, streams []Stream) error {
 	if len(streams) == 0 {
 		return nil
@@ -198,9 +203,9 @@ func (c *Client) Push(ctx context.Context, streams []Stream) error {
 	return nil
 }
 
-// doPost preserves caller redirect restrictions and net/http's default limit,
-// but refuses redirects that would discard the log payload. Returning the last
-// response lets Push report the original HTTP status instead of a GET success.
+// doPostは呼び出し元のredirect制限とnet/httpの既定の上限を保ちつつ、logのpayloadを
+// 捨てるredirectを拒否します。最後のresponseを返すことで、PushはGETの成功ではなく、
+// 元のHTTP statusを報告できます。
 func (c *Client) doPost(req *http.Request) (*http.Response, error) {
 	httpClient := *c.httpClient
 	checkRedirect := httpClient.CheckRedirect
@@ -282,8 +287,10 @@ func buildPushBody(streams []Stream) ([]byte, error) {
 	return body, nil
 }
 
-// PushRequestSizeは、Pushが送信するcanonical JSON bodyの圧縮前byte数を返します。
-// loggerはこの値を使って、network送信前にapplication側のrequest上限内へbatchを分けます。
+// PushRequestSize returns the size in bytes, before compression, of the
+// canonical JSON body that Push sends. The logger uses this value to split
+// batches within the application's request limit before sending them over the
+// network.
 func PushRequestSize(streams []Stream) (int, error) {
 	body, err := buildPushBody(streams)
 	if err != nil {
@@ -317,8 +324,8 @@ func normalizePushURL(endpoint string) (string, error) {
 		return "", newValidationError(ErrInvalidEndpoint, nil, "loki endpoint must not include query or fragment")
 	}
 
-	// Trim delimiters before decoding: %2F is part of a segment, not a slash
-	// that can be removed or used to separate the Push API path components.
+	// decodeする前に区切り文字を除きます。%2Fはsegmentの一部であり、除去できるslashや、
+	// Push API pathの要素を区切るslashではありません。
 	path := strings.TrimRight(parsed.EscapedPath(), "/")
 	switch {
 	case path == "":
@@ -371,11 +378,12 @@ func formatTimestamp(t time.Time) string {
 	return fmt.Sprintf("%d", t.UnixNano())
 }
 
-// ValidateLabelsはLoki Push APIへ渡す一つのstream label集合を検証します。
-// 少なくとも一組を要求し、label名はLokiが受け入れるPrometheus形式
-// `[a-zA-Z_:][a-zA-Z0-9_:]*`に限定します。`__` は内部用の慣習ですが、
-// serverが一律に拒否する不正値ではないため、ここでは除外しません。
-// labelがない場合はErrLabelsRequired、不正なlabel名は*InvalidLabelNameErrorです。
+// ValidateLabels validates one set of stream labels to pass to the Loki Push
+// API. It requires at least one name-value pair and limits label names to the
+// Prometheus form `[a-zA-Z_:][a-zA-Z0-9_:]*` that Loki accepts. `__` is a
+// convention for internal use, but it is not an invalid value that the server
+// always rejects, so it is not excluded here. It reports ErrLabelsRequired when
+// there are no labels and *InvalidLabelNameError for an invalid label name.
 func ValidateLabels(labels map[string]string) error {
 	if len(labels) == 0 {
 		return newValidationError(ErrLabelsRequired, nil, "at least one label is required")
@@ -476,7 +484,8 @@ func copyBasicAuth(auth *BasicAuthConfig) *BasicAuthConfig {
 	return &copied
 }
 
-// HTTPStatusError はLokiが失敗扱いのHTTPステータスを返したときのエラーです。
+// HTTPStatusError is the error returned when Loki responds with an HTTP status
+// that is treated as a failure.
 type HTTPStatusError struct {
 	Code               int
 	Status             string

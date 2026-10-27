@@ -12,6 +12,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,7 @@ func TestNewBackendRunnerSupervisorConnectsActiveStoreWarningHandler(t *testing.
 			Dir:       "opensearch",
 		},
 		Sender: &backendRuntimeSenderStub{},
-		OnWarn: func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		OnWarn: func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			warnings = append(warnings, entry)
 		},
 	}

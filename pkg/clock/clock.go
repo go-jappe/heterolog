@@ -2,14 +2,16 @@ package clock
 
 import "time"
 
-// Clockは現在時刻をtime.Timeとして返す時刻源です。
-// 戻り値のタイムゾーンはClockの実装が決めます。
-// 使用する実装や既定値は利用側の構築時に決め、処理中はNowの戻り値をそのまま使います。
+// Clock is a time source that returns the current time as a time.Time. The
+// implementation of Clock decides the time zone of the returned value. The
+// code that uses a Clock decides which implementation and default to use when
+// that code is constructed, and uses the value that Now returns as is during
+// processing.
 type Clock interface {
 	Now() time.Time
 }
 
-// UTCClockは現在時刻をUTCで返します。
+// UTCClock returns the current time in UTC.
 type UTCClock struct{}
 
 func NewUTCClock() Clock {
@@ -20,7 +22,8 @@ func (UTCClock) Now() time.Time {
 	return time.Now().UTC()
 }
 
-// FixedClockは構築時に指定された時刻を返し続けるClockです。
+// FixedClock is a Clock that keeps returning the time specified when it was
+// constructed.
 type FixedClock struct {
 	at time.Time
 }

@@ -46,8 +46,8 @@ func TestOpenSearchQuarantineSurvivesCleanupFailureAndRestart(t *testing.T) {
 				}
 				w.Header().Set("Content-Type", "application/json")
 				calls.Add(1)
-				// The backend may have accepted the document; an automatic replay
-				// must wait for an operator to resolve this uncertain result.
+				// backendがdocumentを受理した可能性があります。この不確かな結果をoperatorが
+				// 解決するまで、自動replayは待たなければなりません。
 				_, _ = io.WriteString(w, tt.response)
 			}))
 			defer server.Close()
@@ -93,15 +93,15 @@ func TestOpenSearchQuarantineSurvivesCleanupFailureAndRestart(t *testing.T) {
 			require.Equal(t, 1, quarantined[0].ResendAttemptCount)
 			require.NotEmpty(t, quarantined[0].LastFailureReason, "retain the reason for operator inspection")
 
-			// The backend outcome and original payload are durably present in quarantine.
+			// backendの結果と元のpayloadは、quarantineにdurableに保存されています。
 			require.Len(t, readIntegrationSpoolRecords(t, stateRoot(cfg, spool.StateProcessing)), 1)
 			require.EqualValues(t, 1, calls.Load())
 			restartedStore, err := fsworker.NewStateStore(cfg)
 			require.NoError(t, err)
 			restartedWorker, err := worker.New(restartedStore, activeSpoolWriter{store: store}, sender)
 			require.NoError(t, err)
-			// Retention runs before send on every Runner cycle. Even an expired,
-			// over-capacity quarantine must survive until the source is reconciled.
+			// retentionはRunnerの毎cycleで送信より前に動きます。期限切れで容量超過の
+			// quarantineでも、sourceがreconcileされるまでは残さなければなりません。
 			retention, err := fslifecycle.NewFileOperator(fixedSpoolClock{now: now.AddDate(0, 0, 10)},
 				fslifecycle.NewConfigAdapter(lifecyclefsstore.LifeCycleFsstoreConfig{
 					SpoolPath: cfg.spoolPath, Target: cfg.target, Dir: cfg.dir,
@@ -168,8 +168,8 @@ func TestQuarantineRestartStopsPartialOrConflictingEvidenceWithoutLosingRecords(
 				require.NoError(t, os.WriteFile(quarantinePath, []byte("truncated quarantine\n"), 0o600))
 			}
 			before := snapshotRecoveryFiles(t, cfg.spoolPath)
-			// Rebuild twice: rejection must depend on retained evidence, not on
-			// the first worker's in-memory transition retry or backoff state.
+			// 2回作り直します。拒否は、最初のworkerがmemoryに持つtransition retryやbackoffの
+			// 状態ではなく、保持された証拠に基づかなければなりません。
 			for restart := 0; restart < 2; restart++ {
 				restartedStore, err := fsworker.NewStateStore(cfg)
 				require.NoError(t, err)

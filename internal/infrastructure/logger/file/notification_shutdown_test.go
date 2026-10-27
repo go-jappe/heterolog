@@ -14,11 +14,12 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/notification"
 	"github.com/go-jappe/heterolog/internal/infrastructure/objectstorage/compressedlogfailure"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestFileUploadCloseDrainsNotificationAfterProducerCancellation(t *testing.T) {
@@ -31,7 +32,7 @@ func TestFileUploadCloseDrainsNotificationAfterProducerCancellation(t *testing.T
 		defer unblock()
 		dispatcher.Enqueue(func() { <-release })
 		seen := make(chan error, 1)
-		owner.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		owner.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			seen <- ctx.Err()
 		}
 		ctx, cancel := context.WithCancel(context.Background())
@@ -56,7 +57,7 @@ func TestFileUploadForceCloseReleasesCallerButRetainsRunningNotification(t *test
 		release := make(chan struct{})
 		unblock := sync.OnceFunc(func() { close(release) })
 		defer unblock()
-		owner.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		owner.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			entered <- ctx
 			<-release
 		}
@@ -67,8 +68,8 @@ func TestFileUploadForceCloseReleasesCallerButRetainsRunningNotification(t *test
 		synctest.Wait()
 		require.Empty(t, closed)
 		require.NoError(t, ctx.Err())
-		require.ErrorIs(t, managed.ForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, receiveForTest(t, closed, "Close result"), shutdown.ErrForcedClose)
+		require.ErrorIs(t, managed.ForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, receiveForTest(t, closed, "Close result"), pkgshutdown.ErrForcedClose)
 		synctest.Wait()
 		require.ErrorIs(t, ctx.Err(), context.Canceled)
 		select {
@@ -91,8 +92,8 @@ func TestFileUploadCloseWaitsForPostUploadNotificationRegistration(t *testing.T)
 		defer unblock()
 		entered := make(chan struct{})
 		warnings := make(chan error, 1)
-		owner.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {}
-		owner.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		owner.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {}
+		owner.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			warnings <- entry.Err
 		}
 		failure, warning := errors.New("checkpoint failed"), errors.New("data preserved")

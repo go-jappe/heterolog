@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // 空き容量は構築時に解決したarchive rootで確認し、構築時に検証した閾値と比較します。
@@ -74,7 +74,7 @@ func TestArchiveDiskSpaceProbeFailureRejectsSaveAndRecovers(t *testing.T) {
 			pipeline = newTestArchiveHandler(t, now, func(cfg *testArchiveConfig) {
 				cfg.lifecycleMode = pkgfsstore.FileLifecycleModeDisable
 			}, InternalLogHandlers{OnError: func(
-				_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter,
+				_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter,
 			) {
 				notified = append(notified, err)
 				if pipeline == nil || !pipeline.handler.Fsstore.Mu.TryLock() {

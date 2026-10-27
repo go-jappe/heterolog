@@ -1,4 +1,4 @@
-// Package victoriametrics provides functionality for pushing metrics to VictoriaMetrics.
+// Package victoriametricsは、VictoriaMetricsへmetricsをpushする機能を提供します。
 package victoriametrics
 
 import (

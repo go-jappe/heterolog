@@ -7,7 +7,6 @@ import (
 	"time"
 
 	infracloudwatchlogs "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -18,7 +17,7 @@ func TestConvertEventRecordToDocumentRecordsRoutedAttemptedStream(t *testing.T) 
 	cfg := NewFlushManagerConfigAdapter(pkglogger.CloudWatchLogsFlushManagerConfig{
 		LogGroupName:  "/app/test",
 		LogStreamName: "container/task-1",
-	}, streamrouting.Hourly)
+	}, pkgcloudwatchlogs.StreamRoutingHourly)
 	fm := &CloudWatchLogsFlushManager{config: cfg}
 	location := time.FixedZone("JST", 9*60*60)
 	attemptedAt := time.Date(2026, time.September, 1, 0, 30, 0, 0, location)
@@ -50,7 +49,7 @@ func TestConvertEventRecordToDocumentUsesEventTimezoneWhenStreamIsNotYetAssigned
 	}
 	resolver, err := infracloudwatchlogs.NewLogStreamNameResolver(
 		"container/task-1",
-		streamrouting.Hourly,
+		pkgcloudwatchlogs.StreamRoutingHourly,
 	)
 	if err != nil {
 		t.Fatalf("NewLogStreamNameResolver() error = %v", err)
@@ -59,7 +58,7 @@ func TestConvertEventRecordToDocumentUsesEventTimezoneWhenStreamIsNotYetAssigned
 		config: NewFlushManagerConfigAdapter(pkglogger.CloudWatchLogsFlushManagerConfig{
 			LogGroupName:  "/app/test",
 			LogStreamName: "container/task-1",
-		}, streamrouting.Hourly),
+		}, pkgcloudwatchlogs.StreamRoutingHourly),
 		streamNameResolver: resolver,
 	}
 	record := cloudWatchLogsEventRecord{event: pkgcloudwatchlogs.Event{
@@ -97,13 +96,13 @@ func TestPutLogEntriesUsesOneAttemptedAtForClientAndFailureDocument(t *testing.T
 		client,
 		nil,
 		"container/task-1",
-		streamrouting.Hourly,
+		pkgcloudwatchlogs.StreamRoutingHourly,
 	)
 	fm.Clock = fixedCloudWatchLogsClock{t: attemptedAt}
 	fm.config = NewFlushManagerConfigAdapter(pkglogger.CloudWatchLogsFlushManagerConfig{
 		LogGroupName:  "/app/test",
 		LogStreamName: "container/task-1",
-	}, streamrouting.Hourly)
+	}, pkgcloudwatchlogs.StreamRoutingHourly)
 
 	result, err := fm.putEntryAsSingleRequest(
 		context.Background(),

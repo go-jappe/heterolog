@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// caseKey follows the rules of each existing parent, including mount boundaries.
-// Missing descendants inherit their nearest existing ancestor's rules. Inspecting
-// directory metadata never creates probe files or directories.
-// directoryNameCase applies the same walk to report the rule for a directory's entries.
+// caseKeyは、mountの境界も含め、既存の各親の規則に従います。存在しない子孫は、
+// 最も近い既存の祖先の規則を引き継ぎます。directoryのmetadataの検査では、
+// probe用のfileやdirectoryを作成しません。
+// directoryNameCaseは同じ走査で、directoryのentryに適用する規則を返します。
 func caseKey(path string, caseSensitive func(string) (bool, error)) string {
 	if isCleanSlashAbsolute(path) {
 		return cleanSlashCaseKey(path, caseSensitive)

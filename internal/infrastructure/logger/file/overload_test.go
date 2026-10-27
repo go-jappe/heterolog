@@ -9,12 +9,12 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -93,7 +93,7 @@ func TestFileOverloadThresholdAcrossModesAndRoles(t *testing.T) {
 						logger.overload.handle = func(_ context.Context, text string) error { spilled = append(spilled, text); return nil }
 					}
 					var notifications []error
-					logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+					logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 						notifications = append(notifications, err)
 					}
 					active := logger.Fsstore.ActiveFilePath
@@ -220,7 +220,7 @@ func TestFileOverloadFailuresNotifyAndRecoverOnNextWrite(t *testing.T) {
 				}
 				logger.overload.handle = func(context.Context, string) error { return failure }
 				var notified []error
-				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					notified = append(notified, err)
 				}
 				err := logger.HandleLogEntry(context.Background(), &logging.LogEntry{
@@ -256,7 +256,7 @@ func TestFileOverloadFallbackDoesNotRedispatchErrors(t *testing.T) {
 			if stage == "spill" {
 				logger.overload.handle = func(context.Context, string) error { return failure }
 			}
-			logger.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+			logger.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 				t.Error("fallback recursively dispatched OnError")
 			}
 			err := logger.writeFallbackEntry(context.Background(), &logging.LogEntry{Level: pkglogger.LogLevelInfo, Message: "fallback"})
@@ -278,7 +278,7 @@ func TestFileOverloadNotificationCanRequestCloseOrReenterLogger(t *testing.T) {
 				logger.overload.freeAndTotal = func(string) (uint64, uint64, error) { return free, 1000, nil }
 				calls := 0
 				var callbackErr error
-				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					calls++
 					if action == "close" {
 						logger.RequestClose()

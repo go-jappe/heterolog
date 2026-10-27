@@ -26,9 +26,9 @@ import (
 // serverやmount optionで挙動が変わり外から確かめられないため、大小文字を区別すると判定します。
 // 判定はstatfs・stat・FS_IOC_GETFLAGS・mountinfoの読み取りだけで行い、probe用のfileやdirectoryは作成しません。
 
-// Linux FS_CASEFOLD_FL (Linux 5.2+) is declared in the public UAPI include/uapi/linux/fs.h:
+// LinuxのFS_CASEFOLD_FL（Linux 5.2以降）は、公開UAPIのinclude/uapi/linux/fs.hで宣言されています:
 // https://github.com/torvalds/linux/blob/master/include/uapi/linux/fs.h
-// golang.org/x/sys/unix does not define it.
+// golang.org/x/sys/unixはこれを定義していません。
 const fsCasefoldFlag = 0x40000000
 
 // linuxSensitiveVerdictTTLは、大小文字を区別すると判定したdirectoryの結果と、読み取った
@@ -196,7 +196,7 @@ func (d *linuxDirectoryCase) mountCase(device linuxDevice, now time.Time) linuxM
 	return d.mounts.cases[device]
 }
 
-// Linux fs/fat/inode.c fat_show_options prints the case options of vfat and msdos as
+// Linuxのfs/fat/inode.cのfat_show_optionsは、vfatとmsdosの大小文字のoptionを次のように出力します。
 //
 //	if (opts->name_check != 'n')
 //		seq_printf(m, ",check=%c", opts->name_check);
@@ -206,12 +206,12 @@ func (d *linuxDirectoryCase) mountCase(device linuxDevice, now time.Time) linuxM
 //			seq_puts(m, ",nocase");
 //
 // https://github.com/torvalds/linux/blob/master/fs/fat/inode.c
-// vfat with check=s compares names with memcmp (fat_name_match, vfat_dentry_ops), and msdos with
-// nocase keeps lowercase letters (msdos_format_name). msdos with check=s rejects uppercase letters,
-// so names differing only in case cannot coexist. The staging exFAT driver of Linux 5.4-5.6 prints
-// ",namecase=%u" (exfat_show_options), and a nonzero value makes nls_upper keep the case:
+// check=sのvfatは名前をmemcmpで比較し（fat_name_match、vfat_dentry_ops）、nocaseのmsdosは
+// 小文字をそのまま保持します（msdos_format_name）。check=sのmsdosは大文字を拒否するため、
+// 大小文字だけが異なる名前は共存できません。Linux 5.4〜5.6のstaging exFAT driverは
+// ",namecase=%u"を出力し（exfat_show_options）、0以外の値ではnls_upperが大小文字を保持します:
 // https://github.com/torvalds/linux/blob/v5.6/drivers/staging/exfat/exfat_super.c
-// fs/exfat (Linux 5.7+) accepts namecase as a deprecated option and ignores it.
+// fs/exfat（Linux 5.7以降）は、namecaseを非推奨のoptionとして受け付け、無視します。
 
 // parseLinuxMountCasesは、/proc/self/mountinfoの内容から、vfat・msdos・exfatの行があるdeviceごとの
 // 扱いを返します。同じdeviceの行が複数ある場合（bind mountなど）は、全ての行で同じ扱いを確かめられた

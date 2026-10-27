@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/uploadertest"
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestManagedUploaderCloseWaitsForAcceptedCallWithoutSeparateDeadline(t *testing.T) {
@@ -82,10 +82,10 @@ func TestManagedUploaderForceCloseReleasesWaitButRetainsAcceptedCall(t *testing.
 		closeDone := make(chan error, 1)
 		go func() { closeDone <- managed.Close() }()
 		synctest.Wait()
-		if err := managed.RequestForceClose(); !errors.Is(err, shutdown.ErrForcedClose) {
+		if err := managed.RequestForceClose(); !errors.Is(err, pkgshutdown.ErrForcedClose) {
 			t.Fatalf("RequestForceClose = %v", err)
 		}
-		if err := <-closeDone; !errors.Is(err, shutdown.ErrForcedClose) {
+		if err := <-closeDone; !errors.Is(err, pkgshutdown.ErrForcedClose) {
 			t.Fatalf("Close after force = %v", err)
 		}
 		select {
@@ -115,7 +115,7 @@ func TestManagedUploaderNotifierReceivesOnlyExplicitForceCancellation(t *testing
 		if err := notificationContext.Err(); err != nil {
 			t.Fatalf("sender cancellation reached notification: %v", err)
 		}
-		if err := managed.RequestForceClose(); !errors.Is(err, shutdown.ErrForcedClose) {
+		if err := managed.RequestForceClose(); !errors.Is(err, pkgshutdown.ErrForcedClose) {
 			t.Fatal(err)
 		}
 		<-done
@@ -168,10 +168,10 @@ func TestManagedUploaderCloseOwnsAcceptedNotificationUntilItReturns(t *testing.T
 				}
 				assertFileBytes(t, source, payload)
 				if force {
-					if err := managed.RequestForceClose(); !errors.Is(err, shutdown.ErrForcedClose) {
+					if err := managed.RequestForceClose(); !errors.Is(err, pkgshutdown.ErrForcedClose) {
 						t.Fatal(err)
 					}
-					if err := <-closed; !errors.Is(err, shutdown.ErrForcedClose) {
+					if err := <-closed; !errors.Is(err, pkgshutdown.ErrForcedClose) {
 						t.Fatalf("Close after force = %v", err)
 					}
 					synctest.Wait()

@@ -28,9 +28,9 @@ type degradeLoaderCase struct {
 	load      func() (degradeConfigValues, error)
 }
 
-// TestFailureDegradeEnvKeysPerBackendAndContract verifies that every backend and
-// each LoggerContractKind owns its explicit direct-degrade keys. These keys are
-// used only when DURABLE_TYPES=none; overload policy is a separate per-store decision.
+// TestFailureDegradeEnvKeysPerBackendAndContractは、全てのbackendと各LoggerContractKindが
+// それぞれ専用のdirect degrade keyを明示的に持つことを検証します。これらのkeyは
+// DURABLE_TYPES=noneの場合だけ使われます。overload policyは、これとは別にstoreごとに決めます。
 // HETEROLOG_ENABLE_*_DEGRADEの既定値はtrueなので、無効化した場合も検証してkeyの読み取りを確認します。
 func TestFailureDegradeEnvKeysPerBackendAndContract(t *testing.T) {
 	for _, tt := range failureDegradeLoaderCases() {
@@ -126,7 +126,7 @@ func TestFixtureEnvLoadsFailureDegradeSettings(t *testing.T) {
 				"HETEROLOG_LOG_TIMEOUT_BUDGET_POLICY":          "unbounded",
 				"HETEROLOG_ASYNC_LOG_TIMEOUT_BUDGET_POLICY":    "unbounded",
 				"HETEROLOG_DELIVERY_LOG_TIMEOUT_BUDGET_POLICY": "unbounded",
-				// Direct degrade is active only when no durable destination is selected.
+				// direct degradeは、durableな保存先を一つも選択しない場合だけ有効です。
 				"HETEROLOG_OPENSEARCH_DURABLE_TYPES":          "none",
 				"HETEROLOG_ASYNC_OPENSEARCH_DURABLE_TYPES":    "none",
 				"HETEROLOG_DELIVERY_OPENSEARCH_DURABLE_TYPES": "none",

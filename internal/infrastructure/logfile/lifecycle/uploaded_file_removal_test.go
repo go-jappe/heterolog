@@ -12,11 +12,11 @@ import (
 
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestFileSeriesManagerKeepsCompressedFileWhenObjectStorageUploadIsDisabled(t *testing.T) {
@@ -275,8 +275,8 @@ func TestFileSeriesManagerRestartRetriesOnlyFailedDestination(t *testing.T) {
 
 		// process再起動後もprimaryの成功記録は同じファイルのcheckpointから復元されます。
 		// path単位のmemory状態に依存せず、未完了のsecondaryだけを再試行します。
-		require.ErrorIs(t, firstManager.ForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, boundedwait.CloseInBubble(t, "firstManager.Close()", firstManager.Close, firstManager.ForceClose), shutdown.ErrForcedClose)
+		require.ErrorIs(t, firstManager.ForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.CloseInBubble(t, "firstManager.Close()", firstManager.Close, firstManager.ForceClose), pkgshutdown.ErrForcedClose)
 		restartedCheckpointStore, err := checkpointstore.NewFilesystemStore(
 			checkpointStore.Directory(),
 			checkpointStore.SourceID(),
@@ -565,8 +565,8 @@ func TestFileSeriesManagerKeepsUndeliveredBacklogWhenOnlyActiveDestinationHasIni
 
 	// primaryを無効にし、secondaryだけを有効にしても、secondaryの登録前から存在した
 	// fileはどこにも送信していません。送信せず、upload完了を理由に削除もしません。
-	require.ErrorIs(t, firstManager.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, firstManager.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), pkgshutdown.ErrForcedClose)
 	restartedStore, err := checkpointstore.NewFilesystemStore(checkpointDirectory, source)
 	require.NoError(t, err)
 	restartedUploader := newDestinationUploaderRecorder(secondary)
@@ -632,8 +632,8 @@ func TestFileSeriesManagerDefersSecondCompressionSuffixAfterRestart(t *testing.T
 
 	// 同じrawの別encodingが後から現れても、最初のfileだけを既存checkpointで完了させます。
 	// 未選択の別encodingは次周期まで保全します。
-	require.ErrorIs(t, firstManager.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, firstManager.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), pkgshutdown.ErrForcedClose)
 	require.NoError(t, os.WriteFile(zstdPath, []byte("later suffix"), 0o600))
 	restartedStore, err := checkpointstore.NewFilesystemStore(checkpointDirectory, source)
 	require.NoError(t, err)
@@ -755,8 +755,8 @@ func TestFileSeriesManagerIgnoresRemovedDestinationWhenCurrentDestinationsSuccee
 
 	// secondaryを設定から外した後は、その未成功を要求しません。
 	// 現在activeなprimaryは既に成功済みなので再送せずlocal削除できます。
-	require.ErrorIs(t, firstManager.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, firstManager.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), pkgshutdown.ErrForcedClose)
 	restartedStore, err := checkpointstore.NewFilesystemStore(checkpointDirectory, source)
 	require.NoError(t, err)
 	restartedUploader := newDestinationUploaderRecorder(primary)
@@ -882,8 +882,8 @@ func TestFileSeriesManagerUsesCurrentDestinationsAfterCompressionFailureAndResta
 	require.Empty(t, checkpoint.CompletedDestinationIDs)
 
 	// secondaryの追加前の旧世代は、後から圧縮しても初期完了位置に含まれます。
-	require.ErrorIs(t, firstManager.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, firstManager.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), pkgshutdown.ErrForcedClose)
 	restartedStore, err := checkpointstore.NewFilesystemStore(checkpointDirectory, source)
 	require.NoError(t, err)
 	restartedUploader := newDestinationUploaderRecorder(primary, secondary)
@@ -1029,8 +1029,8 @@ func TestFileSeriesManagerAllInactiveUsesLocalRetentionUntilDestinationReactivat
 	require.FileExists(t, compressedPath)
 
 	// 全destinationを無効にした周期はupload成功削除せず、通常retentionへ戻します。
-	require.ErrorIs(t, firstManager.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, firstManager.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)), pkgshutdown.ErrForcedClose)
 	disabledStore, err := checkpointstore.NewFilesystemStore(checkpointDirectory, source)
 	require.NoError(t, err)
 	disabledManager := NewFileSeriesManager(FileSeriesManagerOptions{
@@ -1106,8 +1106,8 @@ func TestFileSeriesManagerDoesNotSuccessDeleteAfterAllDestinationsBecomeInactive
 	restoreRemoval()
 	require.NoError(t, boundedwait.Close(t, "firstManager.Close()", firstManager.Close, boundedwait.ForceCloserOf(firstManager)))
 	require.NoFileExists(t, compressedPath, "graceful shutdown drains the accepted removal")
-	// Simulate the completed file reappearing after restart. A currently empty
-	// destination set must retain it despite the persisted success cursor.
+	// 完了済みfileが再起動後に再び現れる状況を再現します。現在のdestination集合が
+	// 空なら、保存済みの成功cursorがあってもそのfileを保持しなければなりません。
 	writeGzipFile(t, compressedPath, []byte("remove on retry"))
 	disabledStore, err := checkpointstore.NewFilesystemStore(checkpointDirectory, source)
 	require.NoError(t, err)

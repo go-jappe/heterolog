@@ -296,7 +296,7 @@ func (c integrationSpoolConfig) FileNameFormat() string {
 func (c integrationSpoolConfig) FileDateFormat() string {
 	return "20060102"
 }
-func (c integrationSpoolConfig) MaxWriteAttempts() int {
+func (c integrationSpoolConfig) MaxWriteRetries() int {
 	return 1
 }
 func (c integrationSpoolConfig) FileOperationRetryWaitTime() time.Duration {

@@ -121,7 +121,7 @@ func TestSpoolWorkerRejectsSymlinkIntroducedBeforeRead(t *testing.T) {
 			replacingStore := &replaceBeforeProcessingReadStore{
 				StateStore: store,
 				beforeRead: func() {
-					// Replace a candidate after discovery to exercise the read-time guard.
+					// 発見した後の候補を置き換え、読み取り時の防御を確かめます。
 					if err := os.Remove(path); err != nil {
 						t.Fatal(err)
 					}

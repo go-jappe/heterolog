@@ -10,7 +10,7 @@ import (
 	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 
 	"github.com/stretchr/testify/require"
@@ -28,10 +28,10 @@ func TestNewLoggerRejectsDirectoryOwnedByAnotherTopLevelLogger(t *testing.T) {
 	tracer := observer.NopTracer{}
 	meter := observer.NopMeter{}
 
-	first, err := NewLogger(ctx, cfg, streamrouting.None, nil, nil, tracer, meter)
+	first, err := NewLogger(ctx, cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, tracer, meter)
 	require.NoError(t, err)
 
-	second, err := NewLogger(ctx, cfg, streamrouting.None, nil, nil, tracer, meter)
+	second, err := NewLogger(ctx, cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, tracer, meter)
 	require.Nil(t, second)
 	require.ErrorIs(t, err, directorylease.ErrDirectoryLeaseConflict)
 	var conflict *directorylease.ConflictError
@@ -43,7 +43,7 @@ func TestNewLoggerRejectsDirectoryOwnedByAnotherTopLevelLogger(t *testing.T) {
 	require.NotEqual(t, conflict.ExistingLeaseID, conflict.RequestedAttemptID)
 
 	require.NoError(t, closeSyncLogger(first))
-	replacement, err := NewLogger(ctx, cfg, streamrouting.None, nil, nil, tracer, meter)
+	replacement, err := NewLogger(ctx, cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, tracer, meter)
 	require.NoError(t, err)
 	require.NoError(t, closeSyncLogger(replacement))
 }
@@ -63,7 +63,7 @@ func TestNewLoggerAllowsDifferentDirectory(t *testing.T) {
 			MaxLogEntryBytes:      pkglogger.DefaultMaxLogEntryBytes,
 			File:                  firstFile,
 		},
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -81,7 +81,7 @@ func TestNewLoggerAllowsDifferentDirectory(t *testing.T) {
 			MaxLogEntryBytes:      pkglogger.DefaultMaxLogEntryBytes,
 			File:                  secondFile,
 		},
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -102,7 +102,7 @@ func TestTopLevelLoggerModesCannotShareFileDirectory(t *testing.T) {
 			MaxLogEntryBytes:      pkglogger.DefaultMaxLogEntryBytes,
 			File:                  fileCfg,
 		},
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -122,7 +122,7 @@ func TestTopLevelLoggerModesCannotShareFileDirectory(t *testing.T) {
 	asyncLogger, err := NewAsyncLogger(
 		context.Background(),
 		asyncCfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -153,7 +153,7 @@ func TestAsyncLoggerRejectsDuplicateDirectoryAndReleasesItOnClose(t *testing.T) 
 	first, err := NewAsyncLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -165,7 +165,7 @@ func TestAsyncLoggerRejectsDuplicateDirectoryAndReleasesItOnClose(t *testing.T) 
 	second, err := NewAsyncLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -179,7 +179,7 @@ func TestAsyncLoggerRejectsDuplicateDirectoryAndReleasesItOnClose(t *testing.T) 
 	replacement, err := NewAsyncLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -202,7 +202,7 @@ func TestDeliveryLoggerRejectsDuplicateDirectoryAndReleasesItOnClose(t *testing.
 	first, err := NewDeliveryLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		observer.NopTracer{},
 		observer.NopMeter{},
 	)
@@ -211,7 +211,7 @@ func TestDeliveryLoggerRejectsDuplicateDirectoryAndReleasesItOnClose(t *testing.
 	second, err := NewDeliveryLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		observer.NopTracer{},
 		observer.NopMeter{},
 	)
@@ -229,7 +229,7 @@ func TestDeliveryLoggerRejectsDuplicateDirectoryAndReleasesItOnClose(t *testing.
 	replacement, err := NewDeliveryLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		observer.NopTracer{},
 		observer.NopMeter{},
 	)
@@ -253,7 +253,7 @@ func TestNewLoggerReleasesBaseDirectoryWhenLaterConstructionFails(t *testing.T) 
 	created, err := NewLogger(
 		context.Background(),
 		invalid,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -268,7 +268,7 @@ func TestNewLoggerReleasesBaseDirectoryWhenLaterConstructionFails(t *testing.T) 
 	replacement, err := NewLogger(
 		context.Background(),
 		valid,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -294,7 +294,7 @@ func TestRunnerModeSecondLoggerFailsBeforeCreatingAnotherRunner(t *testing.T) {
 	first, err := NewLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -309,7 +309,7 @@ func TestRunnerModeSecondLoggerFailsBeforeCreatingAnotherRunner(t *testing.T) {
 	second, err := NewLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -321,7 +321,7 @@ func TestRunnerModeSecondLoggerFailsBeforeCreatingAnotherRunner(t *testing.T) {
 	require.NoError(t, owned.Close())
 }
 
-func closeSyncLogger(logger applogging.Logger) error {
+func closeSyncLogger(logger pkglogger.Logger) error {
 	if logger == nil {
 		return nil
 	}

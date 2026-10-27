@@ -6,9 +6,9 @@ import (
 	pkgobjectstorage "github.com/go-jappe/heterolog/pkg/objectstorage"
 )
 
-// TestFailureArchiveObjectStorageLoadersReadExplicitContractKeys verifies that each
-// zero-argument loader owns complete env keys for its backend and LoggerContractKind.
-// Every key receives a distinct value so a cross-contract reference cannot pass by accident.
+// TestFailureArchiveObjectStorageLoadersReadExplicitContractKeysは、各loaderが、
+// 担当するbackendとLoggerContractKindの完全なenv keyを自身で持つことを検証します。
+// 全てのkeyに異なる値を与え、別契約の値を参照しても偶然passしないようにします。
 func TestFailureArchiveObjectStorageLoadersReadExplicitContractKeys(t *testing.T) {
 	t.Setenv("HETEROLOG_ENABLE_OPENSEARCH_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_UPLOAD", "true")
 	t.Setenv("HETEROLOG_OPENSEARCH_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_UPLOAD_TYPE", "s3")

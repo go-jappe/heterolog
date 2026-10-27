@@ -17,8 +17,10 @@ type logFileUploadConfigAdapter struct {
 
 var _ LogFileUploadConfigProvider = logFileUploadConfigAdapter{}
 
-// NewLogFileUploadConfigAdapterは、構築側の設定をproviderへ変換します。
-// 値と宛先一覧をコピーし、設定の補完や検証は行いません。spoolは構築済みproviderを引き継ぎます。
+// NewLogFileUploadConfigAdapter converts the configuration of the constructing
+// side into a provider. It copies the values and the destination lists, and it
+// neither fills in nor validates settings. For the spool, it passes on the
+// provider that has already been constructed.
 func NewLogFileUploadConfigAdapter(config LogFileUploadConfig) LogFileUploadConfigProvider {
 	return logFileUploadConfigAdapter{
 		enabled:      config.Enabled,
@@ -84,8 +86,11 @@ type uploadTargetConfigAdapter struct {
 
 var _ UploadTargetConfigProvider = uploadTargetConfigAdapter{}
 
-// NewUploadTargetConfigAdapterは、一つのログ系列の送信・退避設定をproviderへ変換します。
-// S3の単一指定と複数指定の選択は元の設定と同じ規則に従い、宛先一覧と設定値をコピーします。
+// NewUploadTargetConfigAdapter converts the upload and evacuation settings of
+// one log series into a provider. The choice between the single S3
+// destination and multiple S3 destinations follows the same rule as the
+// original configuration, and the destination list and the setting values are
+// copied.
 func NewUploadTargetConfigAdapter(config UploadTargetConfig) UploadTargetConfigProvider {
 	configs := config.S3DestinationConfigs()
 	destinations := make([]S3ConfigProvider, len(configs))
@@ -134,7 +139,8 @@ type s3ConfigAdapter struct{ config S3Config }
 
 var _ S3ConfigProvider = s3ConfigAdapter{}
 
-// NewS3ConfigAdapterは、一つのS3宛先の設定値をコピーしてproviderへ変換します。
+// NewS3ConfigAdapter copies the settings of one S3 destination and converts
+// them into a provider.
 func NewS3ConfigAdapter(config S3Config) S3ConfigProvider {
 	return s3ConfigAdapter{config: config}
 }
@@ -149,15 +155,17 @@ func (a s3ConfigAdapter) Prefix() string          { return a.config.Prefix }
 func (a s3ConfigAdapter) ForcePathStyle() bool    { return a.config.ForcePathStyle }
 func (a s3ConfigAdapter) Timeout() time.Duration  { return a.config.Timeout }
 
-// CompressedLogFileUploadFailureStoreConfigAdapterは、圧縮ログの退避方式と保存先の設定を保持します。
+// CompressedLogFileUploadFailureStoreConfigAdapter holds the settings of the
+// evacuation method and the storage location for compressed logs.
 type CompressedLogFileUploadFailureStoreConfigAdapter struct {
 	config CompressedLogFileUploadFailureStoreConfig
 }
 
 var _ CompressedLogFileUploadFailureStoreConfigProvider = CompressedLogFileUploadFailureStoreConfigAdapter{}
 
-// NewCompressedLogFileUploadFailureStoreConfigAdapterは、退避設定と保存方式の一覧をコピーします。
-// 値の補完や検証は行いません。
+// NewCompressedLogFileUploadFailureStoreConfigAdapter copies the evacuation
+// settings and the list of storage methods. It neither fills in nor validates
+// values.
 func NewCompressedLogFileUploadFailureStoreConfigAdapter(config CompressedLogFileUploadFailureStoreConfig) CompressedLogFileUploadFailureStoreConfigAdapter {
 	config.DurableType = slices.Clone(config.DurableType)
 	return CompressedLogFileUploadFailureStoreConfigAdapter{config: config}
@@ -170,14 +178,17 @@ func (a CompressedLogFileUploadFailureStoreConfigAdapter) FileArchiveConfig() Co
 	return NewCompressedLogFileUploadFailureArchiveConfigAdapter(a.config.DurableStoreConfig.FileArchiveConfig)
 }
 
-// CompressedLogFileUploadFailureArchiveConfigAdapterは、再送せず保管する圧縮ログの保存先と保持設定を保持します。
+// CompressedLogFileUploadFailureArchiveConfigAdapter holds the storage location
+// and the retention settings for compressed logs that are kept without being
+// retried.
 type CompressedLogFileUploadFailureArchiveConfigAdapter struct {
 	config CompressedLogFileUploadFailureArchiveConfig
 }
 
 var _ CompressedLogFileUploadFailureArchiveConfigProvider = CompressedLogFileUploadFailureArchiveConfigAdapter{}
 
-// NewCompressedLogFileUploadFailureArchiveConfigAdapterは、archiveの保存先・周期・保持設定をコピーします。
+// NewCompressedLogFileUploadFailureArchiveConfigAdapter copies the storage
+// location, the interval and the retention settings of the archive.
 func NewCompressedLogFileUploadFailureArchiveConfigAdapter(config CompressedLogFileUploadFailureArchiveConfig) CompressedLogFileUploadFailureArchiveConfigAdapter {
 	return CompressedLogFileUploadFailureArchiveConfigAdapter{config: config}
 }

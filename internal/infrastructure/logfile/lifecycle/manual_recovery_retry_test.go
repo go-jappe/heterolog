@@ -17,11 +17,11 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestManualRecoveryRetryRetainsFileUntilAcceptedCheckpointIsSaved(t *testing.T) {
@@ -174,8 +174,8 @@ func TestManualRecoveryRetryPublishesAcceptedRegistrationSoItCanBeStopped(t *tes
 		})
 		var pending *checkpointstore.PendingSaveError
 		require.ErrorAs(t, store.(interface{ PendingSaveError(context.Context) error }).PendingSaveError(context.Background()), &pending)
-		require.ErrorIs(t, store.(interface{ ForceClose() error }).ForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, boundedwait.CloseInBubble(t, "store.Close()", store.Close, boundedwait.ForceCloserOf(store)), shutdown.ErrForcedClose)
+		require.ErrorIs(t, store.(interface{ ForceClose() error }).ForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.CloseInBubble(t, "store.Close()", store.Close, boundedwait.ForceCloserOf(store)), pkgshutdown.ErrForcedClose)
 		synctest.Wait()
 		require.Empty(t, remote.pathsFor("primary"))
 	})
@@ -366,7 +366,7 @@ func TestUnpublishedRetryStoreCleanupWaitsForAcceptedNotifications(t *testing.T)
 		default:
 		}
 		release()
-		require.ErrorIs(t, boundedwait.ReceiveInBubble(t, cleanupComplete, "receive from cleanupComplete"), shutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.ReceiveInBubble(t, cleanupComplete, "receive from cleanupComplete"), pkgshutdown.ErrForcedClose)
 		boundedwait.ReceiveInBubble(t, store.(interface{ NotificationsDone() <-chan struct{} }).NotificationsDone(), "receive from store.(interface{ NotificationsDone() <-chan struct{} }).NotificationsDone()")
 		synctest.Wait()
 	})

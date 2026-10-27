@@ -5,8 +5,6 @@ import (
 	"io"
 	"testing"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	clickhouselogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/clickhouse"
 	cloudwatchlogslogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/cloudwatchlogs"
 	filelogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
@@ -16,8 +14,10 @@ import (
 	opensearchlogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/opensearch"
 	slacklogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/slack"
 	stdoutlogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +34,7 @@ func TestDeliveryFallbackHandlersKeepIndependentLevelControllers(t *testing.T) {
 	// 設定providerを共有しても、levelと呼び出し元が違えばhandlerの状態は分離します。
 	seen := make(map[io.Closer]struct{})
 	for range 2 {
-		handlers := getDeliveryHandler(cfg, streamrouting.None, nil, stdoutTarget)
+		handlers := getDeliveryHandler(cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, stdoutTarget)
 		require.Len(t, handlers.OnError, 2)
 		for _, named := range handlers.OnError {
 			require.NotNil(t, named.Handler)
@@ -80,25 +80,25 @@ func TestDeliverySourceAdaptersSelectHandlerTargetsIndependentlyByLevel(t *testi
 				context.Context,
 				error,
 				*logging.LogEntry,
-				observer.Tracer,
-				observer.Meter,
+				pkgobserver.Tracer,
+				pkgobserver.Meter,
 			) {
 			},
 		}},
 		OnWarn: []logging.NamedLoggerHandler{{
 			Name:    "slack",
 			Level:   pkglogger.LogLevelWarn,
-			Handler: func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {},
+			Handler: func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {},
 		}},
 		OnInfo: []logging.NamedLoggerHandler{{
 			Name:    "file",
 			Level:   pkglogger.LogLevelInfo,
-			Handler: func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {},
+			Handler: func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {},
 		}},
 		OnDebug: []logging.NamedLoggerHandler{{
 			Name:    "clickhouse",
 			Level:   pkglogger.LogLevelDebug,
-			Handler: func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {},
+			Handler: func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {},
 		}},
 	}
 

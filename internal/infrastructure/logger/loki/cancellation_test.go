@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Cancellation can occur between physical requests or while a request is in
-// flight. The already acknowledged request must never be included in recovery.
+// cancellationは、物理requestの間にも、requestの送信中にも起こり得ます。
+// 既に確認応答を受けたrequestを、決してrecoveryへ含めてはいけません。
 func TestLokiFlushCancellationPreservesEachRequestOutcome(t *testing.T) {
 	for _, outcome := range []string{"unknown", "earlier failure", "acknowledged", "known rejection", "rejected push", "before first request"} {
 		t.Run(outcome, func(t *testing.T) {
@@ -49,8 +49,8 @@ func TestLokiFlushCancellationPreservesEachRequestOutcome(t *testing.T) {
 				newTestLokiLogEntry(pkglogger.LogLevelInfo, "message two"),
 				newTestLokiLogEntry(pkglogger.LogLevelInfo, "message end"),
 			}
-			// A one-entry request fits; two entries do not. This forces physical
-			// splitting through the real planner rather than a mocked plan.
+			// 1件のrequestは上限に収まり、2件では収まりません。これにより、
+			// mockのplanではなく実際のplannerを通して物理的な分割を起こします。
 			limit := 0
 			lineLimit := 0
 			for _, rec := range fm.convertLogEntriesToEntryRecords(entries) {

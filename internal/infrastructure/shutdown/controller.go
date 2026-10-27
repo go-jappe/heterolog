@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // Controllerは終了処理を一つだけ実行し、未完了の処理を期限なしで再試行します。
@@ -58,7 +60,7 @@ func (c *Controller) CloseContext(ctx context.Context, description string, attem
 			c.mu.Unlock()
 			return err
 		case <-force:
-			return ErrForcedClose
+			return pkgshutdown.ErrForcedClose
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
@@ -75,7 +77,7 @@ func (c *Controller) run(description string, attempt func() (bool, error)) {
 		}
 		c.mu.Lock()
 		if c.forced {
-			result = errors.Join(ErrForcedClose, result)
+			result = errors.Join(pkgshutdown.ErrForcedClose, result)
 		}
 		c.err = result
 		c.finished = true
@@ -124,7 +126,7 @@ func (c *Controller) ForceClose(abort func()) error {
 		}
 	}
 	c.mu.Unlock()
-	return ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func (c *Controller) IsForced() bool {

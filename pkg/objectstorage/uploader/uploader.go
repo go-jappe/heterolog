@@ -8,47 +8,58 @@ import (
 )
 
 var (
-	// ErrDestinationIDRequiredは、宛先identityが空であることを表します。
+	// ErrDestinationIDRequired reports that a destination identity is empty or
+	// blank.
 	ErrDestinationIDRequired = errors.New("object storage destination id is required")
-	// ErrDuplicateDestinationIDは、同じ宛先identityが複数指定されたことを表します。
+	// ErrDuplicateDestinationID reports that the same destination identity was
+	// specified more than once.
 	ErrDuplicateDestinationID = errors.New("duplicate object storage destination id")
-	// ErrUnknownDestinationIDは、fan-out uploaderに登録されていない宛先を表します。
+	// ErrUnknownDestinationID reports a destination that is not registered with the
+	// fan-out uploader.
 	ErrUnknownDestinationID = errors.New("unknown object storage destination id")
 )
 
-// Uploaderは送信元ファイルを受け付け、宛先ごとの保存名を決めて送信します。
+// Uploader accepts a source file, decides the object name for each destination,
+// and uploads the file.
 type Uploader interface {
 	Upload(ctx context.Context, request UploadRequest) error
 }
 
-// Destinationは、一つの物理送信先の安定したidentityと、その送信実装を対応付けます。
+// Destination associates the stable identity of one physical destination with
+// its upload implementation.
 type Destination struct {
 	ID       objectstorage.DestinationID
 	Uploader Uploader
-	// Serviceは、この宛先のbackendです。退避先と再送用adapterの構築に使います。
-	// 宛先IDから推測せず、backendのbuilderが設定します。
+	// Service is the backend of this destination. It is used to build the fallback
+	// storage and the resend adapter. The backend's builder sets it instead of
+	// inferring it from the destination ID.
 	Service objectstorage.UploadTarget
-	// ClassifyFailureは、この送信先の失敗をbackend固有の規則で分類します。
-	// 未指定、または有効な分類を返さない場合はretryableとして扱います。
+	// ClassifyFailure classifies failures of this destination by backend-specific
+	// rules. If it is not set or does not return a valid category, the failure is
+	// treated as retryable.
 	ClassifyFailure func(context.Context, error) FailureCategory
 }
 
-// DestinationServiceProviderは、宛先ごとの退避先と再送用adapterを構築するための契約です。
-// 未登録の宛先、またはbackendが未設定の場合はfalseを返します。
+// DestinationServiceProvider is the contract for building the fallback storage
+// and the resend adapter of each destination. DestinationService returns false
+// for a destination that is not registered or whose backend is not set.
 type DestinationServiceProvider interface {
 	DestinationService(objectstorage.DestinationID) (objectstorage.UploadTarget, bool)
 }
 
-// DestinationResultは、一つの宛先に対するupload結果です。
-// Errがnilなら成功、非nilなら失敗です。相反するstatusとerrorを保持しないことで、
-// checkpoint側が結果を一意に判断できるようにします。
-// upload失敗時の保存を組み込んだuploaderでは、全指定退避先への保存完了も成功として返します。
-// その場合、Errがnilでもobject storageへの送信成功だけを意味するわけではありません。
+// DestinationResult is the upload result for one destination. A nil Err means
+// success, and a non-nil Err means failure. Because it does not hold a status
+// and an error that could contradict each other, the checkpoint side can
+// interpret the result unambiguously. An uploader with built-in saving on
+// upload failure also returns success once the file has been saved to every
+// specified fallback. In that case, a nil Err does not necessarily mean that
+// the upload to object storage succeeded.
 type DestinationResult struct {
 	DestinationID objectstorage.DestinationID
 	Err           error
-	// FailureCategoryはErrが非nilの場合のbackend固有の分類です。
-	// 分類を持たない送信実装からの失敗もretryableとして扱います。
+	// FailureCategory is the backend-specific category when Err is non-nil. A
+	// failure from an upload implementation that has no classification is also
+	// treated as retryable.
 	FailureCategory FailureCategory
 }
 
@@ -56,13 +67,14 @@ func (r DestinationResult) Succeeded() bool {
 	return r.Err == nil
 }
 
-// UploadReportは、要求された宛先ごとの結果を要求順に保持します。
+// UploadReport holds the result for each requested destination, in request
+// order.
 type UploadReport struct {
 	Results []DestinationResult
 }
 
-// Errは失敗した宛先ごとの*DestinationUploadErrorを、要求順にerrors.Joinでまとめます。
-// 失敗がなければnilです。
+// Err joins a *DestinationUploadError for each failed destination, in request
+// order, with errors.Join. It returns nil if there are no failures.
 func (r UploadReport) Err() error {
 	errs := make([]error, 0, len(r.Results))
 	for _, result := range r.Results {
@@ -74,8 +86,10 @@ func (r UploadReport) Err() error {
 	return errors.Join(errs...)
 }
 
-// DestinationUploaderは、複数宛先を個別に送信・分類できるfan-out uploaderです。
-// Uploadは全宛先への互換入口で、UploadDestinationsは指定された宛先だけを処理します。
+// DestinationUploader is a fan-out uploader that can upload to and classify
+// multiple destinations individually. Upload is the compatibility entry point
+// for all destinations, and UploadDestinations handles only the specified
+// destinations.
 type DestinationUploader interface {
 	Uploader
 	DestinationIDs() []objectstorage.DestinationID

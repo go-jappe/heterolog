@@ -12,10 +12,10 @@ import (
 // 途中で切れていることを表します。追記せず、運用者が保全・修復するまで残します。
 var ErrIncompleteJSONLTail = errors.New("incomplete JSONL tail")
 
-// Check the final byte once when opening an append handle. A previous process
-// may have stopped mid-record without restoring its append boundary. Preserve
-// those bytes for operator recovery instead of silently discarding them or
-// joining the next successful record onto the unfinished JSONL line.
+// 追記用handleを開くときに、最後の1 byteを一度だけ確認します。前のprocessが、
+// 追記の境界を復元しないままrecordの途中で停止した場合があります。そのbyte列は
+// 黙って捨てたり、次に成功したrecordを未完了のJSONL行へ連結したりせず、
+// 運用者が復旧できるよう保全します。
 func validateArchiveAppendBoundary(active *os.File) error {
 	info, err := active.Stat()
 	if err != nil {

@@ -111,8 +111,8 @@ func TestDispatcherConcurrentEnqueueAndClose(t *testing.T) {
 			for notification := range notificationsPerProducer {
 				id := producer*notificationsPerProducer + notification
 				dispatcher.Enqueue(func() { calls[id]++ })
-				// Close has not started if this read is false, so Enqueue must
-				// already have accepted this notification.
+				// この読み取りがfalseならCloseはまだ始まっていないため、Enqueueは
+				// この通知をすでに受理しているはずです。
 				guaranteed[id] = !closing.Load()
 				if notification == 0 {
 					ready <- struct{}{}

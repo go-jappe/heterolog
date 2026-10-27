@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
@@ -73,7 +72,7 @@ func TestBufferedCloudWatchContinuesAfterDurableErrorsAndAggregatesThem(t *testi
 	}))
 	config := NewFlushManagerConfigAdapter(pkglogger.CloudWatchLogsFlushManagerConfig{
 		LogGroupName: "/app/test", LogStreamName: "stream-a",
-	}, streamrouting.Hourly)
+	}, pkgcloudwatchlogs.StreamRoutingHourly)
 	logger, err := NewCloudWatchLogsLogger(ctx, newTestCloudWatchLogsLoggerConfig(4, time.Hour, false),
 		client, config, newTestCloudWatchLogsResourceProvider(), composite,
 		observer.NopTracer{}, observer.NopMeter{}, &LoggerBase{})
@@ -81,7 +80,7 @@ func TestBufferedCloudWatchContinuesAfterDurableErrorsAndAggregatesThem(t *testi
 	t.Cleanup(func() { _ = logger.Close(context.Background()) })
 	base := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
 	messages := []string{"first succeeds", "second fails", "third was already accepted", "fourth fails"}
-	// The third physical request is accepted before the call that triggers this flush.
+	// 3番目の物理requestは、このflushを起こす呼び出しより前に受理されます。
 	for _, index := range []int{2, 0, 3} {
 		require.NoError(t, handleTestLogAt(ctx, logger, base.Add(time.Duration(index)*time.Hour), pkglogger.LogLevelInfo, messages[index]))
 	}
@@ -112,7 +111,7 @@ func TestBufferedCloudWatchPersistsStoppedRequestsByKnownOutcome(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			spoolCfg := cloudWatchLogsLoggerSpoolTestConfig{spoolPath: t.TempDir(), target: "cancellation", dir: "cloudwatchlogs"}
-			config := cloudWatchLogsSpoolRunnerFlushManagerConfigWithRoutingGranularity(spoolCfg, streamrouting.Hourly)
+			config := cloudWatchLogsSpoolRunnerFlushManagerConfigWithRoutingGranularity(spoolCfg, pkgcloudwatchlogs.StreamRoutingHourly)
 			base := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
 			clock := fixedCloudWatchLogsClock{t: base.Add(3 * time.Hour)}
 			failureHandler, err := BuildFailureHandler(context.Background(), clock, config, nil,

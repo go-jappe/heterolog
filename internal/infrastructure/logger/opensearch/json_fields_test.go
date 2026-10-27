@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	loggerfield "github.com/go-jappe/heterolog/internal/infrastructure/logger/field"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
 
 	"github.com/stretchr/testify/assert"
@@ -25,9 +25,9 @@ func (jsonFieldsOtelResource) OSType() string         { return "linux" }
 func (jsonFieldsOtelResource) Environment() string    { return "test" }
 
 func TestOpenSearchOtelDocumentAndDurablePayloadPreserveValidatedApplicationFields(t *testing.T) {
-	applicationField, err := applogging.Any("valid", map[string]any{"attempt": 2})
+	applicationField, err := pkglogger.Any("valid", map[string]any{"attempt": 2})
 	require.NoError(t, err)
-	_, fields := loggerfield.ExtractIDsAndExtraFields([]applogging.Field{applicationField})
+	_, fields := loggerfield.ExtractIDsAndExtraFields([]pkglogger.Field{applicationField})
 
 	doc := NewOtelConverter(jsonFieldsOtelResource{}).convertLogEntryToDocument(&logging.LogEntry{
 		OccurredAt: time.Unix(1, 0).UTC(),

@@ -54,7 +54,7 @@ var (
 	ErrFileNameFormatExtWhitespace = errors.New(ErrorMsgFileNameFormatExtWhitespace)
 	ErrFileNameFormatExtSeparator  = errors.New(ErrorMsgFileNameFormatExtSeparator)
 	ErrFileNameFormatExtControl    = errors.New(ErrorMsgFileNameFormatExtControl)
-	ErrFileNameFormatMismatch      = fmt.Errorf(ErrorMsgFileNameFormatMismatch, FileNameFormat)
+	ErrFileNameFormatMismatch      = fmt.Errorf(ErrorMsgFileNameFormatMismatch, pkgfsstore.FailureArchiveFileNameFormat)
 
 	// ErrArchiveDirectoriesOverlapは、retryableとpermanentの保存先が同一または包含関係にあることを表します。
 	ErrArchiveDirectoriesOverlap = errors.New(ErrorMsgArchiveDirectoriesOverlap)
@@ -247,7 +247,7 @@ func validateFileNameFormat(format string) error {
 		}
 	}
 
-	if format != FileNameFormat {
+	if format != pkgfsstore.FailureArchiveFileNameFormat {
 		return ErrFileNameFormatMismatch
 	}
 

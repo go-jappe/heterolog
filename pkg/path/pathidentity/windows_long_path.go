@@ -2,10 +2,13 @@ package pathidentity
 
 import "strings"
 
-// AddWindowsLongPathPrefixは、長いWindows絶対パスへWin32の拡張prefixを付けます。
-// 呼び出し元は先に絶対化とパスの整理を済ませてください。元の大小文字は変更しません。
-// 既存処理の248バイト境界を使い、それより短いパスと既存のdevice・拡張パス表記はそのまま返します。
-// UNCには専用のprefixを付けます。存在確認やリンク解決、UTF-16への変換は行いません。
+// AddWindowsLongPathPrefix adds the Win32 extended prefix to a long absolute
+// Windows path. The caller must make the path absolute and clean it first. The
+// original case is not changed. Paths shorter than 248 bytes, the boundary that
+// the os package also uses (MAX_PATH minus the 12 bytes of an 8.3 file name),
+// and paths already in device or extended notation are returned as they are.
+// A UNC path gets its own prefix. It does not check existence, resolve links,
+// or convert to UTF-16.
 func AddWindowsLongPathPrefix(path string) string {
 	if len(path) < 248 || strings.HasPrefix(path, `\\?\`) ||
 		strings.HasPrefix(path, `\\.\`) || strings.HasPrefix(path, `\??\`) {

@@ -10,10 +10,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 var (
@@ -26,7 +26,7 @@ func TestFallbackControllerForceDoesNotWaitForInitializationOrCreateLogger(t *te
 		controller := &fallbackHandlerController{}
 		// 遅延初期化がI/O中に保持するmutexを再現します。
 		controller.mu.Lock()
-		require.ErrorIs(t, controller.RequestForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, controller.RequestForceClose(), pkgshutdown.ErrForcedClose)
 		controller.Handle(context.Background(), nil, nil, nil)
 		require.False(t, controller.initializationAttempted)
 		controller.mu.Unlock()
@@ -57,7 +57,7 @@ func TestFallbackControllerForceForwardsDuringAcceptedHandlerCleanup(t *testing.
 		closed := make(chan error, 1)
 		go func() { closed <- controller.Close() }()
 		synctest.Wait()
-		require.ErrorIs(t, controller.RequestForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, controller.RequestForceClose(), pkgshutdown.ErrForcedClose)
 		synctest.Wait()
 		require.Equal(t, 1, probe.forces)
 		// shutdownStartedはunbufferedでcloseだけを通知に使うため、require.Emptyでは
@@ -101,7 +101,7 @@ func (h *forceCloseFailureProbe) HandleFailure(context.Context, loggerfailure.Se
 
 func (h *forceCloseFailureProbe) Shutdown(context.Context) error {
 	close(h.shutdownStarted)
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func (h *forceCloseFailureProbe) ShutdownDone() <-chan struct{} { return h.finishShutdown }
@@ -138,15 +138,15 @@ func TestLokiLoggerForceCloseReachesRecoveryDuringConcurrentClose(t *testing.T) 
 		go func() { closed <- logger.Close(context.Background()) }()
 		<-probe.shutdownStarted
 		err = logger.ForceClose()
-		require.ErrorIs(t, err, shutdown.ErrForcedClose)
+		require.ErrorIs(t, err, pkgshutdown.ErrForcedClose)
 		require.ErrorIs(t, err, probe.forceErr)
 		require.Equal(t, 1, probe.forces)
-		require.ErrorIs(t, logger.loggerClosedError(), applogging.ErrLoggerClosed)
+		require.ErrorIs(t, logger.loggerClosedError(), pkglogger.ErrLoggerClosed)
 		synctest.Wait()
 		require.Empty(t, closed, "internal Close must retain resources until child shutdown returns")
 		require.Zero(t, probe.handled, "forced shutdown must not start replay or failure handling")
 		probe.releaseShutdown()
-		require.ErrorIs(t, <-closed, shutdown.ErrForcedClose)
+		require.ErrorIs(t, <-closed, pkgshutdown.ErrForcedClose)
 		require.True(t, logger.ShutdownComplete(), "terminal force error must not strand parent cleanup")
 	})
 }

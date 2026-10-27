@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler/reentrytest"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // slowCloudWatchLogsClientは、PutLogEventsをdelayだけ遅らせてから送信したeventを記録します。
@@ -56,7 +56,7 @@ func (c *slowCloudWatchLogsClient) internalMessages() []string {
 
 func failOnUnexpectedCloudWatchLogsWarn(t *testing.T, base *LoggerBase) {
 	t.Helper()
-	base.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	base.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		t.Errorf("unexpected warn internal log notification: %s", entry.Message)
 	}
 }
@@ -88,7 +88,7 @@ func TestCloudWatchLogsLoggerNoBulkHandlerWriteDoesNotRedispatchPutDelay(t *test
 						PostWarnThresholdDuration:  100 * time.Millisecond,
 						PostErrorThresholdDuration: 200 * time.Millisecond,
 						PutLatencyEnabled:          true,
-					}, streamrouting.None),
+					}, pkgcloudwatchlogs.StreamRoutingNone),
 					newTestCloudWatchLogsResourceProvider(),
 					nil,
 					observer.NopTracer{},
@@ -105,7 +105,7 @@ func TestCloudWatchLogsLoggerNoBulkHandlerWriteDoesNotRedispatchPutDelay(t *test
 				})
 				failOnUnexpectedCloudWatchLogsWarn(t, logger.LoggerBase)
 				probe := reentrytest.NewProbe(t)
-				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					depth, ok := probe.Enter()
 					defer probe.Exit()
 					if !ok {
@@ -153,7 +153,7 @@ func TestDeliveryCloudWatchLogsLoggerHandlerWriteDoesNotRedispatchPutDelay(t *te
 						PostWarnThresholdDuration:  100 * time.Millisecond,
 						PostErrorThresholdDuration: 200 * time.Millisecond,
 						PutLatencyEnabled:          true,
-					}, streamrouting.None),
+					}, pkgcloudwatchlogs.StreamRoutingNone),
 					newTestCloudWatchLogsResourceProvider(),
 					nil,
 					observer.NopTracer{},
@@ -170,7 +170,7 @@ func TestDeliveryCloudWatchLogsLoggerHandlerWriteDoesNotRedispatchPutDelay(t *te
 				})
 				failOnUnexpectedCloudWatchLogsWarn(t, logger.LoggerBase)
 				probe := reentrytest.NewProbe(t)
-				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					depth, ok := probe.Enter()
 					defer probe.Exit()
 					if !ok {
@@ -245,7 +245,7 @@ func TestCloudWatchLogsLoggerReentrantDirectWriteAppliesLogLevel(t *testing.T) {
 						PostWarnThresholdDuration:  100 * time.Millisecond,
 						PostErrorThresholdDuration: time.Hour,
 						PutLatencyEnabled:          true,
-					}, streamrouting.None),
+					}, pkgcloudwatchlogs.StreamRoutingNone),
 					newTestCloudWatchLogsResourceProvider(),
 					nil,
 					observer.NopTracer{},
@@ -260,11 +260,11 @@ func TestCloudWatchLogsLoggerReentrantDirectWriteAppliesLogLevel(t *testing.T) {
 						t.Errorf("Close() error = %v", err)
 					}
 				})
-				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					t.Errorf("unexpected error internal log notification: %v", err)
 				}
 				probe := reentrytest.NewProbe(t)
-				logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					depth, ok := probe.Enter()
 					defer probe.Exit()
 					if !ok {
@@ -322,7 +322,7 @@ func TestCloudWatchLogsLoggerBulkFlushNotifiesAfterReleasingFlushLock(t *testing
 			failOnUnexpectedCloudWatchLogsWarn(t, logger.LoggerBase)
 			probe := reentrytest.NewProbe(t)
 			var heldDuringNotification atomic.Bool
-			logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				if logger.flushMu.TryLock() {
 					logger.flushMu.Unlock()
 				} else {

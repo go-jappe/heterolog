@@ -2,9 +2,9 @@ package onerrorhandler
 
 import (
 	"context"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"log"
 	"runtime/debug"
 	"sync"
@@ -16,7 +16,7 @@ import (
 // entryとerrorの両方がnilの場合だけ、通知する内容がないため何もしません。
 func CombineErrorHandlers(handlers ...logging.NamedLoggerErrorHandler) logging.LoggerErrorHandler {
 
-	return func(ctx context.Context, err error, entry *logging.LogEntry, tracer observer.Tracer, meter observer.Meter) {
+	return func(ctx context.Context, err error, entry *logging.LogEntry, tracer pkgobserver.Tracer, meter pkgobserver.Meter) {
 		if entry == nil {
 			if err == nil {
 				log.Printf("skip error handlers: nil log entry and nil error")
@@ -71,8 +71,8 @@ func combineHandlers(
 	return func(
 		ctx context.Context,
 		entry *logging.LogEntry,
-		tracer observer.Tracer,
-		meter observer.Meter,
+		tracer pkgobserver.Tracer,
+		meter pkgobserver.Meter,
 	) {
 		// fallback / internal handler は nil entry で落としてはいけない
 		if entry == nil {

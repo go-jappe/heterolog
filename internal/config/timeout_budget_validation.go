@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/config/configerror"
 	"github.com/go-jappe/heterolog/internal/config/logconfig"
 	"github.com/go-jappe/heterolog/internal/config/timeoutbudget"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -18,7 +17,7 @@ import (
 type retryableTimeoutBudgetConfig struct {
 	enabled            bool
 	useMaxRetryDelay   bool
-	maxAttempts        int
+	maxRetries         int
 	baseDelay          time.Duration
 	maxDelay           time.Duration
 	operationAttempts  int
@@ -43,14 +42,14 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 		retryCfg := appCfg.Logger.OpenSearchConfig.OpenSearchRetryAbleClientConfig
 		timeoutCfg := newRetryableTimeoutBudgetConfig(
 			retryCfg.RetryClientMode,
-			retryCfg.MaxAttempts,
+			retryCfg.MaxRetries,
 			retryCfg.BaseDelay,
 			retryCfg.MaxDelay,
 		)
 		if !appCfg.Logger.OpenSearchConfig.NoBulkFlushModeEnabled {
-			timeoutCfg = withOperationAttempts(
+			timeoutCfg = withOperationRetries(
 				timeoutCfg,
-				appCfg.Logger.OpenSearchConfig.MaxRetryAttempts,
+				appCfg.Logger.OpenSearchConfig.MaxItemRetries,
 				appCfg.Logger.OpenSearchConfig.RetryWaitTime,
 			)
 		}
@@ -70,7 +69,7 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 			logconfig.LogOutputLoki,
 			appCfg.Logger.Timeout,
 			appCfg.LokiClient.Timeout,
-			newRetryAfterTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxAttempts, retryCfg.BaseDelay, retryCfg.MaxDelay),
+			newRetryAfterTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxRetries, retryCfg.BaseDelay, retryCfg.MaxDelay),
 			loggerPolicy,
 		))
 	}
@@ -81,7 +80,7 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 			logconfig.LogOutputCloudWatchLogs,
 			appCfg.Logger.Timeout,
 			appCfg.CloudWatchLogsClient.Timeout,
-			newRetryableTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxAttempts, retryCfg.BaseDelay, retryCfg.MaxDelay),
+			newRetryableTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxRetries, retryCfg.BaseDelay, retryCfg.MaxDelay),
 			loggerPolicy,
 		))
 	}
@@ -92,7 +91,7 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 			logconfig.LogOutputClickHouse,
 			appCfg.Logger.Timeout,
 			appCfg.ClickHouseClient.Timeout,
-			newRetryAfterTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxAttempts, retryCfg.BaseDelay, retryCfg.MaxDelay),
+			newRetryAfterTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxRetries, retryCfg.BaseDelay, retryCfg.MaxDelay),
 			loggerPolicy,
 		))
 	}
@@ -101,14 +100,14 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 		retryCfg := appCfg.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.OpenSearchRetryAbleClientConfig
 		timeoutCfg := newRetryableTimeoutBudgetConfig(
 			retryCfg.RetryClientMode,
-			retryCfg.MaxAttempts,
+			retryCfg.MaxRetries,
 			retryCfg.BaseDelay,
 			retryCfg.MaxDelay,
 		)
 		if !appCfg.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.NoBulkFlushModeEnabled {
-			timeoutCfg = withOperationAttempts(
+			timeoutCfg = withOperationRetries(
 				timeoutCfg,
-				appCfg.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.MaxRetryAttempts,
+				appCfg.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.MaxItemRetries,
 				appCfg.AsyncBestEffortMultiLoggerConfig.OpenSearchConfig.RetryWaitTime,
 			)
 		}
@@ -128,7 +127,7 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 			logconfig.LogOutputLoki,
 			appCfg.AsyncBestEffortMultiLoggerConfig.Timeout,
 			appCfg.AsyncLokiClient.Timeout,
-			newRetryAfterTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxAttempts, retryCfg.BaseDelay, retryCfg.MaxDelay),
+			newRetryAfterTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxRetries, retryCfg.BaseDelay, retryCfg.MaxDelay),
 			asyncPolicy,
 		))
 	}
@@ -139,7 +138,7 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 			logconfig.LogOutputCloudWatchLogs,
 			appCfg.AsyncBestEffortMultiLoggerConfig.Timeout,
 			appCfg.AsyncCloudWatchLogsClient.Timeout,
-			newRetryableTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxAttempts, retryCfg.BaseDelay, retryCfg.MaxDelay),
+			newRetryableTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxRetries, retryCfg.BaseDelay, retryCfg.MaxDelay),
 			asyncPolicy,
 		))
 	}
@@ -150,7 +149,7 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 			logconfig.LogOutputClickHouse,
 			appCfg.AsyncBestEffortMultiLoggerConfig.Timeout,
 			appCfg.AsyncClickHouseClient.Timeout,
-			newRetryAfterTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxAttempts, retryCfg.BaseDelay, retryCfg.MaxDelay),
+			newRetryAfterTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxRetries, retryCfg.BaseDelay, retryCfg.MaxDelay),
 			asyncPolicy,
 		))
 	}
@@ -162,7 +161,7 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 			logconfig.LogOutputOpenSearch,
 			appCfg.DeliveryLogger.Timeout,
 			appCfg.DeliveryOpenSearchClient.Timeout,
-			newRetryableTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxAttempts, retryCfg.BaseDelay, retryCfg.MaxDelay),
+			newRetryableTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxRetries, retryCfg.BaseDelay, retryCfg.MaxDelay),
 			deliveryPolicy,
 		))
 	}
@@ -173,7 +172,7 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 			logconfig.LogOutputLoki,
 			appCfg.DeliveryLogger.Timeout,
 			appCfg.DeliveryLokiClient.Timeout,
-			newRetryAfterTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxAttempts, retryCfg.BaseDelay, retryCfg.MaxDelay),
+			newRetryAfterTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxRetries, retryCfg.BaseDelay, retryCfg.MaxDelay),
 			deliveryPolicy,
 		))
 	}
@@ -184,7 +183,7 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 			logconfig.LogOutputCloudWatchLogs,
 			appCfg.DeliveryLogger.Timeout,
 			appCfg.DeliveryCloudWatchLogsClient.Timeout,
-			newRetryableTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxAttempts, retryCfg.BaseDelay, retryCfg.MaxDelay),
+			newRetryableTimeoutBudgetConfig(retryCfg.RetryClientMode, retryCfg.MaxRetries, retryCfg.BaseDelay, retryCfg.MaxDelay),
 			deliveryPolicy,
 		))
 	}
@@ -203,7 +202,7 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 
 func newRetryableTimeoutBudgetConfig(
 	mode pkglogger.RetryClientMode,
-	maxAttempts int,
+	maxRetries int,
 	baseDelay time.Duration,
 	maxDelay time.Duration,
 ) retryableTimeoutBudgetConfig {
@@ -217,35 +216,35 @@ func newRetryableTimeoutBudgetConfig(
 	return retryableTimeoutBudgetConfig{
 		enabled:           selection.UseRetryingClient || selection.UseRetryPolicyClient,
 		useMaxRetryDelay:  selection.UseRetryPolicyClient,
-		maxAttempts:       maxAttempts,
+		maxRetries:        maxRetries,
 		baseDelay:         baseDelay,
 		maxDelay:          maxDelay,
 		operationAttempts: 1,
 	}
 }
 
-// Loki and ClickHouse ordinary retry wrappers honor Retry-After on 429/503 responses.
-// Every retry gap can therefore reach MaxDelay, in both retry and policy modes.
-// Other backends keep the delay bound selected by their own retry mode.
+// LokiとClickHouseの通常retry wrapperは、429/503 responseのRetry-Afterに従います。
+// そのため、retryとpolicyのどちらのmodeでも、全てのretry間隔がMaxDelayに達し得ます。
+// 他のbackendは、それぞれのretry modeで選ばれる待機の上限をそのまま使います。
 func newRetryAfterTimeoutBudgetConfig(
 	mode pkglogger.RetryClientMode,
-	maxAttempts int,
+	maxRetries int,
 	baseDelay time.Duration,
 	maxDelay time.Duration,
 ) retryableTimeoutBudgetConfig {
-	budget := newRetryableTimeoutBudgetConfig(mode, maxAttempts, baseDelay, maxDelay)
+	budget := newRetryableTimeoutBudgetConfig(mode, maxRetries, baseDelay, maxDelay)
 	budget.useMaxRetryDelay = true
 	return budget
 }
 
-func withOperationAttempts(
+func withOperationRetries(
 	cfg retryableTimeoutBudgetConfig,
-	operationAttempts int,
+	operationRetries int,
 	operationRetryWait time.Duration,
 ) retryableTimeoutBudgetConfig {
 	// OpenSearchはtransport retryの外側でretryable bulk itemを再送するため、client予算に
-	// 総試行回数を掛け、item retry間の固定待機も別に加算します。
-	cfg.operationAttempts = operationAttempts
+	// 初回を含む総試行回数を掛け、item retry間の固定待機も別に加算します。
+	cfg.operationAttempts = operationRetries + 1
 	cfg.operationRetryWait = operationRetryWait
 	return cfg
 }
@@ -268,8 +267,16 @@ func validateClientTimeoutBudget(
 			message:  fmt.Sprintf(format, args...),
 		}
 	}
-	if err := validateRetryableTimeoutBudgetConfig(retryCfg); err != nil {
-		return configError(err, "%s %s retry timeout budget config is invalid: %v", displayContract, backend, err)
+	// 負の再試行回数と0以下の待機時間は、pkg/loggerの設定へ変換した後の検証
+	// （ValidateRetryClientConfig）が報告します。ここで同じ誤りを重ねて報告せず、
+	// 意味のない予算も計算しません。
+	if retryCfg.enabled && (retryCfg.maxRetries < 0 || retryCfg.baseDelay <= 0 || retryCfg.maxDelay <= 0) {
+		return nil
+	}
+	// OpenSearchのBulk itemの負の再送回数と負の待機時間は、flush managerの構築時の検証が
+	// 報告します。
+	if retryCfg.operationAttempts <= 0 || retryCfg.operationRetryWait < 0 {
+		return nil
 	}
 	if clientTimeout <= 0 {
 		return configError(
@@ -322,17 +329,6 @@ var (
 	// ErrNonPositiveParentTimeoutは、unbounded以外のtimeout budget policyで、親loggerのtimeoutが
 	// 0以下であることを表します。
 	ErrNonPositiveParentTimeout = errors.New("parent timeout must be positive")
-	// ErrNonPositiveTimeoutBudgetMaxAttemptsは、retryを行うretry client modeで最大試行回数が0以下であることを表します。
-	ErrNonPositiveTimeoutBudgetMaxAttempts = errors.New("max attempts must be greater than zero")
-	// ErrNonPositiveTimeoutBudgetBaseDelayは、retryを行うretry client modeで基準待機時間が0以下であることを表します。
-	ErrNonPositiveTimeoutBudgetBaseDelay = errors.New("base delay must be greater than zero")
-	// ErrNonPositiveTimeoutBudgetMaxDelayは、retryを行うretry client modeで最大待機時間が0以下であることを表します。
-	ErrNonPositiveTimeoutBudgetMaxDelay = errors.New("max delay must be greater than zero")
-	// ErrNonPositiveTimeoutBudgetOperationAttemptsは、flush managerがclient呼び出しを繰り返す総試行回数が
-	// 0以下であることを表します。
-	ErrNonPositiveTimeoutBudgetOperationAttempts = errors.New("operation attempts must be greater than zero")
-	// ErrNegativeTimeoutBudgetOperationRetryWaitは、flush managerの再試行間の待機時間が負値であることを表します。
-	ErrNegativeTimeoutBudgetOperationRetryWait = errors.New("operation retry wait must not be negative")
 )
 
 // TimeoutBudgetConfigErrorは、Contractのloggerの出力先Backendについて、timeout予算を検証する
@@ -372,64 +368,25 @@ func (e *TimeoutHierarchyError) Error() string {
 	)
 }
 
-func validateRetryableTimeoutBudgetConfig(cfg retryableTimeoutBudgetConfig) error {
-	if cfg.enabled {
-		if cfg.maxAttempts <= 0 {
-			return configerror.New(
-				ErrNonPositiveTimeoutBudgetMaxAttempts,
-				"max attempts must be greater than zero: %d",
-				cfg.maxAttempts,
-			)
-		}
-		if cfg.baseDelay <= 0 {
-			return configerror.New(
-				ErrNonPositiveTimeoutBudgetBaseDelay,
-				"base delay must be greater than zero: %s",
-				cfg.baseDelay,
-			)
-		}
-		if cfg.maxDelay <= 0 {
-			return configerror.New(
-				ErrNonPositiveTimeoutBudgetMaxDelay,
-				"max delay must be greater than zero: %s",
-				cfg.maxDelay,
-			)
-		}
-	}
-	if cfg.operationAttempts <= 0 {
-		return configerror.New(
-			ErrNonPositiveTimeoutBudgetOperationAttempts,
-			"operation attempts must be greater than zero: %d",
-			cfg.operationAttempts,
-		)
-	}
-	if cfg.operationRetryWait < 0 {
-		return configerror.New(
-			ErrNegativeTimeoutBudgetOperationRetryWait,
-			"operation retry wait must not be negative: %s",
-			cfg.operationRetryWait,
-		)
-	}
-	return nil
-}
-
 // retryableTimeoutBudget は retryable wrapper の attempt 数、retry待機、通常・非同期OpenSearchの
 // flush manager 側の総試行回数を合算します。
 // retry policyのclassは実行時のerrorで決まるため、validationではtransient/throttledの
-// 最悪ケースとしてMaxAttemptsと各retry gapのMaxDelayを使います。これにより、429/503の
-// Retry-AfterがruntimeでMaxDelayまで採用される場合も予算に含めます。
+// 最悪ケースとして、MaxRetriesに初回を足した試行回数と各retry gapのMaxDelayを使います。
+// これにより、429/503のRetry-AfterがruntimeでMaxDelayまで採用される場合も予算に含めます。
 // Loki/ClickHouseの通常retryもRetry-Afterを採用するため同じ上限で計算します。
-// Overflow saturates to the largest duration. No parent timeout can exceed
-// that value, so must_fit rejects the configuration instead of accepting a
-// wrapped negative budget. Closed-form sums also avoid looping MaxAttempts times.
+// overflowした場合は表現できる最大のdurationに飽和させます。どの親timeoutもこの値を
+// 超えられないため、must_fitは桁あふれで負になった予算を受け入れず、設定を拒否します。
+// また、合計を閉じた式で求めるため、試行回数分のloopも避けられます。
 func retryableTimeoutBudget(clientTimeout time.Duration, retryCfg retryableTimeoutBudgetConfig) time.Duration {
-	attempts := int64(1)
+	// 再試行の回数がretry gapの数で、試行回数はそれに初回を足した数です。最大のintでも
+	// 桁あふれしないよう、試行回数はbig.Intで求めます。
+	gaps := int64(0)
 	if retryCfg.enabled {
-		attempts = int64(retryCfg.maxAttempts)
+		gaps = int64(retryCfg.maxRetries)
 	}
-	budget := new(big.Int).Mul(big.NewInt(int64(clientTimeout)), big.NewInt(attempts))
-	if retryCfg.enabled && attempts > 1 {
-		gaps := attempts - 1
+	attempts := new(big.Int).Add(big.NewInt(gaps), big.NewInt(1))
+	budget := new(big.Int).Mul(big.NewInt(int64(clientTimeout)), attempts)
+	if gaps > 0 {
 		delays := new(big.Int)
 		if retryCfg.useMaxRetryDelay {
 			delays.Mul(big.NewInt(gaps), big.NewInt(int64(retryCfg.maxDelay)))

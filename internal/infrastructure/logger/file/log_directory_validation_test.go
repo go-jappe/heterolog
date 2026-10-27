@@ -26,7 +26,7 @@ func TestFileConstructorsRejectEmptyLogDirectoryBeforeInitialization(t *testing.
 				"delivery set", "delivery default", "delivery debug",
 			} {
 				if mode == pkgfsstore.FileLifecycleModeInline && factory[:4] != "sync" {
-					continue // Delivery writer does not support inline lifecycle.
+					continue // delivery writerはinline lifecycleをsupportしません。
 				}
 				t.Run(fmt.Sprintf("%s/%s/logDir=%q", factory, mode, logDir), func(t *testing.T) {
 					root := t.TempDir()
@@ -37,7 +37,7 @@ func TestFileConstructorsRejectEmptyLogDirectoryBeforeInitialization(t *testing.
 					deliveryCfg.LifecycleMode = mode
 					deliveryCfg.FsstoreConfig.Layout = cfg.FsstoreConfig.Layout
 
-					// Validation must precede even acquiring ownership of the destination.
+					// 検証は、宛先の所有権を取得することよりも先に行わなければなりません。
 					lease, err := directorylease.Acquire("test.log-directory-validation", root)
 					require.NoError(t, err)
 					t.Cleanup(lease.Release)

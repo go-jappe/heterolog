@@ -9,6 +9,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/clickhouse/retryclassifier"
 	"github.com/go-jappe/heterolog/pkg/clickhouse"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 const spanNameInsertLogs = "internal.infrastructure.clickhouse.wrapper.insert_logs"
@@ -26,7 +27,7 @@ type retryBackoffConfigProvider interface {
 type retryingClient struct {
 	next   Client
 	cfg    retryBackoffConfigProvider
-	tracer observer.Tracer
+	tracer pkgobserver.Tracer
 }
 
 var _ Client = (*retryingClient)(nil)
@@ -34,7 +35,7 @@ var _ Client = (*retryingClient)(nil)
 func newRetryingClient(
 	next Client,
 	cfg retryBackoffConfigProvider,
-	tracer observer.Tracer,
+	tracer pkgobserver.Tracer,
 ) *retryingClient {
 	return &retryingClient{
 		next:   next,
@@ -97,11 +98,11 @@ func (c *retryingClient) doWithRetry(ctx context.Context, name string, op func(c
 		nextDelay = c.retryDelay(attempt, dec)
 
 		span.AddEvent("clickhouse.retry_decision",
-			observer.Attr{Key: "reason", Value: string(dec.Reason)},
-			observer.Attr{Key: "attempt", Value: attempt},
-			observer.Attr{Key: "retry", Value: dec.Retry},
-			observer.Attr{Key: "http_status", Value: dec.Code},
-			observer.Attr{Key: "error", Value: lastErr.Error()},
+			pkgobserver.Attr{Key: "reason", Value: string(dec.Reason)},
+			pkgobserver.Attr{Key: "attempt", Value: attempt},
+			pkgobserver.Attr{Key: "retry", Value: dec.Retry},
+			pkgobserver.Attr{Key: "http_status", Value: dec.Code},
+			pkgobserver.Attr{Key: "error", Value: lastErr.Error()},
 		)
 		span.End()
 	}

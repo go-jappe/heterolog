@@ -15,9 +15,9 @@ type slackHTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-// slackResponseHTTPClient checks the entire chat.postMessage response before
-// the SDK consumes it. The SDK decodes only the first JSON value and accepts
-// missing acknowledgement fields, which cannot establish message delivery.
+// slackResponseHTTPClientは、SDKが消費する前にchat.postMessageのresponse全体を検査します。
+// SDKは最初のJSON値だけをdecodeし、確認応答のfieldがなくても受け入れますが、
+// それではmessageの配送を確定できません。
 type slackResponseHTTPClient struct{ client slackHTTPClient }
 
 func (c slackResponseHTTPClient) Do(request *http.Request) (*http.Response, error) {
@@ -31,8 +31,8 @@ func (c slackResponseHTTPClient) Do(request *http.Request) (*http.Response, erro
 	if evidence, ok := request.Context().Value(slackResponseEvidenceKey{}).(*slackResponseEvidence); ok {
 		evidence.statusCode = response.StatusCode
 	}
-	// HTTP refusal is already conclusive. Let the SDK retain its status/rate-limit
-	// error, without requiring a readable JSON body from an error response.
+	// HTTPでの拒否はそれだけで確定しています。error responseに読めるJSON本文を求めず、
+	// SDKのstatus・rate limit errorをそのまま残します。
 	if response.StatusCode != http.StatusOK {
 		return response, nil
 	}
@@ -61,8 +61,8 @@ func validateSlackPostResponse(body []byte) error {
 		Channel string `json:"channel"`
 		TS      string `json:"ts"`
 	}
-	// Unmarshal requires one complete JSON value, including the end of the body.
-	// Unknown fields are permitted for forwards compatibility with Slack.
+	// Unmarshalは、本文の終わりまでを含む一つの完全なJSON値を要求します。
+	// Slackとの前方互換性のため、未知のfieldは許可します。
 	if err := json.Unmarshal(body, &response); err != nil {
 		return err
 	}
@@ -78,8 +78,8 @@ func validateSlackPostResponse(body []byte) error {
 	if response.Error != "" {
 		return errors.New("successful response also contains an error")
 	}
-	// Channel names/aliases may resolve to IDs. Do not require an exact match to
-	// the request, or constrain Slack's opaque channel/timestamp identifiers.
+	// channel名やaliasはIDへ解決されることがあります。requestとの完全一致は求めず、
+	// Slackの不透明なchannel・timestamp識別子にも制約を課しません。
 	if strings.TrimSpace(response.Channel) == "" || strings.TrimSpace(response.TS) == "" {
 		return errors.New("successful response has no channel or timestamp")
 	}

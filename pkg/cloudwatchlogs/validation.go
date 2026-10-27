@@ -10,27 +10,32 @@ import (
 const maxLogStreamNameLength = 512
 
 var (
-	// ErrNegativeTimeoutは、Config.Timeoutが負値であることを表します。
+	// ErrNegativeTimeout reports that Config.Timeout is negative.
 	ErrNegativeTimeout = errors.New("cloudwatch logs timeout must not be negative")
-	// ErrLogGroupNameRequiredは、Config.LogGroupNameが空または空白だけであることを表します。
+	// ErrLogGroupNameRequired reports that Config.LogGroupName is empty or
+	// contains only whitespace.
 	ErrLogGroupNameRequired = errors.New("cloudwatch logs log group name is required")
-	// ErrRegionRequiredは、Config.Regionが空または空白だけであることを表します。
+	// ErrRegionRequired reports that Config.Region is empty or contains only
+	// whitespace.
 	ErrRegionRequired = errors.New("cloudwatch logs region is required")
-	// ErrInvalidEndpointは、endpointをURLとして解釈できないか、scheme、host、user info、
-	// query、fragmentの制約を満たさないことを表します。
+	// ErrInvalidEndpoint reports that the endpoint cannot be parsed as a URL or
+	// does not meet the constraints on the scheme, host, user info, query, and
+	// fragment.
 	ErrInvalidEndpoint = errors.New("invalid cloudwatch logs endpoint")
-	// ErrCredentialsRequiredは、CredentialsProviderとAccessKeyIDのどちらも指定されて
-	// いないことを表します。
+	// ErrCredentialsRequired reports that neither CredentialsProvider nor
+	// AccessKeyID is set.
 	ErrCredentialsRequired = errors.New("cloudwatch logs credentials provider or access key id is required")
-	// ErrSecretAccessKeyRequiredは、AccessKeyIDに対応するSecretAccessKeyがないことを表します。
+	// ErrSecretAccessKeyRequired reports that there is no SecretAccessKey for
+	// the AccessKeyID.
 	ErrSecretAccessKeyRequired = errors.New("cloudwatch logs secret access key is required")
 
-	// ErrLogStreamNameRequiredは、log stream名が空であることを表します。
+	// ErrLogStreamNameRequired reports that the log stream name is empty.
 	ErrLogStreamNameRequired = errors.New("cloudwatch logs log stream name is required")
-	// ErrLogStreamNameTooLongは、log stream名がCloudWatch Logsの文字数上限を超えることを表します。
+	// ErrLogStreamNameTooLong reports that the log stream name exceeds the
+	// CloudWatch Logs limit on the number of characters.
 	ErrLogStreamNameTooLong = errors.New("cloudwatch logs log stream name is too long")
-	// ErrLogStreamNameInvalidCharacterは、log stream名にCloudWatch Logsが受け付けない
-	// ':'または'*'が含まれることを表します。
+	// ErrLogStreamNameInvalidCharacter reports that the log stream name
+	// contains ':' or '*', which CloudWatch Logs does not accept.
 	ErrLogStreamNameInvalidCharacter = errors.New("cloudwatch logs log stream name contains an invalid character")
 )
 
@@ -51,10 +56,12 @@ func (e *validationError) Unwrap() []error {
 	return []error{e.kind, e.cause}
 }
 
-// ValidateConfig はCloudWatch Logs clientの生成に必要な設定を検証します。
-// CredentialsProviderからの認証情報取得やHTTP通信は行いません。不正の種類は
-// ErrNegativeTimeout、ErrLogGroupNameRequired、ErrRegionRequired、ErrInvalidEndpoint、
-// ErrCredentialsRequired、ErrSecretAccessKeyRequiredとerrors.Isで判別できます。
+// ValidateConfig validates the settings needed to create a CloudWatch Logs
+// client. It does not retrieve credentials from CredentialsProvider or
+// communicate over HTTP. The kind of problem can be identified by calling
+// errors.Is with ErrNegativeTimeout, ErrLogGroupNameRequired,
+// ErrRegionRequired, ErrInvalidEndpoint, ErrCredentialsRequired, or
+// ErrSecretAccessKeyRequired.
 func ValidateConfig(cfg Config) error {
 	if cfg.Timeout < 0 {
 		return &validationError{
@@ -75,10 +82,12 @@ func ValidateConfig(cfg Config) error {
 	return validateCredentialsConfig(cfg)
 }
 
-// ValidateLogStreamNameは、一回のCloudWatch Logs API requestで指定する実stream名が
-// AWSの文字数・使用文字制約を満たすかを検証します。日付suffixなど、本アプリ固有の
-// stream routingは扱いません。違反の種類はErrLogStreamNameRequired、
-// ErrLogStreamNameTooLong、ErrLogStreamNameInvalidCharacterとerrors.Isで判別できます。
+// ValidateLogStreamName checks whether the actual stream name specified in one
+// CloudWatch Logs API request meets the AWS constraints on the number of
+// characters and the characters allowed. It does not handle the stream routing
+// specific to heterolog, such as date suffixes. The kind of violation can be
+// identified by calling errors.Is with ErrLogStreamNameRequired,
+// ErrLogStreamNameTooLong, or ErrLogStreamNameInvalidCharacter.
 func ValidateLogStreamName(name string) error {
 	if name == "" {
 		return ErrLogStreamNameRequired

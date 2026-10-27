@@ -37,7 +37,7 @@ func TestRotateWithRetryKeepsOldPathPendingWhenClosingActiveFileFails(t *testing
 	store := &FileStore{File: file, ActiveFilePath: oldPath, Tracer: observer.NopTracer{}}
 	t.Cleanup(func() { require.NoError(t, store.Close()) })
 	// Closeの再試行を許す設定でも、失敗したCloseは一度だけ報告します。
-	retry := NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteAttempts: 3, FileOperationRetryWaitTime: time.Nanosecond})
+	retry := NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteRetries: 2, FileOperationRetryWaitTime: time.Nanosecond})
 	var closeReports []*logging.LogEntry
 	logFunc := func(_ context.Context, err error, entry *logging.LogEntry) {
 		if errors.Is(err, os.ErrClosed) {
@@ -116,7 +116,7 @@ func TestRotateWithRetryResumesOpeningWithoutClosingOldHandleAgain(t *testing.T)
 			require.NoError(t, err)
 			store := &FileStore{File: file, ActiveFilePath: oldPath}
 			t.Cleanup(func() { require.NoError(t, store.Close()) })
-			retry := NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteAttempts: 1, FileOperationRetryWaitTime: time.Nanosecond})
+			retry := NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteRetries: 0, FileOperationRetryWaitTime: time.Nanosecond})
 			newPath := filepath.Join(filepath.Dir(oldPath), "new.log")
 			if samePath {
 				newPath = oldPath
@@ -166,7 +166,7 @@ func TestCloseCancelsPendingRotation(t *testing.T) {
 	file, err := OpenFile(filepath.Join(t.TempDir(), "old.log"))
 	require.NoError(t, err)
 	store := &FileStore{File: file, ActiveFilePath: file.Name()}
-	retry := NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteAttempts: 1, FileOperationRetryWaitTime: time.Nanosecond})
+	retry := NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteRetries: 0, FileOperationRetryWaitTime: time.Nanosecond})
 	_, err = store.RotateWithRetry(context.Background(), nil, nil, func(context.Context) error { return errors.New("unavailable") }, retry)
 	require.Error(t, err)
 	require.NoError(t, store.Close())

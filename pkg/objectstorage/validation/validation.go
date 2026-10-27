@@ -1,8 +1,10 @@
-// Package validation は、object storage upload先の型付き設定を検証します。
+// Package validation validates the typed settings of object storage upload
+// destinations.
 //
-// objectstorage packageが保持するtarget表記の検証と、各provider packageが保持する
-// client設定の検証を組み合わせ、config mapperとruntime constructorで同じ契約を
-// 再利用できる境界を提供します。
+// It combines the validation of the target notation that the objectstorage
+// package holds with the validation of the client settings that each provider
+// package holds, and it provides a boundary through which config mappers and
+// runtime constructors can reuse the same contract.
 package validation
 
 import (
@@ -14,10 +16,12 @@ import (
 	s3uploader "github.com/go-jappe/heterolog/pkg/objectstorage/uploader/s3"
 )
 
-// ValidateUploadTargetsは、型付き設定へ格納済みのupload targetを変更せず検証します。
-// 表記揺れや重複は暗黙に補正しません。対応providerの有無は利用側が判断するため、
-// ここではcanonicalな表記と一意性だけを検証します。空のsliceの必須性も利用側の
-// 責務です。不正なtargetは*UploadTargetErrorです。
+// ValidateUploadTargets validates the upload targets already stored in a typed
+// configuration without changing them. It does not silently correct variant
+// spellings or duplicates. Whether a provider supports a target is decided by
+// the caller, so this function validates only the canonical notation and the
+// uniqueness. Requiring a non-empty slice is also the caller's responsibility.
+// An invalid target is reported as an *UploadTargetError.
 func ValidateUploadTargets(targets []objectstorage.UploadTarget) error {
 	seen := make(map[objectstorage.UploadTarget]struct{}, len(targets))
 	for index, target := range targets {
@@ -41,10 +45,12 @@ func ValidateUploadTargets(targets []objectstorage.UploadTarget) error {
 	return nil
 }
 
-// ValidateLogFileUploadConfigは、実際に生成されるfile roleのupload設定を検証します。
+// ValidateLogFileUploadConfig validates the upload settings of the file roles
+// that are actually created.
 //
-// error/debugがdefault fileへ合流する構成では、対応する個別upload設定はruntimeで
-// 使用されないため検証しません。
+// In a configuration where error or debug logs are merged into the default
+// file, the corresponding separate upload settings are not used at runtime, so
+// they are not validated.
 func ValidateLogFileUploadConfig(
 	scope string,
 	cfg objectstorage.LogFileUploadConfig,
@@ -54,8 +60,9 @@ func ValidateLogFileUploadConfig(
 	return ValidateLogFileUploadConfigProvider(scope, objectstorage.NewLogFileUploadConfigAdapter(cfg), separateError, separateDebug)
 }
 
-// ValidateLogFileUploadConfigProviderは、実際に生成されるログ系列の送信設定を検証します。
-// error・debugを通常ログへまとめる場合、その系列の個別設定は検証しません。
+// ValidateLogFileUploadConfigProvider validates the upload settings of the log
+// series that are actually created. When error or debug logs are merged into
+// the normal logs, the separate settings of that series are not validated.
 func ValidateLogFileUploadConfigProvider(
 	scope string,
 	cfg objectstorage.LogFileUploadConfigProvider,
@@ -80,8 +87,9 @@ func ValidateLogFileUploadConfigProvider(
 	return errors.Join(errs...)
 }
 
-// ValidateUploadTargetConfigは、有効なupload先にtargetが指定され、対応providerの
-// client設定がそのproviderの契約を満たすことを検証します。
+// ValidateUploadTargetConfig validates that an enabled upload destination
+// specifies targets and that the client settings of each supported provider
+// meet the contract of that provider.
 func ValidateUploadTargetConfig(
 	scope string,
 	cfg objectstorage.UploadTargetConfig,
@@ -89,10 +97,12 @@ func ValidateUploadTargetConfig(
 	return ValidateUploadTargetConfigProvider(scope, objectstorage.NewUploadTargetConfigAdapter(cfg))
 }
 
-// ValidateUploadTargetConfigProviderは、送信先の有効・無効と各サービスの設定を検証します。
-// S3の接続設定は、送信用clientと同じ検証規則を使用します。targetの未指定は
-// ErrUploadTargetsRequired、S3設定の不正はErrInvalidS3Config、対応providerのないtargetは
-// *UnsupportedUploadTargetErrorとerrors.Is・errors.Asで判別できます。
+// ValidateUploadTargetConfigProvider validates the enabled state of the
+// destination and the settings of each service. S3 connection settings use the
+// same validation rules as the client that uploads. With errors.Is and
+// errors.As, a missing target can be identified as ErrUploadTargetsRequired,
+// invalid S3 settings as ErrInvalidS3Config, and a target that no provider
+// supports as *UnsupportedUploadTargetError.
 func ValidateUploadTargetConfigProvider(
 	scope string,
 	cfg objectstorage.UploadTargetConfigProvider,

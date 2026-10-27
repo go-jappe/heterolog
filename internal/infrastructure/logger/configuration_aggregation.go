@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	clickhouselogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/clickhouse"
 	cloudwatchlogslogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/cloudwatchlogs"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
@@ -9,6 +8,7 @@ import (
 	opensearchlogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/opensearch"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/slack"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"strings"
 
@@ -34,7 +34,7 @@ type handlerStruct struct {
 // 設定errorで終わるため、通知の時点でstdoutの書き込み先を作り直すことはありません。
 func getHandler(
 	cfg pkglogger.LoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
 	fileLoggerSet *file.LoggerSet,
 	stdoutTarget *stdout.NotificationTarget,
 ) handlerStruct {

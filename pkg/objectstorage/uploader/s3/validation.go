@@ -11,23 +11,29 @@ import (
 )
 
 var (
-	// ErrRegionRequiredは、前後の空白を除いたregionが空であることを表します。
+	// ErrRegionRequired reports that the region is empty after leading and
+	// trailing white space is removed.
 	ErrRegionRequired = errors.New("s3 region is required")
-	// ErrBucketRequiredは、前後の空白を除いたbucketが空であることを表します。
+	// ErrBucketRequired reports that the bucket is empty after leading and
+	// trailing white space is removed.
 	ErrBucketRequired = errors.New("s3 bucket is required")
-	// ErrNegativeTimeoutは、Timeoutが負値であることを表します。
+	// ErrNegativeTimeout reports that Timeout is negative.
 	ErrNegativeTimeout = errors.New("s3 timeout must not be negative")
-	// ErrBucketContainsPathSeparatorは、bucketに'/'または'\'が含まれることを表します。
+	// ErrBucketContainsPathSeparator reports that the bucket contains '/' or
+	// '\'.
 	ErrBucketContainsPathSeparator = errors.New("s3 bucket must not contain path separators")
-	// ErrAccessKeyIDRequiredは、AccessKeyIDが空または空白だけであることを表します。
+	// ErrAccessKeyIDRequired reports that AccessKeyID is empty or only white
+	// space.
 	ErrAccessKeyIDRequired = errors.New("s3 access key id is required")
-	// ErrSecretAccessKeyRequiredは、SecretAccessKeyが空または空白だけであることを表します。
+	// ErrSecretAccessKeyRequired reports that SecretAccessKey is empty or only
+	// white space.
 	ErrSecretAccessKeyRequired = errors.New("s3 secret access key is required")
-	// ErrInvalidEndpointは、endpointをURLとして解釈できないか、scheme、host、user info、
-	// query、fragmentの制約を満たさないことを表します。
+	// ErrInvalidEndpoint reports that the endpoint cannot be parsed as a URL or
+	// does not meet the constraints on its scheme, host, user info, query or
+	// fragment.
 	ErrInvalidEndpoint = errors.New("invalid s3 endpoint")
-	// ErrNotRegularFileは、送信するfileのpath自身がregular fileではなく、linkや
-	// directory、特殊fileであることを表します。
+	// ErrNotRegularFile reports that the path of the file to upload is itself
+	// not a regular file but a link, a directory or a special file.
 	ErrNotRegularFile = errors.New("upload file path is not a regular file")
 )
 
@@ -52,13 +58,15 @@ func newValidationError(kind, cause error, format string, args ...any) error {
 	return &validationError{kind: kind, cause: cause, message: fmt.Sprintf(format, args...)}
 }
 
-// ValidateConfig は、S3 clientが必要とする設定値を検証します。
-// Timeout==0はNewがdefault timeoutを適用する未指定sentinelですが、
-// 負値は設定エラーです。regionとbucketは前後の空白を除いた値で必須性を検証し、
-// 欠落はそれぞれErrRegionRequired、ErrBucketRequiredで判別できます。
-// endpointのqueryとfragmentは受け付けません。そのほかの不正もErrNegativeTimeout、
-// ErrBucketContainsPathSeparator、ErrAccessKeyIDRequired、ErrSecretAccessKeyRequired、
-// ErrInvalidEndpointとerrors.Isで判別できます。
+// ValidateConfig validates the settings that the S3 client requires.
+// Timeout==0 is the unset sentinel for which New applies the default timeout,
+// but a negative value is a configuration error. The region and the bucket are
+// checked for presence after leading and trailing white space is removed, and
+// a missing one is identified by ErrRegionRequired or ErrBucketRequired
+// respectively. A query or a fragment in the endpoint is not accepted. Other
+// problems can also be identified with errors.Is against ErrNegativeTimeout,
+// ErrBucketContainsPathSeparator, ErrAccessKeyIDRequired,
+// ErrSecretAccessKeyRequired and ErrInvalidEndpoint.
 func ValidateConfig(cfg objectstorage.S3Config) error {
 	if cfg.Timeout < 0 {
 		return newValidationError(ErrNegativeTimeout, nil, "s3 timeout must not be negative: %s", cfg.Timeout)
@@ -121,8 +129,8 @@ func normalizeEndpoint(endpoint string, region string) (string, error) {
 	if parsed.ForceQuery || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", newValidationError(ErrInvalidEndpoint, nil, "s3 endpoint must not include query or fragment")
 	}
-	// Remove endpoint delimiters while retaining any encoded slash inside a
-	// proxy path segment. Updating only Path would invalidate RawPath and lose it.
+	// proxyのpath segment内にあるencodeされたslashは保ったまま、endpointの区切りを
+	// 除きます。Pathだけを更新するとRawPathが無効になり、失われます。
 	parsed.RawPath = strings.TrimRight(parsed.EscapedPath(), "/")
 	parsed.Path, err = url.PathUnescape(parsed.RawPath)
 	if err != nil {

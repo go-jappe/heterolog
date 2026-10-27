@@ -40,7 +40,7 @@ func TestNonClickHouseDeliveryConfigsExcludeBatchAndFlushRetryControls(t *testin
 		"MaxEvents",
 		"NoBulkFlushModeEnabled",
 	}
-	flushRetryFields := []string{"MaxRetryAttempts", "RetryWaitTime"}
+	flushRetryFields := []string{"MaxItemRetries", "RetryWaitTime"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -73,7 +73,7 @@ func TestNonOpenSearchConfigsExcludeUnusedFlushRetryControls(t *testing.T) {
 	}
 	for _, configType := range configTypes {
 		t.Run(configType.PkgPath()+"/"+configType.Name(), func(t *testing.T) {
-			for _, field := range []string{"MaxRetryAttempts", "RetryWaitTime"} {
+			for _, field := range []string{"MaxItemRetries", "RetryWaitTime"} {
 				if _, exists := configType.FieldByName(field); exists {
 					t.Fatalf("%s must not contain unused flush retry control %s", configType, field)
 				}

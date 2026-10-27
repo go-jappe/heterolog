@@ -10,11 +10,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFailureArchiveRotationDefersForSharedRawProtection(t *testing.T) {
@@ -31,7 +31,7 @@ func TestFailureArchiveRotationDefersForSharedRawProtection(t *testing.T) {
 					cfg.compressFormat = pkgfsstore.CompressGzip
 					cfg.setArchiveUploader(failureCategory, newDestinationFailureArchiveUploader("primary"))
 				}, InternalLogHandlers{OnError: func(
-					context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter,
+					context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter,
 				) {
 					errorCalls.Add(1)
 				}})

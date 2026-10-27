@@ -14,15 +14,15 @@ import (
 // stringとは型を分け、外部値を取り込む箇所では明示的な変換を要求します。
 type FailureCode string
 
-// FailedRecord is one failed backend operation and its durable payload.
+// FailedRecordは、失敗した1件のbackend操作と、そのdurable payloadです。
 type FailedRecord struct {
-	// Cause preserves the original in-process error for delivery reports. Durable
-	// records retain FailureCode/FailureReason instead of serializing Go errors.
+	// Causeは、delivery report用に元のprocess内errorを保持します。durable recordは
+	// Goのerrorをserializeせず、代わりにFailureCode/FailureReasonを残します。
 	Cause error `json:"-"`
 
-	// DeliveryStatus records what is known about backend acceptance, independently
-	// of whether the record is retried, archived, or quarantined. An unset status
-	// does not establish a confirmed failure.
+	// DeliveryStatusは、recordがretry・archive・quarantineのどれになるかとは独立に、
+	// backendの受理について分かっていることを記録します。未設定のstatusは、
+	// 失敗が確定したことを意味しません。
 	DeliveryStatus logger.DeliveryStatus
 	FailedAt       time.Time
 	Operation      string
@@ -31,19 +31,18 @@ type FailedRecord struct {
 	FailureReason  string
 	Payload        map[string]any
 
-	// RetryAfter is the wait, measured from FailedAt, that the backend requested
-	// with Retry-After before the next send to the same destination. It runs
-	// until Retry-After has elapsed after the response was observed, so it
-	// includes the time between FailedAt and that response. Zero means no
-	// request; only RetryableRecords carry it. The spool does not replay the
-	// record before FailedAt plus RetryAfter.
+	// RetryAfterは、同じ宛先へ次に送信するまでbackendがRetry-Afterで要求した
+	// 待ち時間で、FailedAtから測ります。responseを観測してからRetry-Afterが
+	// 経過するまで続くため、FailedAtからそのresponseまでの時間も含みます。0は
+	// 要求がないことを表し、この値を持つのはRetryableRecordsだけです。spoolは、
+	// FailedAtにRetryAfterを足した時刻より前にこのrecordをreplayしません。
 	RetryAfter time.Duration
 }
 
-// RetryAfterSince returns FailedRecord.RetryAfter for a failure that started at
-// failedAt and whose response was observed at the current time of
-// observedClock. A nil clock uses the current UTC time. It returns zero unless
-// the decision is retryable and carries a positive Retry-After.
+// RetryAfterSinceは、failedAtに始まり、observedClockの現在時刻にresponseを
+// 観測した失敗について、FailedRecord.RetryAfterを返します。clockがnilの場合は
+// 現在のUTC時刻を使います。decisionがretryableで、正のRetry-Afterを持つ場合を
+// 除き、0を返します。
 func RetryAfterSince(failedAt time.Time, observedClock clock.Clock, decision retryable.RetryDecision) time.Duration {
 	if !decision.Retry || decision.RetryAfter <= 0 {
 		return 0

@@ -1,0 +1,180 @@
+// Package envconfigは、HETEROLOG_の環境変数とenv fileから届く設定の入力窓口です。
+// 読み込んだ設定を検証し、application層のloggerの組み立てと、管理用APIのserverの設定へ
+// 渡します。
+package envconfig
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
+	appconfig "github.com/go-jappe/heterolog/internal/config"
+	"github.com/go-jappe/heterolog/internal/presentation/http/admin"
+	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+)
+
+// ErrLoggerDisabledは、環境設定がHETEROLOG_ENABLE_LOGGING、
+// HETEROLOG_ENABLE_ASYNC_BEST_EFFORT_LOGGING、HETEROLOG_ENABLE_DELIVERY_LOGGINGを
+// falseにして無効にしたloggerを、EnvConfigに求めたことを表します。
+var ErrLoggerDisabled = errors.New("logger is disabled by the environment")
+
+// EnvConfigは、LoadがHETEROLOG_の環境変数から読んだ設定を持ちます。New・NewAsync・
+// NewDeliveryはこの設定からloggerを作ります。Config・AsyncConfig・DeliveryConfigは、
+// 調整してからconstructorへ渡すための設定を返します。
+//
+// 環境設定では、tracingは設定しません。WithObserversをoptionとして渡します。
+// HETEROLOG_USE_MEMORY_PRESSURE_*で有効にしたspoolは、WithMemoryPressureMonitorで監視を
+// 渡さなければ、HETEROLOG_MEMORY_CRITICAL_RATIO・HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB・
+// HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITSでmemory逼迫を判定します。
+type EnvConfig struct {
+	app appconfig.AppConfig
+}
+
+// Loadは、process environmentと、pathが空でなければpathのenv fileから、HETEROLOG_の
+// 設定を読み込みます。process environmentにある変数は、fileの値より優先します。
+// process environmentは変更せず、ほかのenv fileも読みません。HETEROLOG_ENV_PATHと、
+// pathで指定していない.env fileは無視します。AWS SDKのAWS_ACCESS_KEY_ID・
+// AWS_SECRET_ACCESS_KEY・AWS_SESSION_TOKEN・AWS_REGIONは、S3とCloudWatch Logsの
+// 設定の既定値になります。
+//
+// 設定していない項目は.env.exampleに記載した既定値を使うため、空の環境ではstdoutへ
+// 書くloggerになります。有効な各loggerの設定と、二つの保存先が同じdirectoryを使う
+// といったlogger同士の組み合わせを確かめ、見つけた問題をerrors.Joinでまとめて
+// 返します。型の誤りなど一部の問題は後の検査を止めるため、それを直すと別の問題が
+// 見つかることがあります。設定を特定するには、errors.AsでEnvFileError・
+// InvalidEnvironmentValueError・RenamedEnvironmentKeyError、またはpkg/envの
+// VariableErrorを取り出します。
+func Load(path string) (*EnvConfig, error) {
+	app, err := appconfig.LoadConfigFile(path)
+	if err != nil {
+		return nil, err
+	}
+	errs := []error{appconfig.ValidateApplicationConfig(app)}
+	if adminCfg, ok := newAdminServerConfig(app.AdminServer); ok {
+		if err := admin.ValidateServerConfig(adminCfg); err != nil {
+			errs = append(errs, fmt.Errorf("HETEROLOG_ADMIN_*: %w", err))
+		}
+	}
+	if app.LoggerEnabled {
+		_, err := appconfig.MapLoggerConfig(app)
+		errs = append(errs, err)
+	}
+	if app.AsyncLoggerEnabled {
+		_, err := appconfig.MapAsyncLoggerConfig(app)
+		errs = append(errs, err)
+	}
+	if app.DeliveryLoggerEnabled {
+		_, err := appconfig.MapDeliveryLoggerConfig(app)
+		errs = append(errs, err)
+	}
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+	return &EnvConfig{app: app}, nil
+}
+
+// Configは、同期loggerの設定と、環境設定から読んだspoolの再送設定とCloudWatch Logsの
+// stream分割のoptionを返します。どちらもNewへ渡します。呼び出しごとに新しい設定を
+// 返しますが、LogOutputDestinationsなどのsliceはEnvConfigと配列を共有することがあるため、
+// 要素を書き換えずにsliceごと置き換えてください。HETEROLOG_ENABLE_LOGGINGがfalseの
+// 場合は、ErrLoggerDisabledを包んだerrorを返します。
+func (c *EnvConfig) Config() (pkglogger.LoggerConfig, []loggerruntime.Option, error) {
+	if !c.app.LoggerEnabled {
+		return pkglogger.LoggerConfig{}, nil, fmt.Errorf("%w: HETEROLOG_ENABLE_LOGGING is false", ErrLoggerDisabled)
+	}
+	cfg, err := appconfig.MapLoggerConfig(c.app)
+	if err != nil {
+		return pkglogger.LoggerConfig{}, nil, err
+	}
+	return cfg, []loggerruntime.Option{
+		loggerruntime.WithSpool(c.app.SpoolConfig),
+		loggerruntime.WithCloudWatchLogsStreamRouting(c.app.Logger.CloudWatchLogsConfig.LogStreamRoutingGranularity),
+	}, nil
+}
+
+// AsyncConfigは、Configと同じく、非同期loggerの設定とNewAsyncのoptionを返します。
+// HETEROLOG_ENABLE_ASYNC_BEST_EFFORT_LOGGINGがfalseの場合は、ErrLoggerDisabledを包んだ
+// errorを返します。
+func (c *EnvConfig) AsyncConfig() (pkglogger.AsyncBestEffortMultiLoggerConfig, []loggerruntime.Option, error) {
+	if !c.app.AsyncLoggerEnabled {
+		return pkglogger.AsyncBestEffortMultiLoggerConfig{}, nil, fmt.Errorf("%w: HETEROLOG_ENABLE_ASYNC_BEST_EFFORT_LOGGING is false", ErrLoggerDisabled)
+	}
+	cfg, err := appconfig.MapAsyncLoggerConfig(c.app)
+	if err != nil {
+		return pkglogger.AsyncBestEffortMultiLoggerConfig{}, nil, err
+	}
+	return cfg, []loggerruntime.Option{
+		loggerruntime.WithSpool(c.app.SpoolConfig),
+		loggerruntime.WithCloudWatchLogsStreamRouting(c.app.AsyncBestEffortMultiLoggerConfig.CloudWatchLogsConfig.LogStreamRoutingGranularity),
+	}, nil
+}
+
+// DeliveryConfigは、Delivery loggerの設定とNewDeliveryのoptionを返します。Delivery
+// loggerはspoolを再送しないため、optionはCloudWatch Logsのstream分割だけです。
+// HETEROLOG_ENABLE_DELIVERY_LOGGINGがfalseの場合は、ErrLoggerDisabledを包んだerrorを
+// 返します。
+func (c *EnvConfig) DeliveryConfig() (pkglogger.DeliveryLoggerConfig, []loggerruntime.Option, error) {
+	if !c.app.DeliveryLoggerEnabled {
+		return pkglogger.DeliveryLoggerConfig{}, nil, fmt.Errorf("%w: HETEROLOG_ENABLE_DELIVERY_LOGGING is false", ErrLoggerDisabled)
+	}
+	cfg, err := appconfig.MapDeliveryLoggerConfig(c.app)
+	if err != nil {
+		return pkglogger.DeliveryLoggerConfig{}, nil, err
+	}
+	return cfg, []loggerruntime.Option{
+		loggerruntime.WithCloudWatchLogsStreamRouting(c.app.DeliveryLogger.DeliveryCloudWatchLogsConfig.LogStreamRoutingGranularity),
+	}, nil
+}
+
+// Newは、Configが返す設定とoptionから同期loggerを作ります。optsはそのoptionの後に
+// 適用するため、置き換えたり、WithObserversやWithMemoryPressureMonitorを加えたり
+// できます。
+func (c *EnvConfig) New(ctx context.Context, opts ...loggerruntime.Option) (*loggerruntime.Runtime, error) {
+	cfg, envOpts, err := c.Config()
+	if err != nil {
+		return nil, err
+	}
+	return loggerruntime.New(ctx, cfg, append(envOpts, opts...)...)
+}
+
+// NewAsyncは、AsyncConfigが返す設定とoptionに続けてoptsを適用し、非同期loggerを
+// 作ります。
+func (c *EnvConfig) NewAsync(ctx context.Context, opts ...loggerruntime.Option) (*loggerruntime.AsyncRuntime, error) {
+	cfg, envOpts, err := c.AsyncConfig()
+	if err != nil {
+		return nil, err
+	}
+	return loggerruntime.NewAsync(ctx, cfg, append(envOpts, opts...)...)
+}
+
+// NewDeliveryは、DeliveryConfigが返す設定とoptionに続けてoptsを適用し、送信結果を返す
+// loggerを作ります。
+func (c *EnvConfig) NewDelivery(ctx context.Context, opts ...loggerruntime.Option) (*loggerruntime.DeliveryRuntime, error) {
+	cfg, envOpts, err := c.DeliveryConfig()
+	if err != nil {
+		return nil, err
+	}
+	return loggerruntime.NewDelivery(ctx, cfg, append(envOpts, opts...)...)
+}
+
+// AdminServerConfigは、HETEROLOG_ADMIN_ADDR・HETEROLOG_ADMIN_TOKEN・
+// HETEROLOG_ADMIN_TLS_CERT_FILE・HETEROLOG_ADMIN_TLS_KEY_FILEから読んだ管理用serverの
+// 設定と、HETEROLOG_ADMIN_ADDRでserverを有効にしたかを返します。Loadで確認済みです。
+// 設定は管理用serverの起動へ渡します。独自の監査logを残すには、先にOnChangeを設定します。
+func (c *EnvConfig) AdminServerConfig() (pkgadmin.ServerConfig, bool) {
+	return newAdminServerConfig(c.app.AdminServer)
+}
+
+func newAdminServerConfig(cfg appconfig.AdminServerConfig) (pkgadmin.ServerConfig, bool) {
+	if cfg.Addr == "" {
+		return pkgadmin.ServerConfig{}, false
+	}
+	return pkgadmin.ServerConfig{
+		Addr:        cfg.Addr,
+		Token:       cfg.Token,
+		TLSCertFile: cfg.TLSCertFile,
+		TLSKeyFile:  cfg.TLSKeyFile,
+	}, true
+}

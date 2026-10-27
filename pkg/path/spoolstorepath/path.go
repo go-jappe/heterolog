@@ -8,10 +8,13 @@ import (
 	"github.com/go-jappe/heterolog/pkg/path/internal/statehome"
 )
 
-// DefaultSpoolDirは、appNameのspoolを保存する既定のdirectoryを返します。Linuxなどのunix系OSでは、
-// rootで動く場合は通常のLinuxの階層に準じた/var/spool/<appName>、それ以外は利用者のstate
-// directory（$XDG_STATE_HOME、未設定なら~/.local/state）の<appName>/spoolです。home directoryが
-// 分からない場合はrootと同じ場所を返します。
+// DefaultSpoolDir returns the default directory that stores the spool of
+// appName. On Linux, the BSDs, illumos, Solaris and AIX, it is
+// /var/spool/<appName>, which follows the usual Linux hierarchy, when running
+// as root, and otherwise <appName>/spool in the user's state directory
+// ($XDG_STATE_HOME if it is an absolute path, or else ~/.local/state). When
+// ~/.local/state would be used but the home directory is unknown, it returns
+// the same location as for root.
 func DefaultSpoolDir(appName string) string {
 	switch runtime.GOOS {
 

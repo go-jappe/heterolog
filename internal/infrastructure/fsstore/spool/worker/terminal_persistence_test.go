@@ -36,8 +36,8 @@ func TestTerminalSaveRetriesPublishedFileAfterDirectorySyncFailure(t *testing.T)
 			decoded, err := decodeSpoolRecords(published)
 			require.NoError(t, err)
 			require.Equal(t, records, decoded, "keep the worker's original finalization time")
-			// A reconstructed store can retry the same save even if it generates a
-			// different finalization time; the first published result is retained.
+			// 作り直したstoreは、異なる確定時刻を生成しても同じ保存を再試行できます。
+			// 最初に公開した結果を保持します。
 			retried := append([]pkgspool.SpoolRecord(nil), records...)
 			for i := range retried {
 				retried[i].FinalizedAt = time.Time{}
@@ -70,8 +70,8 @@ func TestTerminalSavePublishesPrivateSpoolFile(t *testing.T) {
 			require.NoError(t, err)
 			destination := filepath.Join(store.RootDir.String(), string(state), rel)
 			require.NoError(t, store.StoreProcessingRecordsToState(context.Background(), source, state, records))
-			// Unix requires the owner-only 0600 mode. Windows checks the actual DACL,
-			// not the numeric mode: only the current user, SYSTEM and Administrators.
+			// Unixでは所有者だけの0600 modeを要求します。Windowsでは数値のmodeではなく実際の
+			// DACLを確認し、現在のuser・SYSTEM・Administratorsだけが許可されていることを確かめます。
 			testutil.RequirePrivatePermissions(t, destination, 0o600)
 			published, err := os.ReadFile(destination)
 			require.NoError(t, err)
@@ -153,6 +153,6 @@ func TestRemoveProcessingFileRetriesDirectorySyncAfterUnlink(t *testing.T) {
 	}
 	restore()
 	require.NoError(t, store.RemoveProcessingFile(context.Background(), source))
-	// Bucket directories may now be pruned; repeated cleanup still succeeds.
+	// この時点でbucketのdirectoryは削除済みの場合がありますが、後始末を繰り返しても成功します。
 	require.NoError(t, store.RemoveProcessingFile(context.Background(), source))
 }

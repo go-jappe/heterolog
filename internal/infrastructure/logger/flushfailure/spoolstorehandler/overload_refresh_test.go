@@ -47,8 +47,8 @@ func TestSpoolDirectoryStatsRefreshObservesFileGrowth(t *testing.T) {
 			if _, err := handler.getDirStats(active); err != nil {
 				t.Fatal(err)
 			}
-			// Refreshes remain asynchronous. Wait for publication instead of
-			// assuming a particular scheduling order or a number of log calls.
+			// refreshは非同期のままです。特定のscheduling順序やlog呼び出しの回数を
+			// 前提にせず、結果の公開を待ちます。
 			if done := handler.currentDirStatsScanDone(); done != nil {
 				select {
 				case <-done:

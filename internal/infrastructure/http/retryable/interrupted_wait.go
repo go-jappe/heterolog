@@ -6,9 +6,9 @@ import (
 	"fmt"
 )
 
-// InterruptedWait preserves a completed attempt and the cause that stopped its
-// retry delay. It must only be used before the next attempt has started.
-// Both causes remain discoverable through errors.Is/errors.As.
+// InterruptedWaitは、完了した試行と、そのretry待機を止めた原因を保持します。
+// 次の試行が始まる前にだけ使ってください。
+// どちらの原因も、errors.Is/errors.Asで見つけられます。
 func InterruptedWait(lastAttemptErr, stopErr error) error {
 	if lastAttemptErr == nil {
 		return stopErr
@@ -32,22 +32,22 @@ func (e *interruptedWaitError) Unwrap() []error {
 	return []error{e.lastAttemptErr, e.stopErr}
 }
 
-// ClassifyDurableRequestOutcome preserves confirmed rejection or pre-dispatch
-// failure evidence when a retry wait was interrupted. The supplied classifier retains backend-specific
-// rules, such as CloudWatch throttling or ClickHouse input errors.
+// ClassifyDurableRequestOutcomeは、retry待機が中断されたとき、確認済みの拒否や
+// 送信前の失敗の証拠を保持します。渡されたclassifierが、CloudWatchのthrottlingや
+// ClickHouseの入力errorのようなbackend固有の規則を保ちます。
 //
-// A stopped caller does not invalidate a completed HTTP refusal. In contrast,
-// an interrupted in-flight request, or an interrupted wait after an uncertain
-// attempt, remains quarantined. An arbitrary joined HTTP/context error does not
-// establish that cancellation occurred between attempts.
+// 呼び出し元が停止しても、完了したHTTPの拒否は無効になりません。一方、送信中に
+// 中断されたrequestや、結果が不確かな試行の後で中断された待機は、quarantineのままです。
+// HTTPとcontextのerrorを任意にjoinしたerrorは、試行の間でcancelが起きたことを
+// 示しません。
 func ClassifyDurableRequestOutcome(
 	ctx context.Context,
 	err error,
 	classify func(context.Context, error) RetryDecision,
 ) RetryDecision {
 	classifyCtx := DurableClassificationContext(ctx)
-	// Follow ordinary wrappers, but not a multi-error join: another branch may
-	// describe an additional in-flight request whose outcome is still unknown.
+	// 通常のwrapperはたどりますが、複数errorのjoinはたどりません。別の枝が、結果がまだ
+	// 不明な送信中のrequestをもう一つ表している可能性があるためです。
 	for cause := err; cause != nil; cause = errors.Unwrap(cause) {
 		if waitErr, ok := cause.(*interruptedWaitError); ok {
 			previous := classify(classifyCtx, waitErr.lastAttemptErr)

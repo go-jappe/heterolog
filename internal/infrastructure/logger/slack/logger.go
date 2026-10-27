@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/formatter"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
@@ -16,6 +14,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/slack/errors"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/slack-go/slack"
 )
@@ -48,8 +47,8 @@ type SlackLogger struct {
 	OnWarn     logging.LoggerHandlerFunc
 	OnInfo     logging.LoggerHandlerFunc
 	OnDebug    logging.LoggerHandlerFunc
-	Tracer     observer.Tracer
-	Meter      observer.Meter
+	Tracer     pkgobserver.Tracer
+	Meter      pkgobserver.Meter
 
 	// internalLogReentryは、書き込み（HandleLogEntry・enqueue）が同期的に通知する内部ログの
 	// On*へ渡すcontextへこのloggerの印を付け、通知を実行するgoroutineを記録します。
@@ -62,8 +61,8 @@ type SlackLogger struct {
 func NewSlackLogger(
 	ctx context.Context,
 	cfg SlackLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	opts ...LoggerOption,
 ) (*SlackLogger, error) {
 	_, span := tracer.StartSpan(ctx, SpanSlackLoggerCreate)
@@ -181,7 +180,7 @@ func (s *SlackLogger) enqueueLocked(ctx context.Context, entry *logging.LogEntry
 	defer s.mu.Unlock()
 
 	if s.closeState != loggercommon.LoggerCloseStateOpen {
-		return nil, applogging.ErrLoggerClosed
+		return nil, pkglogger.ErrLoggerClosed
 	}
 
 	var debugEntries []*logging.LogEntry
@@ -216,12 +215,12 @@ func (s *SlackLogger) enqueueLocked(ctx context.Context, entry *logging.LogEntry
 // enqueueでも再確認し、事前確認とbuffer lock取得の間にCloseが始まるraceを閉じます。
 func (s *SlackLogger) rejectIfClosed() error {
 	if s == nil {
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closeState != loggercommon.LoggerCloseStateOpen {
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	return nil
 }

@@ -24,9 +24,9 @@ type spoolCancellationTransport func(*http.Request) (*http.Response, error)
 
 func (f spoolCancellationTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// Exercise the actual HTTP encoder, file store, and transition recovery. The
-// same worker survives cancellation: no restart or loss of its in-memory guard
-// is needed to recover the completed classification before further sends.
+// 実際のHTTP encoder、file store、transition recoveryを動かして検証します。
+// 同じworkerがcancelを越えて動き続けます。後続の送信の前に完了済みの分類を
+// 回復するのに、再起動もin-memory guardの消失も必要ありません。
 func TestSpoolPreservesAttemptOutcomeAcrossCancellationAndTransitionRecovery(t *testing.T) {
 	const transitionRetryDelay = time.Nanosecond
 	for _, tt := range []struct {
@@ -99,8 +99,8 @@ func TestSpoolPreservesAttemptOutcomeAcrossCancellationAndTransitionRecovery(t *
 				require.NoError(t, err)
 				require.True(t, handled)
 
-				// Every input is recovered exactly once with its original payload. Only
-				// the actual attempt updates resend metadata; the later record is active.
+				// すべての入力は元のpayloadのまま、ちょうど1回だけ回復されます。
+				// resend metadataを更新するのは実際の試行だけで、後続のrecordはactiveです。
 				found := make(map[string]spool.State)
 				for _, state := range []spool.State{spool.StateActive, spool.StateProcessing, spool.StateQuarantine, spool.StateDead, spool.StateDone} {
 					for _, record := range readIntegrationSpoolRecords(t, stateRoot(cfg, state)) {

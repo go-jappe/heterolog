@@ -54,10 +54,10 @@ func makePurgeStatFailure(t *testing.T) (string, func()) {
 	}
 	t.Cleanup(restore)
 
-	// A delete-pending file still exists until its last handle closes, but
-	// opening it by path fails. This exercises os.Lstat's real failure path
-	// without requiring symlink privilege or relying on Unix mode bits.
-	// FileDispositionInfo allows the fixture to cancel deletion before close.
+	// delete-pendingのfileは最後のhandleが閉じるまで存在しますが、pathで開くことは
+	// できません。これにより、symlinkの特権を必要とせず、Unixのmode bitsにも頼らずに、
+	// os.Lstatの実際の失敗経路を確かめます。FileDispositionInfoを使うと、fixtureは
+	// close前に削除を取り消せます。
 	deleteFile := byte(1)
 	if err := windows.SetFileInformationByHandle(handle, windows.FileDispositionInfo, &deleteFile, 1); err != nil {
 		t.Fatalf("mark fixture delete-pending: %v", err)

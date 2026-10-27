@@ -12,8 +12,8 @@ func TestUTF8StringBytesMatchesJSONReceiver(t *testing.T) {
 		"\xff\xfe", "a\xffb", "\xc3", "\xe3\x81", "\xed\xa0\x80",
 		"\xf0\x9f\x92", "\xc0\xaf", "\ufffd\xff日本\xc3",
 	}
-	// Every possible single byte covers ASCII and invalid leading/continuation
-	// bytes. The multi-byte cases above distinguish valid U+FFFD from bad bytes.
+	// 取り得るすべての1byte値で、ASCIIと不正な先頭byte・継続byteを網羅します。
+	// 上の複数byteの例は、正しいU+FFFDと不正なbyteを区別します。
 	for b := 0; b < 256; b++ {
 		inputs = append(inputs, string([]byte{byte(b)}))
 	}

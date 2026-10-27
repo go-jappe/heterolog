@@ -2,93 +2,122 @@ package clickhouse
 
 import "strings"
 
-// ErrorTypeはClickHouseがDB::Exceptionの末尾に返す機械判定用のerror typeです。
-// HTTP statusだけでは入力不正と一時障害を区別できない場合に使用します。
+// ErrorType is the machine-readable error type that ClickHouse returns at the
+// end of a DB::Exception. It is used when the HTTP status alone cannot
+// distinguish invalid input from a temporary failure.
 type ErrorType string
 
 const (
-	// ErrorTypeUnknownTable は ClickHouse が存在しない table 参照に対して返す error type です。
+	// ErrorTypeUnknownTable is the error type that ClickHouse returns for a
+	// reference to a table that does not exist.
 	ErrorTypeUnknownTable ErrorType = "UNKNOWN_TABLE"
 
-	// ErrorTypeUnknownDatabase は ClickHouse が存在しない database 参照に対して返す error type です。
+	// ErrorTypeUnknownDatabase is the error type that ClickHouse returns for a
+	// reference to a database that does not exist.
 	ErrorTypeUnknownDatabase ErrorType = "UNKNOWN_DATABASE"
 
-	// ErrorTypeUnknownIdentifier は ClickHouse が存在しない column / identifier 参照に対して返す error type です。
+	// ErrorTypeUnknownIdentifier is the error type that ClickHouse returns for a
+	// reference to a column or identifier that does not exist.
 	ErrorTypeUnknownIdentifier ErrorType = "UNKNOWN_IDENTIFIER"
 
-	// ErrorTypeUnknownFunction は ClickHouse が存在しない function 参照に対して返す error type です。
+	// ErrorTypeUnknownFunction is the error type that ClickHouse returns for a
+	// reference to a function that does not exist.
 	ErrorTypeUnknownFunction ErrorType = "UNKNOWN_FUNCTION"
 
-	// ErrorTypeUnknownType は ClickHouse が存在しない type 参照に対して返す error type です。
+	// ErrorTypeUnknownType is the error type that ClickHouse returns for a
+	// reference to a type that does not exist.
 	ErrorTypeUnknownType ErrorType = "UNKNOWN_TYPE"
 
-	// ErrorTypeNoSuchColumnInTable は ClickHouse が table 内に存在しない column 参照に対して返す error type です。
+	// ErrorTypeNoSuchColumnInTable is the error type that ClickHouse returns for a
+	// reference to a column that does not exist in the table.
 	ErrorTypeNoSuchColumnInTable ErrorType = "NO_SUCH_COLUMN_IN_TABLE"
 
-	// ErrorTypeThereIsNoColumn は ClickHouse が存在しない column 参照に対して返す error type です。
+	// ErrorTypeThereIsNoColumn is the error type that ClickHouse returns for a
+	// reference to a column that does not exist.
 	ErrorTypeThereIsNoColumn ErrorType = "THERE_IS_NO_COLUMN"
 
-	// ErrorTypeSyntaxError は ClickHouse が query 構文不正に対して返す error type です。
+	// ErrorTypeSyntaxError is the error type that ClickHouse returns for invalid
+	// query syntax.
 	ErrorTypeSyntaxError ErrorType = "SYNTAX_ERROR"
 
-	// ErrorTypeTypeMismatch は ClickHouse が型不一致に対して返す error type です。
+	// ErrorTypeTypeMismatch is the error type that ClickHouse returns for a type
+	// mismatch.
 	ErrorTypeTypeMismatch ErrorType = "TYPE_MISMATCH"
 
-	// ErrorTypeIllegalTypeOfArgument は ClickHouse が関数引数などの型不正に対して返す error type です。
+	// ErrorTypeIllegalTypeOfArgument is the error type that ClickHouse returns for
+	// an invalid type, such as that of a function argument.
 	ErrorTypeIllegalTypeOfArgument ErrorType = "ILLEGAL_TYPE_OF_ARGUMENT"
 
-	// ErrorTypeBadArguments は ClickHouse が不正引数に対して返す error type です。
+	// ErrorTypeBadArguments is the error type that ClickHouse returns for invalid
+	// arguments.
 	ErrorTypeBadArguments ErrorType = "BAD_ARGUMENTS"
 
-	// ErrorTypeBadCast は ClickHouse が不正な cast に対して返す error type です。
+	// ErrorTypeBadCast is the error type that ClickHouse returns for an invalid
+	// cast.
 	ErrorTypeBadCast ErrorType = "BAD_CAST"
 
-	// ErrorTypeCannotConvertType は ClickHouse が変換不能な型に対して返す error type です。
+	// ErrorTypeCannotConvertType is the error type that ClickHouse returns for a
+	// type that cannot be converted.
 	ErrorTypeCannotConvertType ErrorType = "CANNOT_CONVERT_TYPE"
 
-	// ErrorTypeCannotParseInputAssertionFailed は ClickHouse が入力 parse 不正に対して返す error type です。
+	// ErrorTypeCannotParseInputAssertionFailed is the error type that ClickHouse
+	// returns for a failure to parse input.
 	ErrorTypeCannotParseInputAssertionFailed ErrorType = "CANNOT_PARSE_INPUT_ASSERTION_FAILED"
 
-	// ErrorTypeCannotParseQuotedString は ClickHouse が quoted string parse 不正に対して返す error type です。
+	// ErrorTypeCannotParseQuotedString is the error type that ClickHouse returns
+	// for a failure to parse a quoted string.
 	ErrorTypeCannotParseQuotedString ErrorType = "CANNOT_PARSE_QUOTED_STRING"
 
-	// ErrorTypeCannotParseNumber は ClickHouse が数値 parse 不正に対して返す error type です。
+	// ErrorTypeCannotParseNumber is the error type that ClickHouse returns for a
+	// failure to parse a number.
 	ErrorTypeCannotParseNumber ErrorType = "CANNOT_PARSE_NUMBER"
 
-	// ErrorTypeCannotParseDate は ClickHouse が date parse 不正に対して返す error type です。
+	// ErrorTypeCannotParseDate is the error type that ClickHouse returns for a
+	// failure to parse a date.
 	ErrorTypeCannotParseDate ErrorType = "CANNOT_PARSE_DATE"
 
-	// ErrorTypeCannotParseDateTime は ClickHouse が datetime parse 不正に対して返す error type です。
+	// ErrorTypeCannotParseDateTime is the error type that ClickHouse returns for a
+	// failure to parse a datetime.
 	ErrorTypeCannotParseDateTime ErrorType = "CANNOT_PARSE_DATETIME"
 
-	// ErrorTypeIncorrectData は ClickHouse が入力 data 不正に対して返す error type です。
+	// ErrorTypeIncorrectData is the error type that ClickHouse returns for invalid
+	// input data.
 	ErrorTypeIncorrectData ErrorType = "INCORRECT_DATA"
 
-	// ErrorTypeUnknownFormat は ClickHouse が未知の input/output format に対して返す error type です。
+	// ErrorTypeUnknownFormat is the error type that ClickHouse returns for an
+	// unknown input or output format.
 	ErrorTypeUnknownFormat ErrorType = "UNKNOWN_FORMAT"
 
-	// ErrorTypeBlocksHaveDifferentStructure は ClickHouse が block structure 不一致に対して返す error type です。
+	// ErrorTypeBlocksHaveDifferentStructure is the error type that ClickHouse
+	// returns for blocks whose structures do not match.
 	ErrorTypeBlocksHaveDifferentStructure ErrorType = "BLOCKS_HAVE_DIFFERENT_STRUCTURE"
 
-	// ErrorTypeTooFewColumns は ClickHouse が column 数不足に対して返す error type です。
+	// ErrorTypeTooFewColumns is the error type that ClickHouse returns for too few
+	// columns.
 	ErrorTypeTooFewColumns ErrorType = "TOO_FEW_COLUMNS"
 
-	// ErrorTypeTooManyColumns は ClickHouse が column 数過多に対して返す error type です。
+	// ErrorTypeTooManyColumns is the error type that ClickHouse returns for too
+	// many columns.
 	ErrorTypeTooManyColumns ErrorType = "TOO_MANY_COLUMNS"
 
-	// ErrorTypeNumberOfColumnsDoesntMatch は ClickHouse が column 数不一致に対して返す error type です。
+	// ErrorTypeNumberOfColumnsDoesntMatch is the error type that ClickHouse returns
+	// for a mismatch in the number of columns.
 	ErrorTypeNumberOfColumnsDoesntMatch ErrorType = "NUMBER_OF_COLUMNS_DOESNT_MATCH"
 
-	// ErrorTypeUnknownSetting は ClickHouse が未知の setting に対して返す error type です。
+	// ErrorTypeUnknownSetting is the error type that ClickHouse returns for an
+	// unknown setting.
 	ErrorTypeUnknownSetting ErrorType = "UNKNOWN_SETTING"
 
-	// ErrorTypeReadonlySetting は ClickHouse が変更不可 setting に対して返す error type です。
+	// ErrorTypeReadonlySetting is the error type that ClickHouse returns for a
+	// setting that cannot be changed.
 	ErrorTypeReadonlySetting ErrorType = "READONLY_SETTING"
 
-	// ErrorTypeSettingConstraintViolation は ClickHouse が setting 制約違反に対して返す error type です。
+	// ErrorTypeSettingConstraintViolation is the error type that ClickHouse returns
+	// for a violation of a setting constraint.
 	ErrorTypeSettingConstraintViolation ErrorType = "SETTING_CONSTRAINT_VIOLATION"
 
-	// 以下はJSONEachRowの入力値、column構成、設定値を同じまま再送しても解消しないerror typeです。
+	// The following error types are not resolved by resending with the same
+	// JSONEachRow input values, column structure and settings.
 	ErrorTypeCannotParseText                           ErrorType = "CANNOT_PARSE_TEXT"
 	ErrorTypeIncorrectNumberOfColumns                  ErrorType = "INCORRECT_NUMBER_OF_COLUMNS"
 	ErrorTypeSizesOfColumnsDoesntMatch                 ErrorType = "SIZES_OF_COLUMNS_DOESNT_MATCH"

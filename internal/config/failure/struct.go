@@ -98,13 +98,13 @@ type FailureFileSystemStoreConfig struct {
 type FileArchiveConfig struct {
 	MaxFileSize uint64
 
-	// ex.) backendfailurearchive
-	// ex.) /var/log/{target}/{dir}/
-	// ex.) /var/log/heterolog/backendfailurearchive
-	Dir string // ex.)/var/log/{target}/{dir}/
+	// 例: backendfailurearchive
+	// 例: /var/log/{target}/{dir}/
+	// 例: /var/log/heterolog/backendfailurearchive
+	Dir string // 例: /var/log/{target}/{dir}/
 	// retryable固定のため
-	DirCaseRetryable           string // ex.)/var/log/{target}/{dir}/{retryable}
-	DirCasePermanent           string // ex.)/var/log/{target}/{dir}/{permanent}
+	DirCaseRetryable           string // 例: /var/log/{target}/{dir}/{retryable}
+	DirCasePermanent           string // 例: /var/log/{target}/{dir}/{permanent}
 	EnableRotate               bool
 	MaxFileBackups             int
 	MaxFileAge                 int
@@ -113,7 +113,7 @@ type FileArchiveConfig struct {
 	CompressFormat             fsstore.CompressFormat
 	FileRotation               fsstore.FileRotationType // daily weekly monthly
 	FileRotationDayOfWeek      time.Weekday
-	MaxWriteAttempts           int
+	MaxWriteRetries            int
 	FileOperationRetryWaitTime time.Duration
 	ObjectStorageUploadConfig  objectstorage.UploadTargetConfig
 	// LifecycleModeはrotation後のcompress、upload、purgeを実行する主体を選択します。
@@ -127,12 +127,12 @@ type FileArchiveConfig struct {
 type DeliveryFileArchiveConfig struct {
 	MaxFileSize uint64
 
-	// ex.) backendfailurearchive
-	// ex.) /var/log/{target}/{dir}/
-	// ex.) /var/log/heterolog/backendfailurearchive
-	Dir                        string // ex.)/var/log/{target}/{dir}/
-	DirCaseRetryable           string // ex.)/var/log/{target}/{dir}/{retryable}
-	DirCasePermanent           string // ex.)/var/log/{target}/{dir}/{permanent}
+	// 例: backendfailurearchive
+	// 例: /var/log/{target}/{dir}/
+	// 例: /var/log/heterolog/backendfailurearchive
+	Dir                        string // 例: /var/log/{target}/{dir}/
+	DirCaseRetryable           string // 例: /var/log/{target}/{dir}/{retryable}
+	DirCasePermanent           string // 例: /var/log/{target}/{dir}/{permanent}
 	EnableRotate               bool
 	MaxFileBackups             int
 	MaxFileAge                 int
@@ -141,7 +141,7 @@ type DeliveryFileArchiveConfig struct {
 	CompressFormat             fsstore.CompressFormat
 	FileRotation               fsstore.FileRotationType // daily weekly monthly
 	FileRotationDayOfWeek      time.Weekday
-	MaxWriteAttempts           int
+	MaxWriteRetries            int
 	FileOperationRetryWaitTime time.Duration
 	ObjectStorageUploadConfig  objectstorage.UploadTargetConfig
 	// LifecycleModeの意味は通常failure archiveと同じです。
@@ -153,12 +153,12 @@ type DeliveryFileArchiveConfig struct {
 
 // 　オーバーロード時の処理判定の設定(ディスクスペース空き容量による制限のみ)
 type FileArchiveOverloadPolicyConfig struct {
-	OverloadPolicy   durable.OverloadPolicy   // drop or degrade
+	OverloadPolicy   durable.OverloadPolicy   // dropまたはdegrade
 	SpillDestination durable.SpillDestination // spoolに受け入れられない(degrade)場合の二次退避先　s3 stdoutなど
 }
 
 type SpoolConfig struct {
-	Dir string // ex.)/var/lib/{appname}/spool/{Dir} (Dir部分: backend名など)
+	Dir string // 例: /var/lib/{appname}/spool/{Dir} (Dir部分: backend名など)
 
 	OverloadPolicyConfig SpoolOverloadPolicyConfig
 	HandlerConfig        internalerror.RoutingConfig
@@ -167,7 +167,7 @@ type SpoolConfig struct {
 // オーバーロード時の処理判定とactive backlog滞留Warnの設定。
 // ActiveBacklogWarnAfterDaysは通知専用で、オーバーロード判定には使用しない。
 type SpoolOverloadPolicyConfig struct {
-	OverloadPolicy               durable.OverloadPolicy   // drop or degrade
+	OverloadPolicy               durable.OverloadPolicy   // dropまたはdegrade
 	SpillDestination             durable.SpillDestination // spoolに受け入れられない(spill)場合の二次退避先　s3 stdoutなど
 	MaxCallsSinceScan            uint64                   // 前回の統計 scan キャッシュの最大利用回数の設定値
 	StatsScanInterval            time.Duration            // overload 判定用に保持している ディレクトリ統計の有効期間

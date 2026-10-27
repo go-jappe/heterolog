@@ -32,7 +32,8 @@ jobs:
       - name: Race tests for logging, tracing, and spool persistence
         if: runner.os == 'Linux'
         run: >-
-          go test -race . ./internal/application/logging ./internal/application/trace/tracer
+          go test -race . ./internal/application/logging ./internal/application/loggerruntime
+          ./internal/application/trace/tracer ./internal/presentation/envconfig ./internal/presentation/sloghandler
           ./internal/infrastructure/logger/multi ./internal/infrastructure/logger/slack
           ./internal/infrastructure/logger/opensearch ./internal/infrastructure/fsstore/spool/...
           ./internal/infrastructure/spool/log/...

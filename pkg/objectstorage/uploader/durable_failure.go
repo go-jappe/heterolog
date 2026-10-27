@@ -2,20 +2,24 @@ package uploader
 
 import "time"
 
-// FailureCategoryは、一回のupload後に判定した失敗性質を表します。
-// fileArchiveとspoolのどちらへ保存するかは独立したdurable type設定で
-// 決まり、この分類はspoolの再送可否とarchive内の診断区分にだけ使用します。
+// FailureCategory is the nature of a failure, determined after a single upload.
+// The choice between fileArchive and spool is made by the separate durable type
+// setting; this category is used only to decide whether spool resends the file
+// and to group failures for diagnostics in the archive.
 type FailureCategory string
 
 const (
-	// FailureCategoryRetryableは、compressed log fileを保持して将来再送する失敗です。
+	// FailureCategoryRetryable is a failure for which the compressed log file is
+	// kept and resent later.
 	FailureCategoryRetryable FailureCategory = "retryable"
-	// FailureCategoryPermanentは、同じrequestの自動再送では解消しないことを
-	// 確認できた失敗です。compressed log file自体の破損を表すquarantineとは区別します。
+	// FailureCategoryPermanent is a failure confirmed not to be resolved by
+	// automatically resending the same request. It is distinct from quarantine,
+	// which indicates that the compressed log file itself is corrupted.
 	FailureCategoryPermanent FailureCategory = "permanent"
 )
 
-// IsValidは定義済みのupload失敗分類かを返します。失敗分類がない空文字は含めません。
+// IsValid reports whether category is a defined upload failure category. It
+// reports false for the empty string, which means no failure category.
 func (category FailureCategory) IsValid() bool {
 	switch category {
 	case FailureCategoryRetryable, FailureCategoryPermanent:
@@ -25,9 +29,10 @@ func (category FailureCategory) IsValid() bool {
 	}
 }
 
-// DurableUploadFailureDecisionは、compressed log fileの失敗性質と将来の再送時期を表します。
-// Reasonは診断用の安定した文字列、Codeは取得できたHTTP status、RetryAfterは
-// serviceが返した次回試行までの待機時間です。
+// DurableUploadFailureDecision describes the nature of a compressed log file's
+// failure and when to resend it. Reason is a stable string for diagnostics,
+// Code is the HTTP status if one was obtained, and RetryAfter is the wait
+// before the next attempt, as returned by the service.
 type DurableUploadFailureDecision struct {
 	FailureCategory FailureCategory
 	Reason          string

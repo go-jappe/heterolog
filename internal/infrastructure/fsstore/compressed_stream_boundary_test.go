@@ -44,8 +44,8 @@ func TestCompressedIntegrityRejectsEveryIncompletePrefix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// A nonempty prefix may have a valid header or complete blocks while
-			// still missing the index/footer needed to prove compression complete.
+			// 空でない先頭部分は、有効なheaderや完全なblockを含んでいても、圧縮の完了を
+			// 証明するのに必要なindex/footerを欠いていることがあります。
 			for size := 1; size < len(data); size++ {
 				if err := os.WriteFile(path, data[:size], 0o600); err != nil {
 					t.Fatal(err)
@@ -77,8 +77,8 @@ func TestXZIntegrityAcceptsCompleteStreamsAndPadding(t *testing.T) {
 }
 
 func TestXZIntegrityAcceptsMultipleChunks(t *testing.T) {
-	// Exercise both compressed continuations and uncompressed continuations
-	// within a single block, rather than only the first LZMA2 chunk.
+	// 最初のLZMA2 chunkだけでなく、一つのblock内で後に続く圧縮chunkと非圧縮chunkの
+	// 両方を確かめます。
 	random := make([]byte, 150000)
 	if _, err := rand.New(rand.NewSource(1)).Read(random); err != nil {
 		t.Fatal(err)
@@ -150,9 +150,9 @@ func TestXZIntegrityRejectsEarlyBlockEndBeforeIndexedBoundary(t *testing.T) {
 	data := makeXZIntegrityFixture(t, []byte("records"), xz.WriterConfig{NoCheckSum: true})
 	assertXZIntegrity(t, data, false)
 	compressedStart := 12 + (int(data[12])+1)*4
-	// The stream's original index and footer remain valid. The decoder can
-	// otherwise accept this shortened block and swallow EOF while reading the
-	// phantom 1024-byte block header immediately after its zero padding.
+	// streamの元のindexとfooterは有効なままです。別途確認しなければ、decoderは
+	// この短くなったblockを受け付け、zero paddingの直後にある実在しない1024 byteの
+	// block headerを読む途中でEOFを握りつぶすことがあります。
 	data[compressedStart] = 0
 	clear(data[compressedStart+1 : compressedStart+4])
 	data[compressedStart+4] = 255

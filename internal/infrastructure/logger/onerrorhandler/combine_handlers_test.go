@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +23,8 @@ func TestCombinedHandlersReceiveIndependentLogEntries(t *testing.T) {
 	handler := func(
 		_ context.Context,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		entry.Message = "handler"
 		entry.Fields["owner"] = "handler"
@@ -52,8 +52,8 @@ func TestCombinedErrorHandlersReceiveIndependentLogEntries(t *testing.T) {
 		_ context.Context,
 		_ error,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		entry.Message = "handler"
 		received <- entry
@@ -81,8 +81,8 @@ func TestCombinedErrorHandlersReportErrorWithoutLogEntry(t *testing.T) {
 		_ context.Context,
 		err error,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		receivedErrs <- err
 		received <- entry
@@ -120,8 +120,8 @@ func TestCombinedErrorHandlersSkipNilLogEntryWithoutError(t *testing.T) {
 			context.Context,
 			error,
 			*logging.LogEntry,
-			observer.Tracer,
-			observer.Meter,
+			pkgobserver.Tracer,
+			pkgobserver.Meter,
 		) {
 			called = true
 		},

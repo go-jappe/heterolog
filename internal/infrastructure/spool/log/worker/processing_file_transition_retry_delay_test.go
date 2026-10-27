@@ -74,8 +74,8 @@ func TestWorkerTransitionRetryWaitsAfterSlowFailure(t *testing.T) {
 					ProcessingFileTransitionRetry: retry,
 				}
 
-				// Each failed attempt takes longer than RetryDelay. The next delay
-				// must still begin when that failure returns, on every attempt.
+				// 失敗する各試行はRetryDelayより長くかかります。それでも毎回の試行で、
+				// 次の待機はその失敗が返った時点から始まらなければなりません。
 				for attempt := 0; attempt < 2; attempt++ {
 					report, handled, err := worker.RunOnceProcessingFileTransitionRetry(context.Background())
 					require.True(t, handled)
@@ -102,8 +102,9 @@ func TestWorkerTransitionRetryWaitsAfterSlowFailure(t *testing.T) {
 					time.Sleep(time.Nanosecond)
 				}
 
-				// The third attempt is allowed exactly at the deadline and succeeds
-				// after storage recovers. Previously completed stores are not repeated.
+				// 3回目の試行は期限ちょうどに許可され、storageの回復後に最後まで処理されます。
+				// recoveryErrを指定したcaseでは、そのerrorを返して失敗として終わります。
+				// 完了済みのstore処理は繰り返しません。
 				report, handled, err := worker.RunOnceProcessingFileTransitionRetry(context.Background())
 				require.True(t, handled)
 				if tt.recoveryErr == nil {
@@ -126,9 +127,9 @@ func TestWorkerTransitionRetryWaitsAfterSlowFailure(t *testing.T) {
 	}
 }
 
-// slowTransitionStore adds deterministic I/O latency to the ordinary in-memory
-// store. Failed calls have no storage side effects; all successful calls retain
-// the records in workerStoreStub / activeStoreStub for content assertions.
+// slowTransitionStoreは、通常のin-memory storeに決定的なI/O遅延を加えます。
+// 失敗した呼び出しはstorageに副作用を残しません。成功した呼び出しはすべて、内容の
+// 検証用にrecordをworkerStoreStub / activeStoreStubへ保持します。
 type slowTransitionStore struct {
 	*workerStoreStub
 	activeStore  *activeStoreStub

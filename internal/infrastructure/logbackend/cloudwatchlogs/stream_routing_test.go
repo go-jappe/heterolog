@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 )
 
@@ -17,14 +16,14 @@ func TestResolveLogStreamName(t *testing.T) {
 	at := time.Date(2026, time.August, 13, 17, 42, 0, 0, location)
 	tests := []struct {
 		name        string
-		granularity streamrouting.Granularity
+		granularity pkgcloudwatchlogs.StreamRouting
 		want        string
 	}{
 		{name: "zero value uses fixed stream", want: "app/task-1"},
-		{name: "none", granularity: streamrouting.None, want: "app/task-1"},
-		{name: "monthly", granularity: streamrouting.Monthly, want: "app/task-1/2026/08"},
-		{name: "daily", granularity: streamrouting.Daily, want: "app/task-1/2026/08/13"},
-		{name: "hourly", granularity: streamrouting.Hourly, want: "app/task-1/2026/08/13/17"},
+		{name: "none", granularity: pkgcloudwatchlogs.StreamRoutingNone, want: "app/task-1"},
+		{name: "monthly", granularity: pkgcloudwatchlogs.StreamRoutingMonthly, want: "app/task-1/2026/08"},
+		{name: "daily", granularity: pkgcloudwatchlogs.StreamRoutingDaily, want: "app/task-1/2026/08/13"},
+		{name: "hourly", granularity: pkgcloudwatchlogs.StreamRoutingHourly, want: "app/task-1/2026/08/13/17"},
 	}
 	for _, tt := range tests {
 		tt := tt
@@ -50,7 +49,7 @@ func TestResolveLogStreamNameUsesProvidedTimeLocation(t *testing.T) {
 
 	utcName, err := ResolveLogStreamName(
 		"app",
-		streamrouting.Daily,
+		pkgcloudwatchlogs.StreamRoutingDaily,
 		instantUTC,
 	)
 	if err != nil {
@@ -58,7 +57,7 @@ func TestResolveLogStreamNameUsesProvidedTimeLocation(t *testing.T) {
 	}
 	localName, err := ResolveLogStreamName(
 		"app",
-		streamrouting.Daily,
+		pkgcloudwatchlogs.StreamRoutingDaily,
 		instantUTC.In(location),
 	)
 	if err != nil {
@@ -78,12 +77,12 @@ func TestResolveLogStreamNameRejectsInvalidValues(t *testing.T) {
 	tests := []struct {
 		name          string
 		baseName      string
-		granularity   streamrouting.Granularity
+		granularity   pkgcloudwatchlogs.StreamRouting
 		wantErr       error
 		wantCharacter rune
 	}{
 		{name: "empty base", baseName: " ", wantErr: pkgcloudwatchlogs.ErrLogStreamNameRequired},
-		{name: "unsupported granularity", baseName: "app", granularity: "weekly", wantErr: streamrouting.ErrInvalidGranularity},
+		{name: "unsupported granularity", baseName: "app", granularity: "weekly", wantErr: pkgcloudwatchlogs.ErrInvalidStreamRouting},
 		{name: "forbidden character", baseName: "app:*", wantErr: pkgcloudwatchlogs.ErrLogStreamNameInvalidCharacter},
 		{name: "embedded newline", baseName: "app\nworker", wantErr: ErrLogStreamNameControlCharacter, wantCharacter: '\n'},
 		{name: "invisible format character", baseName: "app\u200bworker", wantErr: ErrLogStreamNameFormatCharacter, wantCharacter: '\u200b'},
@@ -92,7 +91,7 @@ func TestResolveLogStreamNameRejectsInvalidValues(t *testing.T) {
 			// suffixを付けた後の名前でAWSの文字数上限を検証します。
 			name:        "routed name exceeds AWS limit",
 			baseName:    strings.Repeat("a", 512),
-			granularity: streamrouting.Hourly,
+			granularity: pkgcloudwatchlogs.StreamRoutingHourly,
 			wantErr:     pkgcloudwatchlogs.ErrLogStreamNameTooLong,
 		},
 	}
@@ -118,14 +117,14 @@ func TestResolveLogStreamNameRejectsInvalidValues(t *testing.T) {
 		})
 	}
 	// 基準名だけなら上限内でも、suffixを付けた名前が上限を超える場合に拒否します。
-	if _, err := ResolveLogStreamName(strings.Repeat("a", 512), streamrouting.None, time.Date(2026, time.August, 13, 17, 0, 0, 0, time.UTC)); err != nil {
+	if _, err := ResolveLogStreamName(strings.Repeat("a", 512), pkgcloudwatchlogs.StreamRoutingNone, time.Date(2026, time.August, 13, 17, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("ResolveLogStreamName() without suffix error = %v, want nil", err)
 	}
 }
 
 func TestLogStreamNameResolverUsesEventTimezone(t *testing.T) {
 	t.Parallel()
-	resolver, err := NewLogStreamNameResolver("container/task-1", streamrouting.Hourly)
+	resolver, err := NewLogStreamNameResolver("container/task-1", pkgcloudwatchlogs.StreamRoutingHourly)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +154,7 @@ func TestLogStreamNameResolverRejectsZeroEventTime(t *testing.T) {
 
 	resolver, err := NewLogStreamNameResolver(
 		"app",
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 	)
 	if err != nil {
 		t.Fatalf("NewLogStreamNameResolver() error = %v", err)
@@ -173,15 +172,15 @@ func TestNewLogStreamNameResolverRejectsInvalidConfiguration(t *testing.T) {
 	tests := []struct {
 		name        string
 		baseName    string
-		granularity streamrouting.Granularity
+		granularity pkgcloudwatchlogs.StreamRouting
 		wantErr     error
 	}{
 		{name: "empty base name", baseName: " ", wantErr: pkgcloudwatchlogs.ErrLogStreamNameRequired},
-		{name: "invalid granularity", baseName: "app", granularity: "weekly", wantErr: streamrouting.ErrInvalidGranularity},
+		{name: "invalid granularity", baseName: "app", granularity: "weekly", wantErr: pkgcloudwatchlogs.ErrInvalidStreamRouting},
 		{
 			name:        "routed name exceeds AWS limit",
 			baseName:    strings.Repeat("a", 512),
-			granularity: streamrouting.Hourly,
+			granularity: pkgcloudwatchlogs.StreamRoutingHourly,
 			wantErr:     pkgcloudwatchlogs.ErrLogStreamNameTooLong,
 		},
 	}

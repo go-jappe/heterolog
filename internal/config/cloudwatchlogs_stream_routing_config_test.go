@@ -9,7 +9,6 @@ import (
 	cloudwatchlogscfg "github.com/go-jappe/heterolog/internal/config/cloudwatchlogs"
 	mappedvalidation "github.com/go-jappe/heterolog/internal/config/validation/mapped"
 	infracloudwatchlogs "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/testutil/errortree"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	"github.com/go-jappe/heterolog/pkg/env"
@@ -19,8 +18,8 @@ func TestCloudWatchLogsStreamRoutingLoadingNormalizesEnvironmentValue(t *testing
 	t.Setenv("TEST_CLOUDWATCH_LOG_STREAM_ROTATION", "  HoUrLy  ")
 
 	got := loadCloudWatchLogsStreamRoutingGranularity(env.GetEnvString("TEST_CLOUDWATCH_LOG_STREAM_ROTATION", string(cloudwatchlogscfg.DefaultStreamRoutingGranularity)))
-	if got != streamrouting.Hourly {
-		t.Fatalf("loaded stream routing granularity = %q, want %q", got, streamrouting.Hourly)
+	if got != pkgcloudwatchlogs.StreamRoutingHourly {
+		t.Fatalf("loaded stream routing granularity = %q, want %q", got, pkgcloudwatchlogs.StreamRoutingHourly)
 	}
 }
 

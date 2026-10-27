@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
@@ -19,6 +18,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/utils/jsonutil"
 )
 
@@ -69,8 +69,8 @@ type LokiLogger struct {
 	// flushManagerは構築完了前に設定し、運用中は差し替えないLogger所有の送信依存です。
 	// FlushとCloseの実行順序はinFlightとflushMuで保護します。
 	flushManager FlushManager
-	Tracer       observer.Tracer
-	Meter        observer.Meter
+	Tracer       pkgobserver.Tracer
+	Meter        pkgobserver.Meter
 }
 
 var _ logging.BackendLogEntryHandler = (*LokiLogger)(nil)
@@ -105,8 +105,8 @@ func NewLokiLogger(
 	fmCfg LokiFlushManagerRuntimeConfigProvider,
 	resourceProvider resource.ResourceProvider,
 	failureHandler *flushfailure.CompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 	opts ...LokiLoggerOption,
 ) (*LokiLogger, error) {
@@ -143,8 +143,8 @@ func newLokiLogger(
 	resourceProvider resource.ResourceProvider,
 	failureHandler *flushfailure.CompositeFailureHandler,
 	failureReportHandler *flushfailure.ReportingCompositeFailureHandler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	loggerBase *LoggerBase,
 	opts ...LokiLoggerOption,
 ) (*LokiLogger, error) {
@@ -460,7 +460,7 @@ func (l *LokiLogger) enqueue(ctx context.Context, entry *logging.LogEntry) error
 	l.mu.Lock()
 	if l.closeState != common.LoggerCloseStateOpen {
 		l.mu.Unlock()
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	l.entries = append(l.entries, entry)
 	l.entryBytes = append(l.entryBytes, entryBytes)
@@ -628,7 +628,7 @@ func (l *LokiLogger) pushImmediately(ctx context.Context, entry *logging.LogEntr
 	l.mu.Lock()
 	if l.closeState != common.LoggerCloseStateOpen {
 		l.mu.Unlock()
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	flushManager := l.flushManager
 	l.inFlight.Add(1)
@@ -673,7 +673,7 @@ func (l *LokiLogger) loggerClosedError() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closeState != common.LoggerCloseStateOpen {
-		return applogging.ErrLoggerClosed
+		return pkglogger.ErrLoggerClosed
 	}
 	return nil
 }

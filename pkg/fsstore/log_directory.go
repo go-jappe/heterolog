@@ -6,16 +6,20 @@ import (
 )
 
 var (
-	// ErrEmptyLogDirectoryは、通常ログの保存先サブディレクトリ名が空であることを表します。
+	// ErrEmptyLogDirectory reports that the name of the subdirectory that stores
+	// normal logs is empty or only white space.
 	ErrEmptyLogDirectory = errors.New("log directory must not be empty")
-	// ErrEmptyDebugLogDirectoryは、debug directory分離が有効なのに保存先がないことを表します。
+	// ErrEmptyDebugLogDirectory reports that a separate debug directory is
+	// enabled but no destination is set.
 	ErrEmptyDebugLogDirectory = errors.New("debug log directory must not be empty")
 )
 
-// ValidateLogDirectoryは、通常ログの保存先サブディレクトリ名LogDirが
-// 空文字・空白だけでないことを検証し、空ならErrEmptyLogDirectoryを返します。
-// 呼び出し元は既定値と設定継承を適用した後、file出力で実際に使用する設定だけを渡してください。
-// ディレクトリの実在確認や作成、権限の検査は行いません。
+// ValidateLogDirectory validates that LogDir, the name of the subdirectory that
+// stores normal logs, is not empty or only whitespace, and returns
+// ErrEmptyLogDirectory if it is. Callers should pass only the settings that
+// file output actually uses, after applying defaults and setting inheritance.
+// It does not check that the directory exists, create it, or inspect its
+// permissions.
 func ValidateLogDirectory(directory string) error {
 	if strings.TrimSpace(directory) == "" {
 		return ErrEmptyLogDirectory
@@ -23,9 +27,10 @@ func ValidateLogDirectory(directory string) error {
 	return nil
 }
 
-// ValidateDebugLogDirectoryは、debug directory分離が有効な場合に保存先が指定されているかを検証し、
-// 指定がなければErrEmptyDebugLogDirectoryを返します。
-// directory分離が無効な場合は、以前の保存先が残っていても検証しません。
+// ValidateDebugLogDirectory validates that a destination is set when a
+// separate debug directory is enabled, and returns ErrEmptyDebugLogDirectory if
+// none is set. When the separate directory is disabled, it does not validate
+// the destination, even if a previous destination remains.
 func ValidateDebugLogDirectory(enabled bool, directory string) error {
 	if enabled && strings.TrimSpace(directory) == "" {
 		return ErrEmptyDebugLogDirectory

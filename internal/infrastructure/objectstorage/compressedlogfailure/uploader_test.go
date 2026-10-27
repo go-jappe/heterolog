@@ -69,9 +69,9 @@ func TestManagedUploaderStoresRetryableFailureInEverySelectedStore(t *testing.T)
 	if spoolDetailsForTest(receivedNotification).State != pkgspool.StateActive {
 		t.Fatalf("spool state = %q, want active", spoolDetailsForTest(receivedNotification).State)
 	}
-	// Stop the replay coordinator before inspecting its directories. The live
-	// worker may briefly move a deferred file through processing even though it
-	// returns it to active without uploading before the retry deadline.
+	// directoryを検査する前にreplay coordinatorを止めます。稼働中のworkerは、
+	// 延期されたfileをretry期限前にはuploadせずactiveへ戻しますが、その途中で
+	// 一時的にprocessingへ移すことがあります。
 	if err := managed.Close(); err != nil {
 		t.Fatalf("Close() before durable store inspection error = %v", err)
 	}
@@ -424,8 +424,8 @@ func TestManagedUploaderDurablyPreservesMalformedUploadReport(t *testing.T) {
 				},
 			}, remote)
 
-			// The malformed report is a failed remote attempt. It may be acknowledged
-			// only because the selected durable store accepted the source first.
+			// 不正な形式のreportは、remoteへの試行の失敗です。これをacknowledgeできるのは、
+			// 選択したdurable storeが先にsourceを受理したためだけです。
 			if err := managed.Upload(context.Background(), uploadertest.Request(t, sourcePath)); err != nil {
 				t.Fatalf("durably preserved malformed report returned error = %v", err)
 			}

@@ -2,6 +2,7 @@ package victoriametrics
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -230,6 +231,23 @@ func TestFormatPrometheusText_BackwardCompatibility(t *testing.T) {
 				t.Errorf("FormatPrometheusText() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPrometheusTextFormatterFormatReportsInvalidMetricIndex(t *testing.T) {
+	// 2番目のmetricだけが不正なので、errorにはその位置と元の原因が残ります。
+	_, err := NewPrometheusTextFormatter().Format([]Metric{
+		{Name: "valid_metric", Value: 1},
+		{Name: "", Value: 2},
+	})
+	if err == nil {
+		t.Fatal("Format() error = nil, want an error for the invalid metric")
+	}
+	if want := "invalid metric at index 1: "; !strings.HasPrefix(err.Error(), want) {
+		t.Errorf("Format() error = %q, want prefix %q", err, want)
+	}
+	if !errors.Is(err, ErrEmptyMetricName) {
+		t.Errorf("Format() error = %v, want errors.Is ErrEmptyMetricName", err)
 	}
 }
 

@@ -14,9 +14,9 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 )
 
-// A negative limit means that this attempt accepts the whole remaining input.
-// Otherwise the writer appends only the reported prefix, just as a partial file
-// write does. allowShortNil is reserved for explicitly malformed-writer cases.
+// 負のlimitは、この試行で残りの入力をすべて受け付けることを表します。それ以外の場合、
+// writerは部分的なfile書き込みと同じく、報告した長さの先頭部分だけを追記します。
+// allowShortNilは、明示的に不正なwriterを扱うcaseに限って使います。
 type scriptedStringWriteResult struct {
 	limit         int
 	err           error
@@ -167,7 +167,8 @@ func TestWriteStringWithRetryPreservesOneRecordAcrossPartialWrites(t *testing.T)
 						t.Error("reported successful write latency before the complete record was written")
 					}
 				},
-				NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteAttempts: attempts}), writer,
+				// 表は初回を含む試行回数で書くため、設定へは初回を除いた再試行の回数を渡します。
+				NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteRetries: attempts - 1}), writer,
 			)
 			if test.wantErr == nil {
 				if err != nil {
@@ -203,7 +204,7 @@ func TestWriteStringWithRetryAppendsOneRecordToExistingFile(t *testing.T) {
 	}
 	written, err := store.WriteStringWithRetry(
 		context.Background(), "test.appendlog.file-write", "日本", nil, nil, nil, "write failed", nil,
-		NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteAttempts: 2}),
+		NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteRetries: 1}),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -233,7 +234,7 @@ func TestWriteStringWithRetryWithoutActiveFileKeepsEnsureWritableCause(t *testin
 	store := &FileStore{Tracer: observer.NopTracer{}}
 	_, err := store.WriteStringWithRetry(
 		context.Background(), "test.appendlog.closed-file", "message", nil, nil, nil, "write failed", nil,
-		NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteAttempts: 2}),
+		NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteRetries: 1}),
 	)
 	var writableErr *EnsureWritableError
 	if !errors.As(err, &writableErr) {

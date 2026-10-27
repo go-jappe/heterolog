@@ -80,7 +80,7 @@ func ClassifyDurableInsertFailure(
 	if err == nil {
 		return retryable.RetryDecision{}
 	}
-	// Marshal errors are known input failures, not unknown delivery outcomes.
+	// marshal errorは既知の入力不備であり、配送結果が不明なものではありません。
 	var marshalErr *pkgclickhouse.LogRecordMarshalError
 	if errors.As(err, &marshalErr) && marshalErr != nil {
 		return recordScopedInsertFailure(inputCount, retryable.RetryReasonRecordRejected, 0, 0)

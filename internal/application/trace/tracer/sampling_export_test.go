@@ -36,8 +36,8 @@ func TestSamplerControlsExportedSpans(t *testing.T) {
 				tr := tracer.NewTracer(tracer.WithSampler(test.sampler), tracer.WithExporter(exporter))
 				_, record := tr.StartSpan(ctx, "sampling-export")
 				record.End()
-				// Quiescence ensures any asynchronous Export has run before we
-				// assert absence; a sleep or an immediate channel read can miss it.
+				// 静止状態まで待つことで、exportがないことを検証する前に、非同期のExportがあれば
+				// 必ず実行済みになります。sleepや即時のchannel読み取りでは、それを見逃すことがあります。
 				synctest.Wait()
 				wantCount := 0
 				if test.wantExport {

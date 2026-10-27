@@ -35,7 +35,7 @@ type testFileArchiveConfig struct {
 	dirCaseRetryable           string
 	dirCasePermanent           string
 	enableRotate               bool
-	maxWriteAttempts           int
+	maxWriteRetries            int
 	fileOperationRetryWaitTime time.Duration
 }
 
@@ -85,8 +85,8 @@ func (c testFileArchiveConfig) DirCasePermanent() string {
 	return c.dirCasePermanent
 }
 func (c testFileArchiveConfig) EnableRotate() bool { return c.enableRotate }
-func (c testFileArchiveConfig) MaxWriteAttempts() int {
-	return c.maxWriteAttempts
+func (c testFileArchiveConfig) MaxWriteRetries() int {
+	return c.maxWriteRetries
 }
 func (c testFileArchiveConfig) FileOperationRetryWaitTime() time.Duration {
 	return c.fileOperationRetryWaitTime
@@ -155,7 +155,7 @@ func TestValidateFileArchiveConfigProvider(t *testing.T) {
 		// 保持上限の0は上限なしとして受け付けるため、0以外で最小値未満の値を使います。
 		cfg.maxFileAge = -1
 		cfg.maxFileBackups = 1
-		cfg.maxWriteAttempts = 0
+		cfg.maxWriteRetries = -1
 		cfg.fileOperationRetryWaitTime = 0
 
 		err := ValidateFileArchiveConfigProvider(cfg)
@@ -175,7 +175,7 @@ func TestValidateFileArchiveConfigProvider(t *testing.T) {
 			fsstore.ErrInvalidMaxFileBackups,
 			fsstore.ErrInvalidMaxFileAge,
 			fsstore.ErrInvalidMaxDirSize,
-			fsstore.ErrInvalidMaxWriteAttempts,
+			fsstore.ErrInvalidMaxWriteRetries,
 			fsstore.ErrInvalidFileOperationRetryWaitTime,
 		)
 	})
@@ -734,7 +734,7 @@ func newValidTestFileArchiveConfig(t *testing.T) testFileArchiveConfig {
 		target:                     "test-app",
 		rotationType:               pkgfsstore.FileRotationDaily,
 		rotationDayOfWeek:          time.Sunday,
-		fileNameFormat:             FileNameFormat,
+		fileNameFormat:             pkgfsstore.FailureArchiveFileNameFormat,
 		fileDateFormat:             pkgfsstore.FileDateFormat,
 		maxFileSize:                2 * 1024 * 1024,
 		maxDirSize:                 20 * 1024 * 1024,
@@ -747,7 +747,7 @@ func newValidTestFileArchiveConfig(t *testing.T) testFileArchiveConfig {
 		dirCaseRetryable:           "retryable",
 		dirCasePermanent:           "permanent",
 		enableRotate:               true,
-		maxWriteAttempts:           1,
+		maxWriteRetries:            0,
 		fileOperationRetryWaitTime: time.Millisecond,
 	}
 }

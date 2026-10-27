@@ -12,11 +12,11 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler/reentrytest"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // TestClickHouseLoggerOnWarnWriteDoesNotRedispatchLevelWarningは、log levelより低い
@@ -31,7 +31,7 @@ func TestClickHouseLoggerOnWarnWriteDoesNotRedispatchLevelWarning(t *testing.T) 
 			client := &recordingClickHouseClient{}
 			logger := newTestClickHouseLoggerWithConfigAndOptions(t, client, baseCfg)
 			probe := reentrytest.NewProbe(t)
-			logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				_, ok := probe.Enter()
 				defer probe.Exit()
 				if !ok {
@@ -151,11 +151,11 @@ func TestClickHouseLoggerHandlerWriteDoesNotRedispatchInsertDelay(t *testing.T) 
 				// error閾値（200ms）を超えるINSERTで、flushのたびにINSERT遅延のerrorを通知させます。
 				client := &slowClickHouseClient{delay: 300 * time.Millisecond}
 				logger := newClickHouseReentryLatencyLogger(t, client, pkglogger.LogLevelDebug, 100*time.Millisecond, 200*time.Millisecond)
-				logger.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					t.Errorf("unexpected warn internal log notification: %s", entry.Message)
 				}
 				probe := reentrytest.NewProbe(t)
-				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					depth, ok := probe.Enter()
 					defer probe.Exit()
 					if !ok {
@@ -199,11 +199,11 @@ func TestClickHouseLoggerReentrantDirectWriteAppliesLogLevel(t *testing.T) {
 				// warn閾値（100ms）だけを超えるINSERTで、flushのたびにINSERT遅延のwarningを通知させます。
 				client := &slowClickHouseClient{delay: 300 * time.Millisecond}
 				logger := newClickHouseReentryLatencyLogger(t, client, pkglogger.LogLevelError, 100*time.Millisecond, time.Hour)
-				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					t.Errorf("unexpected error internal log notification: %v", err)
 				}
 				probe := reentrytest.NewProbe(t)
-				logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					depth, ok := probe.Enter()
 					defer probe.Exit()
 					if !ok {
@@ -260,12 +260,12 @@ func TestClickHouseLoggerBulkFlushNotifiesAfterReleasingFlushLock(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			logger.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			logger.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				t.Errorf("unexpected warn internal log notification: %s", entry.Message)
 			}
 			probe := reentrytest.NewProbe(t)
 			var heldDuringNotification atomic.Bool
-			logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				if logger.flushMu.TryLock() {
 					logger.flushMu.Unlock()
 				} else {

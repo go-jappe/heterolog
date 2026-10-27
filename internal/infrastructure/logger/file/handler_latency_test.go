@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFileLatencyNotificationsUseOperationThresholds(t *testing.T) {
@@ -42,11 +42,11 @@ func TestFileLatencyNotificationsUseOperationThresholds(t *testing.T) {
 				at := time.Date(2026, time.October, 2, 0, 0, 0, 0, time.UTC)
 				logger := &FileLogger{config: NewConfigAdapter(cfg), Clock: clock.NewFixedClock(at)}
 				var entries []*logging.LogEntry
-				capture := func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				capture := func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					entries = append(entries, entry)
 				}
 				logger.OnDebug, logger.OnWarn = capture, capture
-				logger.OnError = func(ctx context.Context, _ error, entry *logging.LogEntry, tracer observer.Tracer, meter observer.Meter) {
+				logger.OnError = func(ctx context.Context, _ error, entry *logging.LogEntry, tracer pkgobserver.Tracer, meter pkgobserver.Meter) {
 					capture(ctx, entry, tracer, meter)
 				}
 				const meta = "request-or-file"

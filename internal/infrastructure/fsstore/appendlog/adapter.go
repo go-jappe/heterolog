@@ -376,19 +376,19 @@ func (a DurationConfigAdapter) WriteFileLatencyEnabled() bool {
 }
 
 type RetryConfigAdapter struct {
-	MaxWriteAttemptsConfig           int
+	MaxWriteRetriesConfig            int
 	FileOperationRetryWaitTimeConfig time.Duration
 }
 
 func NewRetryConfigAdapter(cfg fsstore.RetryConfig) RetryConfigProvider {
 	return &RetryConfigAdapter{
-		MaxWriteAttemptsConfig:           cfg.MaxWriteAttempts,
+		MaxWriteRetriesConfig:            cfg.MaxWriteRetries,
 		FileOperationRetryWaitTimeConfig: cfg.FileOperationRetryWaitTime,
 	}
 }
 
-func (a RetryConfigAdapter) MaxWriteAttempts() int {
-	return a.MaxWriteAttemptsConfig
+func (a RetryConfigAdapter) MaxWriteRetries() int {
+	return a.MaxWriteRetriesConfig
 }
 
 func (a RetryConfigAdapter) FileOperationRetryWaitTime() time.Duration {

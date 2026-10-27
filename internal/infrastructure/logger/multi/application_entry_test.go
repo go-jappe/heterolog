@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -43,19 +42,19 @@ func TestMultiLoggerBuildsOneApplicationEntryBeforeFanOut(t *testing.T) {
 		trace.NewSpanContext(trace.SpanContextConfig{TraceID: traceID, SpanID: spanID}),
 	)
 
-	traceOverride, err := applogging.String("trace_id", "field-trace")
+	traceOverride, err := pkglogger.String("trace_id", "field-trace")
 	require.NoError(t, err)
-	component, err := applogging.String("component", "checkout")
+	component, err := pkglogger.String("component", "checkout")
 	require.NoError(t, err)
 	payloadSource := map[string]any{"mode": "safe", "enabled": true}
-	payload, err := applogging.Any("payload", payloadSource)
+	payload, err := pkglogger.Any("payload", payloadSource)
 	require.NoError(t, err)
 	payloadSource["mode"] = "mutated-after-field-construction"
 
 	require.NoError(t, logger.Info(
 		ctx,
 		"accepted",
-		applogging.WithRequestID("field-request"),
+		pkglogger.WithRequestID("field-request"),
 		traceOverride,
 		component,
 		payload,

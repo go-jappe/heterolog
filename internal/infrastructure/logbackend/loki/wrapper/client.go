@@ -8,6 +8,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/loki/retryclassifier"
 	"github.com/go-jappe/heterolog/pkg/loki"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 const SpanNamePush = "internal.infrastructure.loki.wrapper.push"
@@ -33,13 +34,13 @@ type retryBackoffConfigProvider interface {
 type RetryingClient struct {
 	next   Client
 	cfg    retryBackoffConfigProvider
-	tracer observer.Tracer
+	tracer pkgobserver.Tracer
 }
 
 func newRetryingClient(
 	next Client,
 	cfg retryBackoffConfigProvider,
-	tracer observer.Tracer,
+	tracer pkgobserver.Tracer,
 ) *RetryingClient {
 	return &RetryingClient{
 		next:   next,
@@ -94,11 +95,11 @@ func (c *RetryingClient) doWithRetry(ctx context.Context, name string, op func(c
 		nextDelay = c.retryDelay(attempt, dec)
 
 		span.AddEvent("loki.retry_decision",
-			observer.Attr{Key: "reason", Value: string(dec.Reason)},
-			observer.Attr{Key: "attempt", Value: attempt},
-			observer.Attr{Key: "retry", Value: dec.Retry},
-			observer.Attr{Key: "http_status", Value: dec.Code},
-			observer.Attr{Key: "error", Value: lastErr.Error()},
+			pkgobserver.Attr{Key: "reason", Value: string(dec.Reason)},
+			pkgobserver.Attr{Key: "attempt", Value: attempt},
+			pkgobserver.Attr{Key: "retry", Value: dec.Retry},
+			pkgobserver.Attr{Key: "http_status", Value: dec.Code},
+			pkgobserver.Attr{Key: "error", Value: lastErr.Error()},
 		)
 		span.End()
 	}

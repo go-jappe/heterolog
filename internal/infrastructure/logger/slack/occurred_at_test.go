@@ -27,7 +27,7 @@ func TestFallbackHandlerPreservesOccurrenceThroughSlackBatch(t *testing.T) {
 	if !acquired {
 		t.Fatal("fallback logger was not acquired")
 	}
-	// Keep the entry buffered so the test can inspect the same batch that a delayed send uses.
+	// 遅延送信が使うものと同じbatchをtestで確認できるよう、entryをbufferに残します。
 	fallback.nextNotificationImmediate = false
 	fallback.slackAPI = nil
 	controller.release()

@@ -23,6 +23,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/timestamp"
 	pkgclock "github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
 
 	"github.com/stretchr/testify/assert"
@@ -102,7 +103,7 @@ func (r *mockTestResourceProvider) CloudProviderRegion() string {
 // OpenSearchFlushManagerConfigProvider なので、この mock は両方を満たします。
 type MockOpenSearchFlushManagerConfig struct {
 	timeConfig                 pkglogger.TimeConfig
-	maxRetryAttempts           int
+	maxItemRetries             int
 	retryWaitTime              time.Duration
 	postWarnThresholdDuration  time.Duration
 	postErrorThresholdDuration time.Duration
@@ -140,7 +141,7 @@ var _ LogBodyConfigProvider = (*MockOpenSearchFlushManagerConfig)(nil)
 
 func NewMockOpenSearchFlushManagerConfig() *MockOpenSearchFlushManagerConfig {
 	return &MockOpenSearchFlushManagerConfig{
-		maxRetryAttempts:           3,
+		maxItemRetries:             2,
 		retryWaitTime:              time.Millisecond,
 		postWarnThresholdDuration:  time.Second,
 		postErrorThresholdDuration: 2 * time.Second,
@@ -217,7 +218,7 @@ func (m *MockOpenSearchFlushManagerConfig) PostErrorThresholdDuration() time.Dur
 	return m.postErrorThresholdDuration
 }
 func (m *MockOpenSearchFlushManagerConfig) IndexLatencyEnabled() bool { return m.indexLatencyEnabled }
-func (m *MockOpenSearchFlushManagerConfig) MaxRetryAttempts() int     { return m.maxRetryAttempts }
+func (m *MockOpenSearchFlushManagerConfig) MaxItemRetries() int       { return m.maxItemRetries }
 func (m *MockOpenSearchFlushManagerConfig) RetryWaitTime() time.Duration {
 	return m.retryWaitTime
 }
@@ -413,7 +414,7 @@ func retryableBulkResponse(docs []pkgopensearch.DocumentWriteRequest) *pkgopense
 func NewMockOpenSearchClientWrapper() pkgopensearch.Client {
 	return &MockFlushManagerClient{}
 }
-func newFlushManagerTestTelemetry(t *testing.T) (context.Context, observer.Tracer, observer.Meter, func()) {
+func newFlushManagerTestTelemetry(t *testing.T) (context.Context, pkgobserver.Tracer, pkgobserver.Meter, func()) {
 	t.Helper()
 
 	ctx, tracer, meter, _, finish := newFlushManagerTestTelemetryWithExporter(t)
@@ -422,7 +423,7 @@ func newFlushManagerTestTelemetry(t *testing.T) (context.Context, observer.Trace
 
 func newFlushManagerTestTelemetryWithExporter(
 	t *testing.T,
-) (context.Context, observer.Tracer, observer.Meter, *tracetest.InMemoryExporter, func()) {
+) (context.Context, pkgobserver.Tracer, pkgobserver.Meter, *tracetest.InMemoryExporter, func()) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -516,8 +517,8 @@ func assertOpenSearchFailurePayload(
 func newTestLoggerBase(
 	clock pkgclock.Clock,
 	cfg *MockOpenSearchFlushManagerConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *LoggerBase {
 	return &LoggerBase{
 		Clock:              clock,
@@ -531,8 +532,8 @@ func newTestLoggerBase(
 func newTestFlushManager(
 	client pkgopensearch.Client,
 	cfg *MockOpenSearchFlushManagerConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *OpenSearchFlushManager {
 	mockClock := pkgclock.NewUTCClock()
 	res := newTestResourceProvider()
@@ -598,17 +599,17 @@ func TestNewOpenSearchFlushManagerRejectsInvalidBulkRetryConfig(t *testing.T) {
 	resourceProvider := newTestResourceProvider()
 	loggerBase := newTestLoggerBase(pkgclock.NewUTCClock(), mockConfig, tracer, meter)
 	for _, test := range []struct {
-		name     string
-		attempts int
-		wait     time.Duration
-		want     error
+		name    string
+		retries int
+		wait    time.Duration
+		want    error
 	}{
-		{"zero attempts", 0, 0, ErrInvalidMaxRetryAttempts},
-		{"negative wait", 1, -time.Second, ErrNegativeRetryWaitTime},
+		{"negative item retries", -1, 0, ErrNegativeMaxItemRetries},
+		{"negative wait", 0, -time.Second, ErrNegativeRetryWaitTime},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := NewMockOpenSearchFlushManagerConfig()
-			cfg.maxRetryAttempts, cfg.retryWaitTime = test.attempts, test.wait
+			cfg.maxItemRetries, cfg.retryWaitTime = test.retries, test.wait
 			manager, err := NewOpenSearchFlushManager(
 				loggerBase, NewMockOpenSearchClientWrapper(), cfg,
 				NewLogEntryConverter(false, resourceProvider, loggerBase.TimestampFormatter),
@@ -620,11 +621,11 @@ func TestNewOpenSearchFlushManagerRejectsInvalidBulkRetryConfig(t *testing.T) {
 	}
 }
 
-// 構築時に受理したbulk再送設定は、送信時のitem送信回数（初回を含む）を決めます。
+// 構築時に受理したbulk再送設定は、送信時のitem送信回数（再送の回数に初回を足した数）を決めます。
 // 設定値を何回読み出すかという実装詳細ではなく、送信回数と残った失敗recordで検証します。
 func TestOpenSearchBulkConfigValidatedAtConstruction(t *testing.T) {
 	cfg := NewMockOpenSearchFlushManagerConfig()
-	cfg.maxRetryAttempts = 3
+	cfg.maxItemRetries = 2
 	cfg.retryWaitTime = 0
 	res := newTestResourceProvider()
 	base := newTestLoggerBase(pkgclock.NewUTCClock(), cfg, observer.NopTracer{}, observer.NopMeter{})
@@ -641,7 +642,7 @@ func TestOpenSearchBulkConfigValidatedAtConstruction(t *testing.T) {
 
 	result, err := manager.sendDocumentsToOpenSearch(context.Background(), []map[string]any{{"message": "test"}})
 	require.NoError(t, err)
-	assert.Equal(t, cfg.maxRetryAttempts, client.IndexDocumentsCallCount)
+	assert.Equal(t, cfg.maxItemRetries+1, client.IndexDocumentsCallCount)
 	require.Len(t, result.RetryableRecords, 1)
 	assert.Equal(t, http.StatusTooManyRequests, result.RetryableRecords[0].StatusCode)
 	assert.Empty(t, result.DeadRecords)
@@ -748,7 +749,7 @@ func TestOpenSearchFlushManager_Flush_ClientNotInitialized(t *testing.T) {
 	mockClock := pkgclock.NewUTCClock()
 	mockConfig := NewMockOpenSearchFlushManagerConfig()
 	errorHandlerCalled := false
-	errorHandler := func(ctx context.Context, err error, entry *logging.LogEntry, tracer observer.Tracer, meter observer.Meter) {
+	errorHandler := func(ctx context.Context, err error, entry *logging.LogEntry, tracer pkgobserver.Tracer, meter pkgobserver.Meter) {
 		errorHandlerCalled = true
 	}
 
@@ -1247,7 +1248,7 @@ func TestOpenSearchFlushManager_SendDocumentsToOpenSearch_UnclassifiedBulkErrorQ
 	mockClient := NewMockOpenSearchClientWrapper().(*MockFlushManagerClient)
 	mockClient.returnError = true
 	mockConfig := NewMockOpenSearchFlushManagerConfig()
-	mockConfig.maxRetryAttempts = 2
+	mockConfig.maxItemRetries = 1
 	flushManager := newTestFlushManager(mockClient, mockConfig, tracer, meter)
 
 	docs := []map[string]any{{
@@ -1281,7 +1282,7 @@ func TestOpenSearchFlushManager_SendDocumentsToOpenSearch_RetriesRetryableBulkIt
 	mockClient := NewMockOpenSearchClientWrapper().(*MockFlushManagerClient)
 	mockClient.returnRetryableBulkOnce = true
 	mockConfig := NewMockOpenSearchFlushManagerConfig()
-	mockConfig.maxRetryAttempts = 2
+	mockConfig.maxItemRetries = 1
 	flushManager := newTestFlushManager(mockClient, mockConfig, tracer, meter)
 
 	docs := []map[string]any{{
@@ -1309,7 +1310,7 @@ func TestOpenSearchFlushManager_SendDocumentsToOpenSearch_BulkItemRetryWaitHonor
 		mockClient := NewMockOpenSearchClientWrapper().(*MockFlushManagerClient)
 		mockClient.returnRetryableBulkOnce = true
 		mockConfig := NewMockOpenSearchFlushManagerConfig()
-		mockConfig.maxRetryAttempts = 2
+		mockConfig.maxItemRetries = 1
 		mockConfig.retryWaitTime = time.Hour
 		flushManager := newTestFlushManager(mockClient, mockConfig, tracer, meter)
 		ctx, cancel := context.WithTimeout(context.Background(), deadline)

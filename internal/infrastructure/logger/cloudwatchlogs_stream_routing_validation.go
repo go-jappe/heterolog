@@ -6,7 +6,7 @@ import (
 	"time"
 
 	infracloudwatchlogs "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -17,7 +17,7 @@ import (
 func validateLoggerCloudWatchLogsStreamRouting(
 	source string,
 	cfg pkglogger.LoggerConfig,
-	granularity streamrouting.Granularity,
+	granularity pkgcloudwatchlogs.StreamRouting,
 ) error {
 	var streamNames []string
 	if cfg.CloudWatchLogs != nil &&
@@ -43,7 +43,7 @@ func validateLoggerCloudWatchLogsStreamRouting(
 func validateDeliveryLoggerCloudWatchLogsStreamRouting(
 	source string,
 	cfg pkglogger.DeliveryLoggerConfig,
-	granularity streamrouting.Granularity,
+	granularity pkgcloudwatchlogs.StreamRouting,
 ) error {
 	var streamNames []string
 	if cfg.CloudWatchLogs != nil &&
@@ -74,7 +74,7 @@ var ErrUnsupportedStreamRoutingGranularity = errors.New("unsupported cloudwatch 
 // 実stream名の不正ではpkg/cloudwatchlogsのsentinel（ErrLogStreamNameTooLongなど）を含みます。
 type CloudWatchLogsStreamRoutingError struct {
 	Source      string
-	Granularity streamrouting.Granularity
+	Granularity pkgcloudwatchlogs.StreamRouting
 	StreamName  string
 	Err         error
 }
@@ -100,7 +100,7 @@ func (e unsupportedStreamRoutingGranularityError) Unwrap() []error {
 func validateCloudWatchLogsStreamRouting(
 	source string,
 	streamNames []string,
-	granularity streamrouting.Granularity,
+	granularity pkgcloudwatchlogs.StreamRouting,
 ) error {
 	if len(streamNames) == 0 {
 		return nil

@@ -26,7 +26,6 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	infraobjectstorage "github.com/go-jappe/heterolog/internal/infrastructure/objectstorage"
 	objectstoragefailurearchive "github.com/go-jappe/heterolog/internal/infrastructure/objectstorage/failurearchive"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
@@ -34,6 +33,8 @@ import (
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 type archiveFixedClock struct {
@@ -81,7 +82,7 @@ type testArchiveConfig struct {
 	compressionCodec           pkgfsstore.CompressionCodec
 	rotationType               pkgfsstore.FileRotationType
 	rotationDayOfWeek          time.Weekday
-	maxWriteAttempts           int
+	maxWriteRetries            int
 	fileOperationRetryWaitTime time.Duration
 	archiveCheckpoint          pkgfsstore.ArchiveCheckpointConfig
 	lifecycleRunnerConfig      pkgfsstore.AppendLogRunnerConfig
@@ -93,7 +94,7 @@ type testArchiveConfig struct {
 	// spillStdoutは、degrade policyのstdout退避をos.Stdoutの代わりに受け取るwriterです。
 	spillStdout io.Writer
 	// tracerは構築時に渡すtracerです。nilならobserver.NopTracerを使います。
-	tracer observer.Tracer
+	tracer pkgobserver.Tracer
 	// retryableUploader/permanentUploaderは構築時に渡す試験用の宛先付きuploaderです。
 	// 本番と同じく構築時にcheckpoint Storeを用意し、宛先を登録します。
 	retryableUploader uploader.Uploader
@@ -315,8 +316,8 @@ func (c testArchiveConfig) DirCasePermanent() string {
 	return c.dirCasePermanent
 }
 func (c testArchiveConfig) EnableRotate() bool { return c.enableRotate }
-func (c testArchiveConfig) MaxWriteAttempts() int {
-	return c.maxWriteAttempts
+func (c testArchiveConfig) MaxWriteRetries() int {
+	return c.maxWriteRetries
 }
 func (c testArchiveConfig) FileOperationRetryWaitTime() time.Duration {
 	return c.fileOperationRetryWaitTime
@@ -405,8 +406,8 @@ func TestHandleFailureDelegatesArchiveWriteError(t *testing.T) {
 				_ context.Context,
 				err error,
 				entry *logging.LogEntry,
-				_ observer.Tracer,
-				_ observer.Meter,
+				_ pkgobserver.Tracer,
+				_ pkgobserver.Meter,
 			) {
 				delegatedErr = err
 				delegatedEntry = entry
@@ -943,8 +944,8 @@ func newFailureWriteGateTracer() *failureWriteGateTracer {
 func (g *failureWriteGateTracer) StartSpan(
 	ctx context.Context,
 	name string,
-	attrs ...observer.Attr,
-) (context.Context, observer.Span) {
+	attrs ...pkgobserver.Attr,
+) (context.Context, pkgobserver.Span) {
 	if name == SpanFileWrite {
 		first := false
 		g.enterOnce.Do(func() { first = true })
@@ -1009,8 +1010,8 @@ func TestFailureArchiveRotationErrorNotifiesBeforeTaskCompletion(t *testing.T) {
 					context.Context,
 					error,
 					*logging.LogEntry,
-					observer.Tracer,
-					observer.Meter,
+					pkgobserver.Tracer,
+					pkgobserver.Meter,
 				) {
 					notifyOnce.Do(func() {
 						pipeline.handler.archiveTaskMu.Lock()
@@ -1089,8 +1090,8 @@ func TestFailureArchiveRotationTaskPanicKeepsOwnershipUntilForced(t *testing.T) 
 			_ context.Context,
 			err error,
 			_ *logging.LogEntry,
-			_ observer.Tracer,
-			_ observer.Meter,
+			_ pkgobserver.Tracer,
+			_ pkgobserver.Meter,
 		) {
 			var internalErr *FailureArchiveInternalError
 			if errors.As(err, &internalErr) && internalErr.Op == OperationRotationArchive {
@@ -1147,10 +1148,10 @@ func TestFailureArchiveRotationTaskPanicKeepsOwnershipUntilForced(t *testing.T) 
 			t.Fatalf("Shutdown() abandoned a pending panic retry: %v", err)
 		default:
 		}
-		if err := pipeline.ForceClose(); !errors.Is(err, shutdown.ErrForcedClose) {
+		if err := pipeline.ForceClose(); !errors.Is(err, pkgshutdown.ErrForcedClose) {
 			t.Fatalf("ForceClose() = %v", err)
 		}
-		if err := <-closed; !errors.Is(err, shutdown.ErrForcedClose) {
+		if err := <-closed; !errors.Is(err, pkgshutdown.ErrForcedClose) {
 			t.Fatalf("Shutdown() after force = %v", err)
 		}
 		<-pipeline.ShutdownDone()
@@ -1545,7 +1546,7 @@ func TestHandleFailureDropsArchiveWhenStorageIsOverloaded(t *testing.T) {
 	handler := newTestArchiveHandler(t, now, func(cfg *testArchiveConfig) {
 		cfg.overload.overloadPolicy = durable.OverloadPolicy("drop")
 		cfg.overload.minAvailableDiskSpace = ^uint64(0)
-	}, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	}, InternalLogHandlers{OnError: func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		notified = append(notified, err)
 	}})
 	expiredArchives := writeExpiredArchivesForTest(t, handler.handler, now)
@@ -1809,7 +1810,7 @@ func newTestArchiveHandler(
 			options.spillStdout = cfg.spillStdout
 		})
 	}
-	var tracer observer.Tracer = observer.NopTracer{}
+	var tracer pkgobserver.Tracer = observer.NopTracer{}
 	if cfg.tracer != nil {
 		tracer = cfg.tracer
 	}
@@ -1884,7 +1885,7 @@ func newValidArchiveHandlerConfig(t *testing.T) testArchiveConfig {
 		compressFormat:             pkgfsstore.CompressGzip,
 		rotationType:               pkgfsstore.FileRotationDaily,
 		rotationDayOfWeek:          time.Sunday,
-		maxWriteAttempts:           1,
+		maxWriteRetries:            0,
 		fileOperationRetryWaitTime: time.Millisecond,
 		lifecycleRunnerConfig: pkgfsstore.AppendLogRunnerConfig{
 			Interval: time.Minute,

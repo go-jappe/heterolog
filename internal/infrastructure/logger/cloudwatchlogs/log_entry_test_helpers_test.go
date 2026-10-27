@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/field"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -14,7 +13,7 @@ func newTestLogEntry(
 	level pkglogger.LogLevel,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) *logging.LogEntry {
 	ids, extra := field.ExtractIDsAndExtraFields(fields)
 	return &logging.LogEntry{
@@ -34,7 +33,7 @@ func handleTestLogAt(
 	occurredAt time.Time,
 	level pkglogger.LogLevel,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	entry := newTestLogEntry(level, message, nil, fields...)
 	entry.OccurredAt = occurredAt.UTC()
@@ -46,24 +45,24 @@ func handleTestLog(
 	logger *CloudWatchLogsLogger,
 	level pkglogger.LogLevel,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	return logger.HandleLogEntry(ctx, newTestLogEntry(level, message, nil, fields...))
 }
 
-func handleTestDebug(ctx context.Context, logger *CloudWatchLogsLogger, message string, fields ...applogging.Field) error {
+func handleTestDebug(ctx context.Context, logger *CloudWatchLogsLogger, message string, fields ...pkglogger.Field) error {
 	return handleTestLog(ctx, logger, pkglogger.LogLevelDebug, message, fields...)
 }
 
-func handleTestInfo(ctx context.Context, logger *CloudWatchLogsLogger, message string, fields ...applogging.Field) error {
+func handleTestInfo(ctx context.Context, logger *CloudWatchLogsLogger, message string, fields ...pkglogger.Field) error {
 	return handleTestLog(ctx, logger, pkglogger.LogLevelInfo, message, fields...)
 }
 
-func handleTestWarn(ctx context.Context, logger *CloudWatchLogsLogger, message string, fields ...applogging.Field) error {
+func handleTestWarn(ctx context.Context, logger *CloudWatchLogsLogger, message string, fields ...pkglogger.Field) error {
 	return handleTestLog(ctx, logger, pkglogger.LogLevelWarn, message, fields...)
 }
 
-func handleTestError(ctx context.Context, logger *CloudWatchLogsLogger, message string, fields ...applogging.Field) error {
+func handleTestError(ctx context.Context, logger *CloudWatchLogsLogger, message string, fields ...pkglogger.Field) error {
 	return handleTestLog(ctx, logger, pkglogger.LogLevelError, message, fields...)
 }
 
@@ -72,7 +71,7 @@ func handleTestErrorWithStack(
 	logger *CloudWatchLogsLogger,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) error {
 	entry := newTestLogEntry(pkglogger.LogLevelError, message, err, fields...)
 	entry.StackTraceRequested = true
@@ -84,24 +83,24 @@ func handleTestDeliveryLog(
 	logger *DeliveryCloudWatchLogsLogger,
 	level pkglogger.LogLevel,
 	message string,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	return logger.HandleLogEntry(ctx, newTestLogEntry(level, message, nil, fields...))
 }
 
-func handleTestDeliveryDebug(ctx context.Context, logger *DeliveryCloudWatchLogsLogger, message string, fields ...applogging.Field) (pkglogger.DeliveryReport, error) {
+func handleTestDeliveryDebug(ctx context.Context, logger *DeliveryCloudWatchLogsLogger, message string, fields ...pkglogger.Field) (pkglogger.DeliveryReport, error) {
 	return handleTestDeliveryLog(ctx, logger, pkglogger.LogLevelDebug, message, fields...)
 }
 
-func handleTestDeliveryInfo(ctx context.Context, logger *DeliveryCloudWatchLogsLogger, message string, fields ...applogging.Field) (pkglogger.DeliveryReport, error) {
+func handleTestDeliveryInfo(ctx context.Context, logger *DeliveryCloudWatchLogsLogger, message string, fields ...pkglogger.Field) (pkglogger.DeliveryReport, error) {
 	return handleTestDeliveryLog(ctx, logger, pkglogger.LogLevelInfo, message, fields...)
 }
 
-func handleTestDeliveryWarn(ctx context.Context, logger *DeliveryCloudWatchLogsLogger, message string, fields ...applogging.Field) (pkglogger.DeliveryReport, error) {
+func handleTestDeliveryWarn(ctx context.Context, logger *DeliveryCloudWatchLogsLogger, message string, fields ...pkglogger.Field) (pkglogger.DeliveryReport, error) {
 	return handleTestDeliveryLog(ctx, logger, pkglogger.LogLevelWarn, message, fields...)
 }
 
-func handleTestDeliveryError(ctx context.Context, logger *DeliveryCloudWatchLogsLogger, message string, fields ...applogging.Field) (pkglogger.DeliveryReport, error) {
+func handleTestDeliveryError(ctx context.Context, logger *DeliveryCloudWatchLogsLogger, message string, fields ...pkglogger.Field) (pkglogger.DeliveryReport, error) {
 	return handleTestDeliveryLog(ctx, logger, pkglogger.LogLevelError, message, fields...)
 }
 
@@ -110,7 +109,7 @@ func handleTestDeliveryErrorWithStack(
 	logger *DeliveryCloudWatchLogsLogger,
 	message string,
 	err error,
-	fields ...applogging.Field,
+	fields ...pkglogger.Field,
 ) (pkglogger.DeliveryReport, error) {
 	entry := newTestLogEntry(pkglogger.LogLevelError, message, err, fields...)
 	entry.StackTraceRequested = true

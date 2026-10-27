@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFailureArchiveRotationOpenFailureReportsAndWritesCurrentActiveFile(t *testing.T) {
@@ -74,8 +74,8 @@ func TestFailureArchiveRotationOpenFailureReportsAndWritesCurrentActiveFile(t *t
 				_ context.Context,
 				err error,
 				_ *logging.LogEntry,
-				_ observer.Tracer,
-				_ observer.Meter,
+				_ pkgobserver.Tracer,
+				_ pkgobserver.Meter,
 			) {
 				delegatedErrors = append(delegatedErrors, err)
 				oldContent, readErr := os.ReadFile(oldPath)

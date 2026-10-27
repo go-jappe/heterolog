@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // 受理済み操作の完了後にも追加の試験操作を行うため、終了済みqueueだけを置き換えます。
@@ -25,10 +25,10 @@ func drainArchiveRecoveryForTest(t *testing.T, handler *FsArchiveHandler) {
 // Store・uploaderだけを差し替える既存の再起動fixtureで、以前の再試行を明示的に止めます。
 func restartArchiveRecoveryForTest(t *testing.T, handler *FsArchiveHandler) {
 	t.Helper()
-	require.ErrorIs(t, handler.logFileProcessingRecovery.ForceClose(), shutdown.ErrForcedClose)
+	require.ErrorIs(t, handler.logFileProcessingRecovery.ForceClose(), pkgshutdown.ErrForcedClose)
 	// 強制終了したqueueは受け付けないため、順序待ちの世代も保護を解除して破棄します。
 	handler.closeArchiveGenerationOrderWaits()
-	require.ErrorIs(t, handler.logFileProcessingRecovery.Close(), shutdown.ErrForcedClose)
+	require.ErrorIs(t, handler.logFileProcessingRecovery.Close(), pkgshutdown.ErrForcedClose)
 	waitArchiveRecoveryNotificationsForTest(t, handler)
 	handler.logFileProcessingRecovery = &logfile.LogFileProcessingRecovery[archiveLogFileProcessingRecoveryKey]{}
 	reopenArchiveGenerationOrderWaitsForTest(handler)

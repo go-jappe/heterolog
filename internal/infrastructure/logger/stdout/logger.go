@@ -17,6 +17,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/timestamp"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 var _ infralogging.BackendLogEntryHandler = (*StdoutLogger)(nil)
@@ -29,8 +30,8 @@ type StdoutLogger struct {
 	OnInfo    infralogging.LoggerHandlerFunc
 	OnDebug   infralogging.LoggerHandlerFunc
 	formatter formatter.Formatter
-	Tracer    observer.Tracer // 現在createのみ計装する方針
-	Meter     observer.Meter
+	Tracer    pkgobserver.Tracer // 現在createのみ計装する方針
+	Meter     pkgobserver.Meter
 
 	// internalLogReentryは、OnErrorへ渡すcontextへこのloggerの印を付け、通知を実行するgoroutineを記録します。
 	// 通知の中から同じloggerへの書き込みが失敗した場合、その内部ログはOnErrorを再び呼ばず、
@@ -160,8 +161,8 @@ func NewStdoutLogger(
 	ctx context.Context,
 	config StdoutLoggerConfigProvider,
 	otelResource resource.OtelLogResourceProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	opts ...LoggerOption,
 ) (*StdoutLogger, error) {
 	tracer = observer.EnsureTracer(tracer)

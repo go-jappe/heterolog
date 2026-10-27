@@ -9,8 +9,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	appotel "github.com/go-jappe/heterolog/internal/application/otel"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
@@ -22,6 +20,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/timestamp"
 	pkgclock "github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
 
 	"github.com/stretchr/testify/require"
@@ -138,7 +137,7 @@ type MockOpenSearchConfigProvider struct {
 	flushInterval              time.Duration
 	noBulkFlushModeEnabled     bool
 	indexLatencyEnabled        bool
-	maxRetryAttempts           int
+	maxItemRetries             int
 	retryWaitTime              time.Duration
 	onErrorConfig              []string
 	onWarnConfig               []string
@@ -176,7 +175,7 @@ func NewMockOpenSearchConfigProvider() *MockOpenSearchConfigProvider {
 		postErrorThresholdDuration: 2 * time.Second,
 		flushInterval:              5 * time.Second,
 		indexLatencyEnabled:        true,
-		maxRetryAttempts:           3,
+		maxItemRetries:             2,
 		retryWaitTime:              time.Second,
 	}
 }
@@ -194,7 +193,7 @@ func (m *MockOpenSearchConfigProvider) FailureStoreConfig() durable.FailureStore
 	return nil
 }
 
-func (m *MockOpenSearchConfigProvider) MaxRetryAttempts() int        { return m.maxRetryAttempts }
+func (m *MockOpenSearchConfigProvider) MaxItemRetries() int          { return m.maxItemRetries }
 func (m *MockOpenSearchConfigProvider) RetryWaitTime() time.Duration { return m.retryWaitTime }
 func (m *MockOpenSearchConfigProvider) IsDebug() bool                { return m.isDebug }
 func (m *MockOpenSearchConfigProvider) AppName() string              { return m.appName }
@@ -264,7 +263,7 @@ func (r *MockResourceProvider) CloudProviderRegion() string { return "local" }
 var _ resource.ResourceProvider = (*MockResourceProvider)(nil)
 var _ resource.OtelLogResourceProvider = (*MockResourceProvider)(nil)
 
-func newTestObserver() (observer.Tracer, observer.Meter) {
+func newTestObserver() (pkgobserver.Tracer, pkgobserver.Meter) {
 	return appotel.NewOtelTracer(iootel.Tracer("opensearch-logger-test")),
 		appotel.NewOtelMeter(iootel.Meter("opensearch-logger-test"))
 }
@@ -554,7 +553,7 @@ func TestOpenSearchLogger_CloseFlushesAndClosesStopChannel(t *testing.T) {
 	require.NotEmpty(t, req.ID)
 	require.Equal(t, pkgopensearch.WriteOpCreate, req.Op)
 	require.Equal(t, "close flush", req.Doc["message"])
-	require.ErrorIs(t, logger.testInfo(ctx, "after close"), applogging.ErrLoggerClosed)
+	require.ErrorIs(t, logger.testInfo(ctx, "after close"), pkglogger.ErrLoggerClosed)
 }
 
 // 通常APIでもerrorを渡さないErrorWithStackを拒否せず、stackを持つERROR documentとして記録します。

@@ -11,13 +11,13 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFailureArchivePipelineCheckpointErrorNotifiesAndCallerShutdownDrainsRecovery(t *testing.T) {
@@ -48,7 +48,7 @@ func TestFailureArchivePipelineCheckpointErrorNotifiesAndCallerShutdownDrainsRec
 						store := &transientArchiveCheckpointStore{loadFailuresUntil: callbackDone, failure: checkpointErr}
 						cfg.embedArchiveCheckpointStore(failureCategory, &store.Store, store)
 					}, InternalLogHandlers{OnError: func(
-						_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter,
+						_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter,
 					) {
 						if !errors.Is(err, checkpointErr) || !callbackSeen.CompareAndSwap(false, true) {
 							return
@@ -125,8 +125,8 @@ func TestFailureArchivePipelineWarnHandlerRunsAfterWriterUnlock(t *testing.T) {
 		InternalLogHandlers{OnWarn: func(
 			context.Context,
 			*logging.LogEntry,
-			observer.Tracer,
-			observer.Meter,
+			pkgobserver.Tracer,
+			pkgobserver.Meter,
 		) {
 			if !pipeline.handler.Fsstore.Mu.TryLock() {
 				t.Error("OnWarn called while the writer lock was held")
@@ -187,8 +187,8 @@ func TestFailureArchivePipelineUploadErrorIsNotifiedAndKeepsSource(t *testing.T)
 			context.Context,
 			error,
 			*logging.LogEntry,
-			observer.Tracer,
-			observer.Meter,
+			pkgobserver.Tracer,
+			pkgobserver.Meter,
 		) {
 			if !pipeline.handler.Fsstore.Mu.TryLock() {
 				t.Error("upload OnError called while the writer lock was held")
@@ -249,7 +249,7 @@ func TestFailureArchivePipelineWriteErrorNotifiedDuringRequest(t *testing.T) {
 			pipeline := newTestArchiveHandler(t, now, nil)
 			handler := pipeline.handler
 			var notifications, scans int
-			handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				if !errors.Is(err, writeErr) {
 					return
 				}

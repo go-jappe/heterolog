@@ -20,19 +20,19 @@ import (
 	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/config/failure"
-	configspool "github.com/go-jappe/heterolog/internal/config/spool"
 	configspoolrunner "github.com/go-jappe/heterolog/internal/config/spool/spoolrunner"
 	configspoolsupervisor "github.com/go-jappe/heterolog/internal/config/spool/spoolsupervisor"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	infralogger "github.com/go-jappe/heterolog/internal/infrastructure/logger"
-	memoryprovider "github.com/go-jappe/heterolog/internal/infrastructure/memory/pressure"
 	memorymonitor "github.com/go-jappe/heterolog/internal/observer/memory/pressure"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/memorypressure"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
+	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
 const (
@@ -98,7 +98,7 @@ func TestLoggingOpenSearchSpoolOverflowWithMemoryMonitor(t *testing.T) {
 			logger, err := infralogger.NewLogger(
 				ctx,
 				loggerCfg,
-				streamrouting.None,
+				pkgcloudwatchlogs.StreamRoutingNone,
 				integrationSpoolConfig(),
 				monitor,
 				observer.NopTracer{},
@@ -175,7 +175,7 @@ func TestLoggingOpenSearchDurableArchiveOnPermanentFailure(t *testing.T) {
 	logger, err := infralogger.NewLogger(
 		ctx,
 		loggerCfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		monitor,
 		observer.NopTracer{},
@@ -238,7 +238,7 @@ func TestAsyncLoggingOpenSearchFailureSpoolIsResentEndToEnd(t *testing.T) {
 	logger, err := infralogger.NewAsyncLogger(
 		ctx,
 		loggerCfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		integrationSpoolConfig(),
 		monitor,
 		observer.NopTracer{},
@@ -277,7 +277,7 @@ func TestDeliveryLoggingOpenSearchReportsTargetFailureAndArchivesInternallyEndTo
 	logger, err := infralogger.NewDeliveryLogger(
 		ctx,
 		loggerCfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		observer.NopTracer{},
 		meter,
 	)
@@ -290,7 +290,7 @@ func TestDeliveryLoggingOpenSearchReportsTargetFailureAndArchivesInternallyEndTo
 	report, err := logger.Info(
 		ctx,
 		"delivery-archive log 1",
-		applogging.WithRequestID("delivery-archive-request"),
+		pkglogger.WithRequestID("delivery-archive-request"),
 	)
 	if err == nil {
 		t.Fatal("delivery logger.Info error = nil, want target delivery failure")
@@ -395,7 +395,7 @@ func durableOpenSearchLoggerConfig(
 				PostWarnThresholdDuration:  time.Second,
 				PostErrorThresholdDuration: 2 * time.Second,
 				IndexLatencyEnabled:        false,
-				MaxRetryAttempts:           1,
+				MaxItemRetries:             0,
 				RetryWaitTime:              time.Millisecond,
 				FailureStoreConfig: durable.FailureStoreConfig{
 					MaxConcurrent: 4,
@@ -419,7 +419,7 @@ func durableOpenSearchLoggerConfig(
 							CompressFormat:             pkgfsstore.CompressGzip,
 							RotationType:               pkgfsstore.FileRotationDaily,
 							RotationDayOfWeek:          time.Sunday,
-							MaxWriteAttempts:           1,
+							MaxWriteRetries:            0,
 							FileOperationRetryWaitTime: time.Millisecond,
 							OverloadPolicyConfig: durable.FileArchiveOverloadPolicyConfig{
 								OverloadPolicy:        failure.OverloadPolicyDrop,
@@ -455,8 +455,8 @@ func durableOpenSearchLoggerConfig(
 	}
 }
 
-func integrationSpoolConfig() *configspool.SpoolConfig {
-	cfg := &configspool.SpoolConfig{}
+func integrationSpoolConfig() *pkgspool.SpoolConfig {
+	cfg := &pkgspool.SpoolConfig{}
 	cfg.SupervisorConfig.RestartDelay = configspoolsupervisor.DefaultRestartDelay
 	cfg.RunnerConfig.OpensearchConfig.Runner.Interval = configspoolrunner.DefaultRunnerInterval
 	cfg.RunnerConfig.OpensearchConfig.Worker.Finalize.RetryDelay = time.Millisecond
@@ -540,7 +540,7 @@ func deliveryDurableOpenSearchLoggerConfig(
 						CompressFormat:             baseArchive.CompressFormat,
 						RotationType:               baseArchive.RotationType,
 						RotationDayOfWeek:          baseArchive.RotationDayOfWeek,
-						MaxWriteAttempts:           baseArchive.MaxWriteAttempts,
+						MaxWriteRetries:            baseArchive.MaxWriteRetries,
 						FileOperationRetryWaitTime: baseArchive.FileOperationRetryWaitTime,
 						OverloadPolicyConfig:       baseArchive.OverloadPolicyConfig,
 						IsDebug:                    baseArchive.IsDebug,
@@ -556,13 +556,13 @@ func deliveryDurableOpenSearchLoggerConfig(
 
 // writeTwoBulkLogsは二件のlogを書きます。MaxBulkDocument=2の設定では二件目でbulk送信が
 // 起こるため、その送信失敗をoverload policyがdropした場合、二件目はErrLogDroppedを返します。
-func writeTwoBulkLogs(t *testing.T, ctx context.Context, logger applogging.Logger, prefix string, wantSecondDropped bool) {
+func writeTwoBulkLogs(t *testing.T, ctx context.Context, logger pkglogger.Logger, prefix string, wantSecondDropped bool) {
 	t.Helper()
 
-	if err := logger.Info(ctx, prefix+" log 1", applogging.WithRequestID(prefix+"-request")); err != nil {
+	if err := logger.Info(ctx, prefix+" log 1", pkglogger.WithRequestID(prefix+"-request")); err != nil {
 		t.Fatalf("first logger.Info returned error: %v", err)
 	}
-	err := logger.Info(ctx, prefix+" log 2", applogging.WithRequestID(prefix+"-request"))
+	err := logger.Info(ctx, prefix+" log 2", pkglogger.WithRequestID(prefix+"-request"))
 	switch {
 	case wantSecondDropped && !errors.Is(err, pkglogger.ErrLogDropped):
 		t.Fatalf("second logger.Info error = %v, want ErrLogDropped for the bulk dropped by overload policy", err)
@@ -574,19 +574,19 @@ func writeTwoBulkLogs(t *testing.T, ctx context.Context, logger applogging.Logge
 func writeAsyncLog(
 	t *testing.T,
 	ctx context.Context,
-	logger applogging.AsyncLogger,
+	logger pkglogger.AsyncLogger,
 	message string,
 	requestID string,
 ) {
 	t.Helper()
 
-	logger.Info(ctx, message, applogging.WithRequestID(requestID))
+	logger.Info(ctx, message, pkglogger.WithRequestID(requestID))
 }
 
 // closeIntegrationLoggerは、loggerを停止の検出付きでCloseします。Closeは受理済みのfailure処理を
 // 期限なく待つ場合があるため、上限（boundedwait.HangTimeout）を過ぎたらForceCloseして試験を
 // 失敗させます。試験の本文では、Close後の件数と保存内容を最終の結果として確かめる前に呼びます。
-func closeIntegrationLogger(t *testing.T, logger applogging.Logger) {
+func closeIntegrationLogger(t *testing.T, logger pkglogger.Logger) {
 	t.Helper()
 
 	closer, ok := logger.(applogging.CloseableLogger)
@@ -600,7 +600,7 @@ func closeIntegrationLogger(t *testing.T, logger applogging.Logger) {
 }
 
 // closeIntegrationAsyncLoggerは、closeIntegrationLoggerと同じ上限で非同期loggerをCloseします。
-func closeIntegrationAsyncLogger(t *testing.T, logger applogging.AsyncLogger) {
+func closeIntegrationAsyncLogger(t *testing.T, logger pkglogger.AsyncLogger) {
 	t.Helper()
 
 	closer, ok := logger.(applogging.AsyncCloseableLogger)
@@ -631,7 +631,7 @@ func (r staticMemoryReader) ReadMemoryPressure(ctx context.Context) (memorypress
 	return r.pressure, nil
 }
 
-func startedMemoryMonitor(t *testing.T, pressure memorypressure.MemoryPressure) memoryprovider.MemoryPressureMonitor {
+func startedMemoryMonitor(t *testing.T, pressure memorypressure.MemoryPressure) memorypressure.Monitor {
 	t.Helper()
 
 	monitor, err := memorymonitor.New(
@@ -1030,11 +1030,11 @@ func newRecordingMeter() *recordingMeter {
 	return &recordingMeter{counters: make(map[string]int64)}
 }
 
-func (m *recordingMeter) Counter(name string) observer.Counter {
+func (m *recordingMeter) Counter(name string) pkgobserver.Counter {
 	return recordingCounter{meter: m, name: name}
 }
 
-func (m *recordingMeter) Gauge(name string) observer.Gauge {
+func (m *recordingMeter) Gauge(name string) pkgobserver.Gauge {
 	_ = name
 	return observer.NopGauge{}
 }
@@ -1056,10 +1056,10 @@ type recordingCounter struct {
 	name  string
 }
 
-func (c recordingCounter) Add(ctx context.Context, value int64, attrs ...observer.Attr) {
+func (c recordingCounter) Add(ctx context.Context, value int64, attrs ...pkgobserver.Attr) {
 	_ = ctx
 	_ = attrs
 	c.meter.add(c.name, value)
 }
 
-var _ observer.Meter = (*recordingMeter)(nil)
+var _ pkgobserver.Meter = (*recordingMeter)(nil)

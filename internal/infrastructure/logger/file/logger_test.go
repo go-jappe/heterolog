@@ -13,13 +13,11 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	appotel "github.com/go-jappe/heterolog/internal/application/otel"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
 	"github.com/go-jappe/heterolog/internal/config"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	clickhouselogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/clickhouse"
 	clickhouseerrors "github.com/go-jappe/heterolog/internal/infrastructure/logger/clickhouse/errors"
@@ -42,6 +40,7 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,7 +108,7 @@ func TestFileLoggerInternalErrorFallsBackToLokiAndCloudWatchLogs(t *testing.T) {
 	cloudWatchLoggerConfig := cloudwatchlogslogger.NewCloudWatchLogsLoggerConfigAdapter(newTestCloudWatchLogsLoggerBaseConfig("file-fallback-cloudwatch"))
 	cloudWatchFlushConfig := cloudwatchlogslogger.NewFlushManagerConfigAdapter(
 		newTestCloudWatchLogsFlushManagerConfig("file-fallback-cloudwatch"),
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 	)
 	cloudWatchResource := newTestFallbackResource("file-fallback-cloudwatch")
 	cloudWatchClientConfig := &pkgcloudwatchlogs.Config{
@@ -839,7 +838,7 @@ func TestDeliveryFileLogger_CloseThenWriteFails(t *testing.T) {
 	require.Error(t, err)
 	result := requireSingleDeliveryTarget(t, report)
 	require.Equal(t, err, result.Err)
-	require.ErrorIs(t, result.Err, applogging.ErrLoggerClosed)
+	require.ErrorIs(t, result.Err, pkglogger.ErrLoggerClosed)
 	assert.Equal(t, BackendServices, result.Backend)
 	assert.Equal(t, pkglogger.DeliveryRejected, result.Status)
 }
@@ -965,7 +964,7 @@ func newTestFileLoggerConfig(logPath string, logDir string, target string) pkglo
 				WriteFileErrorThresholdDuration: time.Millisecond,
 			},
 			Retry: pkgfsstore.RetryConfig{
-				MaxWriteAttempts:           1,
+				MaxWriteRetries:            0,
 				FileOperationRetryWaitTime: time.Millisecond,
 			},
 		},
@@ -1009,8 +1008,8 @@ func breakRegularFileStream(t *testing.T, logger *FileLogger) {
 func newTestFileLoggerSet(
 	t *testing.T,
 	cfg FileLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *LoggerSet {
 	t.Helper()
 
@@ -1325,8 +1324,8 @@ func (h *recordingNamedErrorHandler) handle(
 	ctx context.Context,
 	err error,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) {
 	message := ""
 	source := ""

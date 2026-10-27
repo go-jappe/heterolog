@@ -91,7 +91,7 @@ func TestOpenSearchLoggerFlushRetriesWithFactoryRetryingRealClient(t *testing.T)
 	retryCfg := NewRetryConfigProvider(
 		&pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{
 			RetryClientMode: pkglogger.RetryClientModeRetry,
-			MaxAttempts:     2,
+			MaxRetries:      1,
 			BaseDelay:       time.Nanosecond,
 			MaxDelay:        time.Nanosecond,
 		},
@@ -477,7 +477,7 @@ func TestOpenSearchLoggerFailureSpoolsActiveAndRunnerMovesToDoneWithMemoryPressu
 		NewRetryConfigProvider(
 			&pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{
 				RetryClientMode: pkglogger.RetryClientModeRetry,
-				MaxAttempts:     2,
+				MaxRetries:      1,
 				BaseDelay:       time.Nanosecond,
 				MaxDelay:        time.Nanosecond,
 			},
@@ -649,7 +649,7 @@ func (c openSearchLoggerSpoolIntegrationConfig) FileNameFormat() string {
 func (c openSearchLoggerSpoolIntegrationConfig) FileDateFormat() string {
 	return "20060102"
 }
-func (c openSearchLoggerSpoolIntegrationConfig) MaxWriteAttempts() int {
+func (c openSearchLoggerSpoolIntegrationConfig) MaxWriteRetries() int {
 	return 1
 }
 func (c openSearchLoggerSpoolIntegrationConfig) FileOperationRetryWaitTime() time.Duration {

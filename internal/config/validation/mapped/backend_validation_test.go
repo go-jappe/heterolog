@@ -235,11 +235,11 @@ func TestMappedLoggerConfigsValidateRetryConfigForEveryBackend(t *testing.T) {
 				err,
 				tt.wantSource,
 				tt.wantBackend,
-				pkglogger.ConfigFieldRetryMaxAttempts,
-				pkglogger.ErrNonPositiveSetting,
+				pkglogger.ConfigFieldRetryMaxRetries,
+				pkglogger.ErrNegativeSetting,
 			)
 			if fieldErr.Value != -1 {
-				t.Fatalf("retry max attempts error value = %v, want -1", fieldErr.Value)
+				t.Fatalf("retry max retries error value = %v, want -1", fieldErr.Value)
 			}
 		})
 	}
@@ -310,7 +310,7 @@ func TestMappedFailureStoreValidationRequiresNormalDestination(t *testing.T) {
 func invalidOpenSearchRetryConfig() *pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig {
 	return &pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicy,
-		MaxAttempts:     -1,
+		MaxRetries:      -1,
 		BaseDelay:       time.Millisecond,
 		MaxDelay:        time.Second,
 	}
@@ -319,7 +319,7 @@ func invalidOpenSearchRetryConfig() *pkglogger.OpenSearchRetryableClientCaseTran
 func invalidLokiRetryConfig() *pkglogger.LokiRetryableClientCaseTransportErrorConfig {
 	return &pkglogger.LokiRetryableClientCaseTransportErrorConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicy,
-		MaxAttempts:     -1,
+		MaxRetries:      -1,
 		BaseDelay:       time.Millisecond,
 		MaxDelay:        time.Second,
 	}
@@ -328,7 +328,7 @@ func invalidLokiRetryConfig() *pkglogger.LokiRetryableClientCaseTransportErrorCo
 func invalidCloudWatchLogsRetryConfig() *pkglogger.CloudWatchLogsRetryableClientCaseTransportErrorConfig {
 	return &pkglogger.CloudWatchLogsRetryableClientCaseTransportErrorConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicy,
-		MaxAttempts:     -1,
+		MaxRetries:      -1,
 		BaseDelay:       time.Millisecond,
 		MaxDelay:        time.Second,
 	}
@@ -337,7 +337,7 @@ func invalidCloudWatchLogsRetryConfig() *pkglogger.CloudWatchLogsRetryableClient
 func invalidClickHouseRetryConfig() *pkglogger.ClickHouseRetryableClientCaseTransportErrorConfig {
 	return &pkglogger.ClickHouseRetryableClientCaseTransportErrorConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicy,
-		MaxAttempts:     -1,
+		MaxRetries:      -1,
 		BaseDelay:       time.Millisecond,
 		MaxDelay:        time.Second,
 	}

@@ -8,29 +8,40 @@ import (
 	"github.com/go-jappe/heterolog/internal/pathcaserule"
 )
 
-// NameCaseは、一つのdirectory直下でfile名を比較するときの大小文字の扱いです。
-// ゼロ値のNameCaseUnspecifiedは未判定を表し、ForDirectoryで対象directoryから判定します。
-// 比較専用の規則であり、実際に開くpathやobject storage keyの表記は変更しません。
+// NameCase is how case is treated when file names directly under one directory
+// are compared. The zero value, NameCaseUnspecified, means that the rule has
+// not been determined yet; ForDirectory determines it from the target
+// directory. It is a rule only for comparison and does not change the spelling
+// of the paths actually opened or of object storage keys.
 type NameCase uint8
 
 const (
-	// NameCaseUnspecifiedは、まだ対象directoryから判定していない状態です。
+	// NameCaseUnspecified is the state in which the rule has not yet been
+	// determined from the target directory.
 	NameCaseUnspecified NameCase = iota
-	// NameCaseSensitiveは、大小文字だけが異なる名前を別のentryとして扱います。
+	// NameCaseSensitive treats names that differ only in case as different
+	// entries.
 	NameCaseSensitive
-	// NameCaseInsensitiveは、大小文字だけが異なる名前を同じentryとして扱います。
+	// NameCaseInsensitive treats names that differ only in case as the same
+	// entry.
 	NameCaseInsensitive
 )
 
-// DirectoryNameCaseは、directory直下のentry名に適用する大小文字の規則を返します。
-// ComparisonKeyと同じ判定を共用し、Windowsは標準のcase-insensitive directory、
-// Darwinは既存祖先のfilesystem特性、Linuxは既存祖先のcasefold属性とfilesystemの種類、
-// その他のOSは大小文字を区別する規則です。Linuxで区別しないと判定するのは、読み取りで確かめられる
-// casefold属性（ext4・F2FS・tmpfs）を持つdirectoryと、FAT（vfat・msdos）・exFATのdirectoryだけです。
-// SMB/CIFS・NFS・NTFS・FUSEなど、serverやmount optionで挙動が変わるfilesystemは区別すると判定します。
-// 未作成のdirectoryには最も近い既存祖先の規則を適用し、probe用のfileは作成しません。
-// 空のdirectoryは現在のdirectoryとして扱います。試験用の規則が設定されている間は、
-// 対象directoryでその規則を使います（internal/pathcaserule）。
+// DirectoryNameCase returns the case rule applied to entry names directly under
+// directory. It shares the decision with ComparisonKey: Windows uses standard
+// case-insensitive directories, Darwin uses the filesystem characteristics of
+// the existing ancestors, Linux uses the casefold attribute of the existing
+// ancestors and the type of the filesystem, and other operating systems use a
+// case-sensitive rule. On Linux, the only directories judged case-insensitive
+// are directories with a casefold attribute that can be confirmed by reading
+// it (ext4, F2FS, tmpfs) and directories on FAT (vfat, msdos) and exFAT whose
+// mount options, as read from /proc/self/mountinfo, keep names
+// case-insensitive. Other filesystems whose behavior depends on the server or
+// on mount options, such as SMB/CIFS, NFS, NTFS and FUSE, are judged
+// case-sensitive. A directory that does not exist yet gets the rule of its
+// nearest existing ancestor, and no probe file is created. An empty directory
+// string is treated as the current directory. The tests of this module can
+// override the rule; code outside the module cannot set such an override.
 func DirectoryNameCase(directory string) NameCase {
 	if directory == "" {
 		directory = "."
@@ -51,8 +62,10 @@ func DirectoryNameCase(directory string) NameCase {
 	return filesystemDirectoryNameCase(absolute)
 }
 
-// ForDirectoryは、指定済みの規則はそのまま返し、未指定ならdirectoryから判定します。
-// 試験や判定済みの規則を渡す呼び出し元は、filesystemを問い合わせずに同じ処理を使えます。
+// ForDirectory returns c as is when the rule is already specified, and
+// otherwise determines the rule from directory. Callers that pass a rule for
+// tests or an already determined rule can use the same processing without
+// querying the filesystem.
 func (c NameCase) ForDirectory(directory string) NameCase {
 	if c == NameCaseSensitive || c == NameCaseInsensitive {
 		return c
@@ -60,9 +73,10 @@ func (c NameCase) ForDirectory(directory string) NameCase {
 	return DirectoryNameCase(directory)
 }
 
-// Keyは、この規則でnameを比較するための文字列を返します。
-// NameCaseInsensitiveでは小文字に揃え、それ以外では入力をそのまま返します。
-// 未判定の規則は大小文字を区別して扱うため、先にForDirectoryで判定してください。
+// Key returns the string used to compare name under this rule. With
+// NameCaseInsensitive it converts name to lowercase; otherwise it returns the
+// input as is. An undetermined rule is treated as case-sensitive, so determine
+// the rule with ForDirectory first.
 func (c NameCase) Key(name string) string {
 	if c == NameCaseInsensitive {
 		return strings.ToLower(name)
@@ -70,9 +84,12 @@ func (c NameCase) Key(name string) string {
 	return name
 }
 
-// EntryNameCasesは、pathごとの規則を返す関数を作ります。指定済みの規則はそのまま返し、
-// 未指定なら各pathの親directoryを一度だけ判定して同じ関数内で再利用します。
-// 一回の走査結果の分類など、短い処理の間だけ使用し、複数goroutineから並行して呼び出さないでください。
+// EntryNameCases builds a function that returns the rule for each path. When
+// nameCase is already specified, the function returns it as is; otherwise the
+// function determines the rule of each path's parent directory only once and
+// reuses it within the same function. Use the function only during a short
+// operation, such as classifying the results of one scan, and do not call it
+// concurrently from multiple goroutines.
 func EntryNameCases(nameCase NameCase) func(path string) NameCase {
 	if nameCase == NameCaseSensitive || nameCase == NameCaseInsensitive {
 		return func(string) NameCase { return nameCase }
@@ -89,10 +106,12 @@ func EntryNameCases(nameCase NameCase) func(path string) NameCase {
 	}
 }
 
-// EntryComparisonKeyは、親directoryをComparisonKeyで、末尾のentry名をnameCaseで揃えた
-// 比較キーを返します。nameCaseが未指定ならComparisonKey(path)と同じです。
-// 親directoryの規則から判定したnameCaseを渡した場合も、ComparisonKeyと同じキーになります。
-// 戻り値は実際のファイル操作には使わないでください。
+// EntryComparisonKey returns a comparison key in which the parent directory is
+// normalized with ComparisonKey and the final entry name with nameCase. When
+// nameCase is unspecified, it is the same as ComparisonKey(path). When the
+// nameCase passed was determined from the rule of the parent directory, the
+// key is also the same as the one from ComparisonKey. Do not use the returned
+// value for actual file operations.
 func EntryComparisonKey(path string, nameCase NameCase) string {
 	if path == "" || (nameCase != NameCaseSensitive && nameCase != NameCaseInsensitive) {
 		return ComparisonKey(path)

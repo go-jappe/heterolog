@@ -5,8 +5,7 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
-
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/stretchr/testify/require"
 )
 
@@ -271,7 +270,7 @@ func appendFailureSpoolRuntimeError(runtime *FailureSpoolRuntime, err error) {
 // closeStageTest*BackendはClose呼出しの回数と時刻を記録します。時刻は再試行が間隔を
 // 空けて行われたかを確認するためのものです。
 type closeStageTestSyncBackend struct {
-	applogging.Logger
+	pkglogger.Logger
 	closeErrors []error
 	closeCalls  int
 	closeTimes  []time.Time
@@ -294,7 +293,7 @@ func (b *closeStageTestSyncBackend) nextCloseResult() error {
 }
 
 type closeStageTestAsyncBackend struct {
-	applogging.AsyncLogger
+	pkglogger.AsyncLogger
 	closeErrors []error
 	closeCalls  int
 	closeTimes  []time.Time
@@ -313,7 +312,7 @@ func (b *closeStageTestAsyncBackend) Close() error {
 }
 
 type closeStageTestDeliveryBackend struct {
-	applogging.DeliveryLogger
+	pkglogger.DeliveryLogger
 	closeErrors []error
 	closeCalls  int
 	closeTimes  []time.Time

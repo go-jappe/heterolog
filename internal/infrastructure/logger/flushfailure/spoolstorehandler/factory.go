@@ -5,15 +5,15 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/store"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/overload"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/overload/provider"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
-	"github.com/go-jappe/heterolog/internal/infrastructure/memory/pressure"
 	spoolstoreconfig "github.com/go-jappe/heterolog/internal/infrastructure/spool/log/store"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
+	"github.com/go-jappe/heterolog/pkg/memorypressure"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // OverloadConfigProviderはspoolの過負荷判定と滞留警告に使う設定を提供します。
@@ -26,10 +26,10 @@ func NewSpoolStoreHandler(
 	timeSource clock.Clock,
 	store *store.SpoolStore,
 	cfg OverloadConfigProvider,
-	memoryMonitor pressure.MemoryPressureMonitor,
+	memoryMonitor memorypressure.Monitor,
 	overloadHandler overload.Handler,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	internalLogHandlers InternalLogHandlers,
 ) *SpoolStoreHandler {
 	handler := &SpoolStoreHandler{
@@ -49,7 +49,7 @@ func NewSpoolStoreHandler(
 	// 保存先を塞いでいた項目の保全結果も、handlerで選択済みの警告通知先へ渡します。
 	// 運用中にStoreの通知先を設定し直すことはありません。
 	if store != nil {
-		store.OnWarn = func(ctx context.Context, entry *logging.LogEntry, tracer observer.Tracer, meter observer.Meter) {
+		store.OnWarn = func(ctx context.Context, entry *logging.LogEntry, tracer pkgobserver.Tracer, meter pkgobserver.Meter) {
 			if handler.OnWarn != nil {
 				handler.OnWarn(ctx, entry, tracer, meter)
 			}
@@ -60,7 +60,7 @@ func NewSpoolStoreHandler(
 
 func NewOverloadHandlerProvider(
 	cfg OverloadConfigProvider,
-	meter observer.Meter,
+	meter pkgobserver.Meter,
 ) (overload.Handler, error) {
 	if cfg == nil {
 		return nil, errors.New("spool store config is nil")

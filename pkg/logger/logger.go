@@ -12,13 +12,17 @@ type LogLevel int
 type LogOutputDestination string
 type LogOutputDestinations []LogOutputDestination
 
-// DefaultMaxLogEntryBytesは、applicationから一回のlog呼び出しで受け付ける入力を
-// 正規化JSONで表したbyte数の上限です。backend固有のmetadataやwire formatは、各backendの
-// 最終検証で別に扱います。
+// DefaultMaxLogEntryBytes is the default limit on the input accepted from the
+// application in a single log call, counted in bytes of its canonical JSON
+// representation. Backend-specific metadata and wire formats are handled
+// separately by the final validation of each backend.
 const DefaultMaxLogEntryBytes = 1 * 1024 * 1024
 
-// 出力先を追加する場合は、直下のallLogOutputDestinationsにも追加してください。
-// parser、handler target収集、網羅テストがその正規一覧から自動的に追従します。
+// 出力先を追加する場合は、直下のallLogOutputDestinationsにも追加します。parser、
+// handler targetの収集、網羅するテストはその一覧に自動で従います。
+
+// The LogOutput constants are the output destinations a logger can write to.
+// AllLogOutputDestinations returns them in this order.
 const (
 	LogOutputFile           LogOutputDestination = "file"
 	LogOutputStdout         LogOutputDestination = "stdout"
@@ -43,14 +47,14 @@ var allLogOutputDestinations = LogOutputDestinations{
 }
 
 const (
-	LogLevelDebug LogLevel = iota + 1 // 1: Debug (詳細なデバッグ情報)
-	LogLevelInfo                      // 2: Info (通常の情報)
-	LogLevelWarn                      // 3: Warn (警告)
-	LogLevelError                     // 4: Error (エラー)
-	LogLevelFatal                     // 5: Fatal (致命的エラー)
+	LogLevelDebug LogLevel = iota + 1 // 1: Debug (detailed debugging information)
+	LogLevelInfo                      // 2: Info (normal information)
+	LogLevelWarn                      // 3: Warn (warning)
+	LogLevelError                     // 4: Error (error)
+	LogLevelFatal                     // 5: Fatal (fatal error)
 )
 
-// LogLevelToString は LogLevel から文字列へのマッピングです。
+// LogLevelToString maps each LogLevel to its string.
 var LogLevelToString = map[LogLevel]string{
 	LogLevelDebug: "DEBUG",
 	LogLevelInfo:  "INFO",
@@ -59,7 +63,7 @@ var LogLevelToString = map[LogLevel]string{
 	LogLevelFatal: "FATAL",
 }
 
-// LogLevelMaps は文字列から LogLevel へのマッピングです。
+// LogLevelMaps maps each string to its LogLevel.
 var LogLevelMaps = map[string]LogLevel{
 	"DEBUG": LogLevelDebug,
 	"INFO":  LogLevelInfo,
@@ -77,19 +81,24 @@ var validLogOutputDestinations = func() map[LogOutputDestination]struct{} {
 }()
 
 var (
-	// ErrNoDeliveryTargetsは、DeliveryReportに送信先の結果が一件もないことを表します。
-	// 出力先のない設定は構築時にErrNoActiveLogOutputで拒否するため、内部の不整合でのみ生じます。
+	// ErrNoDeliveryTargets reports that a DeliveryReport has no destination
+	// results. A configuration without outputs is rejected at construction with
+	// ErrNoActiveLogOutput, so this error arises only from an internal
+	// inconsistency.
 	ErrNoDeliveryTargets           = errors.New("delivery report has no target results")
 	ErrTargetDeliveryNotRegistered = errors.New("target delivery was not registered")
-	// ErrNoActiveLogOutputは、通常出力として起動するbackendが一つもない設定を表します。
-	// LogOutputDestinationsが空ならnon-nilのbackend設定をすべて通常出力として扱うため、
-	// backend設定を一つも持たない設定もこのerrorです。handler-onlyのbackendと
-	// InternalLogDestinationsの専用保存先は通常出力に数えません。出力先がないとlogが
-	// 黙って失われるため、sync/async/Delivery loggerは構築前にこのerrorを返します。
+	// ErrNoActiveLogOutput reports a configuration in which no backend starts as
+	// a regular output. When LogOutputDestinations is empty, every non-nil
+	// backend configuration is treated as a regular output, so a configuration
+	// without any backend configuration also results in this error. Handler-only
+	// backends and the dedicated destinations in InternalLogDestinations do not
+	// count as regular outputs. Without an output, logs would be lost silently,
+	// so the sync, async and Delivery loggers return an error that wraps this
+	// error before construction.
 	ErrNoActiveLogOutput = errors.New("no active log output: configure at least one backend as a log output")
 )
 
-// String は LogLevel を文字列に変換します。
+// String converts the LogLevel to a string.
 func (l LogLevel) String() string {
 	if str, ok := LogLevelToString[l]; ok {
 		return str
@@ -102,8 +111,8 @@ func (l LogLevel) IsValid() bool {
 	return ok
 }
 
-// ParseLogLevel は文字列から LogLevel に変換します。
-// 大文字小文字と前後の空白は無視します。
+// ParseLogLevel converts a string to a LogLevel. It ignores case and leading
+// and trailing white space.
 func ParseLogLevel(levelStr string) (LogLevel, error) {
 	normalized := strings.ToUpper(strings.TrimSpace(levelStr))
 	if normalized == "" {
@@ -125,8 +134,9 @@ func (d LogOutputDestination) IsValid() bool {
 	return ok
 }
 
-// AllLogOutputDestinationsは、利用可能な全出力先を定義順で返します。
-// 呼出側から正規一覧を書き換えられないよう、毎回複製して返します。
+// AllLogOutputDestinations returns every available output destination in the
+// order of definition. It returns a new copy on each call, so that callers
+// cannot modify the canonical list.
 func AllLogOutputDestinations() LogOutputDestinations {
 	return slices.Clone(allLogOutputDestinations)
 }
@@ -192,40 +202,49 @@ func (ds LogOutputDestinations) String() string {
 	return strings.Join(ds.Strings(), ",")
 }
 
-// DeliveryReport はDeliveryLoggerの実行結果です。
-// 監査ログなどの停止判定ではHasUnregisteredTargetを使ってfail-closedに判定します。
+// DeliveryReport is the result of a DeliveryLogger call. To decide whether to
+// stop, for example for audit logs, use HasUnregisteredTarget for a
+// fail-closed decision.
 type DeliveryReport struct {
-	// Targets は本来の目的backendごとの結果です。
-	// success、enqueue、skip、failure、unconfirmedを省略せず、loggerの設定順で保持します。
+	// Targets holds the result for each intended destination backend. It keeps
+	// every success, enqueue, skip, failure and unconfirmed result without
+	// omission, in an order that is fixed for each logger.
 	Targets []DeliveryResult
 
-	// Durables は、本来の目的backendへの配送失敗後に行った耐久保存の結果です。
-	// archive、local file、dead letterなどへの保存成功を表しますが、
-	// 本来の目的backendへの配送成功を代替するものではありません。
+	// Durables holds the results of durable storage performed after delivery to
+	// the intended backend failed. Even a successful save to an archive, a local
+	// file, a dead letter store and so on does not substitute for successful
+	// delivery to the intended backend.
 	Durables []DurableResult
 
-	// Evacuations は、failure storeを使わない場合の直接退避、または
-	// durable storeのoverload時に行ったspill、drop、rejectなどの結果です。
-	// 退避成功も、本来の目的backendへの配送成功を意味しません。
+	// Evacuations holds the results of a direct evacuation, used when no
+	// durable failure store is selected and degrade is enabled, and of the
+	// overload policy applied when the durable store was overloaded: a spill
+	// to the evacuation destination under degrade, or a drop under drop. A
+	// successful evacuation does not mean successful delivery to the intended
+	// backend either.
 	Evacuations []EvacuationResult
 }
 
-// DeliveryResult は単一backendに対する送信結果です。
-// 複数backendの集約にはDeliveryReportを使用し、この型へ子結果を持たせません。
+// DeliveryResult is the result of sending to a single backend. Results of
+// several backends are aggregated with DeliveryReport; this type does not hold
+// child results.
 type DeliveryResult struct {
-	// Backend はこの結果を返した単一の送信先です。
+	// Backend is the single destination that returned this result.
 	Backend string
 
-	// Status はこの送信先に対する結果です。
+	// Status is the result for this destination.
 	Status DeliveryStatus
 
-	// Err はこの送信先で発生した原因を保持します。
-	// DeliveryLoggerの戻り値errorは呼び出し制御用、ErrはReport内の送信先別詳細用です。
+	// Err holds the cause that occurred at this destination. The error that a
+	// DeliveryLogger returns is for controlling the call, and Err is for the
+	// details of each destination in the report.
 	Err error
 }
 
-// NewTargetDeliveryReportは、resultを唯一の本来の送信先結果とするreportを返します。
-// durable保存や退避の結果は含めず、それらを実行する呼び出し側が後から追加します。
+// NewTargetDeliveryReport returns a report whose only intended destination
+// result is result. It does not include results of durable storage or
+// evacuation; the caller that performs them adds them later.
 func NewTargetDeliveryReport(result DeliveryResult) DeliveryReport {
 	return DeliveryReport{Targets: []DeliveryResult{result}}
 }
@@ -233,26 +252,33 @@ func NewTargetDeliveryReport(result DeliveryResult) DeliveryReport {
 type DeliveryStatus string
 
 const (
-	// DeliverySucceeded は本来の目的地への登録・出力が確認できた状態です。
-	// durableによる受け皿への保存を意味しません。
+	// DeliverySucceeded means that registration at, or output to, the intended
+	// destination was confirmed. It does not mean that the log was saved to a
+	// durable fallback.
 	DeliverySucceeded DeliveryStatus = "succeeded"
 
-	// DeliveryFailed は 本来の目的地である backend への登録が明確に失敗した状態です。
+	// DeliveryFailed means that registration at the backend, the intended
+	// destination, explicitly failed.
 	DeliveryFailed DeliveryStatus = "failed"
 
-	// DeliveryRejected はoverloadやlocal validationなどにより、backend送信を開始せず拒否された状態です。
+	// DeliveryRejected means that the log was rejected without starting to send
+	// it to the backend, for example because the logger was closing, local
+	// validation failed, or a circuit breaker was open.
 	DeliveryRejected DeliveryStatus = "rejected"
 
-	// DeliverySkipped はレベル設定などにより、この backend が今回の送信対象外だった状態です。
-	// backend への登録成功ではないため IsRegistered は false のままです。
+	// DeliverySkipped means that this backend was not a target of this send,
+	// for example because of its level setting. It is not a successful
+	// registration at the backend, so IsRegistered remains false.
 	DeliverySkipped DeliveryStatus = "skipped"
 
-	// DeliveryEnqueued はローカルの送信キューに受け付けられた状態です。
-	// backend への送信完了や保存完了は未確認なので、IsRegistered は false のままです。
+	// DeliveryEnqueued means that the log was accepted into the local send
+	// queue. Completion of the send to the backend and of storage there is not
+	// confirmed, so IsRegistered remains false.
 	DeliveryEnqueued DeliveryStatus = "enqueued"
 
-	// DeliveryUnconfirmed は timeout などで登録成否を確認できない状態です。
-	// 監査ログ用途では成功扱いしません。
+	// DeliveryUnconfirmed means that whether registration succeeded cannot be
+	// confirmed, for example because of a timeout. It is not treated as a
+	// success for audit logs.
 	DeliveryUnconfirmed DeliveryStatus = "unconfirmed"
 )
 
@@ -280,7 +306,8 @@ func (s DeliveryStatus) IsEnqueued() bool {
 	return s.IsPending()
 }
 
-// DurableResult は、本来の目的backendへの配送失敗後に行った耐久保存の結果です。
+// DurableResult is the result of durable storage performed after delivery to
+// the intended backend failed.
 type DurableResult struct {
 	Backend string
 	Kind    DurableKind
@@ -317,18 +344,27 @@ func (s DurableStatus) IsSucceeded() bool {
 	return s == DurableSucceeded
 }
 
-// EvacuationResult は、failure store外への退避またはoverload時の処置結果です。
+// EvacuationResult is the result of an evacuation outside the failure store, or
+// of the action taken under overload.
 type EvacuationResult struct {
 	Kind   EvacuationKind
 	Status EvacuationStatus
 	Err    error
 }
 
+// EvacuationKind is the action that an EvacuationResult reports.
 type EvacuationKind string
 
 const (
-	EvacuationSpilled  EvacuationKind = "spilled"
-	EvacuationDropped  EvacuationKind = "dropped"
+	// EvacuationSpilled reports that the entries were written to an evacuation
+	// destination, by a direct evacuation or by the degrade overload policy.
+	EvacuationSpilled EvacuationKind = "spilled"
+	// EvacuationDropped reports that the drop overload policy discarded the
+	// entries. Applying the policy is reported as EvacuationSucceeded, so use
+	// DeliveryReport.HasDrop to detect discarded entries.
+	EvacuationDropped EvacuationKind = "dropped"
+	// EvacuationRejected is not reported by the loggers of this module at
+	// present.
 	EvacuationRejected EvacuationKind = "rejected"
 )
 
@@ -353,8 +389,9 @@ func (s EvacuationStatus) IsSucceeded() bool {
 	return s == EvacuationSucceeded
 }
 
-// FailedTargets は明確に失敗または拒否された送信先だけを返します。
-// DeliveryUnconfirmedやDeliverySkippedは未登録ですが、明確な失敗ではないため含めません。
+// FailedTargets returns only the destinations that explicitly failed or were
+// rejected. DeliveryUnconfirmed and DeliverySkipped are not registered, but
+// they are not explicit failures, so they are not included.
 func (r DeliveryReport) FailedTargets() []DeliveryResult {
 	targets := make([]DeliveryResult, 0)
 	for _, target := range r.Targets {
@@ -365,7 +402,8 @@ func (r DeliveryReport) FailedTargets() []DeliveryResult {
 	return targets
 }
 
-// SkippedTargets は送信対象外だった送信先だけを返します。
+// SkippedTargets returns only the destinations that were not targets of the
+// send.
 func (r DeliveryReport) SkippedTargets() []DeliveryResult {
 	targets := make([]DeliveryResult, 0)
 	for _, target := range r.Targets {
@@ -376,9 +414,10 @@ func (r DeliveryReport) SkippedTargets() []DeliveryResult {
 	return targets
 }
 
-// HasUnregisteredTarget は本来の目的 backend への登録が確認できていない場合 true を返します。
-// fail-closed にするため、Targets が空の場合も true を返します。
-// DeliveryEnqueued / DeliveryUnconfirmed / DeliverySkipped は成功未確認なので true です。
+// HasUnregisteredTarget returns true when registration at an intended backend
+// has not been confirmed. To fail closed, it also returns true when Targets is
+// empty. DeliveryEnqueued, DeliveryUnconfirmed and DeliverySkipped are not
+// confirmed successes, so it returns true for them.
 func (r DeliveryReport) HasUnregisteredTarget() bool {
 	if len(r.Targets) == 0 {
 		return true
@@ -393,8 +432,9 @@ func (r DeliveryReport) HasUnregisteredTarget() bool {
 	return false
 }
 
-// HasRegisteredTarget は少なくとも1つの送信先で登録・出力が確認できた場合trueを返します。
-// 一部の送信先がskipされた場合でも、登録済み送信先の有無を判定できます。
+// HasRegisteredTarget returns true when registration or output was confirmed
+// for at least one destination. It tells whether any destination is registered
+// even when some destinations were skipped.
 func (r DeliveryReport) HasRegisteredTarget() bool {
 	for _, target := range r.Targets {
 		if target.Status.IsRegistered() {
@@ -404,11 +444,14 @@ func (r DeliveryReport) HasRegisteredTarget() bool {
 	return false
 }
 
-// HasTargetFailure は本来の目的 backend への明確な登録失敗がある場合 true を返します。
-// DeliveryEnqueued / DeliveryUnconfirmed / DeliverySkipped は成功ではありませんが、明確な失敗でもないため false です。
-// Targets が空の report は、出力先のない設定を構築時に拒否するため内部の不整合でのみ生じます。
-// TargetError が ErrNoDeliveryTargets を返すのと同じく、送信先なしの失敗として true を返します。
-// fail-closed な未登録判定には HasUnregisteredTarget を使ってください。
+// HasTargetFailure returns true when registration at an intended backend
+// explicitly failed. DeliveryEnqueued, DeliveryUnconfirmed and DeliverySkipped
+// are not successes, but they are not explicit failures either, so it returns
+// false for them. A report with empty Targets arises only from an internal
+// inconsistency, because a configuration without outputs is rejected at
+// construction. Just as TargetError returns ErrNoDeliveryTargets, it returns
+// true for such a report, as a failure without destinations. Use
+// HasUnregisteredTarget for a fail-closed check for unregistered destinations.
 func (r DeliveryReport) HasTargetFailure() bool {
 	if len(r.Targets) == 0 {
 		return true
@@ -461,17 +504,19 @@ func (r DeliveryReport) HasDrop() bool {
 	return false
 }
 
-// HasAnyFailure はtarget、durable、evacuationのいずれかに明確な失敗があればtrueを返します。
-// Targets が空の report も HasTargetFailure と同じく失敗です。HasAnyFailure が true で
-// あることと、Error が nil 以外を返すことは一致します。
-// 監査ログの停止判定には通常 HasUnregisteredTarget を使ってください。
+// HasAnyFailure returns true when any target result is an explicit failure or
+// any durable or evacuation result has not succeeded. A report with empty
+// Targets is also a failure, as with HasTargetFailure. HasAnyFailure returns
+// true exactly when Error returns a non-nil error. To decide whether to stop
+// for audit logs, normally use HasUnregisteredTarget.
 func (r DeliveryReport) HasAnyFailure() bool {
 	return r.HasTargetFailure() || r.HasDurableFailure() || r.HasEvacuationFailure()
 }
 
-// TargetError は target への明確な登録失敗だけを error として返します。
-// DeliveryEnqueued / DeliveryUnconfirmed / DeliverySkipped は含めません。
-// Targets が空の report では、HasTargetFailure と同じく ErrNoDeliveryTargets を返します。
+// TargetError returns only the explicit registration failures of targets, as
+// an error. It does not include DeliveryEnqueued, DeliveryUnconfirmed or
+// DeliverySkipped. For a report with empty Targets, it returns
+// ErrNoDeliveryTargets, consistent with HasTargetFailure.
 func (r DeliveryReport) TargetError() error {
 	if len(r.Targets) == 0 {
 		return ErrNoDeliveryTargets
@@ -488,8 +533,9 @@ func (r DeliveryReport) TargetError() error {
 	return errors.Join(errs...)
 }
 
-// DurableError は失敗した耐久保存結果をまとめて返します。
-// 耐久保存の成功・失敗は、本来の目的backendへの配送結果とは独立しています。
+// DurableError returns the durable storage results that have not succeeded
+// combined into one error. The success or failure of durable storage is
+// independent of the result of delivery to the intended backend.
 func (r DeliveryReport) DurableError() error {
 	errs := make([]error, 0, len(r.Durables))
 	for _, durable := range r.Durables {
@@ -502,8 +548,9 @@ func (r DeliveryReport) DurableError() error {
 	return errors.Join(errs...)
 }
 
-// EvacuationError は失敗した退避結果をまとめて返します。
-// 退避の成功・失敗は、本来の目的backendへの配送結果とは独立しています。
+// EvacuationError returns the evacuation results that have not succeeded
+// combined into one error. The success or failure of an evacuation is
+// independent of the result of delivery to the intended backend.
 func (r DeliveryReport) EvacuationError() error {
 	errs := make([]error, 0, len(r.Evacuations))
 	for _, evacuation := range r.Evacuations {
@@ -516,8 +563,9 @@ func (r DeliveryReport) EvacuationError() error {
 	return errors.Join(errs...)
 }
 
-// Error はtarget、durable、evacuationの明確な失敗をまとめて返します。
-// backend 登録の fail-closed 判定には HasUnregisteredTarget を使ってください。
+// Error returns the explicit failures of targets and the durable storage and
+// evacuation results that have not succeeded combined into one error. Use
+// HasUnregisteredTarget for a fail-closed check of backend registration.
 func (r DeliveryReport) Error() error {
 	return errors.Join(
 		r.TargetError(),

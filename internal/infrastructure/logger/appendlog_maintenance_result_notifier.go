@@ -14,6 +14,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 const appendLogMaintenanceRunnerSource = "appendlog_maintenance_runner"
@@ -113,8 +114,8 @@ func availableHandlerSelectors(handlers []logging.NamedLoggerHandler) map[string
 // 通常のログ追記・rotationとinline lifecycleの結果は、この通知処理の対象外です。
 type appendLogMaintenanceResultNotifier struct {
 	clock   clock.Clock
-	tracer  observer.Tracer
-	meter   observer.Meter
+	tracer  pkgobserver.Tracer
+	meter   pkgobserver.Meter
 	onError logging.LoggerErrorHandler
 	onWarn  logging.LoggerHandlerFunc
 	onInfo  logging.LoggerHandlerFunc
@@ -130,8 +131,8 @@ func newAppendLogMaintenanceResultNotifier(
 	routing pkgloggerhandler.HandlerConfig,
 	available handlerStruct,
 	clk clock.Clock,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) logfilelifecycle.RunReporter {
 	selected := selectConfiguredHandlers(available, loggerhandler.NewConfigAdapter(routing))
 	if len(selected.OnError) == 0 && len(selected.OnWarn) == 0 &&

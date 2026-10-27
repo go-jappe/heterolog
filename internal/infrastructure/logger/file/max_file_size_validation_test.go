@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // Delivery用のfile loggerも通常のfile loggerと同じく、1ファイルの最大サイズの下限を
@@ -80,7 +80,7 @@ func TestFileLoggerConstructorsShareMinimumMaxFileSize(t *testing.T) {
 
 func constructDeliveryFileLoggerForSizeTest(
 	t *testing.T,
-	newLogger func(context.Context, DeliveryFileLoggerConfigProvider, observer.Tracer, observer.Meter) (*DeliveryFileLogger, error),
+	newLogger func(context.Context, DeliveryFileLoggerConfigProvider, pkgobserver.Tracer, pkgobserver.Meter) (*DeliveryFileLogger, error),
 	root string,
 	maxFileSize uint64,
 	rotate bool,

@@ -12,32 +12,40 @@ var (
 	ErrInvalidAppendLogSupervisorMaxRestarts  = errors.New("appendlog runner supervisor max restarts must be positive")
 )
 
-// AppendLogRunnerConfigは、一つのappendlog lifecycle Runnerに適用する周期loopと
-// optional Supervisorの実行方針です。
+// AppendLogRunnerConfig is the execution policy for the periodic loop and the
+// optional Supervisor that apply to one appendlog lifecycle Runner.
 type AppendLogRunnerConfig struct {
-	// Intervalは各lifecycle処理を開始するまでの待機時間です。0以下は不正です。
+	// Interval is the time to wait before each lifecycle pass starts. A value of
+	// zero or less is invalid.
 	Interval time.Duration
-	// StopOnErrorは一回のlifecycle失敗でRunnerの周期loopを終了するかを指定します。
-	// trueの場合、呼び出し側はRunnerが返すerrorを受け取り、必要なら再起動を管理します。
+	// StopOnError specifies whether a single lifecycle failure ends the periodic
+	// loop of the Runner. When it is true, the caller receives the error that the
+	// Runner returns and manages restarts if needed.
 	StopOnError bool
-	// SupervisorはRunner終了後のoptionalな再起動方法です。
+	// Supervisor is the optional way to restart the Runner after it ends.
 	Supervisor AppendLogRunnerSupervisorConfig
 }
 
-// AppendLogRunnerSupervisorConfigは、Runnerがerrorまたはpanicで終了した場合の
-// optionalな再起動方針です。Enabled=falseの場合、RunnerはSupervisorを経由しません。
+// AppendLogRunnerSupervisorConfig is the optional restart policy for when the
+// Runner ends with an error or a panic. When Enabled is false, the Runner does
+// not go through the Supervisor.
 type AppendLogRunnerSupervisorConfig struct {
-	// Enabledがtrueの場合、Runner.RunはSupervisorの監視下で周期loopを実行します。
+	// Enabled, when true, makes Runner.Run run the periodic loop supervised by
+	// the Supervisor.
 	Enabled bool
-	// RestartDelayはRunner終了後に再起動するまでの待機時間です。0以下は不正です。
+	// RestartDelay is the time to wait after the Runner ends before restarting
+	// it. A value of zero or less is invalid.
 	RestartDelay time.Duration
-	// MaxRestartsはSupervisorが許可する最大再起動回数です。0以下は不正です。
+	// MaxRestarts is the maximum number of restarts that the Supervisor allows. A
+	// value of zero or less is invalid.
 	MaxRestarts int
 }
 
-// ValidateAppendLogRunnerConfigは、Runnerとoptional Supervisorが実際に使用する数値を
-// 検証します。SupervisorなしのStopOnErrorは、Runnerの終了を呼び出し側が扱えるため
-// 設定不正にはしません。Enabled=falseのSupervisor値は使用しないため検証しません。
+// ValidateAppendLogRunnerConfig validates the numbers that the Runner and the
+// optional Supervisor actually use. StopOnError without a Supervisor is not a
+// configuration error, because the caller can handle the end of the Runner. The
+// Supervisor values are not validated when Enabled is false, because they are
+// not used.
 func ValidateAppendLogRunnerConfig(config AppendLogRunnerConfig) error {
 	var errs []error
 	if config.Interval <= 0 {

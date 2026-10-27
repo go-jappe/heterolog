@@ -2,10 +2,10 @@ package handler
 
 import (
 	"context"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/formatter"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/timestamp"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"log"
 	"sync"
 )
@@ -21,12 +21,12 @@ var onceDebugHandlerNilLog sync.Once
 
 // ロガーのインターナルエラーのハンドラOnErrorを安全に実行する
 func CallErrorHandlerIfPresent(
-	handler func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter),
+	handler func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter),
 	ctx context.Context,
 	err error,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) {
 	if handler != nil {
 		handler(ctx, err, entry, tracer, meter)
@@ -40,11 +40,11 @@ func CallErrorHandlerIfPresent(
 
 // ロガーのインターナルログのハンドラOnDebugを安全に実行する
 func CallWarnHandlerIfPresent(
-	handler func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter),
+	handler func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter),
 	ctx context.Context,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) {
 	if handler != nil {
 		handler(ctx, entry, tracer, meter)
@@ -57,11 +57,11 @@ func CallWarnHandlerIfPresent(
 
 // ロガーのインターナルログのハンドラOnDebugを安全に実行する
 func CallInfoHandlerIfPresent(
-	handler func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter),
+	handler func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter),
 	ctx context.Context,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) {
 	if handler != nil {
 		handler(ctx, entry, tracer, meter)
@@ -74,11 +74,11 @@ func CallInfoHandlerIfPresent(
 
 // ロガーのインターナルログのハンドラOnDebugを安全に実行する
 func CallDebugHandlerIfPresent(
-	handler func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter),
+	handler func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter),
 	ctx context.Context,
 	entry *logging.LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	isDebugMode bool,
 ) {
 	if handler != nil {

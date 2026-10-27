@@ -13,11 +13,11 @@ import (
 
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgclock "github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestDestinationRegistrationKeepsPreRegistrationFilesAndLatestRawPending(t *testing.T) {
@@ -156,8 +156,8 @@ func TestDestinationRegistrationAcceptedSaveFailureKeepsInitialCompletionAndPend
 		require.NoError(t, err)
 		require.False(t, active.Complete([]objectstorage.DestinationID{destination}))
 
-		// Rotate the previously active raw generation while checkpoint persistence is
-		// still blocked. Only this genuinely pending generation must be uploaded.
+		// checkpointの永続化がまだblockされている間に、それまでactiveだったraw generationを
+		// rotateします。uploadするのは、実際に保留中のこのgenerationだけでなければなりません。
 		next := writeFileSeriesCheckpointLog(t, directory, target, period, 3)
 		report, err = manager.RunOnce(ctx)
 		require.ErrorAs(t, err, &pending)
@@ -309,7 +309,7 @@ func TestDestinationRegistrationFactoryScopeSurvivesMissingSuccessDocument(t *te
 	store, err := newArchiveCheckpointStore(checkpointConfig, "default", pattern, config.Layout(), remote, nil,
 		archiveCheckpointFactoryOptions{activePeriod: period})
 	require.NoError(t, err)
-	// This archive appears after factory registration but before the first run.
+	// このarchiveは、factoryへの登録後、最初のrunより前に現れます。
 	pending := filepath.Join(directory, target+"_"+period+"_2.log.gz")
 	writeGzipFile(t, pending, []byte("after primary registration"))
 	failure := errors.New("temporary destination failure")
@@ -319,8 +319,8 @@ func TestDestinationRegistrationFactoryScopeSurvivesMissingSuccessDocument(t *te
 	require.ErrorIs(t, err, failure)
 	require.Equal(t, []string{pending}, remote.pathsFor(primary))
 	require.FileExists(t, old, "登録前から存在したfileは送信も削除もしません")
-	require.ErrorIs(t, manager.ForceClose(), shutdown.ErrForcedClose)
-	require.ErrorIs(t, boundedwait.Close(t, "manager.Close()", manager.Close, boundedwait.ForceCloserOf(manager)), shutdown.ErrForcedClose)
+	require.ErrorIs(t, manager.ForceClose(), pkgshutdown.ErrForcedClose)
+	require.ErrorIs(t, boundedwait.Close(t, "manager.Close()", manager.Close, boundedwait.ForceCloserOf(manager)), pkgshutdown.ErrForcedClose)
 	sourceID := archiveCheckpointSourceID(checkpointConfig.SourcePrefix, "default", pattern)
 	require.NoError(t, os.Remove(filepath.Join(checkpointConfig.Directory, sourceID+".log-file-uploads.json")))
 

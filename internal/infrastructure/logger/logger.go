@@ -5,12 +5,9 @@ import (
 	"errors"
 	"fmt"
 	applogging "github.com/go-jappe/heterolog/internal/application/logging"
-	"github.com/go-jappe/heterolog/internal/application/observer"
-	configspool "github.com/go-jappe/heterolog/internal/config/spool"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	infraclickhouse "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/clickhouse"
 	infracloudwatchlogs "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	infraloki "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/loki"
 	infraopensearch "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/opensearch"
 	clickhouselogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/clickhouse"
@@ -26,13 +23,16 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/slack"
 	stdout "github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout"
-	"github.com/go-jappe/heterolog/internal/infrastructure/memory/pressure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	"github.com/go-jappe/heterolog/pkg/clock"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/logger"
+	"github.com/go-jappe/heterolog/pkg/memorypressure"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/otel"
+	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 	"io"
 	"sync"
 )
@@ -367,8 +367,8 @@ func rollbackFailureHandlerConstruction(
 
 func newFileLoggerSet(
 	cfg *logger.FileLoggerConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*file.LoggerSet, error) {
 	return newFileLoggerSetWithDirectoryScopeLabel(
 		syncFileDirectoryScopeLabel,
@@ -381,8 +381,8 @@ func newFileLoggerSet(
 func newFileLoggerSetWithDirectoryScopeLabel(
 	directoryScopeLabel directorylease.ScopeLabel,
 	cfg *logger.FileLoggerConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	spoolOwners ...*compressedlog.RootRuntimeBuilder,
 ) (*file.LoggerSet, error) {
 	if cfg == nil {
@@ -412,8 +412,8 @@ func newFileLoggerSetWithDirectoryScopeLabel(
 
 func newDeliveryFileLoggerSet(
 	cfg *logger.DeliveryFileLoggerConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*file.DeliveryLoggerSet, error) {
 	return newDeliveryFileLoggerSetWithDirectoryScopeLabel(
 		deliveryFileDirectoryScopeLabel,
@@ -426,8 +426,8 @@ func newDeliveryFileLoggerSet(
 func newDeliveryFileLoggerSetWithDirectoryScopeLabel(
 	directoryScopeLabel directorylease.ScopeLabel,
 	cfg *logger.DeliveryFileLoggerConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*file.DeliveryLoggerSet, error) {
 	if cfg == nil {
 		return nil, nil
@@ -547,7 +547,7 @@ func baseDeliveryFileRuntimeEnabled(cfg logger.DeliveryLoggerConfig) bool {
 func validateLoggerConstructionConfig(
 	sourceLabel string,
 	cfg logger.LoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
 ) error {
 	if err := logger.ValidateLoggerBackendConfigs(sourceLabel, cfg); err != nil {
 		return err
@@ -587,11 +587,11 @@ func validateLoggerConstructionConfig(
 func NewLogger(
 	ctx context.Context,
 	cfg logger.LoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
-	spoolConfig *configspool.SpoolConfig,
-	memoryMonitor pressure.MemoryPressureMonitor,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
+	spoolConfig *pkgspool.SpoolConfig,
+	memoryMonitor memorypressure.Monitor,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (applogging.CloseableLogger, error) {
 	// fan-out構築時と同じ規則を、filesystem上のresourceを作る前に適用します。
 	if err := multi.ValidateMultiLoggerConfig(NewMultiLoggerAdapter(cfg)); err != nil {
@@ -646,10 +646,10 @@ func NewLogger(
 func newLoggerCore(
 	ctx context.Context,
 	cfg logger.LoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
-	memoryMonitor pressure.MemoryPressureMonitor,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
+	memoryMonitor memorypressure.Monitor,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	failureSpoolPipelines *failureSpoolPipelineSet,
 ) (_ *topLevelLoggerRuntime, resultErr error) {
 	spoolOwners, err := newLoggerCompressedLogSpoolRuntimeBuilder(cfg)
@@ -810,11 +810,11 @@ func newLoggerCore(
 func NewAsyncLogger(
 	ctx context.Context,
 	cfg logger.AsyncBestEffortMultiLoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
-	spoolConfig *configspool.SpoolConfig,
-	memoryMonitor pressure.MemoryPressureMonitor,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
+	spoolConfig *pkgspool.SpoolConfig,
+	memoryMonitor memorypressure.Monitor,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (applogging.AsyncCloseableLogger, error) {
 	// fan-out構築時と同じ規則を、filesystem上のresourceを作る前に適用します。
 	if err := multi.ValidateAsyncBestEffortMultiLoggerConfig(NewAsyncBestEffortMultiLoggerAdapter(cfg)); err != nil {
@@ -871,10 +871,10 @@ func NewAsyncLogger(
 func newAsyncLoggerCore(
 	ctx context.Context,
 	cfg logger.AsyncBestEffortMultiLoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
-	memoryMonitor pressure.MemoryPressureMonitor,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
+	memoryMonitor memorypressure.Monitor,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	failureSpoolPipelines *failureSpoolPipelineSet,
 ) (_ *topLevelAsyncLoggerRuntime, resultErr error) {
 	lc := cfg.ToLoggerConfig()
@@ -1036,9 +1036,9 @@ func newAsyncLoggerCore(
 func NewDeliveryLogger(
 	ctx context.Context,
 	cfg logger.DeliveryLoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (_ applogging.DeliveryClosableLogger, resultErr error) {
 	// fan-out構築時と同じ規則を、filesystem上のresourceを作る前に適用します。
 	if err := multi.ValidateDeliveryMultiLoggerConfig(NewDeliveryMultiLoggerAdapter(cfg)); err != nil {
@@ -1228,10 +1228,10 @@ func closeOwnedDeliveryLoggerResourcesWithError(
 func buildLoggers(
 	ctx context.Context,
 	cfg logger.LoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
-	memoryMonitor pressure.MemoryPressureMonitor,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
+	memoryMonitor memorypressure.Monitor,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	fileLoggerSet *file.LoggerSet,
 	internalDestinations *internalLogDestinationRuntime,
 	fallbackCloserOwner *fallbackHandlerCloserOwner,
@@ -1701,9 +1701,9 @@ func buildLoggers(
 func buildDeliveryLoggers(
 	ctx context.Context,
 	cfg logger.DeliveryLoggerConfig,
-	cloudWatchLogsStreamRoutingGranularity streamrouting.Granularity,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	cloudWatchLogsStreamRoutingGranularity pkgcloudwatchlogs.StreamRouting,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	fileLoggerSet *file.DeliveryLoggerSet,
 	internalDestinations *deliveryInternalLogDestinationRuntime,
 	fallbackCloserOwner *fallbackHandlerCloserOwner,

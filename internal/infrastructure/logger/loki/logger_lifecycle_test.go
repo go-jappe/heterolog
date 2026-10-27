@@ -10,11 +10,11 @@ import (
 	"testing/synctest"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // 通常終了は送信結果の通知も受理済み処理として待ち、通知先が使用中のmanagerを先に閉じません。
@@ -36,7 +36,7 @@ func TestLokiLoggerCloseWaitsForTimerErrorNotification(t *testing.T) {
 		logger.mu.Lock()
 		// managerの欠落を検出した実際のOnError経路を、timerから実行します。
 		logger.flushManager = nil
-		logger.OnError = func(ctx context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		logger.OnError = func(ctx context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			if err == nil {
 				t.Error("missing flush manager did not produce an error notification")
 			}
@@ -109,7 +109,7 @@ func TestLokiLoggerCloseWaitsForThresholdFlushErrorNotification(t *testing.T) {
 		t.Cleanup(func() { _ = logger.Close(context.Background()) })
 		t.Cleanup(releaseNotification)
 		var notificationCtx context.Context
-		logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			notificationCtx = ctx
 			close(entered)
 			<-release
@@ -189,10 +189,10 @@ func TestLokiLoggerCloseWaitsForTimerFlushAndSerializesFlushManager(t *testing.T
 		// 扱われるため、各goroutineが進める所まで進んだ後に、Closeが戻っていないことを確認できます。
 		synctest.Wait()
 
-		if err := logger.testInfo(context.Background(), "after close started"); !errors.Is(err, applogging.ErrLoggerClosed) {
+		if err := logger.testInfo(context.Background(), "after close started"); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Info() while closing error = %v, want ErrLoggerClosed", err)
 		}
-		if err := logger.testErrorWithStack(context.Background(), "stack without error after close started", nil); !errors.Is(err, applogging.ErrLoggerClosed) {
+		if err := logger.testErrorWithStack(context.Background(), "stack without error after close started", nil); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("ErrorWithStack(nil) while closing error = %v, want ErrLoggerClosed", err)
 		}
 		if got := lifecycleLokiEntryCount(logger); got != queuedBeforeClose {
@@ -271,7 +271,7 @@ func TestLokiLoggerCloseJoinsFlushAndManagerErrorsWithoutResendingSnapshot(t *te
 		)
 	}
 
-	if err := logger.testInfo(context.Background(), "rejected while manager close is pending"); !errors.Is(err, applogging.ErrLoggerClosed) {
+	if err := logger.testInfo(context.Background(), "rejected while manager close is pending"); !errors.Is(err, pkglogger.ErrLoggerClosed) {
 		t.Fatalf("Info() while closing error = %v, want ErrLoggerClosed", err)
 	}
 	if got := lifecycleLokiEntryCount(logger); got != 0 {
@@ -492,7 +492,7 @@ func TestDeliveryLokiLoggerCloseWaitsForPushWithReportAndRejectsNewDelivery(t *t
 		}()
 		select {
 		case result := <-rejectedDone:
-			if !errors.Is(result.err, applogging.ErrLoggerClosed) {
+			if !errors.Is(result.err, pkglogger.ErrLoggerClosed) {
 				t.Fatalf("Delivery Info() while closing error = %v, want ErrLoggerClosed", result.err)
 			}
 			if len(result.report.Targets) != 1 ||
@@ -522,14 +522,14 @@ func TestDeliveryLokiLoggerCloseWaitsForPushWithReportAndRejectsNewDelivery(t *t
 		waitLokiLifecycleError(t, closeDone, "Delivery Close did not finish")
 
 		report, err := logger.testInfo(context.Background(), "after delivery close")
-		if !errors.Is(err, applogging.ErrLoggerClosed) {
+		if !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Delivery Info() after Close error = %v, want ErrLoggerClosed", err)
 		}
 		if len(report.Targets) != 1 || report.Targets[0].Status != pkglogger.DeliveryRejected {
 			t.Fatalf("Delivery Info() after Close report = %+v, want rejected target", report)
 		}
 		stackReport, stackErr := logger.testErrorWithStack(context.Background(), "stack without error after delivery close", nil)
-		if !errors.Is(stackErr, applogging.ErrLoggerClosed) {
+		if !errors.Is(stackErr, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("Delivery ErrorWithStack(nil) after Close error = %v, want ErrLoggerClosed", stackErr)
 		}
 		if len(stackReport.Targets) != 1 || stackReport.Targets[0].Status != pkglogger.DeliveryRejected {
@@ -918,7 +918,7 @@ func waitLokiLoggerClosedError(t *testing.T, result <-chan error, message string
 	t.Helper()
 	select {
 	case err := <-result:
-		if !errors.Is(err, applogging.ErrLoggerClosed) {
+		if !errors.Is(err, pkglogger.ErrLoggerClosed) {
 			t.Fatalf("%s: error = %v, want ErrLoggerClosed", message, err)
 		}
 	case <-time.After(lifecycleHangTimeout):

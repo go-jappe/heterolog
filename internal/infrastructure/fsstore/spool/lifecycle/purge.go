@@ -930,8 +930,8 @@ func forEachChildDirNameChunked(
 
 		for {
 			names, err := f.Readdirnames(batchSize)
-			// The purge callback can remove the now-empty month/year being
-			// scanned. Its disappearance means this traversal is complete.
+			// purge callbackは、走査中に空になった月・年のdirectoryを削除することがあります。
+			// そのdirectoryが消えたことは、この走査が完了したことを意味します。
 			if errors.Is(err, fs.ErrNotExist) {
 				return nil
 			}

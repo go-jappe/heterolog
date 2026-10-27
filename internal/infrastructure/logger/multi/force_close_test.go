@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 type forceSyncHandler struct {
@@ -52,7 +52,7 @@ func TestMultiForceCloseForwardsWhileCloseWaitsForChild(t *testing.T) {
 					owner := newTestMultiLogger(child)
 					logger = owner
 					handleCalls = child.handleCalls.Load
-					reject = func() { require.ErrorIs(t, owner.Info(context.Background(), "late"), applogging.ErrLoggerClosed) }
+					reject = func() { require.ErrorIs(t, owner.Info(context.Background(), "late"), pkglogger.ErrLoggerClosed) }
 				case "async":
 					child := &forceSyncHandler{syncHandlerStub: &syncHandlerStub{closeFn: closeChild}, force: force}
 					owner, err := NewAsyncBestEffortMultiLogger(asyncBestEffortConfigStub{timeout: time.Second, maxParallel: 1}, child)
@@ -67,7 +67,7 @@ func TestMultiForceCloseForwardsWhileCloseWaitsForChild(t *testing.T) {
 					handleCalls = child.handleCalls.Load
 					reject = func() {
 						_, err := owner.Info(context.Background(), "late")
-						require.ErrorIs(t, err, applogging.ErrLoggerClosed)
+						require.ErrorIs(t, err, pkglogger.ErrLoggerClosed)
 					}
 				}
 				releaseClose := sync.OnceFunc(func() { close(finishClose) })
@@ -76,7 +76,7 @@ func TestMultiForceCloseForwardsWhileCloseWaitsForChild(t *testing.T) {
 				go func() { closed <- logger.Close() }()
 				<-closeStarted
 				err := logger.ForceClose()
-				require.ErrorIs(t, err, shutdown.ErrForcedClose)
+				require.ErrorIs(t, err, pkgshutdown.ErrForcedClose)
 				require.ErrorIs(t, err, cause)
 				require.Equal(t, 1, forces)
 				reject()
@@ -96,7 +96,7 @@ func TestMultiForceCloseContinuesPastChildPanic(t *testing.T) {
 	second := &forceSyncHandler{syncHandlerStub: &syncHandlerStub{}, force: func() error { forces++; return nil }}
 	owner := newTestMultiLogger(first, second)
 	err := owner.ForceClose()
-	require.ErrorIs(t, err, shutdown.ErrForcedClose)
+	require.ErrorIs(t, err, pkgshutdown.ErrForcedClose)
 	var handlerErr *HandlerError
 	require.ErrorAs(t, err, &handlerErr)
 	require.Equal(t, "ForceClose", handlerErr.Op)

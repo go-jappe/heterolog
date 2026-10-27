@@ -11,12 +11,12 @@ import (
 	"github.com/ulikunitz/xz"
 )
 
-// verifyXZFraming requires a complete index and footer for every stream before
-// trusting the decoder's EOF. The current XZ decoder can return a normal EOF
-// from a truncated block header, including immediately after a stream header.
-// Walk backwards using each index's block sizes so a complete final stream
-// cannot hide an incomplete preceding stream. ReadAt preserves the position
-// for the subsequent full decode, which also verifies block data and checksums.
+// verifyXZFramingは、decoderのEOFを信頼する前に、すべてのstreamに完全なindexと
+// footerがあることを要求します。現在のXZ decoderは、stream headerの直後を含め、
+// 途中で切れたblock headerから通常のEOFを返すことがあります。完全な最後のstreamが
+// 不完全な前のstreamを隠せないよう、各indexのblock sizeを使って後ろからたどります。
+// ReadAtを使い、後続の全体のdecodeのために読み取り位置を保ちます。全体のdecodeでは
+// blockのデータとchecksumも検証します。
 func verifyXZFraming(in *os.File) error {
 	start, err := in.Seek(0, io.SeekCurrent)
 	if err != nil {
@@ -35,7 +35,7 @@ func verifyXZFraming(in *os.File) error {
 		if err != nil {
 			return err
 		}
-		// Header (12), empty index (8), and footer (12) are all required.
+		// header(12)、空のindex(8)、footer(12)がすべて必要です。
 		if end-start < 32 {
 			return io.ErrUnexpectedEOF
 		}
@@ -64,10 +64,10 @@ func verifyXZFraming(in *os.File) error {
 		if !xz.ValidHeader(header[:]) || header[6] != footer[8] || header[7] != footer[9] {
 			return errors.New("xz stream header and footer do not match")
 		}
-		// Re-read the bounded index after locating the header. This avoids
-		// allocating a block table from untrusted input. Check the actual LZMA2
-		// boundaries too: an early end marker can otherwise make the decoder
-		// mistake block data for a new, truncated block header and accept EOF.
+		// headerの位置を確定した後で、範囲を確認済みのindexを読み直します。これにより、
+		// 信頼できない入力からblock tableを割り当てずに済みます。実際のLZMA2の境界も
+		// 確認します。確認しなければ、早すぎるend markerによって、decoderがblock dataを
+		// 途中で切れた新しいblock headerと誤認し、EOFを受け入れることがあります。
 		if _, err := readXZIndexBlocksSize(in, indexStart, indexSize, blocksSize, func(relative, unpadded int64) error {
 			return verifyXZBlockFraming(in, streamStart+12+relative, unpadded, header[7])
 		}); err != nil {
@@ -80,8 +80,8 @@ func verifyXZFraming(in *os.File) error {
 	}
 }
 
-// Stream padding is zero bytes in multiples of four, after a complete stream.
-// Read it in bounded chunks, including when an archive has a large padding area.
+// stream paddingは、完全なstreamの後に続く、4の倍数個のzero byteです。archiveに
+// 大きなpadding領域がある場合も含め、上限のあるchunk単位で読みます。
 func skipXZStreamPadding(in io.ReaderAt, start, end int64) (int64, error) {
 	var chunk [4096]byte
 	for end > start {
@@ -99,8 +99,8 @@ func skipXZStreamPadding(in io.ReaderAt, start, end int64) (int64, error) {
 	return end, nil
 }
 
-// The index is read without allocating from its untrusted record count. Each
-// record describes the unpadded size of one block and its uncompressed size.
+// indexは、信頼できないrecord数に基づいて割り当てをせずに読みます。各recordは、
+// 一つのblockのunpadded sizeと非圧縮時のsizeを表します。
 func readXZIndexBlocksSize(in io.ReaderAt, offset, size, blockBudget int64, verifyBlock func(relative, unpadded int64) error) (int64, error) {
 	checksum := crc32.NewIEEE()
 	r := bufio.NewReader(io.TeeReader(io.NewSectionReader(in, offset, size-4), checksum))
@@ -160,10 +160,10 @@ func readXZIndexBlocksSize(in io.ReaderAt, offset, size, blockBudget int64, veri
 	return blocksSize, nil
 }
 
-// The built-in decoder supports LZMA2 blocks. Validate chunk lengths without
-// decoding their payload; the decoder still owns filters, checksums, state
-// transitions, and decoded-size checks. A block must end exactly where its
-// index record says, rather than drifting into the next block/index/footer.
+// 組み込みのdecoderはLZMA2 blockに対応しています。payloadをdecodeせずにchunkの
+// 長さを検証します。filter、checksum、状態遷移、decode後のsizeの確認は、引き続き
+// decoderが担当します。blockは次のblock・index・footerへはみ出さず、index recordが
+// 示す位置でちょうど終わらなければなりません。
 func verifyXZBlockFraming(in io.ReaderAt, offset, unpadded int64, check byte) error {
 	var checkSize int64
 	switch check {
@@ -219,7 +219,7 @@ func verifyXZBlockFraming(in io.ReaderAt, offset, unpadded int64, check byte) er
 			sizeBytes = header[3:5]
 		}
 		chunkSize := int64(binary.BigEndian.Uint16(sizeBytes)) + 1
-		// Leave at least one byte for the end marker (or the next chunk).
+		// end marker(または次のchunk)のために、少なくとも1 byteを残します。
 		if chunkSize >= end-pos-chunkHeaderSize {
 			return errors.New("lzma2 chunk exceeds indexed block bounds")
 		}
@@ -228,7 +228,7 @@ func verifyXZBlockFraming(in io.ReaderAt, offset, unpadded int64, check byte) er
 	return io.ErrUnexpectedEOF
 }
 
-// XZ variable-length integers use at most nine bytes and a canonical encoding.
+// XZの可変長整数は最大9 byteで、canonicalな符号化を使います。
 func readXZIndexInteger(r io.ByteReader) (uint64, error) {
 	var value uint64
 	for i := range 9 {

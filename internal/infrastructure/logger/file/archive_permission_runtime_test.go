@@ -20,6 +20,7 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFileArchiveHandoffPermissionFailureRetainsSourceAndRetries(t *testing.T) {
@@ -62,8 +63,8 @@ func TestFileArchiveHandoffPermissionFailureRetainsSourceAndRetries(t *testing.T
 			payload := []byte("compressed source retained until handoff succeeds")
 			require.NoError(t, os.WriteFile(source, payload, 0o600))
 
-			// Initialization has succeeded. An external change now prevents the
-			// next temporary write without preventing the owner from changing ACLs.
+			// 初期化は成功しています。ここで外部の変更により、ownerがACLを変更することは
+			// 妨げずに、次の一時書き込みを妨げます。
 			restore := denyArchiveRuntimeDirectoryAccess(t, temporaryDirectory, true)
 			for attempt := 0; attempt < 2; attempt++ {
 				require.False(t, owner.tryUploadRotatedFileUsingWithNotifications(context.Background(), managed, source, runNotificationImmediately))
@@ -74,8 +75,8 @@ func TestFileArchiveHandoffPermissionFailureRetainsSourceAndRetries(t *testing.T
 				require.NoFileExists(t, filepath.Join(destination, filepath.Base(source)))
 			}
 
-			// The same uploader succeeds on its next invocation after an external
-			// actor restores access; it needs no reconstructed store or logger.
+			// 外部のactorがaccessを戻した後は、同じuploaderが次の呼び出しで成功します。
+			// storeやloggerを作り直す必要はありません。
 			restore()
 			require.True(t, owner.tryUploadRotatedFileUsingWithNotifications(context.Background(), managed, source, runNotificationImmediately))
 			contents, err := os.ReadFile(filepath.Join(destination, filepath.Base(source)))
@@ -109,8 +110,8 @@ func TestCompressedLogReplayPermissionFailureNotifiesAndContinues(t *testing.T) 
 	root, err = root.ForDestination("s3-current")
 	require.NoError(t, err)
 	restore := denyArchiveRuntimeDirectoryAccess(t, root.ProcessingDir(), false)
-	// Wait for an actual failed cycle before adding the queued file, so an
-	// enumeration that began before the permission change cannot claim it.
+	// queueに置くfileを追加する前に、実際に失敗した周期を待ちます。これにより、
+	// 権限の変更より前に始まった列挙がそのfileを取得できないようにします。
 	awaitArchivePermissionError(t, permissionErrors)
 	const fileName = "app_20260913_1.log.gz"
 	payload := []byte("queued data must survive an unavailable processing directory")
@@ -127,8 +128,8 @@ func TestCompressedLogReplayPermissionFailureNotifiesAndContinues(t *testing.T) 
 	restore()
 	path := receiveForTest(t, uploaded, "the same spool runtime did not replay on a later tick after access was restored")
 	require.Equal(t, filepath.Join(root.ProcessingDir(), fileName), path)
-	// Closing the route releases its registration. Closing the separately owned
-	// root runtime then drains the accepted replay's transition before inspection.
+	// routeをCloseすると、その登録が解放されます。続いて別に所有されているroot runtimeを
+	// Closeすると、確認の前に、受理したreplayの遷移を最後まで処理させます。
 	require.NoError(t, closeArchiveUploader(managed))
 	require.NoError(t, closeBoundedForTest(t, boundedwait.HangTimeout, "spoolRuntime Close", spoolRuntime))
 	contents, err = os.ReadFile(filepath.Join(root.DoneDir(), fileName))
@@ -148,7 +149,7 @@ type archivePermissionFailure struct {
 func newArchivePermissionTestOwner() (*FileLogger, <-chan archivePermissionFailure) {
 	errorsSeen := make(chan archivePermissionFailure, 8)
 	owner := &FileLogger{logger: DefaultLogger, Clock: clock.NewUTCClock(), Tracer: observer.NopTracer{}, Meter: observer.NopMeter{}}
-	owner.OnError = func(_ context.Context, err error, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	owner.OnError = func(_ context.Context, err error, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		if errors.Is(err, os.ErrPermission) {
 			select {
 			case errorsSeen <- archivePermissionFailure{err: err, occurredAt: entry.OccurredAt}:

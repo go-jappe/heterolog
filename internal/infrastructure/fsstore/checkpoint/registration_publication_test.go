@@ -42,7 +42,7 @@ func TestRegistrationPublicationFailurePreservesEligibilityAcrossRetryAndRestart
 						setCheckpointDirectorySyncForTest(store, func(string) error { return failure })
 						restore = func() { setCheckpointDirectorySyncForTest(store, infrafsstore.SyncDirectory) }
 					} else {
-						// A nonempty directory rejects publication on Unix and Windows.
+						// UnixでもWindowsでも、空でないdirectoryは公開を拒否します。
 						backup := filepath.Join(t.TempDir(), "registrations.json")
 						require.NoError(t, os.Rename(store.registrationsPath(), backup))
 						require.NoError(t, os.Mkdir(store.registrationsPath(), 0o700))
@@ -70,7 +70,7 @@ func TestRegistrationPublicationFailurePreservesEligibilityAcrossRetryAndRestart
 						require.NoError(t, store.PendingSaveError(ctx))
 					}
 					restore()
-					// This generation appeared after the registration was attempted.
+					// この世代は、登録を試みた後に現れたものです。
 					newKey := CheckpointKey{Generation: "20261021-1", Compressed: true}
 					if restart {
 						if published {
@@ -82,7 +82,7 @@ func TestRegistrationPublicationFailurePreservesEligibilityAcrossRetryAndRestart
 						store, err = NewFilesystemStore(store.Directory(), "source")
 						require.NoError(t, err)
 					} else if published {
-						// Restoring I/O alone does not authorize a new cursor before recovery syncs the manifest.
+						// I/Oを復旧しただけでは、recoveryがmanifestを同期する前に新しいcursorを認めません。
 						err = store.RegisterDestinations(ctx, ids, []CheckpointKey{newKey})
 						require.ErrorIs(t, err, failure)
 						require.False(t, IsPendingSaveOnly(err))
@@ -209,8 +209,8 @@ func TestRegisteredDestinationsRemainUsableDuringAcceptedCursorSaveFailure(t *te
 		snapshot, err := store.AdvanceCompletionCursor(ctx, key, ids)
 		pending := pendingSaveForTest(t, err)
 		require.True(t, snapshot.Complete(ids))
-		// Registration is already durable. Its no-op refresh must remain available
-		// to upload continuations while the independently accepted cursor save retries.
+		// 登録はすでに永続化済みです。独立に受理したcursorの保存を再試行している間も、
+		// uploadの継続処理は変更のない再登録(no-op refresh)を引き続き使えなければなりません。
 		require.NoError(t, store.RegisterDestinations(ctx, ids, []CheckpointKey{key}))
 		require.ErrorIs(t, store.PendingSaveError(ctx), pending.Err, "registration must not clear the cursor persistence failure")
 		loaded, err := store.Load(ctx, key)
@@ -253,8 +253,8 @@ func TestPublishedRegistrationRecoverySyncsManifestBeforeLatestCursorAndCloseCom
 			t.Fatalf("Close returned before registration durability was confirmed: %v", err)
 		default:
 		}
-		// Observe each real post-publication directory-sync boundary. The recovered
-		// cursor document must only be published after the manifest has been synced.
+		// 公開後の実際のdirectory同期の境界をそれぞれ観測します。復旧したcursor文書は、
+		// manifestを同期した後にだけ公開されなければなりません。
 		var cursorSnapshots [][]byte
 		var readErrors []error
 		setCheckpointDirectorySyncForTest(store, func(directory string) error {

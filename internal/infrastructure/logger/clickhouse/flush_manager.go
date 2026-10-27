@@ -17,6 +17,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/google/uuid"
 )
@@ -33,8 +34,8 @@ type ClickHouseFlushManager struct {
 	config         ClickHouseFlushManagerRuntimeConfigProvider
 	FailureHandler *flushfailure.CompositeFailureHandler
 	resource       resource.ResourceProvider
-	Tracer         observer.Tracer
-	Meter          observer.Meter
+	Tracer         pkgobserver.Tracer
+	Meter          pkgobserver.Meter
 }
 
 // NewClickHouseFlushManagerはClickHouse送信用FlushManagerを生成します。
@@ -45,8 +46,8 @@ func NewClickHouseFlushManager(
 	cfg ClickHouseFlushManagerRuntimeConfigProvider,
 	failureHandler *flushfailure.CompositeFailureHandler,
 	resourceProvider resource.ResourceProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *ClickHouseFlushManager {
 	return &ClickHouseFlushManager{
 		LoggerBase:     loggerBase,
@@ -248,8 +249,8 @@ func (fm *ClickHouseFlushManager) insertEntryRecords(
 		Meta: fm.newSendMeta(ctx, requestID, len(entryRecords)),
 	}
 	if err := ctx.Err(); err != nil {
-		// No client call took place. Keep this physical request and its token
-		// intact so that a later replay can deliver the accepted records.
+		// clientは呼び出していません。後の再送で受理済みのrecordを配送できるよう、
+		// この物理requestとそのtokenを変更せずに保持します。
 		failureDetectedAt := result.Meta.AttemptedAt
 		result.Meta.AttemptedAt = time.Time{}
 		result.TerminalError = err
@@ -272,8 +273,8 @@ func (fm *ClickHouseFlushManager) insertEntryRecords(
 	elapsed := time.Since(start)
 	fm.handleInsertDelayLog(ctx, elapsed)
 
-	// A successful response is authoritative even when cancellation races with
-	// completion. Only unconfirmed outcomes require quarantine.
+	// cancellationが完了と競合しても、成功responseを確定した結果として扱います。
+	// quarantineが必要なのは、結果を確認できない場合だけです。
 	if err == nil && response != nil {
 		return result, nil
 	}

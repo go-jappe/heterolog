@@ -12,6 +12,7 @@ func TestCurrentAndOldMapRenamedKeysBothWays(t *testing.T) {
 		"HETEROLOG_OPENSEARCH_DURABLE_FILE_DEBUG_HANDLER",
 		"HETEROLOG_MEMORY_CRITICAL_RATIO",
 		"HETEROLOG_MAX_ASYNC_LOKI_SPOOL_SCANNED_CACHE_USAGE_COUNT",
+		"HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_RETRIES",
 	} {
 		old, ok := Old(current)
 		if !ok || old == current {
@@ -34,6 +35,7 @@ func TestCurrentAndOldKeepPreRenameSpellings(t *testing.T) {
 		{old: "HETEROLOG_STDOUT_LOGGER_ERROR_HAND" + "ER", current: "HETEROLOG_STDOUT_LOGGER_ERROR_HANDLER"},
 		{old: "HETEROLOG_MEMORY_CRITICAL_RAI" + "TO", current: "HETEROLOG_MEMORY_CRITICAL_RATIO"},
 		{old: "HETEROLOG_MAX_OPENSEARCH_SPOOL_SCAN" + "ED_CACHE_USAGE_COUNT", current: "HETEROLOG_MAX_OPENSEARCH_SPOOL_SCANNED_CACHE_USAGE_COUNT"},
+		{old: "HETEROLOG_MAX_LOKI_RETRYABLE_CLIENT_ATTEM" + "PTS", current: "HETEROLOG_MAX_LOKI_RETRYABLE_CLIENT_RETRIES"},
 	} {
 		if got, ok := Current(tt.old); !ok || got != tt.current {
 			t.Errorf("Current(%s) = %q, %t; want %q", tt.old, got, ok, tt.current)

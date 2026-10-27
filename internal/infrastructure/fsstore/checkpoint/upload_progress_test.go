@@ -189,7 +189,7 @@ func TestUploadProgressMergesSavedTargetsWithoutAliasingOrLosingEarlierSuccess(t
 	require.Equal(t, wantArchive, loaded.SavedTargets[0])
 	loaded.SavedTargets[0] = SavedArchiveTarget{Target: "changed result", FailureCategory: uploader.FailureCategoryRetryable}
 
-	// A later parallel result contains only its own success and must preserve archive.
+	// 後から保存する並行の結果は自身の成功だけを含み、archiveの記録を残さなければなりません。
 	spool := failedUploadProgressForTest("primary")
 	spool.SavedTargets = []SavedFailureTarget{SavedSpoolTarget{Target: "/failure/spool", State: pkgspool.StateActive}}
 	require.NoError(t, store.SaveUploadProgress(ctx, spool))
@@ -197,7 +197,7 @@ func TestUploadProgressMergesSavedTargetsWithoutAliasingOrLosingEarlierSuccess(t
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, []SavedFailureTarget{wantArchive, spool.SavedTargets[0]}, loaded.SavedTargets)
-	// A changed configured root is a distinct save, not a success at the old root.
+	// 設定したrootが変わった場合は、旧rootでの成功ではなく別の保存です。
 	spool.SavedTargets[0] = SavedSpoolTarget{Target: "/failure/new-spool", State: pkgspool.StateActive}
 	require.NoError(t, store.SaveUploadProgress(ctx, spool))
 	loaded, found, err = store.LoadUploadProgress(ctx, archive.Key, "primary")
@@ -633,14 +633,14 @@ func TestAdvanceCompletionCursorSavesCursorAndClearsOnlyCoveredProgressTogether(
 	require.NoError(t, err)
 	require.Equal(t, "20260928-1", document.Cursors[cursorIndex(document.Cursors, "primary")].Generation)
 	require.Equal(t, []UploadProgress{other, newer}, document.UploadProgress)
-	// A delayed partial save must not recreate progress covered by the completed cursor.
+	// 遅れて届いた部分的な保存で、完了cursorが含む途中経過を作り直してはいけません。
 	require.NoError(t, store.SaveUploadProgress(ctx, old))
 	loaded, found, err := store.LoadUploadProgress(ctx, old.Key, "primary")
 	require.NoError(t, err)
 	require.False(t, found)
 	require.Equal(t, UploadProgress{}, loaded)
 
-	// Cleanup is not conditional on cursor movement itself.
+	// 後始末は、cursorが進んだかどうか自体には左右されません。
 	store.stateOrSaveMu.Lock()
 	store.state.UploadProgress = append(store.state.UploadProgress, old)
 	store.stateOrSaveMu.Unlock()

@@ -32,7 +32,7 @@ type FileArchiveConfigAdapter struct {
 	dirCaseRetryable           string
 	dirCasePermanent           string
 	enableRotate               bool
-	maxWriteAttempts           int
+	maxWriteRetries            int
 	fileOperationRetryWaitTime time.Duration
 	lifecycleRunnerConfig      fsstore.AppendLogRunnerConfig
 	objectStorageUpload        objectstorage.UploadTargetConfig
@@ -74,7 +74,7 @@ func NewFileArchiveConfigAdapter(cfg pkgdurable.FileArchiveConfig) FileArchiveCo
 		dirCaseRetryable:           cfg.DirCaseRetryable,
 		dirCasePermanent:           cfg.DirCasePermanent,
 		enableRotate:               cfg.EnableRotate,
-		maxWriteAttempts:           cfg.MaxWriteAttempts,
+		maxWriteRetries:            cfg.MaxWriteRetries,
 		fileOperationRetryWaitTime: cfg.FileOperationRetryWaitTime,
 		lifecycleRunnerConfig:      cfg.LifecycleRunnerConfig,
 		objectStorageUpload:        cfg.ObjectStorageUploadConfig,
@@ -144,8 +144,8 @@ func (a FileArchiveConfigAdapter) DirCasePermanent() string {
 func (a FileArchiveConfigAdapter) EnableRotate() bool {
 	return a.enableRotate
 }
-func (a FileArchiveConfigAdapter) MaxWriteAttempts() int {
-	return a.maxWriteAttempts
+func (a FileArchiveConfigAdapter) MaxWriteRetries() int {
+	return a.maxWriteRetries
 }
 func (a FileArchiveConfigAdapter) FileOperationRetryWaitTime() time.Duration {
 	return a.fileOperationRetryWaitTime

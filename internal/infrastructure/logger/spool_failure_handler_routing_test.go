@@ -16,6 +16,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // factoryで構築したspool handlerが、spool用HandlerConfigで選択された通知先だけを
@@ -54,18 +55,20 @@ func TestBuildRoutesSpoolInternalNotificationsOnlyToConfiguredHandlers(t *testin
 	}
 	available := handlerStruct{
 		OnError: []logging.NamedLoggerErrorHandler{
-			{Name: "file", Handler: func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) { record("error:file") }},
-			{Name: "stdout", Handler: func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+			{Name: "file", Handler: func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
+				record("error:file")
+			}},
+			{Name: "stdout", Handler: func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 				record("error:stdout")
 			}},
-			{Name: "slack", Handler: func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+			{Name: "slack", Handler: func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 				record("error:slack")
 			}},
 		},
 		OnWarn: []logging.NamedLoggerHandler{
-			{Name: "file", Handler: func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) { record("warn:file") }},
-			{Name: "stdout", Handler: func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) { record("warn:stdout") }},
-			{Name: "slack", Handler: func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) { record("warn:slack") }},
+			{Name: "file", Handler: func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) { record("warn:file") }},
+			{Name: "stdout", Handler: func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) { record("warn:stdout") }},
+			{Name: "slack", Handler: func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) { record("warn:slack") }},
 		},
 	}
 

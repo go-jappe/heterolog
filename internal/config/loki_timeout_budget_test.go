@@ -16,7 +16,7 @@ func TestLokiTimeoutBudgetIncludesRetryAfterForEveryContract(t *testing.T) {
 			pkglogger.RetryClientModeRetryPolicy, pkglogger.RetryClientModeRetryPolicyWithBreaker,
 		} {
 			t.Run(contract+"/"+string(mode), func(t *testing.T) {
-				budget := 5 * time.Second // Three 1s attempts and two Retry-After waits capped at 1s.
+				budget := 5 * time.Second // 1秒の試行3回と、上限1秒のRetry-After待機2回です。
 				if mode == pkglogger.RetryClientModeNone || mode == pkglogger.RetryClientModeCircuitBreaker {
 					budget = time.Second
 				}

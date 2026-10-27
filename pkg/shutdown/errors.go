@@ -1,8 +1,9 @@
-// Package shutdownは明示的な強制終了の結果を定義します。
+// Package shutdown defines the result of an explicit forced shutdown.
 package shutdown
 
 import "errors"
 
-// ErrForcedCloseは受理済み処理の完了保証を放棄したことを表します。
-// 実行中のOS I/Oや資源解放の完了、プロセス終了を意味しません。
+// ErrForcedClose reports that the guarantee of completing accepted work has
+// been abandoned. It does not mean that in-flight OS I/O or the release of
+// resources has completed, or that the process has exited.
 var ErrForcedClose = errors.New("shutdown forced before accepted work completed")

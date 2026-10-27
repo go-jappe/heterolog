@@ -13,7 +13,6 @@ import (
 
 	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	filelogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
@@ -21,10 +20,12 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/slack"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +36,7 @@ func TestGetHandlerKeepsFallbackBatchesSeparateBetweenLevels(t *testing.T) {
 	available := getHandler(pkglogger.LoggerConfig{
 		ClickHouse:       &backendConfig,
 		ClickHouseClient: fallbackIsolationClickHouseClient(recorder),
-	}, streamrouting.None, nil, nil)
+	}, pkgcloudwatchlogs.StreamRoutingNone, nil, nil)
 	owner := newFallbackHandlerCloserOwner()
 	owner.Register("level-isolation", available)
 	t.Cleanup(func() { require.NoError(t, owner.Close()) })
@@ -86,7 +87,7 @@ func TestBuildLoggersKeepsFallbackStatePerSourceAndSharesFileLogger(t *testing.T
 	require.NoError(t, err)
 	internalDestinations, err := newInternalLogDestinationRuntime(
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		fileLoggerSet,
 		syncInternalLogFileDirectoryScopeLabel,
 		tracer,
@@ -98,7 +99,7 @@ func TestBuildLoggersKeepsFallbackStatePerSourceAndSharesFileLogger(t *testing.T
 	children, closers, err := buildLoggers(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		tracer,
 		meter,
@@ -189,7 +190,7 @@ func TestBuildDeliveryLoggersKeepsFallbackStatePerSourceAndSharesFileLogger(t *t
 	require.NoError(t, err)
 	internalDestinations, err := newDeliveryInternalLogDestinationRuntime(
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		fileLoggerSet,
 		deliveryInternalLogFileDirectoryScopeLabel,
 		tracer,
@@ -201,7 +202,7 @@ func TestBuildDeliveryLoggersKeepsFallbackStatePerSourceAndSharesFileLogger(t *t
 	children, closers, err := buildDeliveryLoggers(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		tracer,
 		meter,
 		fileLoggerSet,
@@ -303,7 +304,7 @@ func TestNewLoggerCloseCompletesRegisteredClickHouseAndSlackFallbackHandlers(t *
 	topLevel, err := NewLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -347,7 +348,7 @@ func TestTopLevelSlackOutputUsesConfiguredHTTPClient(t *testing.T) {
 					Timeout:               time.Second,
 					MaxLogEntryBytes:      pkglogger.DefaultMaxLogEntryBytes,
 					Slack:                 slackCfg,
-				}, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+				}, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 				require.NoError(t, err)
 				require.NoError(t, topLevel.Info(ctx, message))
 				closeable, ok := topLevel.(applogging.CloseableLogger)
@@ -364,7 +365,7 @@ func TestTopLevelSlackOutputUsesConfiguredHTTPClient(t *testing.T) {
 					MaxParallel:           1,
 					MaxLogEntryBytes:      pkglogger.DefaultMaxLogEntryBytes,
 					Slack:                 slackCfg,
-				}, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+				}, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 				require.NoError(t, err)
 				topLevel.Info(ctx, message)
 				closeable, ok := topLevel.(applogging.AsyncCloseableLogger)
@@ -436,7 +437,7 @@ func TestNewDeliveryLoggerSlackOutputAndFallbackUseConfiguredHTTPClient(t *testi
 	topLevel, err := NewDeliveryLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		observer.NopTracer{},
 		observer.NopMeter{},
 	)
@@ -491,7 +492,7 @@ func TestNewAsyncLoggerCloseFlushesRegisteredClickHouseFallbackHandler(t *testin
 	topLevel, err := NewAsyncLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -530,7 +531,7 @@ func TestNewDeliveryLoggerCloseFlushesRegisteredClickHouseFallbackHandler(t *tes
 	topLevel, err := NewDeliveryLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		observer.NopTracer{},
 		observer.NopMeter{},
 	)
@@ -902,8 +903,8 @@ func invokeFallbackIsolationInfo(
 	handler logging.LoggerHandlerFunc,
 	source string,
 	message string,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) {
 	handler(
 		context.Background(),

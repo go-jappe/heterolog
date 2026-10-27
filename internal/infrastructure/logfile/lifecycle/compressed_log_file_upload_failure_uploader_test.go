@@ -163,9 +163,9 @@ func TestLifecycleCompressedLogFileUploadSpoolHandoffUsesContractRootAndDistinct
 	require.NoError(t, err)
 	done, err := store.ListFiles(ctx, pkgspool.StateDone)
 	require.NoError(t, err)
-	// Replay is ticker-only and this test config uses a one-hour interval. A
-	// direct failure therefore performs exactly one PUT and leaves every handed-
-	// off file active until a later runner tick.
+	// replayはtickerだけで動き、このtestの設定ではintervalが1時間です。そのため
+	// 直接uploadの失敗ではPUTをちょうど1回だけ行い、handoffしたfileはすべて
+	// 後のrunner tickまでactiveのまま残ります。
 	require.Len(t, active, len(routes))
 	require.Empty(t, done)
 	gotFileNames := make(map[string]struct{}, len(active))

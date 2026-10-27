@@ -3,7 +3,7 @@ package cloudwatchlogs
 import (
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 )
 
 const (
@@ -12,7 +12,7 @@ const (
 	DefaultLogGroupName  = "/heterolog/app"
 	DefaultLogStreamName = "default"
 	// DefaultStreamRoutingGranularityは設定された基準log stream名をそのまま使用します。
-	DefaultStreamRoutingGranularity = streamrouting.None
+	DefaultStreamRoutingGranularity = pkgcloudwatchlogs.StreamRoutingNone
 
 	DefaultCloudWatchLogsFailureArchiveDir         = "cloudwatchlogs_failure_archives"
 	DefaultAsyncCloudWatchLogsFailureArchiveDir    = "async_cloudwatchlogs_failure_archives"
@@ -29,9 +29,10 @@ const (
 	// - retry_policy_with_breaker: RetryPolicyClient -> CircuitBreakerClient -> raw client。
 	// defaultではbreakerを暗黙に有効化せず、エラー分類に応じた有界retryだけを適用します。
 	DefaultRetryClientMode = "retry_policy"
-	DefaultMaxAttempts     = 3
-	DefaultBaseDelay       = 200 * time.Millisecond
-	DefaultMaxDelay        = 1 * time.Second
+	// DefaultMaxRetriesは、初回の送信に加える再試行の既定の回数です。初回と合わせて最大3回送ります。
+	DefaultMaxRetries = 2
+	DefaultBaseDelay  = 200 * time.Millisecond
+	DefaultMaxDelay   = 1 * time.Second
 	// DefaultTimeoutは、HETEROLOG_*CLOUDWATCH_TIMEOUT_SECONDを省略した場合の1回のHTTP requestの上限です。
 	// 既定のretry（3回、最大1秒の待機）を含む予算8秒が、既定のlogger timeoutに既定のtimeout
 	// budget policy（must_fit）で収まるよう、公開設定例（.env.example）と同じ2秒にします。

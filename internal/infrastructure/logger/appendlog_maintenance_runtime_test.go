@@ -15,14 +15,15 @@ import (
 	appconfig "github.com/go-jappe/heterolog/internal/config"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	logfilerunner "github.com/go-jappe/heterolog/internal/infrastructure/logfile/runner"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/testutil"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -217,7 +218,7 @@ func TestLoggerConstructorsCreateOneAdditionalRunnerForDedicatedInternalLogFile(
 			},
 		}
 
-		created, err := NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, tracer, meter)
+		created, err := NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, tracer, meter)
 		require.NoError(t, err)
 		owned := created.(*topLevelLoggerRuntime)
 		require.Len(t, owned.appendLogMaintenanceRuntime.entries, 2)
@@ -245,7 +246,7 @@ func TestLoggerConstructorsCreateOneAdditionalRunnerForDedicatedInternalLogFile(
 			},
 		}
 
-		created, err := NewAsyncLogger(context.Background(), cfg, streamrouting.None, nil, nil, tracer, meter)
+		created, err := NewAsyncLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, tracer, meter)
 		require.NoError(t, err)
 		owned := created.(*topLevelAsyncLoggerRuntime)
 		require.Len(t, owned.appendLogMaintenanceRuntime.entries, 2)
@@ -270,7 +271,7 @@ func TestLoggerConstructorsCreateOneAdditionalRunnerForDedicatedInternalLogFile(
 			},
 		}
 
-		created, err := NewDeliveryLogger(context.Background(), cfg, streamrouting.None, tracer, meter)
+		created, err := NewDeliveryLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, tracer, meter)
 		require.NoError(t, err)
 		owned := created.(*topLevelDeliveryLoggerRuntime)
 		require.Len(t, owned.appendLogMaintenanceRuntime.entries, 2)
@@ -292,7 +293,7 @@ func TestInternalLogFileWithoutOverrideSharesBaseLoggerSetAndRunner(t *testing.T
 	created, err := NewLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		nil,
 		nil,
 		observer.NopTracer{},
@@ -328,7 +329,7 @@ func TestHandlerOnlyDedicatedInternalLogFileDoesNotStartUnusedBaseFileRuntime(t 
 			},
 		}
 
-		created, err := NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, tracer, meter)
+		created, err := NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, tracer, meter)
 		require.NoError(t, err)
 		owned := created.(*topLevelLoggerRuntime)
 		require.Nil(t, owned.fileLoggerSet)
@@ -361,7 +362,7 @@ func TestHandlerOnlyDedicatedInternalLogFileDoesNotStartUnusedBaseFileRuntime(t 
 			},
 		}
 
-		created, err := NewAsyncLogger(context.Background(), cfg, streamrouting.None, nil, nil, tracer, meter)
+		created, err := NewAsyncLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, tracer, meter)
 		require.NoError(t, err)
 		owned := created.(*topLevelAsyncLoggerRuntime)
 		require.Nil(t, owned.fileLoggerSet)
@@ -396,7 +397,7 @@ func TestHandlerOnlyDedicatedInternalLogFileDoesNotStartUnusedBaseFileRuntime(t 
 			},
 		}
 
-		created, err := NewDeliveryLogger(context.Background(), cfg, streamrouting.None, tracer, meter)
+		created, err := NewDeliveryLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, tracer, meter)
 		require.NoError(t, err)
 		owned := created.(*topLevelDeliveryLoggerRuntime)
 		require.Nil(t, owned.fileLoggerSet)
@@ -530,8 +531,8 @@ func TestBuildLogFileMaintenanceRuntimeUsesUTCOccurrenceClockForReporters(t *tes
 				Handler: func(
 					context.Context,
 					*logging.LogEntry,
-					observer.Tracer,
-					observer.Meter,
+					pkgobserver.Tracer,
+					pkgobserver.Meter,
 				) {
 				},
 			}}}
@@ -750,7 +751,7 @@ func runnerFileConfigForInternalLogRuntime(root, target string) *pkglogger.FileL
 				WriteFileErrorThresholdDuration: time.Millisecond,
 			},
 			Retry: pkgfsstore.RetryConfig{
-				MaxWriteAttempts:           1,
+				MaxWriteRetries:            0,
 				FileOperationRetryWaitTime: time.Millisecond,
 			},
 		},
@@ -815,7 +816,7 @@ func runnerDeliveryFileConfigForInternalLogRuntime(
 				WriteFileErrorThresholdDuration: time.Millisecond,
 			},
 			Retry: pkgfsstore.RetryConfig{
-				MaxWriteAttempts:           1,
+				MaxWriteRetries:            0,
 				FileOperationRetryWaitTime: time.Millisecond,
 			},
 		},

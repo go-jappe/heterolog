@@ -1,4 +1,4 @@
-// configfixture generates an offline configuration root for Windows tests.
+// configfixtureは、Windowsのtest用にofflineの設定rootを生成します。
 package main
 
 import (

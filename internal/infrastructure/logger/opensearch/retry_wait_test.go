@@ -36,7 +36,7 @@ func TestRetryWaitCancellationPreservesFailureRecords(t *testing.T) {
 						require.Len(t, docs, 2)
 						return nil, attempt()
 					}}
-					client, err := wrapper.BuildClientChain(raw, NewRetryConfigProvider(&pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{RetryClientMode: mode, MaxAttempts: 3, BaseDelay: 100 * time.Millisecond, MaxDelay: 100 * time.Millisecond}), nil, nil)
+					client, err := wrapper.BuildClientChain(raw, NewRetryConfigProvider(&pkglogger.OpenSearchRetryableClientCaseTransportErrorConfig{RetryClientMode: mode, MaxRetries: 2, BaseDelay: 100 * time.Millisecond, MaxDelay: 100 * time.Millisecond}), nil, nil)
 					require.NoError(t, err)
 					saved := &cancellationFailureHandler{observations: make(chan cancellationObservation, 1)}
 					fm := newReportingFlushManagerForDeliveryTest(saved)

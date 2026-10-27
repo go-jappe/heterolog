@@ -22,9 +22,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// An interrupted unlink must not turn a saved terminal decision into a new send
-// followed by an endless collision with the same done/dead file. This uses real
-// source-removal failure, filesystem reconstruction and the retention-first Runner.
+// 中断されたunlinkによって、保存済みのterminal decisionが新たな送信に変わり、
+// 同じdone/dead fileとの終わりのない衝突が続いてはなりません。この試験は、実際の
+// source削除の失敗、filesystemからの再構築、retentionを先に実行するRunnerを使います。
 func TestTerminalCleanupSurvivesRemovalFailureAndRestart(t *testing.T) {
 	for _, tc := range []struct {
 		state  spool.State
@@ -68,8 +68,8 @@ func TestTerminalCleanupSurvivesRemovalFailureAndRestart(t *testing.T) {
 			require.Len(t, saved, len(original))
 			require.Equal(t, original, readIntegrationSpoolRecords(t, stateRoot(cfg, spool.StateProcessing)))
 
-			// Drop all retry memory by rebuilding the worker. Retention executes
-			// first and must preserve the expired, over-capacity saved evidence.
+			// workerを作り直して、memory上のretry情報をすべて捨てます。retentionが先に実行され、
+			// 期限切れで容量超過の保存済み証拠を保持しなければなりません。
 			restartedStore, err := fsworker.NewStateStore(cfg)
 			require.NoError(t, err)
 			restarted, err := worker.New(restartedStore, activeSpoolWriter{store: store}, sender)
@@ -104,7 +104,7 @@ func TestTerminalCleanupSurvivesRemovalFailureAndRestart(t *testing.T) {
 				require.Equal(t, worker.ProcessStatusQuarantined, report.ProcessReport.Status)
 				require.Equal(t, len(original), report.ProcessReport.QuarantineRecordCount)
 			}
-			// Once cleanup completes, ordinary retention resumes on later cycles.
+			// cleanupが完了すると、以降のcycleで通常のretentionが再開します。
 			retentionClock.now = retentionClock.now.Add(24 * time.Hour)
 			_, err = runner.RunOnce(ctx)
 			require.NoError(t, err)
@@ -148,7 +148,7 @@ func TestTerminalRecoveryRetriesUnlinkSyncBeforeRetentionCanDiscardEvidence(t *t
 			require.NoError(t, err)
 			require.Len(t, paths, 1)
 			source := paths[0]
-			// Seed a complete terminal decision left by a previous process.
+			// 前のprocessが残した、完全なterminal decisionを用意します。
 			require.NoError(t, stateStore.StoreProcessingRecordsToState(ctx, source, state, original))
 			before := readIntegrationSpoolRecords(t, stateRoot(cfg, state))
 			sender := &terminalRestartSender{status: spool.RecordOutcomeStatusSuccess}
@@ -216,8 +216,8 @@ type terminalSyncFailureStore struct {
 }
 
 func (s *terminalSyncFailureStore) ReconcileProcessingTerminal(ctx context.Context, path string, records []spool.SpoolRecord) (spool.State, error) {
-	// Install the real filesystem failure after discovery/read, so the failure
-	// targets unlink durability rather than the earlier directory scan.
+	// 実際のfilesystem障害をdiscovery/readの後に仕込み、それより前のdirectory scanではなく
+	// unlinkのdurabilityを失敗の対象にします。
 	s.restore = testutil.DenyDirectorySync(s.t, filepath.Dir(path))
 	return s.StateStore.ReconcileProcessingTerminal(ctx, path, records)
 }

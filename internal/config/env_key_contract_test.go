@@ -10,8 +10,8 @@ import (
 	"github.com/go-jappe/heterolog/internal/testutil"
 )
 
-// Inspect the distributed example directly. Comparing two generated variants
-// would only re-test the fixture generator, not the public configuration surface.
+// 配布用の設定例を直接検査します。生成した2つの派生fileを比べても、公開している
+// 設定項目ではなく、fixture生成処理を再検証するだけになるためです。
 func TestPublicEnvExampleHasUniqueKeys(t *testing.T) {
 	root := testutil.RepositoryRoot(t)
 	if keys := readUniqueEnvKeys(t, filepath.Join(root, ".env.example")); len(keys) == 0 {

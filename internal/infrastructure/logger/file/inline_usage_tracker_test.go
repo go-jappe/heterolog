@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
@@ -19,6 +18,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgclock "github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 	pkgtime "github.com/go-jappe/heterolog/pkg/time"
 
@@ -913,8 +913,8 @@ func TestInlineDirectorySizePurgeWarnsWhenActiveFilesAloneExceedLimit(t *testing
 	logger.OnWarn = func(
 		_ context.Context,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		warnings = append(warnings, entry)
 	}
@@ -952,8 +952,8 @@ func TestInlineDirectorySizePurgeUsesFileNameSnapshotWhileLiveNameChanges(t *tes
 	logger.OnWarn = func(
 		_ context.Context,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		warningDirectory, _ = entry.Fields["directoryPath"].(string)
 	}
@@ -1017,8 +1017,8 @@ func TestInlineDirectorySizePurgeWarnsWhenNoFileIsEligible(t *testing.T) {
 	logger.OnWarn = func(
 		_ context.Context,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		warnings = append(warnings, entry)
 	}
@@ -1060,8 +1060,8 @@ func TestInlineDirectorySizePurgeDispatchesRemoveFailureToOnErrorOnce(t *testing
 		_ context.Context,
 		err error,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		dispatchedErrors = append(dispatchedErrors, err)
 		errorEntries = append(errorEntries, entry)
@@ -1069,8 +1069,8 @@ func TestInlineDirectorySizePurgeDispatchesRemoveFailureToOnErrorOnce(t *testing
 	logger.OnWarn = func(
 		_ context.Context,
 		entry *logging.LogEntry,
-		_ observer.Tracer,
-		_ observer.Meter,
+		_ pkgobserver.Tracer,
+		_ pkgobserver.Meter,
 	) {
 		warnings = append(warnings, entry)
 	}
@@ -1281,8 +1281,8 @@ func TestTargetOnlyPurgePanicInvalidatesEstimateAndReleasesRetainedUploadPath(t 
 	logger.OnDebug = func(
 		context.Context,
 		*logging.LogEntry,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) {
 		panic("target purge report panic")
 	}
@@ -1333,8 +1333,8 @@ func TestDirectorySizePurgePanicInvalidatesAndAbortsObservation(t *testing.T) {
 	logger.OnDebug = func(
 		context.Context,
 		*logging.LogEntry,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) {
 		panic("directory purge report panic")
 	}

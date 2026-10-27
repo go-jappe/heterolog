@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 type completedSyncHandler struct{ *syncHandlerStub }
@@ -101,7 +101,7 @@ func TestMultiCloseWaitsForForcedChildActualCleanup(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				completion := &forcedChildCompletion{done: make(chan struct{})}
 				started := make(chan struct{})
-				closeChild := func() error { close(started); return shutdown.ErrForcedClose }
+				closeChild := func() error { close(started); return pkgshutdown.ErrForcedClose }
 				var owner interface {
 					Close() error
 					ShutdownComplete() bool
@@ -128,9 +128,9 @@ func TestMultiCloseWaitsForForcedChildActualCleanup(t *testing.T) {
 				require.Empty(t, closed)
 				require.False(t, owner.ShutdownComplete())
 				completeChild()
-				require.ErrorIs(t, boundedwait.ReceiveInBubble(t, closed, "Close after the child cleanup"), shutdown.ErrForcedClose)
+				require.ErrorIs(t, boundedwait.ReceiveInBubble(t, closed, "Close after the child cleanup"), pkgshutdown.ErrForcedClose)
 				require.True(t, owner.ShutdownComplete())
-				require.ErrorIs(t, owner.Close(), shutdown.ErrForcedClose)
+				require.ErrorIs(t, owner.Close(), pkgshutdown.ErrForcedClose)
 			})
 		})
 	}

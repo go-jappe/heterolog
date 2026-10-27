@@ -8,8 +8,8 @@ import (
 	"github.com/go-jappe/heterolog/internal/testutil"
 )
 
-// The distributed example must be usable without private credentials. The
-// broader backend contract tests use generated fixtures with dummy credentials.
+// 配布用の設定例は、非公開の認証情報なしで使える必要があります。より広いbackendの契約試験では、
+// dummyの認証情報を持つ生成済みfixtureを使います。
 // application全体の検証も通し、公開例の保存先設定が所有権検証で拒否されないことを確認します。
 func TestPublicExampleMapsWithoutCredentials(t *testing.T) {
 	root := testutil.RepositoryRoot(t)

@@ -83,7 +83,7 @@ func TestReconcileProcessingTerminalConfirmsSavedDirectoryBeforeRemovingSource(t
 			actual, err = os.ReadFile(destination)
 			require.NoError(t, err)
 			require.Equal(t, savedBody, actual)
-			// A retry uses the saved decision rather than replacing its contents.
+			// 再試行は保存済みの判定を使い、その内容を置き換えません。
 			recovered, err := store.ReconcileProcessingTerminal(context.Background(), source, original)
 			require.NoError(t, err)
 			require.Equal(t, state, recovered)

@@ -40,8 +40,8 @@ func (overridingTransitionRetryConfigProvider) RetryDelay() time.Duration {
 func (overridingTransitionRetryConfigProvider) MaxEntries() int { return 1 }
 
 func TestProcessingFileTransitionRetryUsesConfigProviderGetters(t *testing.T) {
-	// The embedded adapter has invalid zero values. The overrides must govern
-	// constructor validation, scheduling, and capacity checks.
+	// 埋め込んだadapterは不正なzero値を持ちます。constructorの検証、scheduling、
+	// 容量checkは、上書きしたgetterの値に従わなければなりません。
 	retry, err := NewProcessingFileTransitionRetry(overridingTransitionRetryConfigProvider{})
 	require.NoError(t, err)
 	assert.False(t, retry.IsFull())

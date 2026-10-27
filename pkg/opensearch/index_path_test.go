@@ -12,8 +12,8 @@ import (
 )
 
 func TestIndexDocumentEncodesIndexExpressionAsOnePathSegment(t *testing.T) {
-	// Expected encodings follow the index-name syntax table, including the
-	// reserved '+' and ':' that Go's PathEscape otherwise leaves unchanged.
+	// 期待するencodeは、GoのPathEscapeでは変更されずに残る予約文字の'+'と':'も含め、
+	// index名の構文の表に従います。
 	// https://docs.opensearch.org/latest/api-reference/index-name-syntax/
 	indexes := []struct {
 		name, index, escaped string
@@ -52,7 +52,7 @@ func TestIndexDocumentEncodesIndexExpressionAsOnePathSegment(t *testing.T) {
 						assertIndexRequestURI(t, request, wantURI)
 						return &http.Response{
 							StatusCode: http.StatusCreated, Header: make(http.Header),
-							// Date math and aliases resolve to an actual index name.
+							// date mathやaliasは、実際のindex名へ解決されます。
 							Body: io.NopCloser(strings.NewReader(`{"_index":"logs-resolved","_id":"job/part?key#tail%","result":"created"}`)),
 						}, nil
 					})
@@ -69,8 +69,8 @@ func TestIndexDocumentEncodesIndexExpressionAsOnePathSegment(t *testing.T) {
 }
 
 func TestIndexDocumentDoesNotInterpretIndexAsURLSyntax(t *testing.T) {
-	// Index-name validation belongs to OpenSearch. Even a name the server rejects
-	// must not inject query parameters, omit the action/ID, or pre-decode '%'.
+	// index名の検証はOpenSearchの役割です。serverが拒否する名前であっても、query parameterを
+	// 注入したり、action/IDを省いたり、'%'を事前にdecodeしたりしてはいけません。
 	for _, tt := range []struct{ index, escaped string }{
 		{"logs?refresh=true", "logs%3Frefresh%3Dtrue"},
 		{"logs#fragment", "logs%23fragment"},
@@ -103,8 +103,8 @@ func assertIndexRequestURI(t *testing.T, request *http.Request, wantURI string) 
 	if request.URL.RawQuery != "" || request.URL.Fragment != "" {
 		t.Errorf("index changed URL structure: query=%q fragment=%q", request.URL.RawQuery, request.URL.Fragment)
 	}
-	// Observe the serialized HTTP request target, including RawPath handling,
-	// without needing an external OpenSearch server or a listening socket.
+	// 外部のOpenSearch serverやlisten中のsocketを必要とせずに、RawPathの扱いも含めて、
+	// serializeされたHTTP request targetを確認します。
 	var wire bytes.Buffer
 	if err := request.Write(&wire); err != nil {
 		t.Fatal(err)

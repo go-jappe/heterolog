@@ -2,10 +2,10 @@ package target
 
 import "strings"
 
-// IsValidTarget reports whether name can be used as an application's storage
-// namespace on all supported operating systems. Names begin with an ASCII
-// letter or digit and contain only letters, digits, dots, hyphens, or underscores.
-// Trailing dots and Windows device names are not portable directory names.
+// IsValidTargetは、nameを、対応するすべてのOSでapplicationのstorage namespaceとして
+// 使えるかどうかを返します。nameはASCIIの英字か数字で始まり、英字、数字、ドット、
+// ハイフン、アンダースコアだけを含みます。末尾のドットとWindowsのdevice名は、
+// 移植可能なdirectory名ではありません。
 func IsValidTarget(name string) bool {
 	if name == "" || name[len(name)-1] == '.' {
 		return false

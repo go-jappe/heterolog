@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/notification"
 	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // DefaultLogFileProcessingRecoveryIntervalは、未完了のログファイル処理を再試行する間隔です。
@@ -358,7 +359,7 @@ func (r *LogFileProcessingRecovery[K]) ForceClose() error {
 	if !r.forced {
 		r.forced = true
 		r.closing = true
-		r.closeErr = errors.Join(r.closeErr, shutdown.ErrForcedClose)
+		r.closeErr = errors.Join(r.closeErr, pkgshutdown.ErrForcedClose)
 		if r.wake != nil {
 			r.wake.timer.Stop()
 			r.wake = nil
@@ -373,7 +374,7 @@ func (r *LogFileProcessingRecovery[K]) ForceClose() error {
 	if cancel != nil {
 		cancel()
 	}
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 // Doneは通常終了・強制終了のどちらでも、操作と保護解除が実際に終了すると閉じます。

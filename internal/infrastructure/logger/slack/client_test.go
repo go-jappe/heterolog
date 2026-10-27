@@ -22,6 +22,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	slackgo "github.com/slack-go/slack"
 	"github.com/stretchr/testify/require"
 )
@@ -233,7 +234,7 @@ func slackTimeoutPaths() []slackTimeoutPath {
 				// 失敗した送信のentryはbufferへ戻り、Closeが再送します。
 				t.Cleanup(func() { _ = logger.Close() })
 				failures := make(chan error, 1)
-				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					select {
 					case failures <- err:
 					default:

@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	// RetryReasonUnknownOutcome identifies an error that does not establish whether
-	// the backend accepted the request. It requires inspection before replay.
+	// RetryReasonUnknownOutcomeは、backendがrequestを受理したかどうかを確定できないerrorを
+	// 表します。replayの前に確認が必要です。
 	RetryReasonUnknownOutcome RetryReason = "outcome_unknown"
 
 	// RetryReasonRequestTooLargeは、backendまたは中継先がrequestをsize超過で拒否し、
@@ -33,9 +33,9 @@ func DurableClassificationContext(ctx context.Context) context.Context {
 	return context.WithoutCancel(ctx)
 }
 
-// ForDurableReplay separates replayable failures from uncertain outcomes that
-// must be quarantined. Callers must classify known input failures before using
-// this fallback. Immediate retries retain their own bounded policy.
+// ForDurableReplayは、replayできる失敗と、quarantineへ隔離しなければならない結果不明の
+// ものを分けます。呼び出し側は、このfallbackを使う前に既知の入力不備を分類しなければ
+// なりません。即時retryは、それ自身の上限付きpolicyを保ちます。
 //
 // decisionはDurableClassificationContextで得たcontextで分類し、明示的な応答の分類を
 // 呼び出し元の停止状態に左右されずに渡してください。呼び出し元contextが終了した後の

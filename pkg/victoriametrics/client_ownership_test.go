@@ -75,8 +75,8 @@ func TestSendAsyncPreservesAcceptedValuesAfterInputReuse(t *testing.T) {
 			if err := client.SendAsync(metrics); err != nil {
 				t.Fatal(err)
 			}
-			// The only worker is still sending blocker. Reusing the accepted input
-			// here cannot race with its eventual formatting or request construction.
+			// 唯一のworkerはまだblockerを送信中です。ここで受理済みの入力を再利用しても、
+			// 後で行われるformatやrequest生成と競合しません。
 			for i := range metrics {
 				if change == "slice" {
 					metrics[i] = vm.Metric{Name: "reused", Value: 99}
@@ -174,8 +174,8 @@ func TestSharedHTTPClientKeepsIndependentRequestTimeouts(t *testing.T) {
 			if hasDeadline != (tc.timeout != 0) {
 				t.Fatalf("request has deadline = %v, configured timeout = %s", hasDeadline, tc.timeout)
 			}
-			// HTTP computes its deadline during Send, between these observations.
-			// This checks the actual request context without sleeping for a timeout.
+			// HTTPはSendの間、つまりこれらの観測時刻の間にdeadlineを計算します。
+			// timeoutまでsleepせずに、実際のrequest contextを確認します。
 			if hasDeadline && (deadline.Before(before.Add(tc.timeout)) || deadline.After(observedAt.Add(tc.timeout))) {
 				t.Errorf("request deadline = %s, want between %s and %s", deadline, before.Add(tc.timeout), observedAt.Add(tc.timeout))
 			}

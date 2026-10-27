@@ -17,10 +17,10 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func TestFileSeriesManagerRestartReusesPublishedGzipAfterChangingToZstd(t *testing.T) {
@@ -56,8 +56,8 @@ func TestFileSeriesManagerRestartReusesPublishedGzipAfterChangingToZstd(t *testi
 		originalGzip, err := os.ReadFile(gzipPath)
 		require.NoError(t, err)
 		require.FileExists(t, raw)
-		require.ErrorIs(t, first.ForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, boundedwait.CloseInBubble(t, "first.Close()", first.Close, first.ForceClose), shutdown.ErrForcedClose)
+		require.ErrorIs(t, first.ForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, boundedwait.CloseInBubble(t, "first.Close()", first.Close, first.ForceClose), pkgshutdown.ErrForcedClose)
 
 		restartedStore, err := checkpointstore.NewFilesystemStore(checkpointDirectory, "restart-single")
 		require.NoError(t, err)

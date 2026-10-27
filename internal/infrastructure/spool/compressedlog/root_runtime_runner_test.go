@@ -122,8 +122,8 @@ func TestRootRuntimeRetirementWaitsForAcceptedSave(t *testing.T) {
 			file, err := route.SaveRetryableFailure(context.Background(), source)
 			saved <- saveResult{file: file, err: err}
 		}()
-		// The save has passed admission and holds the purge read lock while
-		// waiting for the claim lock. Its context remains caller-owned.
+		// 保存はadmissionを通過し、claim lockを待つ間purgeのread lockを保持しています。
+		// そのcontextは引き続きcallerが所有します。
 		synctest.Wait()
 		if err := runtime.Close(); err != nil {
 			t.Fatal(err)

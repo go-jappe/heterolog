@@ -1,17 +1,21 @@
 package logger
 
-// LoggerConfigSelectsHandlerTargetは、sync/async loggerの有効なhandler設定（通常出力、failure
-// store、appendlog maintenance runnerのHandlerConfig）のいずれかが、targetを内部ログの通知先
-// （OnErrorConfig・OnWarnConfig・OnInfoConfig・OnDebugConfig）に選ぶかを返します。対象とする
-// handler設定はValidateLoggerHandlerRoutingが検証するものと同じです。通知先に選ばれたbackendの
-// 設定をloggerの構築時に検証する範囲の判定に使います。
+// LoggerConfigSelectsHandlerTarget reports whether any active handler
+// configuration of a sync or async logger (the HandlerConfig of a regular
+// output, a failure store or the appendlog maintenance runner) selects target
+// as an internal log notification target (OnErrorConfig, OnWarnConfig,
+// OnInfoConfig or OnDebugConfig). The handler configurations it considers are
+// the same as those that ValidateLoggerHandlerRouting validates. It is used to
+// decide which backends selected as notification targets have their settings
+// validated when the logger is constructed.
 func LoggerConfigSelectsHandlerTarget(cfg LoggerConfig, target LogOutputDestination) bool {
 	return handlerRoutingSourcesUseTarget(loggerActiveHandlerRoutingSources(cfg), target)
 }
 
-// DeliveryLoggerConfigSelectsHandlerTargetは、Delivery loggerについて
-// LoggerConfigSelectsHandlerTargetと同じ判定を返します。対象とするhandler設定は
-// ValidateDeliveryLoggerHandlerRoutingが検証するものと同じです。
+// DeliveryLoggerConfigSelectsHandlerTarget reports, for a Delivery logger, the
+// same as LoggerConfigSelectsHandlerTarget. The handler configurations it
+// considers are the same as those that ValidateDeliveryLoggerHandlerRouting
+// validates.
 func DeliveryLoggerConfigSelectsHandlerTarget(cfg DeliveryLoggerConfig, target LogOutputDestination) bool {
 	return handlerRoutingSourcesUseTarget(deliveryLoggerActiveHandlerRoutingSources(cfg), target)
 }

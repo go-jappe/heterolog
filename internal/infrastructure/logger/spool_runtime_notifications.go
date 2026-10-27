@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	fsstoreretryafter "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/retryafter"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
@@ -13,6 +12,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/log/worker"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type failureSpoolRecoveryOptions struct {
@@ -54,7 +54,7 @@ func (r *FailureSpoolRuntime) configureRunnerNotifications(
 	if onWarn != nil {
 		// 保存先の保全成功はRunReportとは別に発生します。既存の通知先を共有し、
 		// worker上では通知登録だけを行い、通常Closeが後段の通知完了も待ちます。
-		runner.storeOnWarn = func(ctx context.Context, entry *logging.LogEntry, tracer observer.Tracer, meter observer.Meter) {
+		runner.storeOnWarn = func(ctx context.Context, entry *logging.LogEntry, tracer pkgobserver.Tracer, meter pkgobserver.Meter) {
 			if entry == nil {
 				return
 			}
@@ -103,8 +103,8 @@ type failureSpoolRunLogReporter struct {
 	contract      pkglogger.LoggerContractKind
 	backend       pkglogger.LogOutputDestination
 	clock         clock.Clock
-	tracer        observer.Tracer
-	meter         observer.Meter
+	tracer        pkgobserver.Tracer
+	meter         pkgobserver.Meter
 }
 
 func (r *failureSpoolRunLogReporter) ReportSpoolRunnerRun(ctx context.Context, report logspool.RunReport, err error) {

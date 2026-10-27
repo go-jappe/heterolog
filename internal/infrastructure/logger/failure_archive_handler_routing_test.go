@@ -12,6 +12,7 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFailureStoreInternalLogHandlerFactorySelectsOnlyConfiguredDestinations(t *testing.T) {
@@ -25,22 +26,24 @@ func TestFailureStoreInternalLogHandlerFactorySelectsOnlyConfiguredDestinations(
 
 	available := handlerStruct{
 		OnError: []logging.NamedLoggerErrorHandler{
-			{Name: "stdout", Handler: func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+			{Name: "stdout", Handler: func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 				record("error:stdout")
 			}},
-			{Name: "slack", Handler: func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+			{Name: "slack", Handler: func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 				record("error:slack")
 			}},
 		},
 		OnWarn: []logging.NamedLoggerHandler{
-			{Name: "stdout", Handler: func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) { record("warn:stdout") }},
-			{Name: "slack", Handler: func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) { record("warn:slack") }},
+			{Name: "stdout", Handler: func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) { record("warn:stdout") }},
+			{Name: "slack", Handler: func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) { record("warn:slack") }},
 		},
 		OnInfo: []logging.NamedLoggerHandler{
-			{Name: "stdout", Handler: func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) { record("info:stdout") }},
+			{Name: "stdout", Handler: func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) { record("info:stdout") }},
 		},
 		OnDebug: []logging.NamedLoggerHandler{
-			{Name: "stdout", Handler: func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) { record("debug:stdout") }},
+			{Name: "stdout", Handler: func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
+				record("debug:stdout")
+			}},
 		},
 	}
 	cfg := loggerhandler.NewConfigAdapter(pkgloggerhandler.HandlerConfig{

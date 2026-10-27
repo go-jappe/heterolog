@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
@@ -258,7 +258,7 @@ func TestLoggerConstructorsPrepareCheckpointDirectoryWithoutMain(t *testing.T) {
 							cfg.Stdout.HandlerConfig.OnErrorConfig = []string{"file"}
 							cfg.InternalLogDestinations = &pkglogger.DeliveryInternalLogDestinationConfig{File: file}
 						}
-						created, err = NewDeliveryLogger(context.Background(), cfg, streamrouting.None, observer.NopTracer{}, observer.NopMeter{})
+						created, err = NewDeliveryLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, observer.NopTracer{}, observer.NopMeter{})
 					} else {
 						file := checkpointStartupFileConfig(t, directory)
 						file.FsstoreConfig.Layout.LogPath = logRoot
@@ -274,11 +274,11 @@ func TestLoggerConstructorsPrepareCheckpointDirectoryWithoutMain(t *testing.T) {
 							cfg.InternalLogDestinations = &pkglogger.InternalLogDestinationConfig{File: file}
 						}
 						if contract == "sync" {
-							created, err = NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+							created, err = NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 						} else {
 							asyncCfg := asyncConfigFromLoggerConfig(cfg)
 							asyncCfg.MaxLogEntryBytes, asyncCfg.MaxParallel = cfg.MaxLogEntryBytes, 1
-							created, err = NewAsyncLogger(context.Background(), asyncCfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+							created, err = NewAsyncLogger(context.Background(), asyncCfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 						}
 					}
 					if blocked {

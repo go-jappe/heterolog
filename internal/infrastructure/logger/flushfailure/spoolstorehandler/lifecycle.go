@@ -83,7 +83,13 @@ func (s *SpoolStoreHandler) Shutdown(ctx context.Context) error {
 
 	s.operationMu.Lock()
 	s.shutdownState = shutdownStateCompleted
+	stopMemoryMonitor := s.stopMemoryMonitor
+	s.stopMemoryMonitor = nil
 	s.operationMu.Unlock()
+	// 受理済みの処理が終わった後で、このhandlerのために起動したmemory逼迫の監視を止めます。
+	if stopMemoryMonitor != nil {
+		stopMemoryMonitor()
+	}
 	return nil
 }
 

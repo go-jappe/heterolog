@@ -10,51 +10,68 @@ import (
 )
 
 var (
-	// ErrBasicAuthUsernameRequiredは、Basic認証のusernameが空または空白だけであることを表します。
+	// ErrBasicAuthUsernameRequired reports that the username for Basic
+	// authentication is empty or contains only whitespace.
 	ErrBasicAuthUsernameRequired = errors.New("opensearch basic auth username is required")
-	// ErrBasicAuthPasswordRequiredは、Basic認証のpasswordが空または空白だけであることを表します。
+	// ErrBasicAuthPasswordRequired reports that the password for Basic
+	// authentication is empty or contains only whitespace.
 	ErrBasicAuthPasswordRequired = errors.New("opensearch basic auth password is required")
 
-	// ErrNegativeTimeoutは、Config.Timeoutが負値であることを表します。
+	// ErrNegativeTimeout reports that Config.Timeout is negative.
 	ErrNegativeTimeout = errors.New("opensearch timeout must not be negative")
-	// ErrIndexRequiredは、indexが空または空白だけであることを表します。
+	// ErrIndexRequired reports that the index is empty or contains only whitespace.
 	ErrIndexRequired = errors.New("opensearch index is required")
-	// ErrIndexHasSurroundingWhitespaceは、indexの前後に空白があることを表します。
+	// ErrIndexHasSurroundingWhitespace reports that the index has leading or
+	// trailing whitespace.
 	ErrIndexHasSurroundingWhitespace = errors.New("opensearch index must not have surrounding whitespace")
-	// ErrEndpointRequiredは、endpointが空または空白だけであることを表します。
+	// ErrEndpointRequired reports that the endpoint is empty or contains only
+	// whitespace.
 	ErrEndpointRequired = errors.New("opensearch endpoint is required")
-	// ErrEndpointHasSurroundingWhitespaceは、endpointの前後に空白があることを表します。
+	// ErrEndpointHasSurroundingWhitespace reports that the endpoint has leading
+	// or trailing whitespace.
 	ErrEndpointHasSurroundingWhitespace = errors.New("opensearch endpoint must not have surrounding whitespace")
-	// ErrInvalidEndpointは、endpointをURLとして解釈できないか、schemeがhttp・httpsでないか、
-	// hostがないことを表します。
+	// ErrInvalidEndpoint reports that the endpoint cannot be parsed as a URL,
+	// its scheme is not http or https, or it has no host.
 	ErrInvalidEndpoint = errors.New("invalid opensearch endpoint")
 
-	// ErrUnsupportedAuthTypeは、AuthConfig.Typeが対応する認証方式ではないことを表します。
+	// ErrUnsupportedAuthType reports that AuthConfig.Type is not a supported
+	// authentication method.
 	ErrUnsupportedAuthType = errors.New("unsupported opensearch auth type")
-	// ErrInvalidAuthConfigTypeは、AuthConfig.Configの型がAuthConfig.Typeに対応しないことを表します。
+	// ErrInvalidAuthConfigType reports that the type of AuthConfig.Config does
+	// not correspond to AuthConfig.Type.
 	ErrInvalidAuthConfigType = errors.New("opensearch auth config has invalid type")
-	// ErrAuthConfigNotAllowedは、AuthTypeNoneなのにAuthConfig.Configが指定されたことを表します。
+	// ErrAuthConfigNotAllowed reports that AuthConfig.Config is set although
+	// AuthConfig.Type is AuthTypeNone.
 	ErrAuthConfigNotAllowed = errors.New("opensearch auth config must be nil when auth type is none")
-	// ErrAPIKeyIDRequiredは、API key認証のIDが空または空白だけであることを表します。
+	// ErrAPIKeyIDRequired reports that the ID for API key authentication is
+	// empty or contains only whitespace.
 	ErrAPIKeyIDRequired = errors.New("opensearch api key id is required")
-	// ErrAPIKeySecretRequiredは、API key認証のSecretが空または空白だけであることを表します。
+	// ErrAPIKeySecretRequired reports that the Secret for API key authentication
+	// is empty or contains only whitespace.
 	ErrAPIKeySecretRequired = errors.New("opensearch api key secret is required")
-	// ErrAWSIAMRegionRequiredは、AWS IAM認証のRegionが空または空白だけであることを表します。
+	// ErrAWSIAMRegionRequired reports that the Region for AWS IAM authentication
+	// is empty or contains only whitespace.
 	ErrAWSIAMRegionRequired = errors.New("opensearch aws iam region is required")
-	// ErrAWSIAMAccessKeyIDRequiredは、AWS IAM認証のAccessKeyIDが空または空白だけであることを表します。
+	// ErrAWSIAMAccessKeyIDRequired reports that the AccessKeyID for AWS IAM
+	// authentication is empty or contains only whitespace.
 	ErrAWSIAMAccessKeyIDRequired = errors.New("opensearch aws iam access key id is required")
-	// ErrAWSIAMSecretAccessKeyRequiredは、AWS IAM認証のSecretAccessKeyが空または空白だけで
-	// あることを表します。
+	// ErrAWSIAMSecretAccessKeyRequired reports that the SecretAccessKey for AWS
+	// IAM authentication is empty or contains only whitespace.
 	ErrAWSIAMSecretAccessKeyRequired = errors.New("opensearch aws iam secret access key is required")
-	// ErrSAMLTokenRequiredは、SAML認証のTokenが空または空白だけであることを表します。
+	// ErrSAMLTokenRequired reports that the Token for SAML authentication is
+	// empty or contains only whitespace.
 	ErrSAMLTokenRequired = errors.New("opensearch saml token is required")
-	// ErrOIDCTokenRequiredは、OIDC認証のTokenが空または空白だけであることを表します。
+	// ErrOIDCTokenRequired reports that the Token for OIDC authentication is
+	// empty or contains only whitespace.
 	ErrOIDCTokenRequired = errors.New("opensearch oidc token is required")
-	// ErrCertificateAuthRequiresHTTPSは、client証明書認証のendpointがhttpsではないことを表します。
+	// ErrCertificateAuthRequiresHTTPS reports that the endpoint for client
+	// certificate authentication is not https.
 	ErrCertificateAuthRequiresHTTPS = errors.New("opensearch certificate auth requires an https endpoint")
-	// ErrCertificateFileRequiredは、client証明書認証のCertFileが空または空白だけであることを表します。
+	// ErrCertificateFileRequired reports that the CertFile for client
+	// certificate authentication is empty or contains only whitespace.
 	ErrCertificateFileRequired = errors.New("opensearch certificate auth cert file is required")
-	// ErrCertificateKeyFileRequiredは、client証明書認証のKeyFileが空または空白だけであることを表します。
+	// ErrCertificateKeyFileRequired reports that the KeyFile for client
+	// certificate authentication is empty or contains only whitespace.
 	ErrCertificateKeyFileRequired = errors.New("opensearch certificate auth key file is required")
 )
 
@@ -84,11 +101,12 @@ func invalidAuthConfigTypeError(name string, config any) error {
 	}
 }
 
-// ValidateConfig はOpenSearch clientの生成に必要な設定を検証します。
-// 証明書ファイルの読み込みやHTTP通信は行いません。
-// Timeout==0はNewがdefault timeoutを適用する未指定sentinelですが、負値は設定エラーです。
-// 不正の種類は、ErrNegativeTimeout、endpointのErrEndpointRequiredなど、このpackageの
-// sentinelとerrors.Isで判別できます。
+// ValidateConfig validates the settings needed to create an OpenSearch client.
+// It does not read certificate files or communicate over HTTP. Timeout==0 is
+// the unset sentinel for which New applies the default timeout, but a negative
+// value is a configuration error. The kind of problem can be identified by
+// calling errors.Is with the sentinels of this package, such as
+// ErrNegativeTimeout and ErrEndpointRequired for the endpoint.
 func ValidateConfig(cfg Config) error {
 	if cfg.Timeout < 0 {
 		return &validationError{
@@ -103,9 +121,10 @@ func ValidateConfig(cfg Config) error {
 	return validateAuthConfig(cfg.AuthConfig, endpoint.Scheme)
 }
 
-// ValidateIndex はloggerやspool senderがDocumentWriteRequestを作る前に、
-// OpenSearchの配送先indexが空でないことを検証します。不正の種類は
-// ErrIndexRequired、ErrIndexHasSurroundingWhitespaceとerrors.Isで判別できます。
+// ValidateIndex checks, before a logger or spool sender creates a
+// DocumentWriteRequest, that the OpenSearch destination index is not empty. The
+// kind of problem can be identified by calling errors.Is with ErrIndexRequired
+// or ErrIndexHasSurroundingWhitespace.
 func ValidateIndex(index string) error {
 	if strings.TrimSpace(index) == "" {
 		return ErrIndexRequired

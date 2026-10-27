@@ -6,8 +6,13 @@ import (
 	"time"
 )
 
-type OverloadPolicy string   // disk space空き容量　限界時のポリシー
-type SpillDestination string // 1次退避先がoverload時の2次退避先
+// OverloadPolicy is the policy for log file writes while free disk space is
+// below FileArchiveOverloadPolicyConfig.MinAvailableDiskSpace.
+type OverloadPolicy string
+
+// SpillDestination is where the degrade policy writes logs instead of the log
+// file while free disk space is below its limit.
+type SpillDestination string
 
 type Config struct {
 	Layout    FsstoreConfig
@@ -15,55 +20,68 @@ type Config struct {
 	Overload  FileArchiveOverloadPolicyConfig
 	Duration  DurationConfig
 	Retry     RetryConfig
-	// CompressionCodecはprogrammaticに追加する独自圧縮形式です。nilなら
-	// Lifecycle.CompressFormatに対応する組み込みcodecを使用します。
+	// CompressionCodec is a custom compression format added programmatically. If
+	// it is nil, the built-in codec for Lifecycle.CompressFormat is used.
 	CompressionCodec CompressionCodec
 }
 
-// ArchiveCheckpointConfigは、inline・runner共通のログファイル送信完了記録の
-// 保存先と、file role確定前の論理source identityを保持します。
-// SourcePrefixにはfactoryがdefault/error/debugまたはretryable/permanentと、
-// 実file patternのfingerprintを付与して最終source IDを作ります。
+// ArchiveCheckpointConfig holds the destination of the records of completed log
+// file uploads, which inline and runner modes share, and the logical source
+// identity before the file role is determined. The factory adds
+// default/error/debug or retryable/permanent and a fingerprint of the actual
+// file pattern to SourcePrefix to build the final source ID.
 type ArchiveCheckpointConfig struct {
-	// Directoryはcheckpoint専用の保存先です。親のリンクは構築時に実体へ解決しますが、
-	// このディレクトリ自体がシンボリックリンク・junctionの場合は拒否します。
+	// Directory is the destination dedicated to checkpoints. Links in its parent
+	// path are resolved to their targets at construction, but the directory is
+	// rejected if it is itself a symbolic link or a junction.
 	Directory    string
 	SourcePrefix string
-	// AutoRecoverMissingCheckpointは、宛先登録済みのログ系列でcheckpointが欠落した場合に
-	// 空のcursorから復旧します。宛先追加前の残存ログも含めて再uploadされ得ます。
-	// falseは欠落時に起動を失敗させます。初回作成は許可します。
-	// 破損JSON・権限エラー・宛先登録manifestの異常は復旧しません。
+	// AutoRecoverMissingCheckpoint, when true, recovers by starting from an empty
+	// cursor when the checkpoint of a log series with registered destinations is
+	// missing. Logs may be uploaded again, including logs that remain from before
+	// a destination was added. false makes startup fail when the checkpoint is
+	// missing. Creating it for the first time is allowed. Corrupt JSON,
+	// permission errors and problems with the destination registration manifest
+	// are not recovered from.
 	AutoRecoverMissingCheckpoint bool
 }
 
-// FileLifecycleModeは、rotation後の圧縮、object storage upload、purgeを実行する主体です。
-// 空値の既定動作は利用側のLogger契約で異なります。通常FileLoggerは設定を省略しても
-// 使い始められるようinlineとして扱い、Delivery FileLoggerはinline処理を持たないため
-// lifecycleを起動しません。動作を明示する場合は以下の定数を指定します。
+// FileLifecycleMode identifies what runs compression, object storage upload and
+// purge after rotation. The default behavior for an empty value depends on the
+// Logger contract that uses it. The normal FileLogger treats it as inline, so
+// that it can be used without this setting, and the Delivery FileLogger does
+// not start the lifecycle, because it has no inline processing. To make the
+// behavior explicit, specify one of the constants below.
 type FileLifecycleMode string
 
 const (
-	// FileLifecycleModeDisableはrotation後の圧縮、object storage upload、purgeを
-	// 起動しません。writerによる保存とrotationは継続します。
+	// FileLifecycleModeDisable does not start compression, object storage upload
+	// or purge after rotation. The writer still stores logs and rotates files.
 	FileLifecycleModeDisable FileLifecycleMode = "disable"
-	// FileLifecycleModeInlineはwriterの書き込み・rotation経路でlifecycle処理を実行します。
+	// FileLifecycleModeInline runs the lifecycle processing in the write and
+	// rotation path of the writer.
 	FileLifecycleModeInline FileLifecycleMode = "inline"
-	// FileLifecycleModeRunnerは専用のappendlog lifecycle runnerで周期実行します。
+	// FileLifecycleModeRunner runs the lifecycle processing periodically in a
+	// dedicated appendlog lifecycle runner.
 	FileLifecycleModeRunner FileLifecycleMode = "runner"
 )
 
-// LogFileLifecycleRunnerConfig は通常 file logger の lifecycle runner 用設定です。
-// logger の書き込み設定とは分け、compress/archive/purge に必要な設定だけを保持します。
+// LogFileLifecycleRunnerConfig is the configuration for the lifecycle runner of
+// the normal file logger. It is kept apart from the write settings of the
+// logger and holds only the settings needed for compress, archive and purge.
 type LogFileLifecycleRunnerConfig struct {
 	FsstoreConfig             Config
 	ObjectStorageUploadConfig objectstorage.LogFileUploadConfig
 	ArchiveCheckpointConfig   ArchiveCheckpointConfig
-	// RunnerConfigは周期loopとoptional Supervisorの実行方針です。
+	// RunnerConfig is the execution policy for the periodic loop and the
+	// optional Supervisor.
 	RunnerConfig AppendLogRunnerConfig
-	// HandlerConfigは周期実行の結果を委譲する保存先selectorです。
-	// handler selectorはbackend名だけを指定し、internal-log専用保存先の有無は
-	// 同じLoggerContractKindのdestination設定が決定します。各levelのselectorは独立して保持し、
-	// purge失敗はWarnへ格下げせずErrorとして報告します。
+	// HandlerConfig is the destination selector to which the results of the
+	// periodic runs are delegated. The handler selector specifies only backend
+	// names, and whether a destination dedicated to internal logs exists is
+	// determined by the destination settings of the same LoggerContractKind.
+	// The selector of each level is kept independently, and purge failures are
+	// reported as Error without being downgraded to Warn.
 	HandlerConfig handler.HandlerConfig
 }
 
@@ -72,7 +90,7 @@ type DeliveryFileLifecycleStoreConfig struct {
 	Lifecycle DeliveryFileLifecycleConfig
 	Duration  DurationConfig
 	Retry     RetryConfig
-	// CompressionCodecの契約はConfig.CompressionCodecと同じです。
+	// CompressionCodec has the same contract as Config.CompressionCodec.
 	CompressionCodec CompressionCodec
 }
 
@@ -83,30 +101,36 @@ type DeliveryFileWriteConfig struct {
 	Retry    RetryConfig
 }
 
-// DeliveryFileLifecycleRunnerConfig は delivery log file の lifecycle runner 用設定です。
-// logger の書き込み設定とは分け、compress/archive/purge に必要な設定だけを保持します。
+// DeliveryFileLifecycleRunnerConfig is the configuration for the lifecycle
+// runner of delivery log files. It is kept apart from the write settings of the
+// logger and holds only the settings needed for compress, archive and purge.
 type DeliveryFileLifecycleRunnerConfig struct {
 	FsstoreConfig             DeliveryFileLifecycleStoreConfig
 	ObjectStorageUploadConfig objectstorage.LogFileUploadConfig
 	ArchiveCheckpointConfig   ArchiveCheckpointConfig
-	// RunnerConfigの意味はLogFileLifecycleRunnerConfigと同じです。
+	// RunnerConfig has the same meaning as in LogFileLifecycleRunnerConfig.
 	RunnerConfig AppendLogRunnerConfig
-	// HandlerConfigのlevel別契約はLogFileLifecycleRunnerConfigと同じです。
+	// HandlerConfig has the same per-level contract as in
+	// LogFileLifecycleRunnerConfig.
 	HandlerConfig handler.HandlerConfig
 }
 
-// FsstoreConfigはfile loggerの保存先と命名規則です。error/debugを両方分離する場合、
-// defaultの保存先とは別のdirectoryをerror/debugだけで共有する設定は許可しません。
+// FsstoreConfig configures the destination and naming rules of a file logger.
+// When both error and debug logs are separated, a configuration in which only
+// the error and debug logs share a directory other than the default
+// destination is not allowed.
 type FsstoreConfig struct {
-	Target      string // ログ保存先の名前空間
-	LogPath     string // ex.) /var/log/{target}/
-	LogDir      string // 通常ログのサブディレクトリ名。使用時は空文字・空白だけを許可しません。
+	Target      string // namespace of the log destination
+	LogPath     string // parent directory of the {target} directory, ex.) /var/log for /var/log/{target}/
+	LogDir      string // subdirectory name for normal logs; when used, it must not be empty or only whitespace
 	ErrorLogDir string
-	// DebugLogDirはIsSeparateDebugLogDirEnabledがtrueの場合の保存先です。
-	// 有効時は空文字を許可しません。無効時はこの値を無視してLogDirを共有します。
+	// DebugLogDir is the destination when IsSeparateDebugLogDirEnabled is true.
+	// When that is enabled, it must not be empty. When it is disabled, this
+	// value is ignored and LogDir is shared.
 	DebugLogDir string
-	// IsSeparateDebugLogDirEnabledはdebugの保存directoryを個別指定するかを選択します。
-	// debugを別fileへ出力するIsSeparateDebugLogsEnabledとは独立した設定です。
+	// IsSeparateDebugLogDirEnabled selects whether a directory is specified
+	// separately for debug logs. It is independent of
+	// IsSeparateDebugLogsEnabled, which writes debug logs to separate files.
 	IsSeparateDebugLogDirEnabled bool
 	IsSeparateErrorLogsEnabled   bool
 	SeparateErrorLogsPrefix      string
@@ -120,9 +144,11 @@ type FileLifecycleConfig struct {
 	EnableRotate      bool
 	RotationType      FileRotationType
 	RotationDayOfWeek time.Weekday
-	// UsageCacheTTLは、最後にfilesystemから実測した使用量の概算値を
-	// 再観測なしで使用できる時間です。TTL経過後の次のinline cleanupで
-	// 再観測しますが、上限超過時はTTL経過を待ちません。
+	// UsageCacheTTL is how long the estimated usage last measured from the
+	// filesystem can be used without measuring it again. The next inline cleanup
+	// after the TTL has elapsed measures it again. When the estimate exceeds the
+	// limit, it does not wait for the TTL to elapse, unless the last measurement
+	// still found the usage over the limit after purging.
 	UsageCacheTTL      time.Duration
 	MaxFileBackups     int
 	MaxFileAge         int
@@ -130,21 +156,23 @@ type FileLifecycleConfig struct {
 	MaxDirSize         uint64
 	EnableFileCompress bool
 	CompressFormat     CompressFormat
-	// ErrorPurgeとDebugPurgeは分離した各log系列の保持設定です。nilなら通常logの
-	// MaxFileBackups/MaxFileAge/MaxDirSizeを継承します。指定時は3項目とも必要で、
-	// 0を未指定として補完しません。同じdirectoryを通常logと共有する場合に限り、
-	// MaxDirSizeは通常logの値を使用します。
+	// ErrorPurge and DebugPurge are the retention settings of each separated log
+	// series. If one is nil, it inherits MaxFileBackups/MaxFileAge/MaxDirSize of
+	// the normal logs. When one is set, all three items are required, and a 0 is
+	// not filled in as if it were unset. Only when the series shares a directory
+	// with the normal logs does MaxDirSize use the value of the normal logs.
 	ErrorPurge *FilePurgeConfig
 	DebugPurge *FilePurgeConfig
 }
 
-// FilePurgeConfigは一つのlog系列の保持上限です。世代数・日数は系列に適用し、
-// 容量上限は保存先directory全体に適用します。容量超過時は、世代数・日数の
-// 上限に達していないfileも削除され得ます。
+// FilePurgeConfig holds the retention limits of one log series. The number of
+// generations and the number of days apply to the series, and the size limit
+// applies to the whole destination directory. When the size is exceeded, files
+// that have not reached the generation or day limits may also be deleted.
 type FilePurgeConfig struct {
-	MaxFileBackups int    // 保持世代数。未圧縮・圧縮形式を問わず、ファイル名の日付・番号で決まる世代単位で数えます。
-	MaxFileAge     int    // 保持日数
-	MaxDirSize     uint64 // directory全体のbyte数
+	MaxFileBackups int    // number of generations to keep, counted in generations determined by the date and number in the file name, whether compressed or not
+	MaxFileAge     int    // number of days to keep
+	MaxDirSize     uint64 // size in bytes of the whole directory
 }
 
 type FileRotationConfig struct {
@@ -165,16 +193,18 @@ type DeliveryFileLifecycleConfig struct {
 	MaxDirSize         uint64
 	EnableFileCompress bool
 	CompressFormat     CompressFormat
-	// ErrorPurge/DebugPurgeの継承・directory共有の契約はFileLifecycleConfigと同じです。
+	// ErrorPurge and DebugPurge have the same contract for inheritance and
+	// directory sharing as in FileLifecycleConfig.
 	ErrorPurge *FilePurgeConfig
 	DebugPurge *FilePurgeConfig
 }
 
-// オーバーロード時の処理判定の設定(判定基準はディスクスペースのみ)
+// FileArchiveOverloadPolicyConfig configures how an overload is handled.
+// Overload is judged by disk space only.
 type FileArchiveOverloadPolicyConfig struct {
 	OverloadPolicy        OverloadPolicy   // drop or degrade
-	SpillDestination      SpillDestination // degrade時の退避先。通常file loggerではstdoutだけに対応します。
-	MinAvailableDiskSpace uint64           // 空き容量がこの値を下回ると通常のfile書込みを行わない。0なら判定しない。
+	SpillDestination      SpillDestination // evacuation destination for degrade; the normal file logger supports only stdout
+	MinAvailableDiskSpace uint64           // normal file writes are not performed when free space falls below this value; 0 disables the check
 }
 
 type DurationConfig struct {
@@ -185,7 +215,12 @@ type DurationConfig struct {
 	WriteFileLatencyEnabled         bool
 }
 
+// RetryConfig holds how failed file operations are retried.
 type RetryConfig struct {
-	MaxWriteAttempts           int
+	// MaxWriteRetries is how many times a failed file operation, such as a write
+	// or opening the next file at rotation, is retried after the first try. 0
+	// tries once without retrying, and a negative value is invalid.
+	MaxWriteRetries int
+	// FileOperationRetryWaitTime is the wait before each retry.
 	FileOperationRetryWaitTime time.Duration
 }

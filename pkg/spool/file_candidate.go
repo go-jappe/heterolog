@@ -1,13 +1,15 @@
 package spool
 
-// FileCandidate は、状態ディレクトリの列挙で見つかった通常 spool ファイルです。
+// FileCandidate is a regular spool file found by listing a state directory.
 type FileCandidate struct {
-	// Path は、読み込み・移動・削除に渡すローカルファイルシステムの操作用パスです。
+	// Path is the local file system path for operations, which is passed to
+	// reads, moves and removals.
 	Path string
 
-	// RelativePath は、状態ディレクトリからの相対パスです。
-	// filepath の OS 固有表記を使い、年/月/日/時/分の各ディレクトリ名と
-	// ファイル名を順に辞書順で比較する走査の再開境界です。
-	// 操作用 Path やファイルの存在・同一性を表すものではありません。
+	// RelativePath is the path relative to the state directory. It uses the
+	// OS-specific notation of filepath and is the boundary for resuming a scan
+	// that compares the year/month/day/hour/minute directory names and the file
+	// name lexicographically, in that order. It does not represent the Path for
+	// operations, nor the existence or identity of the file.
 	RelativePath string
 }

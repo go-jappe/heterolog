@@ -24,9 +24,9 @@ func TestSlackIdleResetIgnoresAlreadyFiredCallback(t *testing.T) {
 					synctest.Wait()
 					fixture.enqueue(t, "old pending entry")
 
-					// Hold a real expired callback immediately before its ownership
-					// check, modelling a callback descheduled while reset runs.
-					// Stop must return false; the callback still owns its WG.Done.
+					// 実際に期限切れとなったcallbackを、所有権確認の直前で止めておきます。
+					// resetの実行中に実行が止まったcallbackを模しています。
+					// Stopはfalseを返す必要があり、callbackは引き続き自身のWG.Doneを担います。
 					entered, release := make(chan struct{}), make(chan struct{})
 					var releaseOnce sync.Once
 					t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
@@ -75,8 +75,8 @@ func TestSlackIdleResetIgnoresAlreadyFiredCallback(t *testing.T) {
 							t.Fatal(err)
 						}
 					} else {
-						// An obsolete callback cannot drain the following batch early
-						// or cancel the timer which owns it.
+						// 失効したcallbackは、次のbatchを早く取り出すことも、
+						// そのbatchを所有するtimerを止めることもできません。
 						client.requireCalls(t, 2, time.Now(), "reset entry")
 						time.Sleep(2 * time.Hour)
 						synctest.Wait()

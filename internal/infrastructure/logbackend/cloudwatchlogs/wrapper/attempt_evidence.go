@@ -7,8 +7,8 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/retryclassifier"
 )
 
-// Keep an uncertain dispatch across retries. A later credentials failure says
-// nothing about that dispatch; without this evidence it would look wholly unsent.
+// 結果が不確かな送信を、retryをまたいで保持します。後のcredentialの失敗は、その送信に
+// ついて何も示しません。この証拠がなければ、まったく送信されていないように見えます。
 type attemptEvidence struct {
 	previous  error
 	uncertain bool

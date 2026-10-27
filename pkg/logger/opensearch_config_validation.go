@@ -60,10 +60,12 @@ func validateOpenSearchClient(sourceLabel string, cfg *pkgopensearch.Config) err
 	return nil
 }
 
-// ValidateOpenSearchBulkByteLimitsは、bufferを早期flushするsoft thresholdと、一回の
-// Bulk NDJSON requestを分割するhard limitを検証します。前者は後者より小さくなければ
-// なりません。OpenSearchやproxyの実効上限との整合は利用者が管理します。
-// 不正な項目はErrNonPositiveSettingまたはErrInconsistentSettingを持つConfigFieldErrorです。
+// ValidateOpenSearchBulkByteLimits validates the soft threshold at which the
+// buffer is flushed early and the hard limit at which a single Bulk NDJSON
+// request is split. The former must be smaller than the latter. Keeping them
+// consistent with the effective limits of OpenSearch or proxies is the user's
+// responsibility. An invalid setting is reported as a ConfigFieldError with
+// the kind ErrNonPositiveSetting or ErrInconsistentSetting.
 func ValidateOpenSearchBulkByteLimits(bufferFlushBytes, maxBulkRequestBytes int) error {
 	var errs []error
 	if bufferFlushBytes <= 0 {
@@ -94,9 +96,9 @@ func ValidateOpenSearchBulkByteLimits(bufferFlushBytes, maxBulkRequestBytes int)
 	return errors.Join(errs...)
 }
 
-// ValidateOpenSearchMaxBulkDocumentは、buffer flushを開始するdocument件数の
-// 閾値が正の値であることを検証します。0以下の値はErrNonPositiveSettingを持つ
-// ConfigFieldErrorです。
+// ValidateOpenSearchMaxBulkDocument validates that the threshold on the number
+// of documents that starts a buffer flush is positive. A value of 0 or less is
+// reported as a ConfigFieldError with the kind ErrNonPositiveSetting.
 func ValidateOpenSearchMaxBulkDocument(maxBulkDocument int) error {
 	if maxBulkDocument <= 0 {
 		return settingError(

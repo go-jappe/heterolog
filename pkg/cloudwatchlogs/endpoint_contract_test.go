@@ -178,8 +178,8 @@ func TestRequestsPreserveEndpointPathSegments(t *testing.T) {
 	}
 }
 
-// Recompute SigV4 with the expected endpoint and region, without using the SDK
-// signer or the production endpoint resolver. The payload hash covers wire bytes.
+// SDKのsignerや本番のendpoint resolverを使わずに、期待するendpointとregionでSigV4を再計算します。
+// payload hashは、wire上のbyte列を対象にします。
 func assertEndpointRequestSignature(t *testing.T, headers http.Header, body []byte, region, host, path string) {
 	t.Helper()
 	date := headers.Get("X-Amz-Date")

@@ -51,7 +51,7 @@ func TestAutoCreateFailureClassifiesCreationWithoutLosingLogRejection(t *testing
 			}
 		})
 	}
-	// Generic missing destinations still use the existing permanent policy.
+	// 一般的な送信先の欠落には、引き続き恒久失敗として扱う既存のpolicyを使います。
 	missing := ClassifyDurableRequestOutcome(context.Background(), putErr)
 	require.False(t, missing.Retry)
 	require.False(t, missing.Quarantine)
@@ -69,8 +69,8 @@ func TestAutoCreateEvidenceDoesNotOverrideAnotherUnknownLogAttempt(t *testing.T)
 		require.True(t, decision.Quarantine)
 		require.False(t, decision.Retry)
 	}
-	// A canceled retry wait after a transient creation failure also has confirmed
-	// nonacceptance evidence, despite both operations being wrapped by the client.
+	// 一時的な作成失敗の後でcancelされたretry待機にも、両方の操作がclientでwrapされて
+	// いるにもかかわらず、受理されなかったことの確認済みの証拠があります。
 	prior := &cw.AutoCreateLogStreamError{PutError: putErr, CreateError: &cw.HTTPStatusError{Code: 503}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -26,6 +26,7 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 
 	"github.com/stretchr/testify/assert"
@@ -113,7 +114,7 @@ func TestBuildFailureHandlerWiresArchiveInternalErrorHandler(t *testing.T) {
 		assert.Equal(t, pkgdurable.DurableTypeFileArchive, durableType)
 		assert.Equal(t, []string{"stdout"}, cfg.OnError())
 		return flushfailure.InternalHandlers{
-			OnError: func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+			OnError: func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 				callbackCalled <- struct{}{}
 			},
 		}
@@ -280,7 +281,7 @@ func TestBuildDeliveryFailureHandlerWiresArchiveInternalErrorHandler(t *testing.
 		assert.Equal(t, pkgdurable.DurableTypeFileArchive, durableType)
 		assert.Equal(t, []string{"stdout"}, cfg.OnError())
 		return flushfailure.InternalHandlers{
-			OnError: func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+			OnError: func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 				callbackCalled <- struct{}{}
 			},
 		}
@@ -360,7 +361,7 @@ func clickHouseDeliveryFailureStoreConfig(
 			CompressFormat:             archive.CompressFormat,
 			RotationType:               archive.RotationType,
 			RotationDayOfWeek:          archive.RotationDayOfWeek,
-			MaxWriteAttempts:           archive.MaxWriteAttempts,
+			MaxWriteRetries:            archive.MaxWriteRetries,
 			FileOperationRetryWaitTime: archive.FileOperationRetryWaitTime,
 			ObjectStorageUploadConfig:  archive.ObjectStorageUploadConfig,
 			OverloadPolicyConfig:       archive.OverloadPolicyConfig,
@@ -398,7 +399,7 @@ func clickHouseFailureStoreConfig(
 				CompressFormat:             pkgfsstore.CompressGzip,
 				RotationType:               pkgfsstore.FileRotationDaily,
 				RotationDayOfWeek:          time.Sunday,
-				MaxWriteAttempts:           1,
+				MaxWriteRetries:            0,
 				FileOperationRetryWaitTime: time.Millisecond,
 				OverloadPolicyConfig: pkgdurable.FileArchiveOverloadPolicyConfig{
 					OverloadPolicy:        failure.OverloadPolicyDrop,

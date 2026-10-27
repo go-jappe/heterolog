@@ -6,11 +6,13 @@ import (
 	"time"
 )
 
-// ErrInvalidUsageCacheTTLは、filesystem使用量の概算値を再観測する間隔が0以下であることを表します。
+// ErrInvalidUsageCacheTTL reports that the interval for measuring the estimated
+// filesystem usage again is zero or less.
 var ErrInvalidUsageCacheTTL = errors.New("filesystem usage cache TTL must be greater than zero")
 
-// ValidateUsageCacheTTLは、filesystem使用量の概算値を再観測する間隔を検証します。
-// 0以下ならErrInvalidUsageCacheTTLをwrapしたerrorを返します。
+// ValidateUsageCacheTTL validates the interval for measuring the estimated
+// filesystem usage again. If the interval is zero or less, it returns an error
+// that wraps ErrInvalidUsageCacheTTL.
 func ValidateUsageCacheTTL(ttl time.Duration) error {
 	if ttl <= 0 {
 		return fmt.Errorf("%w, got %s", ErrInvalidUsageCacheTTL, ttl)

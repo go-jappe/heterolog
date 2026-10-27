@@ -1,41 +1,52 @@
+// Package retry runs a function again after it fails.
 package retry
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
 
+// ErrNegativeRetries reports that a negative number of retries was given.
+var ErrNegativeRetries = errors.New("retry count must not be negative")
+
+// RetryableFunc is a function that Retry runs.
 type RetryableFunc func() error
 
-// Retry は指定した関数を最大 maxRetries 回までリトライします。
-// すべての試行に失敗した場合のerrorは、最後の試行のerrorをerrors.Is・errors.Asで辿れます。
+// Retry runs fn and, while it fails, runs it again up to maxRetries more
+// times, waiting delay before each retry. With maxRetries 1, fn runs at most
+// twice; with 0, it runs once and is not retried. A negative maxRetries returns
+// an error wrapping ErrNegativeRetries without running fn. When every run
+// fails, errors.Is and errors.As can reach the error of the last run through
+// the returned error.
 func Retry(fn RetryableFunc, maxRetries int, delay time.Duration) error {
-	var err error
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		err = fn()
-		if err == nil {
-			return nil
-		}
-		time.Sleep(delay)
-	}
-	return fmt.Errorf("all retry attempts failed: %w", err)
+	_, err := RetryWithResult(func() (struct{}, error) { return struct{}{}, fn() }, maxRetries, delay)
+	return err
 }
 
+// RetryableFuncWithResult is a function that RetryWithResult runs.
 type RetryableFuncWithResult[T any] func() (T, error)
 
-// RetryWithResultはRetryと同じ規則でfnを再試行し、成功した試行の結果を返します。
-// すべての試行に失敗した場合のerrorは、最後の試行のerrorをerrors.Is・errors.Asで辿れます。
+// RetryWithResult runs fn by the same rules as Retry and returns the result of
+// the successful run. When every run fails, it returns the zero value of T and
+// an error through which errors.Is and errors.As can reach the error of the
+// last run.
 func RetryWithResult[T any](fn RetryableFuncWithResult[T], maxRetries int, delay time.Duration) (T, error) {
+	var zero T
+	if maxRetries < 0 {
+		return zero, fmt.Errorf("%w: %d", ErrNegativeRetries, maxRetries)
+	}
 	var lastErr error
-	var result T
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		result, lastErr = fn()
-		if lastErr == nil {
+	for retry := 0; retry <= maxRetries; retry++ {
+		// 最後の失敗の後には待たず、再試行の前にだけ待ちます。
+		if retry > 0 {
+			time.Sleep(delay)
+		}
+		result, err := fn()
+		if err == nil {
 			return result, nil
 		}
-		time.Sleep(delay)
+		lastErr = err
 	}
-	var zero T
-	return zero, fmt.Errorf("all retry attempts failed: %w", lastErr)
+	return zero, fmt.Errorf("all %d attempts failed: %w", maxRetries+1, lastErr)
 }

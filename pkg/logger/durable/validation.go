@@ -6,9 +6,11 @@ import (
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 )
 
-// ValidateFailureHandlerMaxConcurrentは、failure handlerが同時に実行できるchild処理数を
-// 検証します。0以下を暗黙のdefaultへ置き換えると設定漏れを隠すため、正の値だけを
-// 受け付けます。0以下の値はErrInvalidFailureHandlerMaxConcurrentを持つerrorです。
+// ValidateFailureHandlerMaxConcurrent validates the number of child operations
+// that the failure handler can run concurrently. Replacing 0 or less with an
+// implicit default would hide a missing setting, so it accepts only positive
+// values. For a value of 0 or less, it returns an error that wraps
+// ErrInvalidFailureHandlerMaxConcurrent.
 func ValidateFailureHandlerMaxConcurrent(maxConcurrent int) error {
 	if maxConcurrent <= 0 {
 		return newValidationError(
@@ -19,10 +21,12 @@ func ValidateFailureHandlerMaxConcurrent(maxConcurrent int) error {
 	return nil
 }
 
-// ValidateSpoolActiveBacklogWarnAfterDaysは、active spoolの滞留警告を
-// 開始する経過日数を検証します。0は警告を無効にする明示的な値として
-// 受け付け、負数は設定エラーにします。この値はspoolへの保存可否には使用しません。
-// 負数はErrNegativeSpoolActiveBacklogWarnAfterDaysを持つerrorです。
+// ValidateSpoolActiveBacklogWarnAfterDays validates the number of days after
+// which the backlog warning of the active spool starts. It accepts 0 as an
+// explicit value that disables the warning, and makes a negative number a
+// configuration error. This value is not used to decide whether data may be
+// saved to the spool. For a negative number, it returns an error that wraps
+// ErrNegativeSpoolActiveBacklogWarnAfterDays.
 func ValidateSpoolActiveBacklogWarnAfterDays(warnAfterDays int) error {
 	if warnAfterDays < 0 {
 		return newValidationError(
@@ -33,10 +37,11 @@ func ValidateSpoolActiveBacklogWarnAfterDays(warnAfterDays int) error {
 	return nil
 }
 
-// ValidateFailureStoreDurableTypesは通常failure処理の保存先選択を検証します。
-// noneはspoolとfile archiveをどちらも使用しない明示値として単独指定だけを受け付け、
-// 実保存先はfileArchiveとspoolを一度ずつ選択できます。不正な選択はScopeが
-// "failure store"の*DurableTypeErrorです。
+// ValidateFailureStoreDurableTypes validates the selection of stores for
+// regular failure handling. It accepts none, an explicit value that uses
+// neither the spool nor the file archive, only when it is specified alone. As
+// actual stores, fileArchive and spool can each be selected once. An invalid
+// selection is a *DurableTypeError whose Scope is "failure store".
 func ValidateFailureStoreDurableTypes(types []DurableType) error {
 	return failurestore.ValidateDurableTypes(
 		"failure store",
@@ -46,9 +51,10 @@ func ValidateFailureStoreDurableTypes(types []DurableType) error {
 	)
 }
 
-// ValidateDeliveryFailureStoreDurableTypesはDelivery failure storeで選択された
-// 保存方式を検証します。noneは保存先なし、実保存先はfileArchiveだけを選択できます。
-// 不正な選択はScopeが"delivery failure store"の*DurableTypeErrorです。
+// ValidateDeliveryFailureStoreDurableTypes validates the storage methods
+// selected for the Delivery failure store. none means no store, and
+// fileArchive is the only actual store that can be selected. An invalid
+// selection is a *DurableTypeError whose Scope is "delivery failure store".
 func ValidateDeliveryFailureStoreDurableTypes(types []DurableType) error {
 	return failurestore.ValidateDurableTypes(
 		"delivery failure store",
@@ -57,9 +63,11 @@ func ValidateDeliveryFailureStoreDurableTypes(types []DurableType) error {
 	)
 }
 
-// ValidateDirectDegradeSpillTypesはfailure storeを使わない直接退避先を検証します。
-// 現在実装済みのstdoutを一度だけ選択でき、空・予約値・未知値・重複は設定エラーです。
-// 不正な選択は*SpillTypeErrorです。
+// ValidateDirectDegradeSpillTypes validates the direct evacuation destinations
+// used without a failure store. Only stdout, which is currently implemented,
+// can be selected, and only once; an empty selection, reserved values, unknown
+// values and duplicates are configuration errors. An invalid selection is a
+// *SpillTypeError.
 func ValidateDirectDegradeSpillTypes(types []SpillType) error {
 	if len(types) == 0 {
 		return &SpillTypeError{Err: ErrSpillTypesRequired}

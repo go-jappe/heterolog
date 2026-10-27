@@ -32,7 +32,7 @@ func TestDestinationStoresCountPreservedFilesDiscoversAllDestinationsAfterRestar
 	_, err = secondary.PreserveFile(ctx, changed)
 	require.NoError(t, err)
 
-	// No routes or cached Stores are registered on this restarted owner.
+	// 再起動したこのownerには、routeもcache済みのStoreも登録されていません。
 	restarted, err := NewDestinationStores(root)
 	require.NoError(t, err)
 	count, err := restarted.CountPreservedFiles(ctx)

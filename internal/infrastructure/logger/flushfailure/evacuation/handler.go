@@ -1,5 +1,5 @@
-// Package evacuation provides destination writers shared by direct degradation
-// and durable-store overload handling.
+// Package evacuationは、直接のdegradationと、durable storeのoverload処理とで共有する
+// 退避先のwriterを提供します。
 package evacuation
 
 import (
@@ -36,17 +36,16 @@ func (e *UnsupportedSpillDestinationError) Is(target error) bool {
 	return target == ErrUnsupportedSpillDestination
 }
 
-// stdoutBatchMu is shared by every stdoutHandler instance. A SendResult is
-// encoded as one meta row followed by zero or more record rows, so the whole
-// batch must stay contiguous even when different backends evacuate failures at
-// the same time.
+// stdoutBatchMuは、すべてのstdoutHandler instanceが共有します。SendResultは1行の
+// meta行と、それに続く0行以上のrecord行としてencodeされるため、異なるbackendが
+// 同時に失敗を退避する場合でも、batch全体が連続していなければなりません。
 //
-// The lock is package-global, so tests must not let a testing/synctest bubble
-// contend for it with goroutines outside that bubble (for example a parallel
-// test or another bubble): a waiter queued inside a bubble is released through
-// a channel created in that bubble, and releasing it from outside makes synctest
-// panic ("deadlock: all goroutines in bubble are blocked"). Tests that spill to
-// stdout inside a bubble therefore must not run in parallel with other users.
+// このlockはpackage全体で1つなので、testでは、testing/synctestのbubbleと、その
+// bubbleの外のgoroutine（たとえば並列のtestや別のbubble）とにこのlockを奪い合わせては
+// いけません。bubble内で順番を待つwaiterはそのbubble内で作られたchannelを通じて
+// 解放され、bubbleの外から解放するとsynctestがpanicします
+// （"deadlock: all goroutines in bubble are blocked"）。そのため、bubble内でstdoutへ
+// 退避するtestは、このlockを使う他の処理と並列に実行してはいけません。
 var stdoutBatchMu infrafsstore.ContextMutex
 
 type Handler interface {
@@ -76,8 +75,8 @@ type stdoutHandler struct {
 	writer io.Writer
 }
 
-// newStdoutHandler keeps the production destination fixed at os.Stdout while
-// allowing tests to observe output without replacing the process-global file.
+// newStdoutHandlerは、writerへ出力するstdoutHandlerを作ります。本番ではNewHandlerWithStdoutが
+// os.Stdoutを渡し、testはprocess全体で共有するos.Stdoutを置き換えずに出力を観測できます。
 func newStdoutHandler(writer io.Writer) *stdoutHandler {
 	return &stdoutHandler{writer: writer}
 }

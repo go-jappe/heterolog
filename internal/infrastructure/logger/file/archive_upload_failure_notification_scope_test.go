@@ -12,6 +12,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -77,7 +78,7 @@ func TestManagedFileArchiveUploaderKeepsConcurrentNotificationsWithTheirUploadTa
 	}
 	notified := make(chan notification, 2)
 	owner := &FileLogger{logger: DefaultLogger, Clock: clock.NewUTCClock(), Tracer: observer.NopTracer{}, Meter: observer.NopMeter{}}
-	owner.OnError = func(ctx context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	owner.OnError = func(ctx context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		notified <- notification{task: ctx.Value(uploadFailureNotificationTaskKey{}).(string), err: err}
 	}
 	base := t.TempDir()
@@ -151,7 +152,7 @@ func TestManagedFileArchiveUploaderPublicUploadMethodsSendTheirOwnNotifications(
 			}
 			notified := make(chan notification, 1)
 			owner := &FileLogger{logger: DefaultLogger, Clock: clock.NewUTCClock(), Tracer: observer.NopTracer{}, Meter: observer.NopMeter{}}
-			owner.OnError = func(ctx context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			owner.OnError = func(ctx context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				notified <- notification{task: ctx.Value(uploadFailureNotificationTaskKey{}).(string), err: err}
 			}
 			managed := &managedFileArchiveUploader{owner: owner}

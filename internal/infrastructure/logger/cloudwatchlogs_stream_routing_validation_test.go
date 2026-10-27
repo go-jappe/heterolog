@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/handler"
@@ -26,12 +25,12 @@ func TestValidateLoggerCloudWatchLogsStreamRoutingRejectsUnsupportedGranularity(
 	err := validateLoggerCloudWatchLogsStreamRouting(
 		"logger",
 		cfg,
-		streamrouting.Granularity("weekly"),
+		pkgcloudwatchlogs.StreamRouting("weekly"),
 	)
 	if !errors.Is(err, ErrUnsupportedStreamRoutingGranularity) {
 		t.Fatalf("validation error = %v, want %v", err, ErrUnsupportedStreamRoutingGranularity)
 	}
-	requireCloudWatchLogsStreamRoutingError(t, err, "logger", streamrouting.Granularity("weekly"), "")
+	requireCloudWatchLogsStreamRoutingError(t, err, "logger", pkgcloudwatchlogs.StreamRouting("weekly"), "")
 }
 
 func TestValidateLoggerCloudWatchLogsStreamRoutingChecksInternalLogResolvedName(t *testing.T) {
@@ -47,11 +46,11 @@ func TestValidateLoggerCloudWatchLogsStreamRoutingChecksInternalLogResolvedName(
 		},
 	}
 
-	err := validateLoggerCloudWatchLogsStreamRouting("logger", cfg, streamrouting.Daily)
+	err := validateLoggerCloudWatchLogsStreamRouting("logger", cfg, pkgcloudwatchlogs.StreamRoutingDaily)
 	if !errors.Is(err, pkgcloudwatchlogs.ErrLogStreamNameTooLong) {
 		t.Fatalf("validation error = %v, want resolved stream name length error", err)
 	}
-	requireCloudWatchLogsStreamRoutingError(t, err, "logger", streamrouting.Daily, strings.Repeat("a", 505))
+	requireCloudWatchLogsStreamRoutingError(t, err, "logger", pkgcloudwatchlogs.StreamRoutingDaily, strings.Repeat("a", 505))
 }
 
 func TestValidateDeliveryLoggerCloudWatchLogsStreamRoutingChecksResolvedName(t *testing.T) {
@@ -69,12 +68,12 @@ func TestValidateDeliveryLoggerCloudWatchLogsStreamRoutingChecksResolvedName(t *
 	err := validateDeliveryLoggerCloudWatchLogsStreamRouting(
 		"delivery logger",
 		cfg,
-		streamrouting.Hourly,
+		pkgcloudwatchlogs.StreamRoutingHourly,
 	)
 	if !errors.Is(err, pkgcloudwatchlogs.ErrLogStreamNameTooLong) {
 		t.Fatalf("validation error = %v, want resolved stream name length error", err)
 	}
-	requireCloudWatchLogsStreamRoutingError(t, err, "delivery logger", streamrouting.Hourly, strings.Repeat("b", 505))
+	requireCloudWatchLogsStreamRoutingError(t, err, "delivery logger", pkgcloudwatchlogs.StreamRoutingHourly, strings.Repeat("b", 505))
 }
 
 // requireCloudWatchLogsStreamRoutingErrorは、検証errorの出所・分割粒度・失敗した基準
@@ -83,7 +82,7 @@ func requireCloudWatchLogsStreamRoutingError(
 	t *testing.T,
 	err error,
 	source string,
-	granularity streamrouting.Granularity,
+	granularity pkgcloudwatchlogs.StreamRouting,
 	streamName string,
 ) {
 	t.Helper()
@@ -98,7 +97,7 @@ func requireCloudWatchLogsStreamRoutingError(
 
 func TestCloudWatchLogsStreamRoutingValidatesOnlyRequiredBaseDestination(t *testing.T) {
 	t.Parallel()
-	longName := strings.Repeat("a", 505) // Valid alone; the daily suffix exceeds the stream limit.
+	longName := strings.Repeat("a", 505) // 単独では有効ですが、daily suffixを付けるとstreamの上限を超えます。
 	for _, test := range []struct {
 		name         string
 		destinations pkglogger.LogOutputDestinations
@@ -146,8 +145,8 @@ func TestCloudWatchLogsStreamRoutingValidatesOnlyRequiredBaseDestination(t *test
 				name string
 				err  error
 			}{
-				{"sync and async", validateLoggerCloudWatchLogsStreamRouting("logger", cfg, streamrouting.Daily)},
-				{"delivery", validateDeliveryLoggerCloudWatchLogsStreamRouting("delivery logger", delivery, streamrouting.Daily)},
+				{"sync and async", validateLoggerCloudWatchLogsStreamRouting("logger", cfg, pkgcloudwatchlogs.StreamRoutingDaily)},
+				{"delivery", validateDeliveryLoggerCloudWatchLogsStreamRouting("delivery logger", delivery, pkgcloudwatchlogs.StreamRoutingDaily)},
 			} {
 				if test.wantError {
 					// 長い名前を持つ方の保存先が、検証で拒否された基準stream名です。
@@ -170,7 +169,7 @@ func TestValidateLoggerCloudWatchLogsStreamRoutingIgnoresUnusedGranularity(t *te
 	err := validateLoggerCloudWatchLogsStreamRouting(
 		"logger",
 		pkglogger.LoggerConfig{},
-		streamrouting.Granularity("weekly"),
+		pkgcloudwatchlogs.StreamRouting("weekly"),
 	)
 	if err != nil {
 		t.Fatalf("unused stream routing validation error = %v, want nil", err)

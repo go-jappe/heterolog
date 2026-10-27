@@ -82,10 +82,12 @@ func validateCloudWatchLogsBackend(
 	return errors.Join(errs...)
 }
 
-// ValidateCloudWatchLogsBufferConfigは、通常bufferのsoft flush閾値とfallback queueの
-// hard上限を検証します。PutLogEventsの固定上限に応じた物理request分割はplannerが
-// 独立して担当するため、ここでは10,000件や1MiBとの大小を強制しません。
-// 不正な項目はErrNonPositiveSettingまたはErrInconsistentSettingを持つConfigFieldErrorです。
+// ValidateCloudWatchLogsBufferConfig validates the soft flush thresholds of the
+// regular buffer and the hard limit of the fallback queue. The planner splits
+// physical requests by the fixed limits of PutLogEvents on its own, so this
+// function does not enforce how the values relate to 10,000 events or 1 MiB.
+// An invalid setting is reported as a ConfigFieldError with the kind
+// ErrNonPositiveSetting or ErrInconsistentSetting.
 func ValidateCloudWatchLogsBufferConfig(
 	bufferFlushMaxEvents int,
 	bufferFlushBytes int,

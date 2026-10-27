@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -22,7 +23,7 @@ type otelSpan struct {
 	s trace.Span
 }
 
-func (sp *otelSpan) AddEvent(name string, attrs ...observer.Attr) {
+func (sp *otelSpan) AddEvent(name string, attrs ...pkgobserver.Attr) {
 	if sp == nil || observer.IsNilInterface(sp.s) {
 		return
 	}
@@ -31,7 +32,7 @@ func (sp *otelSpan) AddEvent(name string, attrs ...observer.Attr) {
 	sp.s.AddEvent(name, trace.WithAttributes(otelAttrs...))
 }
 
-func (sp *otelSpan) RecordError(err error, attrs ...observer.Attr) {
+func (sp *otelSpan) RecordError(err error, attrs ...pkgobserver.Attr) {
 	if err == nil {
 		return
 	}
@@ -51,7 +52,7 @@ func (sp *otelSpan) End() {
 	sp.s.End()
 }
 
-func (sp *otelSpan) TraceID() observer.TraceID {
+func (sp *otelSpan) TraceID() pkgobserver.TraceID {
 	if sp == nil || observer.IsNilInterface(sp.s) {
 		return ""
 	}
@@ -61,10 +62,10 @@ func (sp *otelSpan) TraceID() observer.TraceID {
 		return ""
 	}
 
-	return observer.TraceID(sc.TraceID().String())
+	return pkgobserver.TraceID(sc.TraceID().String())
 }
 
-func (sp *otelSpan) SetAttributes(attrs ...observer.Attr) {
+func (sp *otelSpan) SetAttributes(attrs ...pkgobserver.Attr) {
 	if sp == nil || observer.IsNilInterface(sp.s) {
 		return
 	}
@@ -73,7 +74,7 @@ func (sp *otelSpan) SetAttributes(attrs ...observer.Attr) {
 	sp.s.SetAttributes(otelAttrs...)
 }
 
-func (o *OtelTracer) StartSpan(ctx context.Context, name string, attrs ...observer.Attr) (context.Context, observer.Span) {
+func (o *OtelTracer) StartSpan(ctx context.Context, name string, attrs ...pkgobserver.Attr) (context.Context, pkgobserver.Span) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -93,7 +94,7 @@ func (o *OtelTracer) StartSpan(ctx context.Context, name string, attrs ...observ
 
 	sc := span.SpanContext()
 	if sc.IsValid() {
-		ctx = observer.WithTraceID(ctx, observer.TraceID(sc.TraceID().String()))
+		ctx = observer.WithTraceID(ctx, pkgobserver.TraceID(sc.TraceID().String()))
 	}
 
 	ctx = observer.WithSpan(ctx, wrapped)
@@ -101,7 +102,7 @@ func (o *OtelTracer) StartSpan(ctx context.Context, name string, attrs ...observ
 	return ctx, wrapped
 }
 
-func toOtelAttrs(attrs []observer.Attr) []attribute.KeyValue {
+func toOtelAttrs(attrs []pkgobserver.Attr) []attribute.KeyValue {
 	otelAttrs := make([]attribute.KeyValue, 0, len(attrs))
 
 	for _, a := range attrs {

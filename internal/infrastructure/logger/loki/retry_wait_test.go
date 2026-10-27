@@ -41,7 +41,7 @@ func TestKnownRefusalSurvivesCanceledRetryWait(t *testing.T) {
 						}
 						return &http.Response{StatusCode: 503, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("temporarily unavailable"))}, nil
 					})}}
-					client, err := infraloki.NewClient(rawcfg, NewRetryConfigProvider(&pkglogger.LokiRetryableClientCaseTransportErrorConfig{RetryClientMode: mode, MaxAttempts: 3, BaseDelay: 100 * time.Millisecond, MaxDelay: 100 * time.Millisecond}), nil, nil)
+					client, err := infraloki.NewClient(rawcfg, NewRetryConfigProvider(&pkglogger.LokiRetryableClientCaseTransportErrorConfig{RetryClientMode: mode, MaxRetries: 2, BaseDelay: 100 * time.Millisecond, MaxDelay: 100 * time.Millisecond}), nil, nil)
 					if err != nil {
 						t.Fatal(err)
 					}

@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
@@ -21,6 +20,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFailureArchiveRemovalSyncFailureRetainsCompletedCursor(t *testing.T) {
@@ -65,7 +65,7 @@ func TestFailureArchiveRemovalSyncFailureRetainsCompletedCursor(t *testing.T) {
 					_, err = filesystem.AdvanceCompletionCursor(ctx, key, []objectstorage.DestinationID{"destination"})
 					require.NoError(t, err)
 					notified := make(chan error, 1)
-					handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+					handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 						if errors.Is(err, pkgfsstore.ErrDurabilityUnconfirmed) {
 							select {
 							case notified <- err:

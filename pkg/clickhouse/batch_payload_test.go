@@ -66,8 +66,8 @@ func TestClientInsertLogsPreservesEveryRowInRequest(t *testing.T) {
 					} else {
 						require.Empty(t, request.Header.Get("Content-Encoding"))
 					}
-					// Decode the transmitted JSONEachRow lines, including escaped newlines
-					// inside messages, rather than testing the serialization helper alone.
+					// serialization helperだけを試すのではなく、message内でescapeされた改行も
+					// 含めて、送信されたJSONEachRowの各行をdecodeします。
 					scanner := bufio.NewScanner(body)
 					for scanner.Scan() {
 						var record LogRecord

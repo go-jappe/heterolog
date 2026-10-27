@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -50,7 +49,7 @@ func TestBufferedLoggerConstructorsDoNotDefaultZeroOpenSearchBulkByteLimits(t *t
 						},
 						OpenSearchClient: client,
 					},
-					streamrouting.None,
+					pkgcloudwatchlogs.StreamRoutingNone,
 					nil,
 					nil,
 					tracer,
@@ -83,7 +82,7 @@ func TestBufferedLoggerConstructorsDoNotDefaultZeroOpenSearchBulkByteLimits(t *t
 						},
 						OpenSearchClient: client,
 					},
-					streamrouting.None,
+					pkgcloudwatchlogs.StreamRoutingNone,
 					nil,
 					nil,
 					tracer,
@@ -117,7 +116,7 @@ func TestBufferedLoggerConstructorsDoNotDefaultZeroOpenSearchBulkByteLimits(t *t
 						},
 						OpenSearchClient: client,
 					},
-					streamrouting.None,
+					pkgcloudwatchlogs.StreamRoutingNone,
 					nil,
 					nil,
 					tracer,
@@ -151,7 +150,7 @@ func TestBufferedLoggerConstructorsDoNotDefaultZeroOpenSearchBulkByteLimits(t *t
 						},
 						OpenSearchClient: client,
 					},
-					streamrouting.None,
+					pkgcloudwatchlogs.StreamRoutingNone,
 					nil,
 					nil,
 					tracer,
@@ -226,7 +225,7 @@ func TestDeliveryLoggerDirectOpenSearchDoesNotRequireBulkByteLimits(t *testing.T
 			},
 			OpenSearchClient: validActivationOpenSearchClient(),
 		},
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		observer.NopTracer{},
 		observer.NopMeter{},
 	)
@@ -260,7 +259,7 @@ func TestLoggerConstructorsRejectInvalidBackendValuesBeforeRuntimeBuild(t *testi
 						Timeout:          time.Second,
 						MaxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes,
 						Slack:            &pkglogger.SlackLoggerConfig{Channel: "logs"},
-					}, streamrouting.None, nil,
+					}, pkgcloudwatchlogs.StreamRoutingNone, nil,
 
 					nil,
 					observer.NopTracer{},
@@ -307,7 +306,7 @@ func TestLoggerConstructorsRejectInvalidBackendValuesBeforeRuntimeBuild(t *testi
 							},
 						},
 						OpenSearchClient: &pkgopensearch.Config{},
-					}, streamrouting.None, nil,
+					}, pkgcloudwatchlogs.StreamRoutingNone, nil,
 
 					nil,
 					observer.NopTracer{},
@@ -348,7 +347,7 @@ func TestLoggerConstructorsRejectInvalidBackendValuesBeforeRuntimeBuild(t *testi
 							ClickHouseClient: &pkgclickhouse.Config{},
 						},
 					},
-					streamrouting.None,
+					pkgcloudwatchlogs.StreamRoutingNone,
 					observer.NopTracer{},
 					observer.NopMeter{},
 				)
@@ -386,7 +385,7 @@ func TestLoggerConstructorsRejectInvalidBackendValuesBeforeRuntimeBuild(t *testi
 							AccessKeyID:     "test-access-key",
 							SecretAccessKey: "test-secret-key",
 						},
-					}, streamrouting.None, nil,
+					}, pkgcloudwatchlogs.StreamRoutingNone, nil,
 
 					nil,
 					observer.NopTracer{},
@@ -434,7 +433,7 @@ func TestLoggerConstructorsRejectMissingExplicitBackendConfig(t *testing.T) {
 						},
 						Timeout:          time.Second,
 						MaxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes,
-					}, streamrouting.None, nil,
+					}, pkgcloudwatchlogs.StreamRoutingNone, nil,
 
 					nil,
 					tracer,
@@ -456,7 +455,7 @@ func TestLoggerConstructorsRejectMissingExplicitBackendConfig(t *testing.T) {
 						Timeout:          time.Second,
 						MaxParallel:      1,
 						MaxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes,
-					}, streamrouting.None, nil,
+					}, pkgcloudwatchlogs.StreamRoutingNone, nil,
 
 					nil,
 					tracer,
@@ -478,7 +477,7 @@ func TestLoggerConstructorsRejectMissingExplicitBackendConfig(t *testing.T) {
 						Timeout:          time.Second,
 						MaxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes,
 					},
-					streamrouting.None,
+					pkgcloudwatchlogs.StreamRoutingNone,
 					tracer,
 					meter,
 				)

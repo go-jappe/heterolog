@@ -6,17 +6,21 @@ import (
 )
 
 var (
-	// ErrNegativeTimeoutは、Config.Timeoutが負値であることを表します。
+	// ErrNegativeTimeout reports that Config.Timeout is negative.
 	ErrNegativeTimeout = errors.New("clickhouse timeout must not be negative")
-	// ErrEndpointRequiredは、endpointが空または空白だけであることを表します。
+	// ErrEndpointRequired reports that the endpoint is empty or contains only
+	// whitespace.
 	ErrEndpointRequired = errors.New("clickhouse endpoint is required")
-	// ErrInvalidEndpointは、endpointをURLとして解釈できないか、scheme、host、user info、
-	// query、fragmentの制約を満たさないことを表します。
+	// ErrInvalidEndpoint reports that the endpoint cannot be parsed as a URL or
+	// does not meet the constraints on its scheme, host, user info, query or
+	// fragment.
 	ErrInvalidEndpoint = errors.New("invalid clickhouse endpoint")
-	// ErrTableRequiredは、INSERT先のtableが空または空白だけであることを表します。
+	// ErrTableRequired reports that the table to INSERT into is empty or contains
+	// only whitespace.
 	ErrTableRequired = errors.New("clickhouse table is required")
-	// ErrTooManyRedirectsは、HTTPClientにCheckRedirectがなく、redirectが既定の
-	// 10回を超えたことを表します。
+	// ErrTooManyRedirects reports that a request stopped after 10 redirects, the
+	// default limit, because the HTTP client has no CheckRedirect. This applies to
+	// the default client and to Config.HTTPClient.
 	ErrTooManyRedirects = errors.New("stopped after 10 redirects")
 )
 

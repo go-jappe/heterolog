@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 
 	"github.com/stretchr/testify/require"
@@ -27,7 +27,7 @@ func TestDeliveryFileSplitRolesReportOneRegisteredLogicalTarget(t *testing.T) {
 	deliveryLogger, err := NewDeliveryLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		observer.NopTracer{},
 		observer.NopMeter{},
 	)

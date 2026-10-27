@@ -274,7 +274,7 @@ func newLokiFailureStoreTestFlushManagerConfig(
 					CompressFormat:             pkgfsstore.CompressZstd,
 					RotationType:               pkgfsstore.FileRotationDaily,
 					RotationDayOfWeek:          time.Sunday,
-					MaxWriteAttempts:           1,
+					MaxWriteRetries:            0,
 					FileOperationRetryWaitTime: time.Millisecond,
 					OverloadPolicyConfig: pkgdurable.FileArchiveOverloadPolicyConfig{
 						OverloadPolicy:        failure.OverloadPolicyDrop,

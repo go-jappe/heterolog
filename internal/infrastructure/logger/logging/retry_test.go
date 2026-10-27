@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
+	"time"
+
+	"github.com/go-jappe/heterolog/pkg/retry"
 )
 
 // retryTestAttemptsは、試行ごとに異なるerrorを返すretry対象を作ります。
@@ -23,9 +27,10 @@ func TestRetryWithLogWrapsLastAttemptError(t *testing.T) {
 	fn, calls := retryTestAttempts(first, last)
 	var logged []error
 
+	// 再試行1回では、初回と合わせて2回実行します。
 	err := RetryWithLog(
 		fn,
-		2,
+		1,
 		0,
 		func(_ context.Context, err error, _ *LogEntry) { logged = append(logged, err) },
 		func(context.Context, string, error) *LogEntry { return &LogEntry{} },
@@ -59,7 +64,7 @@ func TestRetryWithResultAndLogWrapsLastAttemptError(t *testing.T) {
 			calls++
 			return "partial", err
 		},
-		2,
+		1,
 		0,
 		nil,
 		nil,
@@ -85,7 +90,7 @@ func TestRetryWithLogReturnsNilAfterRecoveredAttempt(t *testing.T) {
 	failed := errors.New("temporary failure")
 	fn, calls := retryTestAttempts(failed, nil, failed)
 
-	err := RetryWithLog(fn, 3, 0, nil, nil, "retry failed", context.Background())
+	err := RetryWithLog(fn, 2, 0, nil, nil, "retry failed", context.Background())
 
 	if err != nil {
 		t.Fatalf("RetryWithLog() error = %v, want nil after the second attempt succeeds", err)
@@ -93,4 +98,37 @@ func TestRetryWithLogReturnsNilAfterRecoveredAttempt(t *testing.T) {
 	if *calls != 2 {
 		t.Fatalf("attempts = %d, want to stop after the successful second attempt", *calls)
 	}
+}
+
+// 再試行0回は1回だけ実行し、負の回数はfnを実行せずにerrorを返します。
+func TestRetryWithLogCountsRetriesAfterTheFirstAttempt(t *testing.T) {
+	failed := errors.New("failed")
+	fn, calls := retryTestAttempts(failed, failed)
+	if err := RetryWithLog(fn, 0, time.Hour, nil, nil, "retry failed", context.Background()); !errors.Is(err, failed) {
+		t.Fatalf("RetryWithLog() error = %v, want the only attempt error", err)
+	}
+	if *calls != 1 {
+		t.Fatalf("attempts = %d, want 1 without retries", *calls)
+	}
+
+	fn, calls = retryTestAttempts(nil)
+	if err := RetryWithLog(fn, -1, 0, nil, nil, "retry failed", context.Background()); !errors.Is(err, retry.ErrNegativeRetries) {
+		t.Fatalf("RetryWithLog() error = %v, want ErrNegativeRetries", err)
+	}
+	if *calls != 0 {
+		t.Fatalf("attempts = %d, want 0 for a negative retry count", *calls)
+	}
+}
+
+// 待機は再試行の前にだけ入り、最後の失敗の後には待ちません。
+func TestRetryWithLogWaitsOnlyBeforeRetries(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		failed := errors.New("failed")
+		fn, _ := retryTestAttempts(failed, failed, failed)
+		start := time.Now()
+		_ = RetryWithLog(fn, 2, time.Second, nil, nil, "retry failed", context.Background())
+		if elapsed := time.Since(start); elapsed != 2*time.Second {
+			t.Fatalf("elapsed = %s, want 2s for two retries", elapsed)
+		}
+	})
 }

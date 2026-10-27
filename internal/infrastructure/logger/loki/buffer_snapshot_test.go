@@ -34,8 +34,8 @@ func TestLokiLoggerPreservesInFlightBatchWhileAcceptingNextEntries(t *testing.T)
 				close(started)
 				<-release
 			})
-			// Read the actual snapshot only after new entries have been queued.
-			// Copying it before the wait would hide backing-array reuse.
+			// 実際のsnapshotは、新しいentryがqueueに入った後で初めて読みます。
+			// 待機の前にcopyすると、backing arrayの再利用が隠れてしまいます。
 			messages := make([]string, 0, len(entries))
 			for _, entry := range entries {
 				messages = append(messages, entry.Message)

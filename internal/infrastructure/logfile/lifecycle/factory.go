@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
@@ -21,6 +20,7 @@ import (
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -56,8 +56,8 @@ type directoryLifecycleFactoryOptions struct {
 	SpoolRuntimes        compressedlog.RootRuntimes
 	ArchiveCheckpoint    pkgfsstore.ArchiveCheckpointConfig
 	Clock                clock.Clock
-	Tracer               observer.Tracer
-	Meter                observer.Meter
+	Tracer               pkgobserver.Tracer
+	Meter                pkgobserver.Meter
 	// Reporterは受理済みファイル処理の復旧結果と、Store内部の保存再試行エラーの通知先です。
 	// 保存再試行の通知先はStoreの構築時に渡します。
 	Reporter RunReporter
@@ -279,8 +279,8 @@ type LogFileOptions struct {
 	// spool退避を使うbackendのruntimeは必須です。spool退避が無効ならnilを渡せます。
 	// 呼び出し元は、生成した全DirectoryLifecycleの終了後にruntimeを閉じてください。
 	SpoolRuntimes compressedlog.RootRuntimes
-	Tracer        observer.Tracer
-	Meter         observer.Meter
+	Tracer        pkgobserver.Tracer
+	Meter         pkgobserver.Meter
 	// Reporterは受理済みファイル処理の復旧結果と、checkpoint保存再試行のエラーを
 	// 非同期で通知する宛先です。一巡処理の結果は戻り値で返します。nilなら通知しません。
 	Reporter RunReporter
@@ -312,8 +312,8 @@ type DeliveryFileOptions struct {
 	// spool退避を使うbackendのruntimeは必須です。spool退避が無効ならnilを渡せます。
 	// 呼び出し元は、生成した全DirectoryLifecycleの終了後にruntimeを閉じてください。
 	SpoolRuntimes compressedlog.RootRuntimes
-	Tracer        observer.Tracer
-	Meter         observer.Meter
+	Tracer        pkgobserver.Tracer
+	Meter         pkgobserver.Meter
 	// Reporterは受理済みファイル処理の復旧結果と、checkpoint保存再試行のエラーを
 	// 非同期で通知する宛先です。一巡処理の結果は戻り値で返します。nilなら通知しません。
 	Reporter RunReporter

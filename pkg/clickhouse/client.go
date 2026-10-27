@@ -39,7 +39,8 @@ type Config struct {
 	Endpoint string
 	Database string
 	Table    string
-	// TimeoutはHTTPClientがnilの場合に使います。0はdefault timeoutの未指定sentinel、負値は不正です。
+	// Timeout is used when HTTPClient is nil. Zero is the unset sentinel that
+	// selects the default timeout, and a negative value is invalid.
 	Timeout time.Duration
 
 	Username string
@@ -83,9 +84,10 @@ type InsertOptions struct {
 	InsertDeduplicationToken string
 }
 
-// LogRecordMarshalErrorは、HTTP requestを作る前にJSONEachRowへ変換できなかった
-// LogRecordの入力indexを保持します。ClickHouseへはまだ何も送信されていないため、
-// 呼び出し側は該当recordと未送信recordを安全に分けてdurable処理できます。
+// LogRecordMarshalError holds the input index of a LogRecord that could not be
+// converted to JSONEachRow before the HTTP request was created. Nothing has
+// been sent to ClickHouse yet, so callers can safely separate that record from
+// the unsent records and handle them durably.
 type LogRecordMarshalError struct {
 	Index int
 	Err   error
@@ -105,17 +107,18 @@ func (e *LogRecordMarshalError) Unwrap() error {
 	return e.Err
 }
 
-// HTTPStatusErrorはClickHouseのHTTP responseがINSERT成功を確定しなかったことを表します。
-// 通常はnon-2xxですが、ClickHouseがheader送信後にDB::Exceptionをbodyへ書いた場合は
-// Codeが2xxになることがあります。
+// HTTPStatusError reports that a ClickHouse HTTP response did not confirm that
+// the INSERT succeeded. The status is usually non-2xx, but Code can be 2xx when
+// ClickHouse writes a DB::Exception to the body after sending the headers.
 type HTTPStatusError struct {
 	Code          int
 	Status        string
 	Body          []byte
 	BodyTruncated bool
 	After         time.Duration
-	// ExceptionCodeとExceptionTypeはClickHouseのDB::Exceptionを構造化した値です。
-	// ClickHouseがheader送信後に失敗した場合、Codeが2xxでも設定されます。
+	// ExceptionCode and ExceptionType hold the ClickHouse DB::Exception in
+	// structured form. If ClickHouse fails after sending the headers, they are set
+	// even when Code is 2xx.
 	ExceptionCode int
 	ExceptionType ErrorType
 }
@@ -147,8 +150,9 @@ func (e *HTTPStatusError) RetryAfter() time.Duration {
 	return e.After
 }
 
-// ClickHouseExceptionCodeはClickHouse固有のexception codeを返します。
-// 手動で構築されたerrorとの整合のため、fieldが未設定ならresponse bodyから復元します。
+// ClickHouseExceptionCode returns the ClickHouse-specific exception code. For
+// consistency with errors constructed by hand, it recovers the code from the
+// response body when the ExceptionCode field is unset.
 func (e *HTTPStatusError) ClickHouseExceptionCode() int {
 	if e == nil {
 		return 0
@@ -160,8 +164,11 @@ func (e *HTTPStatusError) ClickHouseExceptionCode() int {
 	return code
 }
 
-// ClickHouseErrorTypeはClickHouse固有のerror typeを返します。
-// fieldが未設定なら、DB::Exception本文の末尾側にあるtype tokenを使用します。
+// ClickHouseErrorType returns the ClickHouse-specific error type. When the
+// ExceptionType field is unset, it uses the last parenthesized token of the
+// response body that looks like a type, such as (UNKNOWN_TABLE): upper-case
+// letters, digits and underscores with at least one letter. It returns an
+// empty ErrorType when there is no such token.
 func (e *HTTPStatusError) ClickHouseErrorType() ErrorType {
 	if e == nil {
 		return ""
@@ -303,9 +310,8 @@ func (c *Client) InsertLogsWithOptions(
 	return &InsertResponse{StatusCode: resp.StatusCode}, nil
 }
 
-// doPost preserves caller redirect restrictions and net/http's default limit,
-// but refuses redirects that would discard the INSERT payload. The original
-// redirect response is returned for the existing HTTP status classification.
+// doPostは呼び出し元のredirect制限とnet/httpの既定の上限を保ちつつ、INSERTのpayloadを
+// 捨てるredirectを拒否します。既存のHTTP statusによる分類に回すため、元のredirect responseを返します。
 func (c *Client) doPost(req *http.Request) (*http.Response, error) {
 	httpClient := *c.httpClient
 	checkRedirect := httpClient.CheckRedirect
@@ -358,15 +364,18 @@ func tableExpression(database, table string) string {
 }
 
 func quoteIdentifier(identifier string) string {
-	// ClickHouse interprets backslash escapes inside quoted identifiers too.
-	// Escape them before doubling backticks so the identifier retains its bytes.
+	// ClickHouseはquoteされたidentifier内のbackslash escapeも解釈します。identifierの
+	// byte列を保つよう、backtickを二重にする前にbackslashをescapeします。
 	identifier = strings.ReplaceAll(strings.TrimSpace(identifier), "\\", "\\\\")
 	return "`" + strings.ReplaceAll(identifier, "`", "``") + "`"
 }
 
-// MarshalJSONEachRowはrecordsをClickHouse HTTP INSERTで実際に送信する未圧縮
-// JSONEachRow bodyへ変換します。各row末尾のnewlineも返り値に含みます。
-// request byte境界を判定する呼び出し側は、この返り値のlenを実送信値として使用できます。
+// MarshalJSONEachRow converts records into the uncompressed JSONEachRow body
+// that a ClickHouse HTTP INSERT actually sends. The result includes the newline
+// at the end of each row. A zero Timestamp is replaced with the current time on
+// each call, so callers that determine request byte boundaries can use the len
+// of the result as the size actually sent if every record has a non-zero
+// Timestamp.
 func MarshalJSONEachRow(records []LogRecord) ([]byte, error) {
 	var buf bytes.Buffer
 	now := time.Now().UTC()

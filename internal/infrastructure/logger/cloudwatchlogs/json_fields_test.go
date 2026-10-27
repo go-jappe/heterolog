@@ -5,19 +5,19 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	loggerfield "github.com/go-jappe/heterolog/internal/infrastructure/logger/field"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCloudWatchLogsDurableDocumentPreservesValidatedApplicationFields(t *testing.T) {
-	applicationField, err := applogging.Any("valid", []any{"attempt", 2})
+	applicationField, err := pkglogger.Any("valid", []any{"attempt", 2})
 	require.NoError(t, err)
-	_, fields := loggerfield.ExtractIDsAndExtraFields([]applogging.Field{applicationField})
+	_, fields := loggerfield.ExtractIDsAndExtraFields([]pkglogger.Field{applicationField})
 
 	doc := (&CloudWatchLogsFlushManager{}).convertEventRecordToDocument(
 		cloudWatchLogsEventRecord{

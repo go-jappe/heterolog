@@ -6,26 +6,33 @@ import (
 )
 
 var (
-	// ErrInvalidBatchSizeは、WithBatchSizeで指定したbatch sizeが0以下であることを表します。
+	// ErrInvalidBatchSize reports that the batch size given with WithBatchSize is
+	// negative.
 	ErrInvalidBatchSize = errors.New("batch size must be positive")
-	// ErrInvalidWorkerCountは、非同期workerが0以下のためSendAsyncがmetricsを受け付けない
-	// ことを表します。
+	// ErrInvalidRetryCount reports that the retry count given with WithRetry is
+	// negative.
+	ErrInvalidRetryCount = errors.New("retry count must not be negative")
+	// ErrInvalidWorkerCount reports that SendAsync does not accept metrics because
+	// the number of asynchronous workers is 0 or less.
 	ErrInvalidWorkerCount = errors.New("async worker count must be positive")
-	// ErrClientClosedは、Close後のclientへSendAsyncしたことを表します。
+	// ErrClientClosed reports that SendAsync was called on a client after Close.
 	ErrClientClosed = errors.New("client is closed")
-	// ErrAsyncChannelFullは、非同期送信queueが満杯で、SendAsyncがmetricsを受け付けなかった
-	// ことを表します。
+	// ErrAsyncChannelFull reports that SendAsync did not accept metrics because the
+	// asynchronous send queue is full.
 	ErrAsyncChannelFull = errors.New("async channel is full")
-	// ErrTooManyRedirectsは、WithHTTPClientのclientにCheckRedirectがなく、redirectが既定の
-	// 10回を超えたことを表します。
+	// ErrTooManyRedirects reports that a request sending metrics stopped after 10
+	// redirects, the default limit, because the HTTP client has no CheckRedirect.
+	// This applies to the default client and to a client given with
+	// WithHTTPClient.
 	ErrTooManyRedirects = errors.New("stopped after 10 redirects")
 
-	// ErrEmptyMetricNameは、Metric.Nameが空であることを表します。
+	// ErrEmptyMetricName reports that Metric.Name is empty.
 	ErrEmptyMetricName = errors.New("metric name cannot be empty")
-	// ErrInvalidMetricNameは、Metric.NameがPrometheusのmetric名の規則を満たさないことを表します。
+	// ErrInvalidMetricName reports that Metric.Name does not follow the Prometheus
+	// rules for metric names.
 	ErrInvalidMetricName = errors.New("invalid metric name")
-	// ErrInvalidLabelNameは、Metric.Labelsのlabel名がPrometheusのlabel名の規則を満たさないか、
-	// 予約されたlabel名であることを表します。
+	// ErrInvalidLabelName reports that a label name in Metric.Labels does not
+	// follow the Prometheus rules for label names or is a reserved label name.
 	ErrInvalidLabelName = errors.New("invalid label name")
 )
 

@@ -12,14 +12,13 @@ import (
 	"testing"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	filelogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/multi"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
@@ -69,7 +68,7 @@ func TestMultiLoggerPreservesConcreteBackendTypeInFailure(t *testing.T) {
 	require.NoError(t, err)
 	err = logger.Info(context.Background(), "test")
 
-	var multiErr *applogging.MultiLoggerError
+	var multiErr *pkglogger.MultiLoggerError
 	require.ErrorAs(t, err, &multiErr)
 	require.Len(t, multiErr.Failures, 1)
 	require.Equal(t, fmt.Sprintf("%T", child), multiErr.Failures[0].HandlerType)
@@ -164,7 +163,7 @@ func TestNewDeliveryLoggerRollsBackOwnedFileLoggerOnLaterFailure(t *testing.T) {
 	loggerInstance, err := NewDeliveryLogger(
 		context.Background(),
 		cfg,
-		streamrouting.None,
+		pkgcloudwatchlogs.StreamRoutingNone,
 		observer.NopTracer{},
 		observer.NopMeter{},
 	)
@@ -346,19 +345,19 @@ func (l *closeOwnershipLogger) HandleLogEntry(
 	return l.logErr
 }
 
-func (*closeOwnershipLogger) Debug(context.Context, string, ...applogging.Field) error {
+func (*closeOwnershipLogger) Debug(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (l *closeOwnershipLogger) Info(context.Context, string, ...applogging.Field) error {
+func (l *closeOwnershipLogger) Info(context.Context, string, ...pkglogger.Field) error {
 	return l.logErr
 }
 
-func (*closeOwnershipLogger) Warn(context.Context, string, ...applogging.Field) error {
+func (*closeOwnershipLogger) Warn(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (*closeOwnershipLogger) Error(context.Context, string, ...applogging.Field) error {
+func (*closeOwnershipLogger) Error(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
@@ -366,7 +365,7 @@ func (*closeOwnershipLogger) ErrorWithStack(
 	context.Context,
 	string,
 	error,
-	...applogging.Field,
+	...pkglogger.Field,
 ) error {
 	return nil
 }
@@ -390,19 +389,19 @@ func (*retryingContextCloseLogger) HandleLogEntry(
 	return nil
 }
 
-func (*retryingContextCloseLogger) Debug(context.Context, string, ...applogging.Field) error {
+func (*retryingContextCloseLogger) Debug(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (*retryingContextCloseLogger) Info(context.Context, string, ...applogging.Field) error {
+func (*retryingContextCloseLogger) Info(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (*retryingContextCloseLogger) Warn(context.Context, string, ...applogging.Field) error {
+func (*retryingContextCloseLogger) Warn(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
-func (*retryingContextCloseLogger) Error(context.Context, string, ...applogging.Field) error {
+func (*retryingContextCloseLogger) Error(context.Context, string, ...pkglogger.Field) error {
 	return nil
 }
 
@@ -410,7 +409,7 @@ func (*retryingContextCloseLogger) ErrorWithStack(
 	context.Context,
 	string,
 	error,
-	...applogging.Field,
+	...pkglogger.Field,
 ) error {
 	return nil
 }
@@ -444,7 +443,7 @@ func newCloseOwnershipLoggerSet(t *testing.T, target string) *filelogger.LoggerS
 				WriteFileErrorThresholdDuration: time.Millisecond,
 			},
 			Retry: pkgfsstore.RetryConfig{
-				MaxWriteAttempts:           1,
+				MaxWriteRetries:            0,
 				FileOperationRetryWaitTime: time.Millisecond,
 			},
 		},
@@ -501,7 +500,7 @@ func newCloseOwnershipDeliveryFileConfig(
 				WriteFileErrorThresholdDuration: time.Millisecond,
 			},
 			Retry: pkgfsstore.RetryConfig{
-				MaxWriteAttempts:           1,
+				MaxWriteRetries:            0,
 				FileOperationRetryWaitTime: time.Millisecond,
 			},
 		},

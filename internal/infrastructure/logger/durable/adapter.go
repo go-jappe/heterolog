@@ -184,7 +184,7 @@ func deliveryFileArchiveConfig(cfg pkgdurable.DeliveryFileArchiveConfig) pkgdura
 		CompressionCodec:           cfg.CompressionCodec,
 		RotationType:               cfg.RotationType,
 		RotationDayOfWeek:          cfg.RotationDayOfWeek,
-		MaxWriteAttempts:           cfg.MaxWriteAttempts,
+		MaxWriteRetries:            cfg.MaxWriteRetries,
 		FileOperationRetryWaitTime: cfg.FileOperationRetryWaitTime,
 		ObjectStorageUploadConfig:  cfg.ObjectStorageUploadConfig,
 		ArchiveCheckpointConfig:    cfg.ArchiveCheckpointConfig,

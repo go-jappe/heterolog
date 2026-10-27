@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
-	"github.com/go-jappe/heterolog/internal/infrastructure/memory/pressure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	"github.com/go-jappe/heterolog/pkg/clock"
+	"github.com/go-jappe/heterolog/pkg/memorypressure"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // BuildFailureHandler はCloudWatch Logsのfailure store設定とinternal log routingを
@@ -18,9 +18,9 @@ func BuildFailureHandler(
 	ctx context.Context,
 	timeSource clock.Clock,
 	fmCfg CloudWatchLogsFlushManagerConfigProvider,
-	memoryMonitor pressure.MemoryPressureMonitor,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	memoryMonitor memorypressure.Monitor,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	internalLogHandlerFactory flushfailure.InternalLogHandlerFactory,
 	spoolHandlerRegistrar flushfailure.SpoolHandlerRegistrar,
 	spoolRuntimes compressedlog.RootRuntimes,
@@ -54,8 +54,8 @@ func BuildDeliveryFailureHandler(
 	ctx context.Context,
 	timeSource clock.Clock,
 	fmCfg DeliveryCloudWatchLogsFlushManagerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	internalLogHandlerFactory flushfailure.InternalLogHandlerFactory,
 	spoolRuntimes compressedlog.RootRuntimes,
 ) (*flushfailure.ReportingCompositeFailureHandler, error) {

@@ -1,5 +1,5 @@
-// Package degradehandler provides the direct evacuation path used when the
-// primary durable failure store is disabled explicitly.
+// Package degradehandlerは、主たるdurable failure storeが明示的に無効化されたときに使う、
+// 直接退避の経路を提供します。
 package degradehandler
 
 import (
@@ -14,16 +14,15 @@ import (
 
 var ErrNilHandler = errors.New("direct degrade handler is nil")
 
-// Handler adapts a destination writer to the failure-handler boundaries.
+// Handlerは、退避先のwriterをfailure handlerの境界に合わせます。
 //
-// The destination writer is shared with overload evacuation, but this handler
-// is selected before a durable store is built: it does not inspect storage or
-// memory pressure and does not execute an overload policy.
+// 退避先のwriterはoverload時の退避と共有しますが、このhandlerはdurable storeを
+// 構築する前に選ばれます。storageやmemoryの逼迫を調べず、overload policyも実行しません。
 type Handler struct {
 	delegate evacuation.Handler
 }
 
-// New builds a direct evacuation handler for one configured destination.
+// Newは、設定された1つの退避先へ直接退避するhandlerを構築します。
 func New(destination pkgdurable.SpillType) (*Handler, error) {
 	delegate, err := evacuation.NewHandler(pkgdurable.SpillDestination(destination))
 	if err != nil {

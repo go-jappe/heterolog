@@ -141,7 +141,7 @@ func TestRunnerRunWaitsForIntervalAfterLongCycleCompletes(t *testing.T) {
 		case <-time.After(time.Minute):
 			t.Fatal("first cycle did not start")
 		}
-		// Keep work active beyond an interval so a ticker would accumulate a tick.
+		// 処理をintervalより長く続け、tickerであればtickが溜まる状況を作ります。
 		time.Sleep(2 * interval)
 		synctest.Wait()
 		select {

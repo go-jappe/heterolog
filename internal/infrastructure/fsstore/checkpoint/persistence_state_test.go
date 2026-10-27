@@ -111,7 +111,7 @@ func TestFilesystemStorePublishedContentsDoNotCompletePendingSave(t *testing.T) 
 				synctest.Wait()
 				restore()
 				if published {
-					// Simulate successful rename followed by a failed directory sync.
+					// renameが成功し、その後のdirectory同期が失敗した状態を再現します。
 					payload, err := json.Marshal(latest)
 					require.NoError(t, err)
 					require.NoError(t, os.WriteFile(store.documentPath(), payload, fileMode))

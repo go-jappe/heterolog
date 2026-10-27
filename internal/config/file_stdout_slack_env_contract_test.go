@@ -17,19 +17,20 @@ import (
 	"github.com/go-jappe/heterolog/internal/config/logconfig"
 	configslack "github.com/go-jappe/heterolog/internal/config/slack"
 	"github.com/go-jappe/heterolog/internal/config/timeoutbudget"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	infralogger "github.com/go-jappe/heterolog/internal/infrastructure/logger"
 	filelogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
 	slacklogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/slack"
 	stdoutlogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout"
 	"github.com/go-jappe/heterolog/internal/testutil"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
+	pkgenv "github.com/go-jappe/heterolog/pkg/env"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgslack "github.com/go-jappe/heterolog/pkg/slack"
 )
 
-// TestLoadConfigKeepsFileStdoutSlackContractsSeparated gives each LoggerContractKind
-// deliberately conflicting values. This prevents a wrong env key or mapper
-// source from passing only because the normal .env happens to reuse values.
+// TestLoadConfigKeepsFileStdoutSlackContractsSeparatedは、LoggerContractKindごとに意図的に
+// 食い違う値を与えます。これにより、誤ったenv keyやmapperの参照元が、通常の.envで値が
+// 偶然使い回されているだけでpassすることを防ぎます。
 func TestLoadConfigKeepsFileStdoutSlackContractsSeparated(t *testing.T) {
 	root := t.TempDir()
 	setup := []string{
@@ -243,7 +244,7 @@ func TestDefaultEnvironmentConfigLogsToStdoutWithoutExternalServices(t *testing.
 	ctx := context.Background()
 	output := captureDefaultLoggerStdout(t, func() {
 		syncLogger, err := infralogger.NewLogger(
-			ctx, syncMapped, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{},
+			ctx, syncMapped, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{},
 		)
 		if err != nil {
 			t.Fatalf("NewLogger() with default config: %v", err)
@@ -256,7 +257,7 @@ func TestDefaultEnvironmentConfigLogsToStdoutWithoutExternalServices(t *testing.
 		}
 
 		asyncLogger, err := infralogger.NewAsyncLogger(
-			ctx, asyncMapped, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{},
+			ctx, asyncMapped, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{},
 		)
 		if err != nil {
 			t.Fatalf("NewAsyncLogger() with default config: %v", err)
@@ -268,7 +269,7 @@ func TestDefaultEnvironmentConfigLogsToStdoutWithoutExternalServices(t *testing.
 		}
 
 		deliveryLogger, err := infralogger.NewDeliveryLogger(
-			ctx, deliveryMapped, streamrouting.None, observer.NopTracer{}, observer.NopMeter{},
+			ctx, deliveryMapped, pkgcloudwatchlogs.StreamRoutingNone, observer.NopTracer{}, observer.NopMeter{},
 		)
 		if err != nil {
 			t.Fatalf("NewDeliveryLogger() with default config: %v", err)
@@ -351,7 +352,7 @@ func TestLoadConfigRejectsUnknownLoggerDestinationWithItsKey(t *testing.T) {
 				tt.enableKey+"=true",
 				tt.key+"=stdout,smtp",
 			))
-			var invalid *InvalidEnvironmentValueError
+			var invalid *pkgenv.InvalidEnvironmentValueError
 			if !errors.As(err, &invalid) || invalid.Key != tt.key {
 				t.Fatalf("LoadConfig() error = %v, want an invalid %s value error", err, tt.key)
 			}

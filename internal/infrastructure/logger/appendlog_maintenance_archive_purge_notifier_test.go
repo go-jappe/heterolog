@@ -14,6 +14,7 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestAppendLogMaintenanceResultNotifierNotifiesUploadFailureArchivePurge(t *testing.T) {
@@ -134,8 +135,8 @@ func TestAppendLogMaintenanceResultNotifierNotifiesUploadFailureArchivePurge(t *
 			record := func(
 				_ context.Context,
 				entry *logging.LogEntry,
-				_ observer.Tracer,
-				_ observer.Meter,
+				_ pkgobserver.Tracer,
+				_ pkgobserver.Meter,
 			) {
 				entries = append(entries, entry)
 			}
@@ -151,8 +152,8 @@ func TestAppendLogMaintenanceResultNotifierNotifiesUploadFailureArchivePurge(t *
 						ctx context.Context,
 						err error,
 						entry *logging.LogEntry,
-						tracer observer.Tracer,
-						meter observer.Meter,
+						tracer pkgobserver.Tracer,
+						meter pkgobserver.Meter,
 					) {
 						require.ErrorIs(t, err, test.err)
 						require.ErrorIs(t, entry.Err, test.err)
@@ -177,7 +178,7 @@ func TestAppendLogMaintenanceResultNotifierNotifiesUploadFailureArchivePurge(t *
 				require.Equal(t, test.wantLevels[i], entry.Level)
 				require.Equal(t, appendLogMaintenanceRunnerSource, entry.Source)
 				require.True(t, entry.Internal)
-				// Archive maintenance has its own result, without zero-valued appendlog counters.
+				// archiveの保守処理は独自の結果を持ち、zero値のappendlog counterを含みません。
 				require.Equal(t, map[string]any{
 					"directory_path": directory,
 					"upload_failure_archive_purge": map[string]any{

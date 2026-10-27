@@ -45,8 +45,8 @@ func TestFileSeriesManagerEmptyZstdPeerDoesNotRetireNonemptySource(t *testing.T)
 	require.Equal(t, payload, got)
 	require.NoFileExists(t, peer)
 
-	// A new manager has no in-memory history of the rejected peer. It must still
-	// recover the original records on its next scan, with no loss or duplication.
+	// 新しいmanagerは、拒否したpeerの履歴をmemoryに持っていません。それでも
+	// 次のscanで、欠損も重複もなく元のrecordを回復しなければなりません。
 	restarted := NewFileSeriesManager(options)
 	boundedwait.CloseOnCleanup(t, boundedwait.HangTimeout, "restarted.Close()", restarted.Close, boundedwait.ForceCloserOf(restarted), boundedwait.NoError)
 	report, err = restarted.RunOnce(context.Background())
@@ -86,7 +86,7 @@ func TestFileSeriesManagerCachedEmptyPeerCannotRetireSourceThatGainedRecords(t *
 	require.NoError(t, err)
 	require.True(t, valid, "an empty raw log may legitimately have an empty Zstd representation")
 
-	// The compressed file's fingerprint has not changed, but its source is no longer empty.
+	// 圧縮済みfileのfingerprintは変わっていませんが、そのsourceはもう空ではありません。
 	payload := []byte("record appended after the first inspection\n")
 	require.NoError(t, os.WriteFile(source, payload, 0o600))
 	valid, err = manager.existingCompressedFileIsValid(source, peer)

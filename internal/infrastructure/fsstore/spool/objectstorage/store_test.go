@@ -441,8 +441,8 @@ func TestStoreRequeueProcessingRenameFailureLeavesRefreshedFileInProcessing(t *t
 	if err := os.Chtimes(claimed.Path, old, old); err != nil {
 		t.Fatal(err)
 	}
-	// Simulate an external conflicting active entry so the no-replace rename
-	// fails after the processing file's refreshed mtime has been synced.
+	// 外部で作られた矛盾するactive entryを再現し、processing fileの更新したmtimeを
+	// 同期した後で、no-replace renameが失敗するようにします。
 	if err := os.WriteFile(published.Path, []byte("conflicting active bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}

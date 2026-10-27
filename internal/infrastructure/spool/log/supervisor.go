@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/config/spool/spoolsupervisor"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgspoolsupervisor "github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 )
 
 var (
@@ -77,8 +78,8 @@ type RunnerSupervisor struct {
 	mu       sync.RWMutex
 	snapshot RunnerSupervisorSnapshot
 
-	Tracer observer.Tracer
-	Meter  observer.Meter
+	Tracer pkgobserver.Tracer
+	Meter  pkgobserver.Meter
 }
 
 type RunnerSupervisorConfig interface {
@@ -136,8 +137,8 @@ type RunnerSupervisorSnapshot struct {
 func NewRunnerSupervisor(
 	runner *Runner,
 	cfg RunnerSupervisorConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) RunnerSupervisor {
 	return RunnerSupervisor{
 		Runner: runner,
@@ -398,7 +399,7 @@ type ConfigAdapter struct {
 	maxRestarts int
 }
 
-func NewConfigAdapter(cfg spoolsupervisor.RunnerSupervisorConfig) RunnerSupervisorConfig {
+func NewConfigAdapter(cfg pkgspoolsupervisor.RunnerSupervisorConfig) RunnerSupervisorConfig {
 	return &ConfigAdapter{
 		retryDelay:  cfg.RestartDelay,
 		maxRestarts: cfg.MaxRestarts,

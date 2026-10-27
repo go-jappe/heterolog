@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/timestamp"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	"github.com/go-jappe/heterolog/internal/testutil/errortree"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 
 	"github.com/stretchr/testify/require"
@@ -41,9 +41,9 @@ var invalidNotificationTimeSettings = []struct {
 // 原因がcauseであることを確かめます。
 func requireNotificationTargetError(t *testing.T, err error, source string, backend pkglogger.LogOutputDestination, cause error) {
 	t.Helper()
-	require.ErrorIs(t, err, ErrInvalidNotificationTarget)
+	require.ErrorIs(t, err, pkglogger.ErrInvalidNotificationTarget)
 	require.ErrorIs(t, err, cause)
-	var targetErr *NotificationTargetError
+	var targetErr *pkglogger.NotificationTargetError
 	require.ErrorAs(t, err, &targetErr)
 	require.Equal(t, source, targetErr.Source)
 	require.Equal(t, backend, targetErr.Backend)
@@ -72,7 +72,7 @@ func TestConstructorsRejectInvalidHandlerOnlyStdoutNotificationTarget(t *testing
 			t.Run("sync", func(t *testing.T) {
 				cfg, _, _ := newHandlerOnlyLoggerConfig(t, pkglogger.LogOutputStdout)
 				setting.apply(&cfg.Stdout.TimeConfig, &cfg.Stdout.LogBodyConfig)
-				_, err := NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+				_, err := NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 				requireNotificationTargetError(t, err, pkglogger.LoggerContractSync.DisplayName(), pkglogger.LogOutputStdout, setting.cause)
 				requireNoStorageCreated(t, cfg.File.FsstoreConfig.Layout.LogPath)
 			})
@@ -87,14 +87,14 @@ func TestConstructorsRejectInvalidHandlerOnlyStdoutNotificationTarget(t *testing
 					File:                  base.File,
 					Stdout:                base.Stdout,
 				}
-				_, err := NewAsyncLogger(context.Background(), cfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+				_, err := NewAsyncLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 				requireNotificationTargetError(t, err, pkglogger.LoggerContractAsyncBestEffort.DisplayName(), pkglogger.LogOutputStdout, setting.cause)
 				requireNoStorageCreated(t, base.File.FsstoreConfig.Layout.LogPath)
 			})
 			t.Run("delivery", func(t *testing.T) {
 				cfg, _, _ := newHandlerOnlyDeliveryConfig(t, pkglogger.LogOutputStdout)
 				setting.apply(&cfg.Stdout.TimeConfig, &cfg.Stdout.LogBodyConfig)
-				_, err := NewDeliveryLogger(context.Background(), cfg, streamrouting.None, observer.NopTracer{}, observer.NopMeter{})
+				_, err := NewDeliveryLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, observer.NopTracer{}, observer.NopMeter{})
 				requireNotificationTargetError(t, err, pkglogger.LoggerContractDelivery.DisplayName(), pkglogger.LogOutputStdout, setting.cause)
 				requireNoStorageCreated(t, cfg.File.FsstoreConfig.Layout.LogPath)
 			})
@@ -108,7 +108,7 @@ func TestUnselectedStdoutConfigIsNotValidatedAsNotificationTarget(t *testing.T) 
 	cfg, _, _ := newHandlerOnlyLoggerConfig(t, pkglogger.LogOutputStdout)
 	cfg.File.HandlerConfig.OnErrorConfig = nil
 	invalidNotificationTimeSettings[0].apply(&cfg.Stdout.TimeConfig, &cfg.Stdout.LogBodyConfig)
-	logger, err := NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+	logger, err := NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 	require.NoError(t, err)
 	closeConstructedForTest(t, logger.(io.Closer))
 }
@@ -124,13 +124,13 @@ func TestConstructorsRejectInvalidHandlerOnlyNetworkNotificationTarget(t *testin
 			return cfg
 		}
 		// 対照: 通知先を作れる設定は構築できます。
-		logger, err := NewLogger(context.Background(), newConfig(t), streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+		logger, err := NewLogger(context.Background(), newConfig(t), pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 		require.NoError(t, err)
 		closeConstructedForTest(t, logger.(io.Closer))
 
 		cfg := newConfig(t)
 		invalidNotificationTimeSettings[0].apply(&cfg.Loki.LokiLoggerBaseConfig.TimeConfig, &cfg.Loki.LokiLoggerBaseConfig.LogBodyConfig)
-		_, err = NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+		_, err = NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 		requireNotificationTargetError(t, err, pkglogger.LoggerContractSync.DisplayName(), pkglogger.LogOutputLoki, logging.ErrInvalidTimeZone)
 	})
 	t.Run("delivery/opensearch", func(t *testing.T) {
@@ -140,14 +140,14 @@ func TestConstructorsRejectInvalidHandlerOnlyNetworkNotificationTarget(t *testin
 			cfg.OpenSearch.DeliveryOpenSearchLoggerBaseConfig.LogBodyConfig.LogLineDateFormat = time.RFC3339Nano
 			return cfg
 		}
-		logger, err := NewDeliveryLogger(context.Background(), newConfig(t), streamrouting.None, observer.NopTracer{}, observer.NopMeter{})
+		logger, err := NewDeliveryLogger(context.Background(), newConfig(t), pkgcloudwatchlogs.StreamRoutingNone, observer.NopTracer{}, observer.NopMeter{})
 		require.NoError(t, err)
 		closeConstructedForTest(t, logger)
 
 		cfg := newConfig(t)
 		base := &cfg.OpenSearch.DeliveryOpenSearchLoggerBaseConfig
 		invalidNotificationTimeSettings[0].apply(&base.TimeConfig, &base.LogBodyConfig)
-		_, err = NewDeliveryLogger(context.Background(), cfg, streamrouting.None, observer.NopTracer{}, observer.NopMeter{})
+		_, err = NewDeliveryLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, observer.NopTracer{}, observer.NopMeter{})
 		requireNotificationTargetError(t, err, pkglogger.LoggerContractDelivery.DisplayName(), pkglogger.LogOutputOpenSearch, logging.ErrInvalidTimeZone)
 	})
 	t.Run("errors_are_joined_per_target", func(t *testing.T) {
@@ -158,9 +158,9 @@ func TestConstructorsRejectInvalidHandlerOnlyNetworkNotificationTarget(t *testin
 		addLoggerHandlerCandidate(t, &cfg, pkglogger.LogOutputSlack)
 		cfg.Stdout.HandlerConfig.OnErrorConfig = append(cfg.Stdout.HandlerConfig.OnErrorConfig, pkglogger.LogOutputSlack.String())
 		invalidNotificationTimeSettings[1].apply(&cfg.Slack.TimeConfig, &cfg.Slack.LogBodyConfig)
-		_, err := NewLogger(context.Background(), cfg, streamrouting.None, nil, nil, observer.NopTracer{}, observer.NopMeter{})
+		_, err := NewLogger(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, nil, observer.NopTracer{}, observer.NopMeter{})
 		causes := map[pkglogger.LogOutputDestination]error{}
-		for _, targetErr := range errortree.All[*NotificationTargetError](err) {
+		for _, targetErr := range errortree.All[*pkglogger.NotificationTargetError](err) {
 			causes[targetErr.Backend] = targetErr.Err
 		}
 		require.Len(t, causes, 2, "%v", err)

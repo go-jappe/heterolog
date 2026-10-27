@@ -1,4 +1,4 @@
-// Package checkpointtest provides filesystem fixtures for checkpoint integration tests.
+// Package checkpointtestは、checkpointの統合test用のfilesystem fixtureを提供します。
 package checkpointtest
 
 import (

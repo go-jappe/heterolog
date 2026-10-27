@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/logging/logtemplate"
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/formatter"
 	loggerhandler "github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
@@ -17,6 +16,7 @@ import (
 	loggertime "github.com/go-jappe/heterolog/internal/infrastructure/logger/time"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	"github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/slack-go/slack"
 )
@@ -61,8 +61,8 @@ type DeliverySlackLogger struct {
 	OnWarn       infralogging.LoggerHandlerFunc
 	OnInfo       infralogging.LoggerHandlerFunc
 	OnDebug      infralogging.LoggerHandlerFunc
-	Tracer       observer.Tracer
-	Meter        observer.Meter
+	Tracer       pkgobserver.Tracer
+	Meter        pkgobserver.Meter
 
 	// internalLogReentryは、On*へ渡すcontextへこのloggerの印を付け、通知を実行するgoroutineを記録します。
 	// On*の中から同じloggerへの送信で発生した失敗・遅延の内部ログは、On*を再び呼ばず、
@@ -74,8 +74,8 @@ type DeliverySlackLogger struct {
 func NewDeliverySlackLogger(
 	ctx context.Context,
 	cfg DeliverySlackLoggerConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	opts ...LoggerOption,
 ) (*DeliverySlackLogger, error) {
 	_, span := tracer.StartSpan(ctx, SpanSlackLoggerCreate)

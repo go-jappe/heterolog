@@ -173,7 +173,7 @@ var validationSentinels = []error{
 	ErrInvalidCompressWarnThreshold, ErrInvalidCompressErrorThreshold,
 	ErrInvalidWriteFileWarnThreshold, ErrInvalidWriteFileErrorThreshold,
 	ErrCompressErrorThresholdBelowWarn, ErrWriteFileErrorThresholdBelowWarn,
-	ErrInvalidMaxWriteAttempts, ErrInvalidFileOperationRetryWaitTime,
+	ErrInvalidMaxWriteRetries, ErrInvalidFileOperationRetryWaitTime,
 }
 
 // requireOnlyValidationErrorsは、errが指定した項目のsentinelだけをwrapすることを確認します。
@@ -242,17 +242,18 @@ func TestValidateDurationConfigProviderIdentifiesRejectedThresholds(t *testing.T
 }
 
 type retryValidationConfig struct {
-	attempts int
-	wait     time.Duration
+	retries int
+	wait    time.Duration
 }
 
-func (c retryValidationConfig) MaxWriteAttempts() int                     { return c.attempts }
+func (c retryValidationConfig) MaxWriteRetries() int                      { return c.retries }
 func (c retryValidationConfig) FileOperationRetryWaitTime() time.Duration { return c.wait }
 
 func TestValidateRetryConfigProviderIdentifiesRejectedSettings(t *testing.T) {
-	if err := ValidateRetryConfigProvider(retryValidationConfig{attempts: MinWriteRetryAttempts, wait: MinFileOperationRetryWaitTime}); err != nil {
+	// 再試行0回は不正な値ではなく、1回だけ操作します。負の回数だけを拒否します。
+	if err := ValidateRetryConfigProvider(retryValidationConfig{retries: 0, wait: MinFileOperationRetryWaitTime}); err != nil {
 		t.Fatalf("ValidateRetryConfigProvider() error = %v", err)
 	}
-	requireOnlyValidationErrors(t, ValidateRetryConfigProvider(retryValidationConfig{attempts: 0, wait: MinFileOperationRetryWaitTime}), ErrInvalidMaxWriteAttempts)
-	requireOnlyValidationErrors(t, ValidateRetryConfigProvider(retryValidationConfig{attempts: MinWriteRetryAttempts}), ErrInvalidFileOperationRetryWaitTime)
+	requireOnlyValidationErrors(t, ValidateRetryConfigProvider(retryValidationConfig{retries: -1, wait: MinFileOperationRetryWaitTime}), ErrInvalidMaxWriteRetries)
+	requireOnlyValidationErrors(t, ValidateRetryConfigProvider(retryValidationConfig{retries: 0}), ErrInvalidFileOperationRetryWaitTime)
 }

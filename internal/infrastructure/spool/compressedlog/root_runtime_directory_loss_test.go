@@ -37,8 +37,8 @@ func TestManagedRouteReportsDirectoryLossAndContinuesAfterExternalRestore(t *tes
 			case <-stopNotifications:
 				return
 			}
-			// Pause between real periodic runs, with no directory reader left
-			// open when the test changes the filesystem on Windows.
+			// 実際の定期runの合間で止め、Windowsでtestがfilesystemを変更するときに
+			// directory readerが開いたまま残らないようにします。
 			select {
 			case <-continueCycle:
 			case <-stopNotifications:
@@ -88,8 +88,8 @@ func TestManagedRouteReportsDirectoryLossAndContinuesAfterExternalRestore(t *tes
 		require.Equal(t, payload, contents)
 	}
 
-	// An external repair is enough for the same coordinator, runner and Store
-	// to resume on the next tick; no reinitialization is requested.
+	// 外部からの修復だけで、同じcoordinator、runner、Storeが次のtickで再開できます。
+	// 再初期化は要求しません。
 	require.NoError(t, os.Mkdir(processing, 0o750))
 	advance()
 	recovered := awaitCycle()

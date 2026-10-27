@@ -115,7 +115,7 @@ func (fs *FileStore) executeWriteStringWithRetry(
 				latencyHook,
 			)
 		},
-		retryCfg.MaxWriteAttempts(),
+		retryCfg.MaxWriteRetries(),
 		retryCfg.FileOperationRetryWaitTime(),
 		logRetry,
 		entryFactory,

@@ -7,11 +7,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	infrafsstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/log/lifecycle"
 	lifecyclereport "github.com/go-jappe/heterolog/internal/infrastructure/spool/log/lifecycle/report"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/log/worker"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
 )
 
@@ -41,8 +41,8 @@ func NewRunner(
 	worker *worker.Worker,
 	lifecycle *lifecycle.Manager,
 	cfg RunnerConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*Runner, error) {
 	if worker == nil {
 		return nil, ErrNilWorker
@@ -89,8 +89,8 @@ type Runner struct {
 	// runningは、周期実行の二重起動を防ぎます。手動RunOnceの実行では変更しません。
 	running atomic.Bool
 
-	Tracer observer.Tracer
-	Meter  observer.Meter
+	Tracer pkgobserver.Tracer
+	Meter  pkgobserver.Meter
 }
 
 // RunnerConfigは、周期間の待機時間とエラー時の停止方針を提供します。

@@ -8,10 +8,10 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestFailureArchiveRunnerPeriodicNotificationCanRequestShutdown(t *testing.T) {
@@ -33,8 +33,8 @@ func TestFailureArchiveRunnerPeriodicNotificationCanRequestShutdown(t *testing.T
 			InternalLogHandlers{OnDebug: func(
 				context.Context,
 				*logging.LogEntry,
-				observer.Tracer,
-				observer.Meter,
+				pkgobserver.Tracer,
+				pkgobserver.Meter,
 			) {
 				<-ready
 				once.Do(func() {
@@ -78,8 +78,8 @@ func TestFailureArchiveRunnerAcceptedNotificationCanRequestShutdown(t *testing.T
 			InternalLogHandlers{OnDebug: func(
 				context.Context,
 				*logging.LogEntry,
-				observer.Tracer,
-				observer.Meter,
+				pkgobserver.Tracer,
+				pkgobserver.Meter,
 			) {
 				<-ready
 				once.Do(func() {
@@ -131,8 +131,8 @@ func TestFailureArchiveRunnerPeriodicNotificationPanicIsIsolated(t *testing.T) {
 			InternalLogHandlers{OnDebug: func(
 				context.Context,
 				*logging.LogEntry,
-				observer.Tracer,
-				observer.Meter,
+				pkgobserver.Tracer,
+				pkgobserver.Meter,
 			) {
 				if calls.Add(1) == 1 {
 					panic("periodic runner notification panic")
@@ -169,8 +169,8 @@ func TestFailureArchiveRunnerAcceptedNotificationPanicDoesNotInterruptShutdown(t
 			InternalLogHandlers{OnDebug: func(
 				context.Context,
 				*logging.LogEntry,
-				observer.Tracer,
-				observer.Meter,
+				pkgobserver.Tracer,
+				pkgobserver.Meter,
 			) {
 				calls.Add(1)
 				panic("accepted runner notification panic")

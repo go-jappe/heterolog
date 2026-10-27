@@ -12,8 +12,8 @@ import (
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 )
 
-// minimalUploadCheckpointStore deliberately implements only the checkpoint
-// operations that ManagedUploader consumes.
+// minimalUploadCheckpointStoreは、ManagedUploaderが使うcheckpoint操作だけを
+// 意図的に実装します。
 type minimalUploadCheckpointStore struct {
 	loadCalls         int
 	progressLoadCalls int

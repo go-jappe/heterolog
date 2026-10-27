@@ -8,17 +8,18 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type countingDropMeter struct {
 	totals map[string]int64
 }
 
-func (m *countingDropMeter) Counter(name string) observer.Counter {
+func (m *countingDropMeter) Counter(name string) pkgobserver.Counter {
 	return countingDropCounter{meter: m, name: name}
 }
 
-func (m *countingDropMeter) Gauge(string) observer.Gauge {
+func (m *countingDropMeter) Gauge(string) pkgobserver.Gauge {
 	return observer.NopGauge{}
 }
 
@@ -27,7 +28,7 @@ type countingDropCounter struct {
 	name  string
 }
 
-func (c countingDropCounter) Add(_ context.Context, value int64, _ ...observer.Attr) {
+func (c countingDropCounter) Add(_ context.Context, value int64, _ ...pkgobserver.Attr) {
 	if c.meter.totals == nil {
 		c.meter.totals = make(map[string]int64)
 	}
@@ -36,18 +37,18 @@ func (c countingDropCounter) Add(_ context.Context, value int64, _ ...observer.A
 
 type recordingDropSpan struct {
 	observer.NopSpan
-	events     map[string][]observer.Attr
-	attributes []observer.Attr
+	events     map[string][]pkgobserver.Attr
+	attributes []pkgobserver.Attr
 }
 
-func (s *recordingDropSpan) AddEvent(name string, attrs ...observer.Attr) {
+func (s *recordingDropSpan) AddEvent(name string, attrs ...pkgobserver.Attr) {
 	if s.events == nil {
-		s.events = make(map[string][]observer.Attr)
+		s.events = make(map[string][]pkgobserver.Attr)
 	}
 	s.events[name] = append(s.events[name], attrs...)
 }
 
-func (s *recordingDropSpan) SetAttributes(attrs ...observer.Attr) {
+func (s *recordingDropSpan) SetAttributes(attrs ...pkgobserver.Attr) {
 	s.attributes = append(s.attributes, attrs...)
 }
 

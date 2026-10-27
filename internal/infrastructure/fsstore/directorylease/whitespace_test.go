@@ -9,8 +9,8 @@ import (
 )
 
 func TestRegistryAcquirePreservesLiteralDirectoryWhitespace(t *testing.T) {
-	// Relative paths also exercise whitespace at the beginning of the complete
-	// argument, rather than only inside an already absolute path.
+	// 相対pathを使うことで、すでに絶対pathになった値の途中だけでなく、引数全体の
+	// 先頭にある空白も確かめます。
 	t.Chdir(t.TempDir())
 	for _, tt := range []struct {
 		name, first, second string

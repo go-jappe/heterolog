@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs/streamrouting"
+	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	loggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
 )
@@ -30,7 +30,7 @@ func TestLoggerConstructorsRejectUnknownHandlerSelectorBeforeRuntimeBuild(t *tes
 						Timeout:          time.Second,
 						MaxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes,
 						Stdout:           &pkglogger.StdoutLoggerConfig{HandlerConfig: routing},
-					}, streamrouting.None, nil,
+					}, pkgcloudwatchlogs.StreamRoutingNone, nil,
 
 					nil,
 					observer.NopTracer{},
@@ -52,7 +52,7 @@ func TestLoggerConstructorsRejectUnknownHandlerSelectorBeforeRuntimeBuild(t *tes
 						MaxParallel:      1,
 						MaxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes,
 						Stdout:           &pkglogger.StdoutLoggerConfig{HandlerConfig: routing},
-					}, streamrouting.None, nil,
+					}, pkgcloudwatchlogs.StreamRoutingNone, nil,
 
 					nil,
 					observer.NopTracer{},
@@ -74,7 +74,7 @@ func TestLoggerConstructorsRejectUnknownHandlerSelectorBeforeRuntimeBuild(t *tes
 						MaxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes,
 						Stdout:           &pkglogger.DeliveryStdoutLoggerConfig{HandlerConfig: routing},
 					},
-					streamrouting.None,
+					pkgcloudwatchlogs.StreamRoutingNone,
 					observer.NopTracer{},
 					observer.NopMeter{},
 				)
@@ -167,7 +167,7 @@ func TestNewLoggerRejectsMissingProfileAndRemoteClient(t *testing.T) {
 			_, err := NewLogger(
 				context.Background(),
 				tt.cfg,
-				streamrouting.None,
+				pkgcloudwatchlogs.StreamRoutingNone,
 				nil,
 				nil,
 				observer.NopTracer{},

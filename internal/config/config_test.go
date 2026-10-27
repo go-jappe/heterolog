@@ -4,7 +4,6 @@ import (
 	"errors"
 	configfailure "github.com/go-jappe/heterolog/internal/config/failure"
 	"github.com/go-jappe/heterolog/internal/config/logconfig"
-	configspoolrunner "github.com/go-jappe/heterolog/internal/config/spool/spoolrunner"
 	"github.com/go-jappe/heterolog/internal/config/timeoutbudget"
 	spooldir "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool"
 	"github.com/go-jappe/heterolog/internal/testutil"
@@ -13,6 +12,7 @@ import (
 	loggerdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgobjectstorage "github.com/go-jappe/heterolog/pkg/objectstorage"
 	pkgs3uploader "github.com/go-jappe/heterolog/pkg/objectstorage/uploader/s3"
+	pkgspoolrunner "github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -476,8 +476,8 @@ func assertFixtureEnvAsyncOpenSearchMapperFields(t *testing.T, cfg AppConfig, ma
 	if got, want := mapped.IndexLatencyEnabled, loaded.IndexLatencyEnabled; got != want {
 		t.Fatalf("async mapped IndexLatencyEnabled = %t, want %t", got, want)
 	}
-	if got, want := mapped.MaxRetryAttempts, loaded.MaxRetryAttempts; got != want {
-		t.Fatalf("async mapped MaxRetryAttempts = %d, want %d", got, want)
+	if got, want := mapped.MaxItemRetries, loaded.MaxItemRetries; got != want {
+		t.Fatalf("async mapped MaxItemRetries = %d, want %d", got, want)
 	}
 	if got, want := mapped.RetryWaitTime, loaded.RetryWaitTime; got != want {
 		t.Fatalf("async mapped RetryWaitTime = %s, want %s", got, want)
@@ -1803,7 +1803,7 @@ func TestValidateLoggerTimeoutHierarchyRejectsRetryBudgetOverParentTimeout(t *te
 	cfg.Logger.Timeout = 3 * time.Second
 	cfg.Logger.LokiConfig.LokiRetryAbleClientConfig = logconfig.LokiRetryAbleClientConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetry,
-		MaxAttempts:     3,
+		MaxRetries:      2,
 		BaseDelay:       200 * time.Millisecond,
 		MaxDelay:        time.Second,
 	}
@@ -1822,7 +1822,7 @@ func TestValidateLoggerTimeoutHierarchyUsesRetryPolicyWorstCaseAttempts(t *testi
 	cfg.Logger.Timeout = 3 * time.Second
 	cfg.Logger.LokiConfig.LokiRetryAbleClientConfig = logconfig.LokiRetryAbleClientConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetryPolicy,
-		MaxAttempts:     3,
+		MaxRetries:      2,
 		BaseDelay:       200 * time.Millisecond,
 		MaxDelay:        time.Second,
 	}
@@ -1840,7 +1840,7 @@ func TestValidateLoggerTimeoutHierarchyAllowsRetryBudgetOverParentTimeoutWithMay
 	cfg.Logger.TimeoutBudgetPolicy = timeoutbudget.TimeoutBudgetMayCutoff
 	cfg.Logger.LokiConfig.LokiRetryAbleClientConfig = logconfig.LokiRetryAbleClientConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetry,
-		MaxAttempts:     3,
+		MaxRetries:      2,
 		BaseDelay:       200 * time.Millisecond,
 		MaxDelay:        time.Second,
 	}
@@ -1900,10 +1900,10 @@ func TestValidateLoggerTimeoutHierarchyIncludesOpenSearchFlushAttempts(t *testin
 	var cfg AppConfig
 	cfg.Logger.LogOutputDestinations = pkglogger.LogOutputDestinations{logconfig.LogOutputOpenSearch}
 	cfg.Logger.Timeout = 10 * time.Second
-	cfg.Logger.OpenSearchConfig.MaxRetryAttempts = 3
+	cfg.Logger.OpenSearchConfig.MaxItemRetries = 2
 	cfg.Logger.OpenSearchConfig.OpenSearchRetryAbleClientConfig = logconfig.OpenSearchRetryAbleClientConfig{
 		RetryClientMode: pkglogger.RetryClientModeRetry,
-		MaxAttempts:     3,
+		MaxRetries:      2,
 		BaseDelay:       200 * time.Millisecond,
 		MaxDelay:        time.Second,
 	}
@@ -2041,7 +2041,7 @@ func TestLoadConfigMovesClickHouseConfigAcrossLayers(t *testing.T) {
 		"HETEROLOG_CLICKHOUSE_LOGGER_INFO_HANDLER=stdout",
 		"HETEROLOG_CLICKHOUSE_LOGGER_DEBUG_HANDLER=stdout",
 		"HETEROLOG_CLICKHOUSE_RETRY_CLIENT_MODE=none",
-		"HETEROLOG_MAX_CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS=5",
+		"HETEROLOG_MAX_CLICKHOUSE_RETRYABLE_CLIENT_RETRIES=5",
 		"HETEROLOG_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND=111",
 		"HETEROLOG_MAX_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND=222",
 		"HETEROLOG_MAX_CLICKHOUSE_FAILURE_HANDLER_CONCURRENT=11",
@@ -2065,7 +2065,7 @@ func TestLoadConfigMovesClickHouseConfigAcrossLayers(t *testing.T) {
 		"HETEROLOG_ASYNC_CLICKHOUSE_LOGGER_INFO_HANDLER=stdout",
 		"HETEROLOG_ASYNC_CLICKHOUSE_LOGGER_DEBUG_HANDLER=stdout",
 		"HETEROLOG_ASYNC_CLICKHOUSE_RETRY_CLIENT_MODE=retry",
-		"HETEROLOG_MAX_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS=6",
+		"HETEROLOG_MAX_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_RETRIES=6",
 		"HETEROLOG_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND=333",
 		"HETEROLOG_MAX_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND=444",
 		"HETEROLOG_MAX_ASYNC_CLICKHOUSE_FAILURE_HANDLER_CONCURRENT=12",
@@ -2084,7 +2084,7 @@ func TestLoadConfigMovesClickHouseConfigAcrossLayers(t *testing.T) {
 		"HETEROLOG_MAX_DELIVERY_CLICKHOUSE_INSERT_ENTRIES=345",
 		"HETEROLOG_ENABLE_DELIVERY_CLICKHOUSE_INSERT_LATENCY=true",
 		"HETEROLOG_DELIVERY_CLICKHOUSE_RETRY_CLIENT_MODE=retry",
-		"HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS=7",
+		"HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_RETRIES=7",
 		"HETEROLOG_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND=555",
 		"HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND=666",
 		"MAX_DELIVERY_CLICKHOUSE_FAILURE_HANDLER_CONCURRENT=13",
@@ -2234,20 +2234,20 @@ func TestLoadOpenSearchRetryableClientConfigsUseDedicatedEnvKeys(t *testing.T) {
 	tests := []struct {
 		name       string
 		setEnv     func(*testing.T)
-		loadConfig func() (mode pkglogger.RetryClientMode, maxAttempts int, baseDelay time.Duration, maxDelay time.Duration, err error)
+		loadConfig func() (mode pkglogger.RetryClientMode, maxRetries int, baseDelay time.Duration, maxDelay time.Duration, err error)
 	}{
 		{
 			name: "sync",
 			setEnv: func(t *testing.T) {
 				t.Setenv("HETEROLOG_ENABLE_OPENSEARCH_COMPRESS_REQUEST", "true")
 				t.Setenv("HETEROLOG_OPENSEARCH_RETRY_CLIENT_MODE", "none")
-				t.Setenv("HETEROLOG_MAX_OPENSEARCH_RETRYABLE_CLIENT_ATTEMPTS", "5")
+				t.Setenv("HETEROLOG_MAX_OPENSEARCH_RETRYABLE_CLIENT_RETRIES", "5")
 				t.Setenv("HETEROLOG_OPENSEARCH_RETRYABLE_CLIENT_MILLISECOND", "123")
 				t.Setenv("HETEROLOG_MAX_OPENSEARCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", "456")
 			},
 			loadConfig: func() (pkglogger.RetryClientMode, int, time.Duration, time.Duration, error) {
 				cfg, err := loadOpenSearchRetryableClientConfig(processEnvironmentForTest())
-				return cfg.RetryClientMode, cfg.MaxAttempts, cfg.BaseDelay, cfg.MaxDelay, err
+				return cfg.RetryClientMode, cfg.MaxRetries, cfg.BaseDelay, cfg.MaxDelay, err
 			},
 		},
 		{
@@ -2255,13 +2255,13 @@ func TestLoadOpenSearchRetryableClientConfigsUseDedicatedEnvKeys(t *testing.T) {
 			setEnv: func(t *testing.T) {
 				t.Setenv("HETEROLOG_ENABLE_ASYNC_OPENSEARCH_COMPRESS_REQUEST", "true")
 				t.Setenv("HETEROLOG_ASYNC_OPENSEARCH_RETRY_CLIENT_MODE", "none")
-				t.Setenv("HETEROLOG_MAX_ASYNC_OPENSEARCH_RETRYABLE_CLIENT_ATTEMPTS", "6")
+				t.Setenv("HETEROLOG_MAX_ASYNC_OPENSEARCH_RETRYABLE_CLIENT_RETRIES", "6")
 				t.Setenv("HETEROLOG_ASYNC_OPENSEARCH_RETRYABLE_CLIENT_MILLISECOND", "234")
 				t.Setenv("HETEROLOG_MAX_ASYNC_OPENSEARCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", "567")
 			},
 			loadConfig: func() (pkglogger.RetryClientMode, int, time.Duration, time.Duration, error) {
 				cfg, err := loadAsyncOpenSearchRetryableClientConfig(processEnvironmentForTest())
-				return cfg.RetryClientMode, cfg.MaxAttempts, cfg.BaseDelay, cfg.MaxDelay, err
+				return cfg.RetryClientMode, cfg.MaxRetries, cfg.BaseDelay, cfg.MaxDelay, err
 			},
 		},
 		{
@@ -2269,13 +2269,13 @@ func TestLoadOpenSearchRetryableClientConfigsUseDedicatedEnvKeys(t *testing.T) {
 			setEnv: func(t *testing.T) {
 				t.Setenv("HETEROLOG_ENABLE_DELIVERY_OPENSEARCH_COMPRESS_REQUEST", "true")
 				t.Setenv("HETEROLOG_DELIVERY_OPENSEARCH_RETRY_CLIENT_MODE", "none")
-				t.Setenv("HETEROLOG_MAX_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_ATTEMPTS", "7")
+				t.Setenv("HETEROLOG_MAX_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_RETRIES", "7")
 				t.Setenv("HETEROLOG_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_MILLISECOND", "345")
 				t.Setenv("HETEROLOG_MAX_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_DELAY_MILLISECOND", "678")
 			},
 			loadConfig: func() (pkglogger.RetryClientMode, int, time.Duration, time.Duration, error) {
 				cfg, err := loadDeliveryOpenSearchRetryableClientConfig(processEnvironmentForTest())
-				return cfg.RetryClientMode, cfg.MaxAttempts, cfg.BaseDelay, cfg.MaxDelay, err
+				return cfg.RetryClientMode, cfg.MaxRetries, cfg.BaseDelay, cfg.MaxDelay, err
 			},
 		},
 	}
@@ -2284,7 +2284,7 @@ func TestLoadOpenSearchRetryableClientConfigsUseDedicatedEnvKeys(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setEnv(t)
 
-			mode, maxAttempts, baseDelay, maxDelay, err := tt.loadConfig()
+			mode, maxRetries, baseDelay, maxDelay, err := tt.loadConfig()
 			if err != nil {
 				t.Fatalf("load retry client config: %v", err)
 			}
@@ -2292,13 +2292,13 @@ func TestLoadOpenSearchRetryableClientConfigsUseDedicatedEnvKeys(t *testing.T) {
 				t.Fatalf("RetryClientMode = %q, want %q from retry mode env key", mode, pkglogger.RetryClientModeNone)
 			}
 
-			expectedAttempts := map[string]int{
+			expectedRetries := map[string]int{
 				"sync":     5,
 				"async":    6,
 				"delivery": 7,
 			}[tt.name]
-			if maxAttempts != expectedAttempts {
-				t.Fatalf("MaxAttempts = %d, want %d", maxAttempts, expectedAttempts)
+			if maxRetries != expectedRetries {
+				t.Fatalf("MaxRetries = %d, want %d", maxRetries, expectedRetries)
 			}
 
 			expectedBaseDelay := map[string]time.Duration{
@@ -3088,7 +3088,7 @@ func TestLoadSpoolConfigKeepsRetainedFailureRecordsByDefault(t *testing.T) {
 		t.Fatalf("loadSpoolConfig() error = %v", err)
 	}
 	mapped := NewSpoolConfig(&AppConfig{SpoolConfig: cfg})
-	for name, lifecycle := range map[string]configspoolrunner.BackendSpoolRunnerConfig{
+	for name, lifecycle := range map[string]pkgspoolrunner.BackendSpoolRunnerConfig{
 		"opensearch":            cfg.RunnerConfig.OpensearchConfig,
 		"loki":                  cfg.RunnerConfig.LokiConfig,
 		"cloudwatchlogs":        cfg.RunnerConfig.CloudWatchLogsConfig,
@@ -3239,7 +3239,7 @@ func setBackendSpoolRunnerEnv(t *testing.T, prefix string, intervalMs int, stopO
 func assertBackendSpoolRunnerConfig(
 	t *testing.T,
 	name string,
-	cfg configspoolrunner.BackendSpoolRunnerConfig,
+	cfg pkgspoolrunner.BackendSpoolRunnerConfig,
 	intervalMs int,
 	stopOnError bool,
 	base int,
@@ -3302,7 +3302,7 @@ func assertBackendSpoolRunnerConfig(
 func assertBackendSpoolRunnerConfigMatchesEnv(
 	t *testing.T,
 	name string,
-	cfg configspoolrunner.BackendSpoolRunnerConfig,
+	cfg pkgspoolrunner.BackendSpoolRunnerConfig,
 	envFile map[string]string,
 	prefix string,
 ) {

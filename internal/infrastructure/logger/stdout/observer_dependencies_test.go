@@ -11,6 +11,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"github.com/stretchr/testify/require"
 )
@@ -22,10 +23,10 @@ func TestStdoutConstructorsPassObserversToWriteErrorHandler(t *testing.T) {
 		context.Context,
 		StdoutLoggerConfigProvider,
 		resource.OtelLogResourceProvider,
-		observer.Tracer,
-		observer.Meter,
+		pkgobserver.Tracer,
+		pkgobserver.Meter,
 	) (*StdoutLogger, error){
-		"normal": func(ctx context.Context, cfg StdoutLoggerConfigProvider, resource resource.OtelLogResourceProvider, tracer observer.Tracer, meter observer.Meter) (*StdoutLogger, error) {
+		"normal": func(ctx context.Context, cfg StdoutLoggerConfigProvider, resource resource.OtelLogResourceProvider, tracer pkgobserver.Tracer, meter pkgobserver.Meter) (*StdoutLogger, error) {
 			return NewStdoutLogger(ctx, cfg, resource, tracer, meter)
 		},
 	}
@@ -33,13 +34,13 @@ func TestStdoutConstructorsPassObserversToWriteErrorHandler(t *testing.T) {
 	// なので、require.Sameは構築時に渡したinstanceそのものかを判定できます。
 	observerCases := []struct {
 		name      string
-		observers func() (observer.Tracer, observer.Meter)
+		observers func() (pkgobserver.Tracer, pkgobserver.Meter)
 	}{
-		{name: "configured", observers: func() (observer.Tracer, observer.Meter) {
+		{name: "configured", observers: func() (pkgobserver.Tracer, pkgobserver.Meter) {
 			return &recordingTracer{}, &recordingMeter{}
 		}},
-		{name: "nil", observers: func() (observer.Tracer, observer.Meter) { return nil, nil }},
-		{name: "typed_nil", observers: func() (observer.Tracer, observer.Meter) {
+		{name: "nil", observers: func() (pkgobserver.Tracer, pkgobserver.Meter) { return nil, nil }},
+		{name: "typed_nil", observers: func() (pkgobserver.Tracer, pkgobserver.Meter) {
 			return (*observer.NopTracer)(nil), (*observer.NopMeter)(nil)
 		}},
 	}
@@ -56,7 +57,7 @@ func TestStdoutConstructorsPassObserversToWriteErrorHandler(t *testing.T) {
 		for _, observers := range observerCases {
 			for _, sink := range sinks {
 				t.Run(constructorName+"/"+observers.name+"/"+sink.name, func(t *testing.T) {
-					// These tests replace process streams and must remain sequential.
+					// これらのtestはprocessのstreamを置き換えるため、順番に実行する必要があります。
 					replaceStdoutTestStreamWithClosedFile(t, sink.stream)
 					ctx := context.Background()
 					cfg := NewConfigAdapter(pkglogger.StdoutLoggerConfig{
@@ -73,8 +74,8 @@ func TestStdoutConstructorsPassObserversToWriteErrorHandler(t *testing.T) {
 						ctx context.Context,
 						err error,
 						entry *logging.LogEntry,
-						tracer observer.Tracer,
-						meter observer.Meter,
+						tracer pkgobserver.Tracer,
+						meter pkgobserver.Meter,
 					) {
 						calls++
 						require.ErrorIs(t, err, os.ErrClosed)
@@ -127,7 +128,7 @@ type recordingTracer struct {
 	spans []string
 }
 
-func (r *recordingTracer) StartSpan(ctx context.Context, name string, attrs ...observer.Attr) (context.Context, observer.Span) {
+func (r *recordingTracer) StartSpan(ctx context.Context, name string, attrs ...pkgobserver.Attr) (context.Context, pkgobserver.Span) {
 	r.mu.Lock()
 	r.spans = append(r.spans, name)
 	r.mu.Unlock()
@@ -146,11 +147,11 @@ type recordingMeter struct {
 	counters map[string]int64
 }
 
-func (m *recordingMeter) Counter(name string) observer.Counter {
+func (m *recordingMeter) Counter(name string) pkgobserver.Counter {
 	return recordingCounter{meter: m, name: name}
 }
 
-func (m *recordingMeter) Gauge(string) observer.Gauge {
+func (m *recordingMeter) Gauge(string) pkgobserver.Gauge {
 	return observer.NopGauge{}
 }
 
@@ -165,7 +166,7 @@ type recordingCounter struct {
 	name  string
 }
 
-func (c recordingCounter) Add(_ context.Context, value int64, _ ...observer.Attr) {
+func (c recordingCounter) Add(_ context.Context, value int64, _ ...pkgobserver.Attr) {
 	c.meter.mu.Lock()
 	defer c.meter.mu.Unlock()
 	if c.meter.counters == nil {

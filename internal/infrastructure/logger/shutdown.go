@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 func (l *topLevelLoggerRuntime) Close() error {
@@ -95,7 +95,7 @@ func requestForcedClose(owners ...any) {
 		switch owner.(type) {
 		case interface{ RequestForceClose() error }, interface{ ForceClose() error }:
 			go func() {
-				if err := common.ForceCloseIfSupported(owner); err != nil && !errors.Is(err, shutdown.ErrForcedClose) {
+				if err := common.ForceCloseIfSupported(owner); err != nil && !errors.Is(err, pkgshutdown.ErrForcedClose) {
 					_, _ = fmt.Fprintf(os.Stderr, "force shutdown notification: %v\n", err)
 				}
 			}()
@@ -139,7 +139,7 @@ func (r *appendLogMaintenanceRuntime) ForceClose() error {
 	for _, entry := range r.entries {
 		requestForcedClose(entry.runner)
 	}
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func (r *internalLogDestinationRuntime) ForceClose() error {
@@ -147,7 +147,7 @@ func (r *internalLogDestinationRuntime) ForceClose() error {
 		return nil
 	}
 	requestForcedClose(r.runtimeOwnedFileLoggerSet)
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func (r *deliveryInternalLogDestinationRuntime) ForceClose() error {
@@ -155,7 +155,7 @@ func (r *deliveryInternalLogDestinationRuntime) ForceClose() error {
 		return nil
 	}
 	requestForcedClose(r.runtimeOwnedFileLoggerSet)
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func (o *fallbackHandlerCloserOwner) ForceClose() error {
@@ -171,7 +171,7 @@ func (o *fallbackHandlerCloserOwner) ForceClose() error {
 	for _, closer := range closers {
 		requestForcedClose(closer)
 	}
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func (s *failureSpoolPipelineSet) ForceClose() error {
@@ -186,7 +186,7 @@ func (s *failureSpoolPipelineSet) ForceClose() error {
 		requestForcedClose(writer.handler)
 	}
 	requestForcedClose(s.runtime)
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 // ForceCloseはspoolの周期処理へ中止を要求します。保存済みの再送待ちデータは残します。
@@ -208,5 +208,5 @@ func (r *compressedLogSpoolRuntimes) ForceClose() error {
 		requestForcedClose(runtime)
 	}
 	go func() { _ = r.Close() }()
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }

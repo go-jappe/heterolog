@@ -48,7 +48,7 @@ func TestLokiLoggerWithIntegrationEnvironmentPushesToLocalLoki(t *testing.T) {
 	retrySrc := appConfig.Logger.LokiConfig.LokiRetryAbleClientConfig
 	retryCfg := NewRetryConfigProvider(&pkglogger.LokiRetryableClientCaseTransportErrorConfig{
 		RetryClientMode: retrySrc.RetryClientMode,
-		MaxAttempts:     retrySrc.MaxAttempts,
+		MaxRetries:      retrySrc.MaxRetries,
 		BaseDelay:       retrySrc.BaseDelay,
 		MaxDelay:        retrySrc.MaxDelay,
 	})

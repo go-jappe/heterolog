@@ -1,4 +1,4 @@
-// Package configfixture creates offline fixtures from the public environment example.
+// Package configfixtureは、公開されている環境設定の例からofflineのfixtureを作成します。
 package configfixture
 
 import (
@@ -23,31 +23,31 @@ var fixtureStoragePaths = map[string]string{
 }
 var safeValues = func() map[string]bool {
 	values := make(map[string]bool)
-	for _, value := range strings.Fields("true false DEV dev INFO DEBUG WARN ERROR info debug warn error daily weekly monthly gzip gz zstd zst lz4 xz inline runner disable strict unbounded bounded must_fit drop block stdout stderr file slack opensearch loki cloudwatchlogs clickhouse spool fileArchive none retryPolicy retry_policy s3 basic otel OTLP grcp http grpc retryable permanent logs log error debug default file_logger async_file_logger delivery_file_logger /logs /error_logs /async_logs /async_logs_error /delivery_logs /delivery_logs_error opensearch_async loki_async clickhouse_async cloudwatchlogs_async compressed_log_file_upload_failures") {
+	for _, value := range strings.Fields("true false DEV dev INFO DEBUG WARN ERROR info debug warn error daily weekly monthly gzip gz zstd zst lz4 xz inline runner disable strict unbounded bounded must_fit drop block stdout stderr file slack opensearch loki cloudwatchlogs clickhouse spool fileArchive none retryPolicy retry_policy s3 basic otel OTLP http grpc retryable permanent logs log error debug default file_logger async_file_logger delivery_file_logger /logs /error_logs /async_logs /async_logs_error /delivery_logs /delivery_logs_error opensearch_async loki_async clickhouse_async cloudwatchlogs_async compressed_log_file_upload_failures") {
 		values[value] = true
 	}
 	return values
 }()
 
-// Errors returned by Generate. The messages never include configuration values.
+// Generateが返すerrorです。messageに設定値を含めることはありません。
 var (
-	// ErrOperationalEnvSource reports a source path that is not named .env.example.
+	// ErrOperationalEnvSourceは、名前が.env.exampleではないsource pathを表します。
 	ErrOperationalEnvSource = errors.New("source must be the public .env.example, not an operational .env")
-	// ErrSourceNotRegularFile reports a source path that is a symbolic link or another non-regular file.
+	// ErrSourceNotRegularFileは、symbolic linkか、その他の通常fileではないsource pathを表します。
 	ErrSourceNotRegularFile = errors.New("public .env.example must be a regular file, not a symbolic link")
-	// ErrOutputDirectoryExists reports an output directory that already exists.
+	// ErrOutputDirectoryExistsは、すでに存在する出力directoryを表します。
 	ErrOutputDirectoryExists = errors.New("output directory must not already exist")
-	// ErrNonAssignmentLine reports a non-comment line without '='.
+	// ErrNonAssignmentLineは、'='を含まないcomment以外の行を表します。
 	ErrNonAssignmentLine = errors.New("non-assignment line in public fixture")
-	// ErrDuplicateKey reports a key assigned more than once. DuplicateKeyError wraps it.
+	// ErrDuplicateKeyは、複数回代入されたkeyを表します。DuplicateKeyErrorがこれをwrapします。
 	ErrDuplicateKey = errors.New("duplicate key")
-	// ErrInvalidEnvironmentSyntax reports a source the dotenv parser rejects.
+	// ErrInvalidEnvironmentSyntaxは、dotenv parserが拒否するsourceを表します。
 	ErrInvalidEnvironmentSyntax = errors.New("public .env.example has invalid environment syntax")
-	// ErrUnreviewedKeys reports keys whose values are not on the reviewed list. UnreviewedKeysError wraps it.
+	// ErrUnreviewedKeysは、値がreview済みの一覧にないkeyを表します。UnreviewedKeysErrorがこれをwrapします。
 	ErrUnreviewedKeys = errors.New("unreviewed keys")
 )
 
-// DuplicateKeyError reports the first key assigned more than once in the source.
+// DuplicateKeyErrorは、sourceの中で複数回代入されたkeyのうち、最初のものを表します。
 type DuplicateKeyError struct {
 	Key string
 }
@@ -56,8 +56,8 @@ func (e *DuplicateKeyError) Error() string { return "duplicate key: " + e.Key }
 
 func (e *DuplicateKeyError) Unwrap() error { return ErrDuplicateKey }
 
-// UnreviewedKeysError reports, in sorted order, the keys whose values were not reviewed.
-// Their values are never stored or printed.
+// UnreviewedKeysErrorは、値がreviewされていないkeyを、sort済みの順で表します。
+// それらの値を保存したり表示したりすることはありません。
 type UnreviewedKeysError struct {
 	Keys []string
 }
@@ -68,7 +68,7 @@ func (e *UnreviewedKeysError) Error() string {
 
 func (e *UnreviewedKeysError) Unwrap() error { return ErrUnreviewedKeys }
 
-// Generate creates a new fixture directory from a public .env.example file.
+// Generateは、公開された.env.example fileから新しいfixture directoryを作成します。
 func Generate(sourcePath, outputDirectory string) error {
 	// 実運用.envの読み取りや、既存出力の上書きは許可しません。
 	if filepath.Base(sourcePath) != ".env.example" {
@@ -133,8 +133,8 @@ func Generate(sourcePath, outputDirectory string) error {
 		for key, value := range fixtureStoragePaths {
 			sanitized[key] = value
 		}
-		// Exercise every contract with offline credentials, independently of the
-		// public example's stdout-only defaults. Tests replace network clients.
+		// 公開例のstdoutだけの既定値とは関係なく、offlineのcredentialですべての契約を動かします。
+		// network clientはtestが差し替えます。
 		sanitized["HETEROLOG_LOG_TYPE"] = "file,stdout,slack,opensearch,loki"
 		sanitized["HETEROLOG_ASYNC_LOG_TYPE"] = "file,stdout,slack,opensearch"
 		sanitized["HETEROLOG_DELIVERY_LOG_TYPE"] = "file,stdout,slack,opensearch,loki"

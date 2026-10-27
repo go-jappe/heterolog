@@ -3,8 +3,8 @@ package field
 import (
 	"context"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
 type IDs struct {
@@ -17,7 +17,7 @@ type IDs struct {
 // 分けます。同じkeyが複数回ある場合は後の値だけを残し、その値で分類します。
 // request_id・trace_id・span_idは残った値が文字列ならmetadata、それ以外の型なら型を保った
 // 構造化fieldになります。slog属性の重複を後の値へ統一してから分類する規則と同じです。
-func ExtractIDsAndExtraFields(fields []applogging.Field) (IDs, map[string]any) {
+func ExtractIDsAndExtraFields(fields []pkglogger.Field) (IDs, map[string]any) {
 	var ids IDs
 	extra := make(map[string]any)
 
@@ -63,7 +63,7 @@ func reservedID(ids *IDs, key string) *string {
 // 指定された空でない文字列Fieldを優先し、最後の値が文字列以外ならcontextのIDを使います。
 func ResolveIDsAndExtraFields(
 	ctx context.Context,
-	fields []applogging.Field,
+	fields []pkglogger.Field,
 ) (IDs, map[string]any) {
 	contextIDs := requestctx.IDsFromContext(ctx)
 	ids := IDs{

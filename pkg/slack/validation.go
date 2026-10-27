@@ -6,27 +6,31 @@ import (
 )
 
 var (
-	// ErrTokenRequiredは、Slack tokenが空または空白だけであることを表します。
+	// ErrTokenRequired reports that the Slack token is empty or only whitespace.
 	ErrTokenRequired = errors.New("slack token is required")
-	// ErrChannelRequiredは、Slack channelが空または空白だけであることを表します。
+	// ErrChannelRequired reports that the Slack channel is empty or only
+	// whitespace.
 	ErrChannelRequired = errors.New("slack channel is required")
 )
 
-// ConfigはSlack APIへ投稿するために必要な宛先設定です。
+// Config holds the destination settings needed to post to the Slack API.
 type Config struct {
 	Token   string
 	Channel string
 }
 
-// ValidateConfigはSlack clientの生成に必要な設定を検証します。
-// HTTP通信は行わず、空文字だけでなく空白文字だけの値も未設定として扱います。
-// 欠落はErrTokenRequired、ErrChannelRequiredとerrors.Isで判別できます。
+// ValidateConfig validates the settings needed to create a Slack client. It
+// makes no HTTP requests, and it treats values that are only whitespace, not
+// just empty strings, as unset. When both values are missing, the returned
+// error reports both. A missing value can be identified with errors.Is against
+// ErrTokenRequired and ErrChannelRequired.
 func ValidateConfig(cfg Config) error {
+	var errs []error
 	if strings.TrimSpace(cfg.Token) == "" {
-		return ErrTokenRequired
+		errs = append(errs, ErrTokenRequired)
 	}
 	if strings.TrimSpace(cfg.Channel) == "" {
-		return ErrChannelRequired
+		errs = append(errs, ErrChannelRequired)
 	}
-	return nil
+	return errors.Join(errs...)
 }

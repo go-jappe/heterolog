@@ -20,12 +20,11 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// TestLoadConfigReadsFixtureEnvClickHouseContracts reads the fixture .env generated
-// from the public example, never the developer's private .env. ClickHouse is not
-// listed in the fixture's HETEROLOG_LOG_TYPE values, so this test overrides the three
-// destination selectors. The ClickHouse values documented with code-default values
-// are also overridden with non-default values, so a loader that ignores a key fails;
-// every value is checked before and after mapping.
+// TestLoadConfigReadsFixtureEnvClickHouseContractsは、公開例から生成したfixtureの.envを読み、
+// 開発者の非公開の.envは決して読みません。fixtureのHETEROLOG_LOG_TYPEの値にClickHouseは
+// 含まれないため、この試験は3つの出力先selectorを上書きします。公開例にcode既定値と同じ値で
+// 掲載したClickHouseの値も非既定値で上書きし、keyを無視するloaderでは失敗するようにします。
+// どの値もmappingの前と後で確認します。
 func TestLoadConfigReadsFixtureEnvClickHouseContracts(t *testing.T) {
 	repoRoot := configFixtureRootForTest(t)
 	envPath := filepath.Join(repoRoot, ".env")
@@ -111,7 +110,7 @@ func nonDefaultClickHouseFixtureEnv() map[string]string {
 		overrides["HETEROLOG_ENABLE_"+prefix+"CLICKHOUSE_INSERT_LATENCY"] = "false"
 		overrides["HETEROLOG_ENABLE_"+prefix+"CLICKHOUSE_COMPRESS_REQUEST"] = "false"
 		overrides["HETEROLOG_"+prefix+"CLICKHOUSE_RETRY_CLIENT_MODE"] = string(contract.retryMode)
-		overrides["HETEROLOG_MAX_"+prefix+"CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS"] = strconv.Itoa(4 + index)
+		overrides["HETEROLOG_MAX_"+prefix+"CLICKHOUSE_RETRYABLE_CLIENT_RETRIES"] = strconv.Itoa(4 + index)
 		overrides["HETEROLOG_"+prefix+"CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND"] = strconv.Itoa(211 + index)
 		overrides["HETEROLOG_MAX_"+prefix+"CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND"] = strconv.Itoa(1101 + index)
 		overrides["HETEROLOG_"+prefix+"CLICKHOUSE_FAILURE_ARCHIVE_DIR"] = contract.name + "-clickhouse-fixture-archive"
@@ -164,11 +163,11 @@ func assertFixtureClickHouseRetry(
 		t.Fatalf("fixture %s mapped retry config = nil", contractLabel)
 	}
 	assertClickHouseValue(t, "fixture "+contractLabel+" loaded retry mode", string(loaded.RetryClientMode), requiredDotEnv(t, envFile, "HETEROLOG_"+prefix+"CLICKHOUSE_RETRY_CLIENT_MODE"))
-	assertClickHouseValue(t, "fixture "+contractLabel+" loaded retry attempts", loaded.MaxAttempts, requiredDotEnvInt(t, envFile, "HETEROLOG_MAX_"+prefix+"CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS"))
+	assertClickHouseValue(t, "fixture "+contractLabel+" loaded retry attempts", loaded.MaxRetries, requiredDotEnvInt(t, envFile, "HETEROLOG_MAX_"+prefix+"CLICKHOUSE_RETRYABLE_CLIENT_RETRIES"))
 	assertClickHouseValue(t, "fixture "+contractLabel+" loaded retry base delay", loaded.BaseDelay, time.Duration(requiredDotEnvInt(t, envFile, "HETEROLOG_"+prefix+"CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND"))*time.Millisecond)
 	assertClickHouseValue(t, "fixture "+contractLabel+" loaded retry max delay", loaded.MaxDelay, time.Duration(requiredDotEnvInt(t, envFile, "HETEROLOG_MAX_"+prefix+"CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND"))*time.Millisecond)
 	assertClickHouseValue(t, "fixture "+contractLabel+" mapped retry mode", mapped.RetryClientMode, loaded.RetryClientMode)
-	assertClickHouseValue(t, "fixture "+contractLabel+" mapped retry attempts", mapped.MaxAttempts, loaded.MaxAttempts)
+	assertClickHouseValue(t, "fixture "+contractLabel+" mapped retry attempts", mapped.MaxRetries, loaded.MaxRetries)
 	assertClickHouseValue(t, "fixture "+contractLabel+" mapped retry base delay", mapped.BaseDelay, loaded.BaseDelay)
 	assertClickHouseValue(t, "fixture "+contractLabel+" mapped retry max delay", mapped.MaxDelay, loaded.MaxDelay)
 }
@@ -209,10 +208,10 @@ func assertFixtureDeliveryClickHouseFailure(
 	assertClickHouseValue(t, "fixture delivery mapped archive dir", mapped.FileArchiveConfig.Dir, archive.Dir)
 }
 
-// TestLoadConfigMapsClickHouseSettingsFromMatchingEnvContract verifies the complete
-// .env -> LoadConfig -> pkg/logger DTO -> infrastructure adapter path. Values are
-// intentionally different for sync, async best-effort, and delivery so that a cross-contract
-// reference cannot pass merely because the repository's normal values coincide.
+// TestLoadConfigMapsClickHouseSettingsFromMatchingEnvContractは、
+// .env -> LoadConfig -> pkg/logger DTO -> infrastructure adapterの経路全体を検証します。
+// sync、async best-effort、deliveryで値を意図的に変え、別契約の値を参照する誤りが、
+// repositoryの通常の値が偶然一致するだけでpassしないようにします。
 func TestLoadConfigMapsClickHouseSettingsFromMatchingEnvContract(t *testing.T) {
 	root := t.TempDir()
 	cfg := loadConfigFromTempEnv(t, []string{
@@ -256,7 +255,7 @@ func TestLoadConfigMapsClickHouseSettingsFromMatchingEnvContract(t *testing.T) {
 		"HETEROLOG_CLICKHOUSE_LOGGER_INFO_HANDLER=sync-info",
 		"HETEROLOG_CLICKHOUSE_LOGGER_DEBUG_HANDLER=sync-debug",
 		"HETEROLOG_CLICKHOUSE_RETRY_CLIENT_MODE=retry",
-		"HETEROLOG_MAX_CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS=2",
+		"HETEROLOG_MAX_CLICKHOUSE_RETRYABLE_CLIENT_RETRIES=2",
 		"HETEROLOG_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND=17",
 		"HETEROLOG_MAX_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND=18",
 		"HETEROLOG_CLICKHOUSE_ENDPOINT=http://sync-clickhouse:8123",
@@ -287,7 +286,7 @@ func TestLoadConfigMapsClickHouseSettingsFromMatchingEnvContract(t *testing.T) {
 		"HETEROLOG_ASYNC_CLICKHOUSE_LOGGER_INFO_HANDLER=async-info",
 		"HETEROLOG_ASYNC_CLICKHOUSE_LOGGER_DEBUG_HANDLER=async-debug",
 		"HETEROLOG_ASYNC_CLICKHOUSE_RETRY_CLIENT_MODE=circuit_breaker",
-		"HETEROLOG_MAX_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS=3",
+		"HETEROLOG_MAX_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_RETRIES=3",
 		"HETEROLOG_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND=27",
 		"HETEROLOG_MAX_ASYNC_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND=28",
 		"HETEROLOG_ASYNC_CLICKHOUSE_ENDPOINT=http://async-clickhouse:8123",
@@ -306,7 +305,7 @@ func TestLoadConfigMapsClickHouseSettingsFromMatchingEnvContract(t *testing.T) {
 		"HETEROLOG_MAX_DELIVERY_CLICKHOUSE_INSERT_REQUEST_BYTES=30202",
 		"HETEROLOG_ENABLE_DELIVERY_CLICKHOUSE_INSERT_LATENCY=true",
 		"HETEROLOG_DELIVERY_CLICKHOUSE_RETRY_CLIENT_MODE=retry_policy_with_breaker",
-		"HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_ATTEMPTS=4",
+		"HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_RETRIES=4",
 		"HETEROLOG_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_MILLISECOND=37",
 		"HETEROLOG_MAX_DELIVERY_CLICKHOUSE_RETRYABLE_CLIENT_DELAY_MILLISECOND=38",
 		"HETEROLOG_DELIVERY_CLICKHOUSE_ENDPOINT=http://delivery-clickhouse:8123",
@@ -519,7 +518,7 @@ func assertClickHouseFlushAndClient[T clickHouseFlushConfig](
 		t.Fatalf("%s retry config = nil", contractLabel)
 	}
 	assertClickHouseValue(t, contractLabel+" Retry.Mode", retry.RetryClientMode, want.retryMode)
-	assertClickHouseValue(t, contractLabel+" Retry.Attempts", retry.MaxAttempts, want.retryAttempts)
+	assertClickHouseValue(t, contractLabel+" Retry.Attempts", retry.MaxRetries, want.retryAttempts)
 	assertClickHouseValue(t, contractLabel+" Retry.BaseDelay", retry.BaseDelay, want.baseDelay)
 	assertClickHouseValue(t, contractLabel+" Retry.MaxDelay", retry.MaxDelay, want.maxDelay)
 
@@ -552,7 +551,7 @@ func assertDeliveryClickHouseFlushAndClient(
 		t.Fatal("delivery retry config = nil")
 	}
 	assertClickHouseValue(t, "delivery Retry.Mode", retry.RetryClientMode, want.retryMode)
-	assertClickHouseValue(t, "delivery Retry.Attempts", retry.MaxAttempts, want.retryAttempts)
+	assertClickHouseValue(t, "delivery Retry.Attempts", retry.MaxRetries, want.retryAttempts)
 	assertClickHouseValue(t, "delivery Retry.BaseDelay", retry.BaseDelay, want.baseDelay)
 	assertClickHouseValue(t, "delivery Retry.MaxDelay", retry.MaxDelay, want.maxDelay)
 

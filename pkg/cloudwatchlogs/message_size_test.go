@@ -13,8 +13,8 @@ import (
 )
 
 func TestPutLogEventsMeasuresJSONDecodedMessageAtBatchBoundary(t *testing.T) {
-	// AWS counts the UTF-8 message received after JSON decoding, plus 26 bytes
-	// per event. JSON escaping itself does not consume that message budget.
+	// AWSは、JSON decode後に受け取るUTF-8のmessageに、eventごとの26 byteを加えて数えます。
+	// JSONのescape自体は、このmessageの上限枠を消費しません。
 	const messageLimit = 1048576 - 26
 	for _, compressed := range []bool{false, true} {
 		for _, tc := range []struct{ name, inputPrefix, receivedPrefix string }{

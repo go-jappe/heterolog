@@ -21,8 +21,8 @@ import (
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
-// conflictingResultStore injects an earlier, different receipt immediately before
-// accepting a target's result. Ordinary spool state transitions never do this.
+// conflictingResultStoreは、targetの結果を受理する直前に、それより前の異なるreceiptを注入します。
+// 通常のspool状態遷移がこれを行うことはありません。
 type conflictingResultStore struct {
 	checkpoint.Store
 	mu              sync.Mutex

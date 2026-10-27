@@ -109,8 +109,8 @@ func TestRootRuntimeSnapshotsSettingsOnceForAllRouteRegistrations(t *testing.T) 
 	}
 	runtime := newTestRootRuntime(t, provider)
 	callsAtConstruction := maps.Clone(provider.calls)
-	// Mutation after construction must not affect initialization or any later
-	// registration; routes do not receive or re-read the root's provider.
+	// 構築後の変更は、初期化にもその後のどの登録にも影響してはなりません。
+	// routeはrootのproviderを受け取らず、読み直すこともありません。
 	provider.config = objectstorage.CompressedLogFileUploadSpoolConfig{}
 	for i := 0; i < 3; i++ {
 		route, err := runtime.RegisterRoute(ManagedRouteConfig{

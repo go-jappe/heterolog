@@ -8,7 +8,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/multi"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
@@ -39,7 +38,7 @@ func TestTopLevelLoggerCloseStopsAcceptingBeforeAppendLogMaintenanceWait(t *test
 			waitForTopLevelAdmissionMaintenanceClose(t, maintenance)
 
 			err = runtime.Info(context.Background(), "rejected while maintenance is stopping")
-			require.ErrorIs(t, err, applogging.ErrLoggerClosed)
+			require.ErrorIs(t, err, pkglogger.ErrLoggerClosed)
 			require.Equal(t, int32(0), child.handleCalls.Load())
 
 			releaseMaintenance()
@@ -97,7 +96,7 @@ func TestTopLevelLoggerCloseStopsAcceptingBeforeAppendLogMaintenanceWait(t *test
 				context.Background(),
 				"rejected while maintenance is stopping",
 			)
-			require.ErrorIs(t, err, applogging.ErrLoggerClosed)
+			require.ErrorIs(t, err, pkglogger.ErrLoggerClosed)
 			require.Len(t, report.Targets, 1)
 			require.Equal(t, pkglogger.DeliveryRejected, report.Targets[0].Status)
 			require.Equal(t, child.backend, report.Targets[0].Backend)
@@ -138,7 +137,7 @@ func (topLevelAdmissionAsyncConfig) MaxLogEntryBytes() int {
 }
 
 type topLevelAdmissionSyncChild struct {
-	applogging.Logger
+	pkglogger.Logger
 	handleCalls atomic.Int32
 }
 
@@ -151,7 +150,7 @@ func (c *topLevelAdmissionSyncChild) HandleLogEntry(
 }
 
 type topLevelAdmissionDeliveryChild struct {
-	applogging.DeliveryLogger
+	pkglogger.DeliveryLogger
 	backend     string
 	handleCalls atomic.Int32
 }

@@ -219,9 +219,9 @@ func TestRunnerRetryQueueOrderingSurvivesStoreWorkerRunnerRecreation(t *testing.
 		t.Fatalf("first Runner.RunOnce() report/error = %+v/%v", firstReport, err)
 	}
 
-	// Recreate every replay-layer object from the same filesystem root. Queue
-	// fairness must come from the requeued file's durable mtime, not memory held
-	// by the original Store, compressedlogworker.Worker, or Runner.
+	// 同じfilesystem rootから、replay層のobjectをすべて作り直します。queueの公平性は、
+	// 元のStore、compressedlogworker.Worker、Runnerが保持するmemoryではなく、
+	// requeueしたfileのdurableなmtimeから決まらなければなりません。
 	restartedStore, err := objectstoragespool.NewStore(store.Root())
 	if err != nil {
 		t.Fatal(err)
@@ -296,9 +296,9 @@ func TestRunnerRetryableFailureRequeuesAtUploadCompletionTime(t *testing.T) {
 			t.Fatal("first upload did not start")
 		}
 		secondFile := replaytest.SaveFile(t, store, "app_20260906_22.log.gz")
-		// Place file 2 strictly after the first attempt started, then keep the
-		// first PUT blocked until strictly after file 2's queue timestamp. If file
-		// 1 were timestamped at attempt start, it would incorrectly remain oldest.
+		// file 2を、最初の試行が始まった時刻より厳密に後に置きます。その後、最初のPUTを
+		// file 2のqueue timestampより厳密に後までblockしたままにします。file 1に
+		// 試行開始時の時刻を付けていたら、file 1が誤って最古のまま残ります。
 		betweenAttemptAndFailure := time.Now().UTC().Add(10 * time.Second)
 		if err := os.Chtimes(
 			secondFile.Path,

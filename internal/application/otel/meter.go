@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -31,7 +32,7 @@ type otelCounter struct {
 	c metric.Int64Counter
 }
 
-func (c *otelCounter) Add(ctx context.Context, value int64, attrs ...observer.Attr) {
+func (c *otelCounter) Add(ctx context.Context, value int64, attrs ...pkgobserver.Attr) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -42,7 +43,7 @@ func (c *otelCounter) Add(ctx context.Context, value int64, attrs ...observer.At
 	c.c.Add(ctx, value, metric.WithAttributes(toOtelMetricAttrs(attrs)...))
 }
 
-func (o *OtelMeter) Counter(name string) observer.Counter {
+func (o *OtelMeter) Counter(name string) pkgobserver.Counter {
 	if o == nil || observer.IsNilInterface(o.m) {
 		return observer.NopCounter{}
 	}
@@ -87,7 +88,7 @@ type otelGauge struct {
 	g metric.Float64Gauge
 }
 
-func (g *otelGauge) Record(ctx context.Context, value float64, attrs ...observer.Attr) {
+func (g *otelGauge) Record(ctx context.Context, value float64, attrs ...pkgobserver.Attr) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -98,7 +99,7 @@ func (g *otelGauge) Record(ctx context.Context, value float64, attrs ...observer
 	g.g.Record(ctx, value, metric.WithAttributes(toOtelMetricAttrs(attrs)...))
 }
 
-func (o *OtelMeter) Gauge(name string) observer.Gauge {
+func (o *OtelMeter) Gauge(name string) pkgobserver.Gauge {
 	if o == nil || observer.IsNilInterface(o.m) {
 		return observer.NopGauge{}
 	}
@@ -139,7 +140,7 @@ func (o *OtelMeter) getOrCreateGauge(name string) (metric.Float64Gauge, error) {
 	return g, nil
 }
 
-func toOtelMetricAttrs(attrs []observer.Attr) []attribute.KeyValue {
+func toOtelMetricAttrs(attrs []pkgobserver.Attr) []attribute.KeyValue {
 	otelAttrs := make([]attribute.KeyValue, 0, len(attrs))
 
 	for _, a := range attrs {

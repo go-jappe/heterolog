@@ -10,6 +10,8 @@ import (
 
 	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 // 初回のbackend Closeが失敗しても、呼び出し元はCloseを繰り返しません。Controllerが
@@ -57,7 +59,7 @@ func TestTopLevelGracefulCloseRetriesWithoutCallerLoop(t *testing.T) {
 }
 
 type forceTestBackend struct {
-	applogging.Logger
+	pkglogger.Logger
 	entered chan struct{}
 	release chan struct{}
 	forced  chan struct{}
@@ -68,7 +70,7 @@ func (b *forceTestBackend) StopAccepting() {}
 func (b *forceTestBackend) Close() error   { close(b.entered); <-b.release; return nil }
 func (b *forceTestBackend) ForceClose() error {
 	b.once.Do(func() { close(b.forced) })
-	return applogging.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func TestTopLevelPublicForceCloseReachesOwnerAndReleasesWait(t *testing.T) {
@@ -103,10 +105,10 @@ func TestTopLevelPublicForceCloseReachesOwnerAndReleasesWait(t *testing.T) {
 				if len(done) != 0 || controller.IsComplete() {
 					t.Fatal("normal Close did not wait for accepted backend cleanup")
 				}
-				if err := applogging.ForceClose(logger); !errors.Is(err, applogging.ErrForcedClose) {
+				if err := applogging.ForceClose(logger); !errors.Is(err, pkgshutdown.ErrForcedClose) {
 					t.Fatal(err)
 				}
-				if err := <-done; !errors.Is(err, applogging.ErrForcedClose) {
+				if err := <-done; !errors.Is(err, pkgshutdown.ErrForcedClose) {
 					t.Fatal(err)
 				}
 				<-b.forced
@@ -117,7 +119,7 @@ func TestTopLevelPublicForceCloseReachesOwnerAndReleasesWait(t *testing.T) {
 				}
 				unblock()
 				<-controller.Done()
-				if err := logger.Close(); !errors.Is(err, applogging.ErrForcedClose) {
+				if err := logger.Close(); !errors.Is(err, pkgshutdown.ErrForcedClose) {
 					t.Fatalf("repeated Close lost forced result: %v", err)
 				}
 			})
@@ -126,7 +128,7 @@ func TestTopLevelPublicForceCloseReachesOwnerAndReleasesWait(t *testing.T) {
 }
 
 type forceTestAsyncBackend struct {
-	applogging.AsyncLogger
+	pkglogger.AsyncLogger
 	lifecycle *forceTestBackend
 }
 
@@ -135,7 +137,7 @@ func (b *forceTestAsyncBackend) Close() error      { return b.lifecycle.Close() 
 func (b *forceTestAsyncBackend) ForceClose() error { return b.lifecycle.ForceClose() }
 
 type forceTestDeliveryBackend struct {
-	applogging.DeliveryLogger
+	pkglogger.DeliveryLogger
 	lifecycle *forceTestBackend
 }
 

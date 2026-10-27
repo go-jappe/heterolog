@@ -26,7 +26,7 @@ func TestInlineUploadCursorPreservesSuccessAfterRemovalAndObservation(t *testing
 	checkpoint, err := store.Load(ctx, key)
 	require.NoError(t, err)
 	require.Equal(t, []objectstorage.DestinationID{"primary"}, checkpoint.CompletedDestinationIDs)
-	// The same generation reappearing after a stale observation is already complete.
+	// 古い観測の後に同じ世代が再び現れても、その世代はすでに完了しています。
 	require.NoError(t, os.WriteFile(path, []byte("reappeared generation"), 0o600))
 	require.False(t, logger.processRemainingLogFiles(ctx, archiveUploadGroupsForTest(t, []string{path}, logger.Fsstore.FileName), runNotificationImmediately))
 	require.NoFileExists(t, path)

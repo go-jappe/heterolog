@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 
-	applogging "github.com/go-jappe/heterolog/internal/application/logging"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
@@ -27,6 +26,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -55,8 +55,8 @@ func NewFailureArchivePipeline(
 	ctx context.Context,
 	timeSource clock.Clock,
 	cfg loggerdurable.FileArchiveConfigProvider,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	internalLogHandlers InternalLogHandlers,
 	options ...FailureArchivePipelineOption,
 ) (pipeline *FailureArchivePipeline, err error) {
@@ -315,7 +315,7 @@ func (f *FailureArchivePipeline) cleanupFailedConstruction(initErr error) (*Fail
 
 func NewOverloadHandlerProvider(
 	cfg loggerdurable.FileArchiveConfigProvider,
-	meter observer.Meter,
+	meter pkgobserver.Meter,
 ) (overload.Handler, error) {
 	return newOverloadHandler(cfg, meter, nil)
 }
@@ -324,7 +324,7 @@ func NewOverloadHandlerProvider(
 // spillStdoutはdegrade policyのstdout退避でos.Stdoutの代わりに使うwriterで、nilならos.Stdoutです。
 func newOverloadHandler(
 	cfg loggerdurable.FileArchiveConfigProvider,
-	meter observer.Meter,
+	meter pkgobserver.Meter,
 	spillStdout io.Writer,
 ) (overload.Handler, error) {
 	if cfg == nil {
@@ -354,21 +354,21 @@ func newOverloadHandler(
 }
 
 // スタックトレース付きログ
-func (f *FsArchiveHandler) internalCallerErrorEntry(msg string, err error, fields ...applogging.Field) *logging.LogEntry {
+func (f *FsArchiveHandler) internalCallerErrorEntry(msg string, err error, fields ...pkglogger.Field) *logging.LogEntry {
 	return f.newCallerLogEntry(pkglogger.LogLevelError, msg, err, true, fields...)
 }
 
 // internalCallerWarnEntryはfailure archive内部の警告entryを作成します。
-func (f *FsArchiveHandler) internalCallerWarnEntry(msg string, fields ...applogging.Field) *logging.LogEntry {
+func (f *FsArchiveHandler) internalCallerWarnEntry(msg string, fields ...pkglogger.Field) *logging.LogEntry {
 	return f.newCallerLogEntry(pkglogger.LogLevelWarn, msg, nil, true, fields...)
 }
 
 // スタックトレース付きログ
-func (f *FsArchiveHandler) internalCallerDebugEntry(msg string, fields ...applogging.Field) *logging.LogEntry {
+func (f *FsArchiveHandler) internalCallerDebugEntry(msg string, fields ...pkglogger.Field) *logging.LogEntry {
 	return f.newCallerLogEntry(pkglogger.LogLevelDebug, msg, nil, true, fields...)
 }
 
-func (f *FsArchiveHandler) newCallerLogEntry(level pkglogger.LogLevel, msg string, err error, internal bool, fields ...applogging.Field) *logging.LogEntry {
+func (f *FsArchiveHandler) newCallerLogEntry(level pkglogger.LogLevel, msg string, err error, internal bool, fields ...pkglogger.Field) *logging.LogEntry {
 	ids, _ := field.ExtractIDsAndExtraFields(fields)
 	funcNames, sourceFiles, lines := logging.CollectCallerDetails(logging.GetCallerDepth(NewStackTraceConfigAdapter(f.Config)))
 	entry := &logging.LogEntry{

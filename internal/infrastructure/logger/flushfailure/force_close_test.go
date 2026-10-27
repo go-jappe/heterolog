@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 type forceFailureHandler struct {
@@ -24,7 +24,7 @@ func (h *forceFailureHandler) HandleFailure(context.Context, loggerfailure.SendR
 	return nil
 }
 
-func (h *forceFailureHandler) ForceClose() error              { h.forced++; return shutdown.ErrForcedClose }
+func (h *forceFailureHandler) ForceClose() error              { h.forced++; return pkgshutdown.ErrForcedClose }
 func (h *forceFailureHandler) Shutdown(context.Context) error { h.shutdown++; return nil }
 
 func TestCompositeForceCloseForwardsWithoutReleasingActiveHandler(t *testing.T) {
@@ -43,7 +43,7 @@ func TestCompositeForceCloseForwardsWithoutReleasingActiveHandler(t *testing.T) 
 		drained := make(chan error, 1)
 		go func() { drained <- composite.Drain(context.Background()) }()
 		synctest.Wait()
-		require.ErrorIs(t, composite.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, composite.ForceClose(), pkgshutdown.ErrForcedClose)
 		require.Equal(t, 1, child.forced)
 		require.Zero(t, child.shutdown)
 		require.Empty(t, drained)

@@ -52,7 +52,7 @@ func (s *exampleServer) received() (int, []string) {
 	return s.requests, slices.Clone(s.lines)
 }
 
-// ExampleClient_Send は同期的なメトリクス送信の例を示します
+// ExampleClient_Send shows how to send metrics synchronously.
 func ExampleClient_Send() {
 	server := newExampleServer(http.StatusNoContent)
 	defer server.Close()
@@ -93,7 +93,7 @@ func ExampleClient_Send() {
 	// cpu_usage_percent 85.5
 }
 
-// ExampleClient_SendAsync は非同期メトリクス送信の例を示します
+// ExampleClient_SendAsync shows how to send metrics asynchronously.
 func ExampleClient_SendAsync() {
 	server := newExampleServer(http.StatusNoContent)
 	defer server.Close()
@@ -151,7 +151,8 @@ func ExampleClient_SendAsync() {
 	// async_counter{job="example"} 9
 }
 
-// ExampleNewClient_withOptions はカスタムオプションを使用したクライアント作成の例を示します
+// ExampleNewClient_withOptions shows how to create a client with custom
+// options.
 func ExampleNewClient_withOptions() {
 	server := newExampleServer(http.StatusNoContent)
 	defer server.Close()
@@ -184,7 +185,7 @@ func ExampleNewClient_withOptions() {
 	// requests: 1, metrics: ["configured_metric 1"]
 }
 
-// ExampleClient_HealthCheck はヘルスチェックの使用例を示します
+// ExampleClient_HealthCheck shows how to use the health check.
 func ExampleClient_HealthCheck() {
 	server := newExampleServer(http.StatusOK)
 	defer server.Close()
@@ -204,7 +205,8 @@ func ExampleClient_HealthCheck() {
 	// VictoriaMetrics is healthy
 }
 
-// ExampleClient_batchProcessing は大量のメトリクスをバッチ処理する例を示します
+// ExampleClient_batchProcessing shows how to send a large number of metrics in
+// batches.
 func ExampleClient_batchProcessing() {
 	server := newExampleServer(http.StatusNoContent)
 	defer server.Close()
@@ -238,7 +240,7 @@ func ExampleClient_batchProcessing() {
 	// requests: 10, metrics: 100
 }
 
-// ExamplePrometheusTextFormatter_Format はフォーマッターの使用例を示します
+// ExamplePrometheusTextFormatter_Format shows how to use the formatter.
 func ExamplePrometheusTextFormatter_Format() {
 	// フォーマッターを作成
 	formatter := victoriametrics.NewPrometheusTextFormatter()
@@ -280,7 +282,7 @@ func ExamplePrometheusTextFormatter_Format() {
 	// memory_usage_bytes{host="server1",type="used"} 1.073741824e+09
 }
 
-// ExampleMetric_Validate はメトリクスバリデーションの例を示します
+// ExampleMetric_Validate shows how to validate metrics.
 func ExampleMetric_Validate() {
 	// 有効なメトリクス
 	validMetric := victoriametrics.Metric{
@@ -324,7 +326,7 @@ func (f *customFormatter) Format(metrics []victoriametrics.Metric) (string, erro
 	return result, nil
 }
 
-// ExampleClient_withCustomFormatter はカスタムフォーマッターの使用例を示します
+// ExampleClient_withCustomFormatter shows how to use a custom formatter.
 func ExampleClient_withCustomFormatter() {
 	server := newExampleServer(http.StatusNoContent)
 	defer server.Close()
@@ -353,7 +355,7 @@ func ExampleClient_withCustomFormatter() {
 	// CUSTOM: custom_metric = 42.000000
 }
 
-// ExampleClient_errorHandling はエラーハンドリングの例を示します
+// ExampleClient_errorHandling shows how to handle errors.
 func ExampleClient_errorHandling() {
 	// 送信が失敗する例として、すべてのrequestへ400 Bad Requestを返します。
 	server := newExampleServer(http.StatusBadRequest)
@@ -413,7 +415,8 @@ func ExampleClient_errorHandling() {
 	// Received HTTP error: status=400 retryable=false
 }
 
-// 後方互換性のための使用例
+// ExampleFormatPrometheusText shows the use of the function kept for backward
+// compatibility.
 func ExampleFormatPrometheusText() {
 	metrics := []victoriametrics.Metric{
 		{

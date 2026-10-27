@@ -12,12 +12,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type transientArchiveCheckpointStore struct {
@@ -291,7 +291,7 @@ func TestFailureArchiveLogFileProcessingRecoveryNotifiesEachFailure(t *testing.T
 		require.NoError(t, os.WriteFile(path, []byte("compressed log"), 0o600))
 		// 初回と再試行の失敗をその場で通知し、終了待ちは呼び出し側から行います。
 		notified := make(chan struct{}, 4)
-		handler.OnError = func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {
+		handler.OnError = func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {
 			notified <- struct{}{}
 		}
 		handler.uploadCheckpointedArchiveGroup(context.Background(), []string{path}, category, fileName)

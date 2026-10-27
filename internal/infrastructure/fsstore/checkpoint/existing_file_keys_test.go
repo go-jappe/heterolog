@@ -25,7 +25,7 @@ func TestScanExistingFileKeysSeparatesRepresentationsAndIgnoresUnrelatedNames(t 
 	} {
 		require.NoError(t, os.WriteFile(filepath.Join(pattern.Dir, name), nil, 0o600))
 	}
-	// The boundary uses names, even when an entry cannot currently be uploaded.
+	// 境界は、現在uploadできないentryも含めて名前で判定します。
 	require.NoError(t, os.Mkdir(filepath.Join(pattern.Dir, "error_app_20260926_5.log.gz"), 0o700))
 	keys, err := ScanExistingFileKeys(pattern)
 	require.NoError(t, err)

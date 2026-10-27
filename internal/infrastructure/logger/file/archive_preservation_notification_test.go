@@ -19,6 +19,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type archivePreservationNotificationUploader struct {
@@ -49,12 +50,12 @@ func TestManagedFileArchiveUploaderCloseWaitsForPreservationWarning(t *testing.T
 		}
 		warnings := make(chan notification, 1)
 		errorsSeen := make(chan error, 1)
-		owner.OnWarn = func(ctx context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		owner.OnWarn = func(ctx context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			<-release
 			managed.RequestClose()
 			warnings <- notification{ctx: ctx, entry: entry}
 		}
-		owner.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		owner.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			errorsSeen <- err
 		}
 		warning := errors.New("conflicting saved target preserved as /failure/.compressed-log-conflict-retained")
@@ -101,10 +102,10 @@ func TestManagedFileArchiveUploaderPreservationFailureUsesUploadErrorNotificatio
 	owner := &FileLogger{logger: DefaultLogger, Clock: clock.NewUTCClock(), Tracer: observer.NopTracer{}, Meter: observer.NopMeter{}}
 	var warnings []*logging.LogEntry
 	var errorsSeen []error
-	owner.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	owner.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		warnings = append(warnings, entry)
 	}
-	owner.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	owner.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		errorsSeen = append(errorsSeen, err)
 	}
 	managed := &managedFileArchiveUploader{owner: owner}
@@ -137,12 +138,12 @@ func TestFileLoggerSpoolPreservationWarningIsAsynchronousAndCanCloseDispatcher(t
 		t.Cleanup(unblock)
 		warnings := make(chan *logging.LogEntry, 1)
 		errorsSeen := make(chan error, 1)
-		owner.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		owner.OnWarn = func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			<-release
 			dispatcher.CloseAfterDrain()
 			warnings <- entry
 		}
-		owner.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+		owner.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 			errorsSeen <- err
 		}
 		warning := errors.New("preserved invalid spool file /spool/active/operator-note.txt as /spool/.preserved/retained")

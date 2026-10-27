@@ -162,7 +162,7 @@ func failureArchiveFactoryConfig(t *testing.T) durable.FileArchiveConfig {
 		EnableRotate: true, MaxFileBackups: 2, MaxFileAge: 36500, MaxDirSize: 20 * 1024 * 1024,
 		UsageCacheTTL: time.Hour, EnableFileCompress: true, CompressFormat: pkgfsstore.CompressZstd,
 		LifecycleMode: pkgfsstore.FileLifecycleModeRunner, RotationType: pkgfsstore.FileRotationDaily, RotationDayOfWeek: time.Sunday,
-		MaxWriteAttempts: 1, FileOperationRetryWaitTime: time.Millisecond,
+		MaxWriteRetries: 0, FileOperationRetryWaitTime: time.Millisecond,
 		LifecycleRunnerConfig:   pkgfsstore.AppendLogRunnerConfig{Interval: 15 * time.Minute},
 		ArchiveCheckpointConfig: pkgfsstore.ArchiveCheckpointConfig{Directory: checkpointDirectory, SourcePrefix: "failure_archive_test"},
 		OverloadPolicyConfig: durable.FileArchiveOverloadPolicyConfig{

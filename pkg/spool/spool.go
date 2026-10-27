@@ -1,3 +1,6 @@
+// Package spool defines the records that the spool keeps for log entries whose
+// delivery failed, and the per-record results that the replay workers collect
+// when they resend a batch of those records to the backend.
 package spool
 
 import (
@@ -32,20 +35,24 @@ func (s State) IsValid() bool {
 	}
 }
 
-// QuarantineReasonは、processing file全体をrecord単位に分解せず隔離した理由です。
-// 値はquarantine先のfile名にも保存されるため、運用者は元fileをdecodeできない場合でも
-// 最初に調べるべき障害箇所を識別できます。
+// QuarantineReason is the reason why a whole processing file was quarantined
+// without splitting it into records. The value is also saved in the name of
+// the quarantined file, so operators can identify the point of failure to
+// investigate first even when the original file cannot be decoded.
 type QuarantineReason string
 
 const (
-	// QuarantineReasonInvalidSpoolFileは、NDJSON破損、空file、必須field欠落など、
-	// spool fileそのものをrecordとして復元できなかったことを表します。
+	// QuarantineReasonInvalidSpoolFile means that the spool file itself could
+	// not be restored as records, for example because the NDJSON is corrupt,
+	// the file is empty, or a required field is missing.
 	QuarantineReasonInvalidSpoolFile QuarantineReason = "invalid-spool-file"
-	// QuarantineReasonInvalidExportReportは、backend送信後のrecord別結果に欠落・重複などがあり、
-	// 元fileを安全に分配できなかったことを表します。
+	// QuarantineReasonInvalidExportReport means that the per-record results
+	// after sending to the backend had omissions, duplicates or similar
+	// problems, so the original file could not be distributed safely.
 	QuarantineReasonInvalidExportReport QuarantineReason = "invalid-export-report"
-	// QuarantineReasonInvalidTransitionStateは、送信後の状態遷移retry情報が壊れており、
-	// 再開位置を安全に決定できなかったことを表します。
+	// QuarantineReasonInvalidTransitionState means that the retry information
+	// for the state transition after sending was corrupt, so the position to
+	// resume from could not be determined safely.
 	QuarantineReasonInvalidTransitionState QuarantineReason = "invalid-transition-state"
 )
 
@@ -93,128 +100,155 @@ func (e spoolOperationDetail) Is(target error) bool {
 }
 
 var (
-	// ErrInvalidSpoolFile は、spool file 自体が処理不能な形式であることを表す。
+	// ErrInvalidSpoolFile reports that the spool file itself is in a format
+	// that cannot be processed.
 	//
-	// worker はこの error を検知した場合、その processing file を
-	// quarantine へ隔離してよい。
+	// When a replay worker detects this error, it may move that processing
+	// file to quarantine.
 	//
-	// 例:
-	// - NDJSON として壊れている
-	// - JSON decode できない行がある
-	// - SpoolRecord として復元できない
-	// - 必須項目が欠落している
+	// Examples:
+	// - the file is corrupt as NDJSON
+	// - a line cannot be decoded as JSON
+	// - the file cannot be restored as a SpoolRecord
+	// - a required item is missing
 	ErrInvalidSpoolFile = errors.New("invalid spool file")
 
-	// ErrEmptySpoolFile は、spool file が空であることを表す。
+	// ErrEmptySpoolFile reports that the spool file is empty.
 	//
-	// 空ファイルは通常の再送対象ではないため、基本的には
-	// ErrInvalidSpoolFile と同じく quarantine 対象にする。
+	// An empty file is not a regular target for a resend, so as a rule it is
+	// quarantined in the same way as ErrInvalidSpoolFile.
 	ErrEmptySpoolFile error = invalidSpoolFileDetail("empty spool file")
 
-	// ErrMalformedSpoolJSON は、spool file 内の JSON / NDJSON が壊れていることを表す。
+	// ErrMalformedSpoolJSON reports that the JSON or NDJSON in the spool file is
+	// corrupt.
 	//
-	// 例:
-	// - 1行が JSON として decode できない
-	// - NDJSON の途中行が破損している
+	// Examples:
+	// - a line cannot be decoded as JSON
+	// - a line in the middle of the NDJSON is corrupt
 	ErrMalformedSpoolJSON error = invalidSpoolFileDetail("malformed spool json")
 
-	// ErrInvalidSpoolRecord は、JSON としては読めたが SpoolRecord として不正なことを表す。
+	// ErrInvalidSpoolRecord reports that a record could be read as JSON but is
+	// invalid as a SpoolRecord.
 	//
-	// 例:
-	// - OccurredAt が zero
-	// - Payload が空
-	// - Payload が JSON として不正
+	// Examples:
+	// - OccurredAt is zero
+	// - Payload is empty
+	// - Payload is invalid as JSON
 	ErrInvalidSpoolRecord error = invalidSpoolFileDetail("invalid spool record")
 
-	// ErrInvalidSpoolState は、未知または不正な spool state を表す。
+	// ErrInvalidSpoolState reports an unknown or invalid spool state.
 	//
-	// 例:
-	// - "active", "processing", "done", "dead", "quarantine" 以外の state
+	// Examples:
+	// - a state other than "active", "processing", "done", "dead" and "quarantine"
 	ErrInvalidSpoolState = errors.New("invalid spool state")
 
-	// ErrSpoolOperation は、spool に対する操作失敗の親 error。
+	// ErrSpoolOperation is the parent error of failed operations on the spool.
 	//
-	// I/O、path validation、state 移動、split 書き込みなど、
-	// spool file の形式不正ではなく、操作として失敗した error の分類に使う。
+	// It classifies errors in which an operation failed, such as I/O, path
+	// validation, state moves, split writes and decoding. A decode failure
+	// caused by an invalid spool file also matches ErrInvalidSpoolFile.
 	ErrSpoolOperation = errors.New("spool operation failed")
 
-	// ErrListProcessingSpoolFiles は、processing 配下の spool file 一覧取得に失敗したことを表す。
+	// ErrListProcessingSpoolFiles reports a failure to list the spool files
+	// under processing.
 	ErrListProcessingSpoolFiles error = spoolOperationDetail("list processing spool files")
 
-	// ErrValidateProcessingSpoolFilePath は、processing spool file path の検証に失敗したことを表す。
+	// ErrValidateProcessingSpoolFilePath reports a failure to validate a
+	// processing spool file path.
 	ErrValidateProcessingSpoolFilePath error = spoolOperationDetail("validate processing spool file path")
 
-	// ErrReadProcessingSpoolFile は、processing spool file の読み込みに失敗したことを表す。
+	// ErrReadProcessingSpoolFile reports a failure to read a processing spool
+	// file.
 	//
-	// これは I/O error の分類であり、spool file の形式不正を意味しない。
+	// It classifies an I/O error and does not mean that the spool file has an
+	// invalid format.
 	ErrReadProcessingSpoolFile error = spoolOperationDetail("read processing spool file")
 
-	// ErrDecodeProcessingSpoolFile は、processing spool file の decode に失敗したことを表す。
+	// ErrDecodeProcessingSpoolFile reports a failure to decode a processing
+	// spool file.
 	//
-	// 下位 error として ErrInvalidSpoolFile 系が含まれる場合、
-	// worker はその file を quarantine へ隔離してよい。
+	// When its underlying errors include an error of the ErrInvalidSpoolFile
+	// kind, the replay worker may move that file to quarantine.
 	ErrDecodeProcessingSpoolFile error = spoolOperationDetail("decode processing spool file")
 
-	// ErrMoveProcessingSpoolFileToDone は、processing spool file の done 移動に失敗したことを表す。
+	// ErrMoveProcessingSpoolFileToDone reports a failure to move a processing
+	// spool file to done.
 	ErrMoveProcessingSpoolFileToDone error = spoolOperationDetail("move processing spool file to done")
 
-	// ErrMoveProcessingSpoolFileToDead は、processing spool file の dead 移動に失敗したことを表す。
+	// ErrMoveProcessingSpoolFileToDead reports a failure to move a processing
+	// spool file to dead.
 	ErrMoveProcessingSpoolFileToDead error = spoolOperationDetail("move processing spool file to dead")
 
-	// ErrMoveProcessingSpoolFileToQuarantine は、processing spool file の quarantine 移動に失敗したことを表す。
+	// ErrMoveProcessingSpoolFileToQuarantine reports a failure to move a
+	// processing spool file to quarantine.
 	ErrMoveProcessingSpoolFileToQuarantine error = spoolOperationDetail("move processing spool file to quarantine")
 
-	// ErrRemoveProcessingSpoolFile は、processing spool file の削除に失敗したことを表す。
+	// ErrRemoveProcessingSpoolFile reports a failure to remove a processing
+	// spool file.
 	ErrRemoveProcessingSpoolFile error = spoolOperationDetail("remove processing spool file")
 
-	// ErrStoreProcessingRecordsToDone は、processing file の一部 records を done に再退避する処理に失敗したことを表す。
+	// ErrStoreProcessingRecordsToDone reports a failure to re-save some records
+	// of a processing file to done.
 	ErrStoreProcessingRecordsToDone error = spoolOperationDetail("store processing records to done")
 
-	// ErrStoreProcessingRecordsToDead は、processing file の一部 records を dead に再退避する処理に失敗したことを表す。
+	// ErrStoreProcessingRecordsToDead reports a failure to re-save some records
+	// of a processing file to dead.
 	ErrStoreProcessingRecordsToDead error = spoolOperationDetail("store processing records to dead")
 
-	// ErrStoreProcessingRecordsToQuarantine は、processing file の一部 records を quarantine に再退避する処理に失敗したことを表す。
+	// ErrStoreProcessingRecordsToQuarantine reports a failure to re-save some
+	// records of a processing file to quarantine.
 	ErrStoreProcessingRecordsToQuarantine error = spoolOperationDetail("store processing records to quarantine")
 
-	// ErrInvalidProcessingSplitDestinationState は、processing file の split 保存先として不正な state を表す。
+	// ErrInvalidProcessingSplitDestinationState reports a state that is
+	// invalid as the destination for saving a split of a processing file.
 	//
-	// State としては valid でも、processing split の保存先として許可しない state があるため、
-	// ErrInvalidSpoolState とは分ける。
+	// Some states are valid as a State but are not allowed as the destination
+	// of a processing split, so this error is separate from
+	// ErrInvalidSpoolState.
 	ErrInvalidProcessingSplitDestinationState error = spoolOperationDetail("invalid processing split destination state")
 
-	// ErrResolveDestinationSpoolStateDir は、split 保存先 state dir の解決に失敗したことを表す。
+	// ErrResolveDestinationSpoolStateDir reports a failure to resolve the state
+	// dir of a split destination.
 	ErrResolveDestinationSpoolStateDir error = spoolOperationDetail("resolve destination spool state dir")
 
-	// ErrBuildSpoolNDJSON は、SpoolRecord から NDJSON body を構築できなかったことを表す。
+	// ErrBuildSpoolNDJSON reports that an NDJSON body could not be built from
+	// SpoolRecord values.
 	ErrBuildSpoolNDJSON error = spoolOperationDetail("build spool ndjson")
 
-	// ErrWriteSplitSpoolFile は、split 後の spool file 書き込みに失敗したことを表す。
+	// ErrWriteSplitSpoolFile reports a failure to write a spool file after a
+	// split.
 	ErrWriteSplitSpoolFile error = spoolOperationDetail("write split spool file")
 )
 
-// spool に保存する 1 件分のレコード。
-// 再送待ち・一時退避・dead/quarantine 退避などの共通保存形式として扱う。
+// SpoolRecord is one record saved in the spool. It is the common storage
+// format for records waiting for a resend, records set aside temporarily,
+// records set aside in dead or quarantine, and so on.
 type SpoolRecord struct {
-	OccurredAt  time.Time // sender から渡された時刻
-	FinalizedAt time.Time // done, dead, quarantine に移動した時刻
+	OccurredAt  time.Time // time the delivery failed, or was attempted when the failure time is unknown
+	FinalizedAt time.Time // time the record was moved to done, dead or quarantine
 
 	FirstResendAttemptedAt time.Time
 	LastResendAttemptedAt  time.Time
 	ResendAttemptCount     int
 
-	// NotBeforeは、このrecordをbackendへ再送してよい最も早い時刻です。backendが
-	// Retry-Afterで待機を指定した場合に、Workerが再送待ちへ戻すrecordへ保存します。
-	// zero valueは制限なしを表し、このfieldを持たない既存のspool fileも従来どおり再送します。
-	// 期限を過ぎた値は再送を制限しないため、done・dead・quarantineへの保存時も変更しません。
-	// 読み込んだ時点から再送待機の上限より先の値は、その時点から上限までに短縮します。
+	// NotBefore is the earliest time at which this record may be resent to the
+	// backend. When the backend specifies a wait with Retry-After, the replay
+	// worker saves it in the records that it returns to waiting for a resend. The
+	// zero value means no restriction, and existing spool files without this
+	// field are also resent as before. A value whose deadline has passed does
+	// not restrict resends, so it is not changed when the record is saved to
+	// done, dead or quarantine either. A value further away than the maximum
+	// resend wait from the time it is loaded is shortened to that maximum from
+	// that time.
 	NotBefore time.Time `json:",omitzero"`
 
-	RequestID string          // 相関・追跡用の識別子。再送自体には不要
-	Payload   json.RawMessage // backend への再送に利用する本文
+	RequestID string          // identifier for correlation and tracing; not needed for the resend itself
+	Payload   json.RawMessage // body used for the resend to the backend
 
-	// InitialFailureOperationからInitialFailureReasonまでは、recordが最初にspoolへ
-	// 保存された失敗を保持します。LastFailureReasonは再送で得た最新の失敗理由へ更新されます。
-	// いずれも調査用であり、再送payloadの生成には使用しません。
+	// InitialFailureOperation through InitialFailureReason hold the failure
+	// with which the record was first saved to the spool. LastFailureReason is
+	// updated to the latest failure reason obtained from a resend. All of them
+	// are for investigation and are not used to build the resend payload.
 	InitialFailureOperation  string `json:",omitempty"`
 	InitialFailureStatusCode int    `json:",omitempty"`
 	InitialFailureCode       string `json:",omitempty"`

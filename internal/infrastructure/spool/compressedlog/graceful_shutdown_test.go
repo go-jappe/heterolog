@@ -9,9 +9,9 @@ import (
 	"time"
 
 	objectstoragespool "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/objectstorage"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	replaytest "github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog/internal/testutil"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 
 	"github.com/stretchr/testify/require"
@@ -45,7 +45,7 @@ func TestRootRuntimeGracefulCloseDrainsAcceptedReplayAndNotification(t *testing.
 		synctest.Wait()
 		time.Sleep(time.Second)
 		<-uploadEntered
-		require.NoError(t, runtime.Close()) // Release the root owner; the route still owns its accepted work.
+		require.NoError(t, runtime.Close()) // root ownerを解放します。受理済みの処理は引き続きrouteが所有します。
 		closed := make(chan error, 1)
 		go func() { closed <- route.Close() }()
 		synctest.Wait()
@@ -123,10 +123,10 @@ func TestForceCloseReleasesWaitsAndRetainsInFlightResources(t *testing.T) {
 		closed := make(chan error, 1)
 		go func() { closed <- route.Close() }()
 		synctest.Wait()
-		require.ErrorIs(t, route.RequestForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, runtime.RequestForceClose(), shutdown.ErrForcedClose)
-		require.ErrorIs(t, <-closed, shutdown.ErrForcedClose)
-		require.ErrorIs(t, runtime.Close(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, route.RequestForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, runtime.RequestForceClose(), pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, <-closed, pkgshutdown.ErrForcedClose)
+		require.ErrorIs(t, runtime.Close(), pkgshutdown.ErrForcedClose)
 		synctest.Wait()
 		require.False(t, route.ShutdownComplete())
 		require.False(t, runtime.ShutdownComplete())
@@ -156,14 +156,14 @@ func TestRouteForceCancelsItsUploadWithoutCancelingOtherRoutes(t *testing.T) {
 		synctest.Wait()
 		time.Sleep(time.Second)
 		<-entered
-		require.ErrorIs(t, first.ForceClose(), shutdown.ErrForcedClose)
+		require.ErrorIs(t, first.ForceClose(), pkgshutdown.ErrForcedClose)
 		<-first.ShutdownDone()
 		require.False(t, runtime.closeController.IsForced(), "forcing one route must not force its shared root")
 		_, err = second.SaveRetryableFailure(context.Background(), replaytest.WriteSource(t, "second_20261020_1.log.gz"))
 		require.NoError(t, err)
 		synctest.Wait()
-		// The first route's requeued file stays active. Remove it from consideration by aging
-		// the second file ahead of it, so the next actual replay exercises the live route.
+		// 最初のrouteでrequeueされたfileはactiveに残ります。2番目のfileをそれより古くして
+		// 前に並べることで最初のfileを対象から外し、次の実際のreplayが稼働中のrouteを通るようにします。
 		files, err := runtime.store.ListFiles(context.Background(), pkgspool.StateActive)
 		require.NoError(t, err)
 		for _, file := range files {
@@ -185,14 +185,14 @@ func TestRootForceRequestRejectsNewRoutesBeforeClose(t *testing.T) {
 	first, err := runtime.RegisterRoute(stateTestRouteConfig(), &replaytest.Uploader{})
 	require.NoError(t, err)
 	defer first.Close()
-	require.ErrorIs(t, runtime.RequestForceClose(), shutdown.ErrForcedClose)
+	require.ErrorIs(t, runtime.RequestForceClose(), pkgshutdown.ErrForcedClose)
 	_, err = runtime.RegisterRoute(stateTestRouteConfig(), &replaytest.Uploader{})
 	require.ErrorIs(t, err, ErrRootRuntimeClosed)
-	// addRoute rechecks admission after filesystem preparation, which may overlap force.
+	// addRouteは、forceと重なる可能性があるfilesystemの準備の後で、admissionを再確認します。
 	err = runtime.addRoute(&ManagedRoute{}, stateTestRouteConfig().FileName, &replaytest.Uploader{}, nil, nil)
 	require.ErrorIs(t, err, ErrRootRuntimeClosed)
 	require.NoError(t, first.Close())
-	require.ErrorIs(t, runtime.Close(), shutdown.ErrForcedClose)
+	require.ErrorIs(t, runtime.Close(), pkgshutdown.ErrForcedClose)
 	<-runtime.ShutdownDone()
 }
 
@@ -238,7 +238,7 @@ func TestRouteForceCancelsItsNotificationWithoutCancelingOtherRoutes(t *testing.
 					close(reported)
 				}()
 				<-entered
-				require.ErrorIs(t, first.ForceClose(), shutdown.ErrForcedClose)
+				require.ErrorIs(t, first.ForceClose(), pkgshutdown.ErrForcedClose)
 				require.ErrorIs(t, <-canceled, context.Canceled)
 				<-reported
 				<-first.ShutdownDone()

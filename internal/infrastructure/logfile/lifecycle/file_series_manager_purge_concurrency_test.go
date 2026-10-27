@@ -16,6 +16,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgclock "github.com/go-jappe/heterolog/pkg/clock"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
 )
 
@@ -174,8 +175,8 @@ type purgeConcurrencyTracer struct {
 func (t purgeConcurrencyTracer) StartSpan(
 	ctx context.Context,
 	name string,
-	attrs ...observer.Attr,
-) (context.Context, observer.Span) {
+	attrs ...pkgobserver.Attr,
+) (context.Context, pkgobserver.Span) {
 	if name == t.spanName {
 		t.beforeStart()
 	}
@@ -196,7 +197,7 @@ func purgeConcurrencySpanName(step string) string {
 func newPurgeConcurrencyManager(
 	t *testing.T,
 	step string,
-	tracer observer.Tracer,
+	tracer pkgobserver.Tracer,
 ) (*FileSeriesManager, []string, map[string]struct{}) {
 	t.Helper()
 	root := resolvedTempDirForTest(t)

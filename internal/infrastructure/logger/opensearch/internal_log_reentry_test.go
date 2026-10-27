@@ -15,6 +15,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgclock "github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
 
 	"github.com/stretchr/testify/require"
@@ -80,14 +81,14 @@ func TestOpenSearchLoggerNoBulkHandlerWriteDoesNotRedispatchIndexDelay(t *testin
 				)
 				require.NoError(t, err)
 				t.Cleanup(func() { require.NoError(t, logger.Close(context.Background())) })
-				unexpected := func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				unexpected := func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					t.Errorf("unexpected %v internal log notification: %s", entry.Level, entry.Message)
 				}
 				logger.OnWarn, logger.OnInfo, logger.OnDebug = unexpected, unexpected, unexpected
 				probe := reentrytest.NewProbe(t)
 				var mu sync.Mutex
 				var nestedErrs []error
-				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					depth, ok := probe.Enter()
 					defer probe.Exit()
 					if !ok {
@@ -144,7 +145,7 @@ func TestDeliveryOpenSearchLoggerHandlerWriteDoesNotRedispatchIndexDelay(t *test
 				probe := reentrytest.NewProbe(t)
 				var mu sync.Mutex
 				var nestedStatuses []pkglogger.DeliveryStatus
-				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					depth, ok := probe.Enter()
 					defer probe.Exit()
 					if !ok {
@@ -210,15 +211,15 @@ func TestOpenSearchLoggerReentrantDirectWriteAppliesLogLevel(t *testing.T) {
 				)
 				require.NoError(t, err)
 				t.Cleanup(func() { require.NoError(t, logger.Close(context.Background())) })
-				unexpected := func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				unexpected := func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					t.Errorf("unexpected %v internal log notification: %s", entry.Level, entry.Message)
 				}
 				logger.OnInfo, logger.OnDebug = unexpected, unexpected
-				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					t.Errorf("unexpected error internal log notification: %v", err)
 				}
 				probe := reentrytest.NewProbe(t)
-				logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+				logger.OnWarn = func(ctx context.Context, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 					depth, ok := probe.Enter()
 					defer probe.Exit()
 					if !ok {
@@ -262,13 +263,13 @@ func TestOpenSearchLoggerBulkFlushNotifiesAfterReleasingFlushLock(t *testing.T) 
 				observer.NopTracer{}, observer.NopMeter{}, nil,
 			)
 			require.NoError(t, err)
-			unexpected := func(_ context.Context, entry *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			unexpected := func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				t.Errorf("unexpected %v internal log notification: %s", entry.Level, entry.Message)
 			}
 			logger.OnWarn, logger.OnInfo, logger.OnDebug = unexpected, unexpected, unexpected
 			probe := reentrytest.NewProbe(t)
 			var heldDuringNotification atomic.Bool
-			logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+			logger.OnError = func(ctx context.Context, _ error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 				if logger.flushMu.TryLock() {
 					logger.flushMu.Unlock()
 				} else {

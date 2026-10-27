@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
-	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	pkgshutdown "github.com/go-jappe/heterolog/pkg/shutdown"
 )
 
 type retryLifecycleStub struct {
@@ -40,7 +40,7 @@ func (lifecycle *retryLifecycleStub) ForceClose() error {
 	if lifecycle.force != nil {
 		lifecycle.force()
 	}
-	return shutdown.ErrForcedClose
+	return pkgshutdown.ErrForcedClose
 }
 
 func (lifecycle *retryLifecycleStub) CloseObjectStorageCompressedLogFileUploadFailureRoutes() error {
@@ -177,7 +177,7 @@ func TestRetryRecoveryForceWaitsForAcceptedIO(t *testing.T) {
 		}
 		releaseIO()
 		err := boundedwait.ReceiveInBubble(t, returned, "the forced recovery")
-		require.ErrorIs(t, err, shutdown.ErrForcedClose)
+		require.ErrorIs(t, err, pkgshutdown.ErrForcedClose)
 		require.Equal(t, 1, lifecycle.runs)
 		require.Equal(t, 1, lifecycle.closes)
 		require.GreaterOrEqual(t, lifecycle.forces, 1)
@@ -207,7 +207,7 @@ func TestRetryRecoveryForcesOwnerPublishedAfterForceRequest(t *testing.T) {
 		close(force)
 		synctest.Wait()
 		close(release)
-		require.ErrorIs(t, <-returned, shutdown.ErrForcedClose)
+		require.ErrorIs(t, <-returned, pkgshutdown.ErrForcedClose)
 		// ForceCloseは繰り返し呼べる契約なので、回数ではなく強制停止が届いたことを確認します。
 		require.GreaterOrEqual(t, lifecycle.forces, 1)
 		require.Equal(t, 1, lifecycle.closes)
@@ -251,7 +251,7 @@ func TestRetryRecoveryDoesNotStartAfterForceRequest(t *testing.T) {
 		t.Error("強制停止済みの処理を開始しない")
 		return nil, errors.New("unexpected recovery start")
 	}}}, Options{Retry: true, ForceStop: force})
-	require.ErrorIs(t, err, shutdown.ErrForcedClose)
+	require.ErrorIs(t, err, pkgshutdown.ErrForcedClose)
 }
 
 func TestRetryRecoveryForceReachesOwnerWhileCloseWaitsForSave(t *testing.T) {
@@ -262,7 +262,7 @@ func TestRetryRecoveryForceReachesOwnerWhileCloseWaitsForSave(t *testing.T) {
 			run: func(context.Context, int) (logfilelifecycle.RunReport, error) {
 				return logfilelifecycle.RunReport{DirectoryPath: "/logs"}, nil
 			},
-			close: func() error { close(closing); <-savedOrForced; return shutdown.ErrForcedClose },
+			close: func() error { close(closing); <-savedOrForced; return pkgshutdown.ErrForcedClose },
 			// 実際のForceCloseと同じく、繰り返し呼ばれても一度だけ解除します。
 			force: sync.OnceFunc(func() { close(savedOrForced) }),
 		}
@@ -274,7 +274,7 @@ func TestRetryRecoveryForceReachesOwnerWhileCloseWaitsForSave(t *testing.T) {
 		}()
 		<-closing
 		close(force)
-		require.ErrorIs(t, <-returned, shutdown.ErrForcedClose)
+		require.ErrorIs(t, <-returned, pkgshutdown.ErrForcedClose)
 		require.Equal(t, 1, lifecycle.closes)
 		require.GreaterOrEqual(t, lifecycle.forces, 1)
 	})

@@ -62,7 +62,7 @@ func TestInlineRawCursorRetriesInactiveFilesAndRetainsCompletedRaw(t *testing.T)
 		require.Equal(t, 3, retrying.attemptCount())
 		require.Empty(t, retainPendingArchiveGroupsForTest(t, logger, []string{raw}), "completed raw does not remain pending")
 
-		// Restart and a later compressed representation share the same completion.
+		// 再起動しても、後から現れた圧縮表現は同じ完了を共有します。
 		require.NoError(t, store.Close())
 		logger.archiveUploadCheckpoints = newCompressedLogCheckpointTestStore(t, directory, "raw_cursor")
 		peer := raw + ".gz"

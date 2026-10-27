@@ -360,8 +360,8 @@ func (s *CloudWatchLogsSpoolSender) putEvents(
 		return report, errors.Join(splitErrs...)
 	}
 
-	// Keep known responses authoritative when cancellation races their return.
-	// A context error from an attempted request cannot establish acceptance.
+	// cancelが応答の返却と競合しても、既知の応答を判断の根拠とします。
+	// 試行したrequestのcontext errorから受理を確定することはできません。
 	decision := cloudwatchlogs.ClassifyDurableRequestOutcome(ctx, err)
 	ctxErr := ctx.Err()
 	status := spool.RecordOutcomeStatusPermanent

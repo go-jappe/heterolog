@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/go-jappe/heterolog/internal/config/renamedkey"
+	pkgenv "github.com/go-jappe/heterolog/pkg/env"
 )
 
 // TestRenamedEnvironmentKeyCoversEveryPublicRenamedKeyは、公開例に掲載した綴り修正後の
@@ -74,6 +75,12 @@ func TestLoadConfigRejectsRenamedEnvironmentKeys(t *testing.T) {
 			oldKey: "HETEROLOG_MAX_ASYNC_LOKI_SPOOL_SCAN" + "ED_CACHE_USAGE_COUNT", newKey: "HETEROLOG_MAX_ASYNC_LOKI_SPOOL_SCANNED_CACHE_USAGE_COUNT",
 			value: "10",
 		},
+		{
+			// 初回を含む試行回数だった旧名は、再試行の回数の新しいkeyへ意味を変えて改名しました。
+			name:   "retry attempts renamed to retries",
+			oldKey: "HETEROLOG_MAX_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_ATTEM" + "PTS", newKey: "HETEROLOG_MAX_DELIVERY_OPENSEARCH_RETRYABLE_CLIENT_RETRIES",
+			value: "3",
+		},
 	}
 	for _, tt := range tests {
 		oldKey := tt.oldKey
@@ -82,7 +89,7 @@ func TestLoadConfigRejectsRenamedEnvironmentKeys(t *testing.T) {
 		}
 		assertRenamedKeyError := func(t *testing.T, err error) {
 			t.Helper()
-			var renamedErr *RenamedEnvironmentKeyError
+			var renamedErr *pkgenv.RenamedEnvironmentKeyError
 			if !errors.As(err, &renamedErr) || renamedErr.Old != oldKey || renamedErr.New != tt.newKey {
 				t.Fatalf("LoadConfig() error = %v, want %s renamed to %s", err, oldKey, tt.newKey)
 			}

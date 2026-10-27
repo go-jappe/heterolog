@@ -11,11 +11,12 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 func TestSelectConfiguredHandlersSelectsSourcesIndependentlyForEachLevel(t *testing.T) {
-	errorHandler := func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {}
-	levelHandler := func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {}
+	errorHandler := func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {}
+	levelHandler := func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {}
 	available := handlerStruct{
 		OnError: []logging.NamedLoggerErrorHandler{
 			{Name: " stdout ", Handler: errorHandler},
@@ -58,8 +59,8 @@ func TestSelectConfiguredHandlersSelectsSourcesIndependentlyForEachLevel(t *test
 }
 
 func TestSelectConfiguredHandlersReturnsEmptySelectionForNilConfig(t *testing.T) {
-	errorHandler := func(context.Context, error, *logging.LogEntry, observer.Tracer, observer.Meter) {}
-	levelHandler := func(context.Context, *logging.LogEntry, observer.Tracer, observer.Meter) {}
+	errorHandler := func(context.Context, error, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {}
+	levelHandler := func(context.Context, *logging.LogEntry, pkgobserver.Tracer, pkgobserver.Meter) {}
 	available := handlerStruct{
 		OnError: []logging.NamedLoggerErrorHandler{{Name: "stdout", Handler: errorHandler}},
 		OnWarn:  []logging.NamedLoggerHandler{{Name: "stdout", Handler: levelHandler}},
@@ -91,8 +92,8 @@ func TestFailureStoreInternalLogHandlerFactoryBuildsFreshCandidatesForEachStore(
 				Handler: func(
 					context.Context,
 					*logging.LogEntry,
-					observer.Tracer,
-					observer.Meter,
+					pkgobserver.Tracer,
+					pkgobserver.Meter,
 				) {
 					calledBuilds = append(calledBuilds, currentBuild)
 				},

@@ -13,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
@@ -21,6 +20,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile/processing"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // newContentVerifyingFailureArchivePipelineは、組み込みgzip codecで既存peerを展開し、
@@ -31,7 +31,7 @@ func newContentVerifyingFailureArchivePipeline(t *testing.T, now time.Time) (*Fa
 	require.NoError(t, err)
 	pipeline := newInlineFailureArchiveRecoveryPipeline(t, now, codec)
 	reported := make(chan error, 32)
-	pipeline.handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ observer.Tracer, _ observer.Meter) {
+	pipeline.handler.OnError = func(_ context.Context, err error, _ *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		select {
 		case reported <- err:
 		default:

@@ -2,9 +2,11 @@ package objectstorage
 
 import "time"
 
-// CompressedLogFileUploadSpoolConfigProviderは、圧縮ログの再送用spoolの設定を供給します。
-// 設定の具体型と保持方法は構築側が決めます。共有するruntimeは解決済みの保存先で識別し、
-// このproviderの値やポインタを識別子には使いません。
+// CompressedLogFileUploadSpoolConfigProvider supplies the settings of the
+// spool that retries uploads of compressed logs. The constructing side decides
+// the concrete type of the settings and how they are held. A shared runtime is
+// identified by its resolved storage location; the value or pointer of this
+// provider is not used as the identifier.
 type CompressedLogFileUploadSpoolConfigProvider interface {
 	SpoolPath() string
 	Target() string
@@ -12,14 +14,16 @@ type CompressedLogFileUploadSpoolConfigProvider interface {
 	RunnerInterval() time.Duration
 	LifecycleInterval() time.Duration
 	CircuitBreakerOpenCooldown() time.Duration
-	// MaxRetryAfterは、upload先がRetry-Afterで指定した宛先別の再送待機の上限です。
+	// MaxRetryAfter returns the limit of the per-destination retry wait that
+	// an upload destination asks for with Retry-After.
 	MaxRetryAfter() time.Duration
 	DonePurge() CompressedLogFileUploadSpoolPurgeConfigProvider
 	DeadPurge() CompressedLogFileUploadSpoolPurgeConfigProvider
 	QuarantinePurge() CompressedLogFileUploadSpoolPurgeConfigProvider
 }
 
-// CompressedLogFileUploadSpoolPurgeConfigProviderは、再送処理を終えた一つのstateの保持設定です。
+// CompressedLogFileUploadSpoolPurgeConfigProvider provides the retention
+// settings of one state that files reach when their retry processing ends.
 type CompressedLogFileUploadSpoolPurgeConfigProvider interface {
 	Enabled() bool
 	MaxFileAgeDays() int

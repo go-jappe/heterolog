@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
-	configspool "github.com/go-jappe/heterolog/internal/config/spool"
 	infraclickhouse "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/clickhouse"
 	infracloudwatchlogs "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/cloudwatchlogs"
 	infraloki "github.com/go-jappe/heterolog/internal/infrastructure/logbackend/loki"
@@ -29,6 +27,8 @@ import (
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
 var (
@@ -175,9 +175,9 @@ type failureSpoolPipelinePlan struct {
 // 対象directoryのLeaseを解放します。
 func NewFailureSpoolRecoveryRuntime(
 	loggerConfigs FailureSpoolRecoveryConfigs,
-	spoolConfig *configspool.SpoolConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	spoolConfig *pkgspool.SpoolConfig,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	options ...FailureSpoolRecoveryOption,
 ) (*FailureSpoolRuntime, error) {
 	var recoveryOptions failureSpoolRecoveryOptions
@@ -286,9 +286,9 @@ func buildFailureSpoolPipelinePlan(
 
 func buildFailureSpoolRuntime(
 	plan []failureSpoolPipelinePlan,
-	spoolConfig *configspool.SpoolConfig,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	spoolConfig *pkgspool.SpoolConfig,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (*FailureSpoolRuntime, error) {
 	runtime := &FailureSpoolRuntime{runners: make([]failureSpoolRunnerRuntime, 0, len(plan))}
 	for _, planned := range plan {
@@ -308,7 +308,7 @@ func buildFailureSpoolRuntime(
 			timeSource,
 			tracer,
 			meter,
-			func(ctx context.Context, entry *logging.LogEntry, tracer observer.Tracer, meter observer.Meter) {
+			func(ctx context.Context, entry *logging.LogEntry, tracer pkgobserver.Tracer, meter pkgobserver.Meter) {
 				if runner.storeOnWarn != nil {
 					runner.storeOnWarn(ctx, entry, tracer, meter)
 				}
@@ -458,10 +458,10 @@ func (r *FailureSpoolRuntime) ShutdownComplete() bool {
 func newBackendSpoolSupervisor(
 	backend pkglogger.LogOutputDestination,
 	loggerConfig pkglogger.LoggerConfig,
-	spoolConfig *configspool.SpoolConfig,
+	spoolConfig *pkgspool.SpoolConfig,
 	timeSource clock.Clock,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 	onWarn logging.LoggerHandlerFunc,
 	sender worker.Sender,
 ) (*infraspool.RunnerSupervisor, error) {

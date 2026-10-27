@@ -17,7 +17,7 @@ import (
 
 const defaultBatchSize = 1000
 
-// MetricsClient はメトリクス送信のインターフェース
+// MetricsClient is the interface for sending metrics.
 type MetricsClient interface {
 	Send(ctx context.Context, metrics []Metric) error
 	SendAsync(metrics []Metric) error
@@ -25,10 +25,10 @@ type MetricsClient interface {
 	Close() error
 }
 
-// ClientOption はクライアントの設定オプション
+// ClientOption is a configuration option for the client.
 type ClientOption func(*Client)
 
-// Client はVictoriaMetricsにメトリクスを送信するためのHTTPクライアント
+// Client is an HTTP client that sends metrics to VictoriaMetrics.
 type Client struct {
 	endpoint   string
 	httpClient *http.Client
@@ -52,7 +52,7 @@ type Client struct {
 	onError func(error)
 }
 
-// NewClient は新しいVictoriaMetricsクライアントを作成します
+// NewClient creates a new VictoriaMetrics client.
 func NewClient(endpoint string, opts ...ClientOption) *Client {
 	c := &Client{
 		endpoint:     endpoint,
@@ -96,18 +96,24 @@ func NewClient(endpoint string, opts ...ClientOption) *Client {
 	return c
 }
 
-// WithTimeout は同期・非同期送信それぞれのHTTPリクエストのタイムアウトを設定します。
-// 再送にも毎回同じ期限を適用します。0は期限を設けません。
-// WithHTTPClientで渡されたクライアントのTimeoutより優先します。
+// WithTimeout sets the timeout of each HTTP request for both synchronous and
+// asynchronous sends. Each retry gets a new timeout of the same length. Zero
+// sets no deadline. It takes precedence over the Timeout of a client passed
+// with WithHTTPClient.
 func WithTimeout(timeout time.Duration) ClientOption {
 	return func(c *Client) {
 		c.timeout = timeout
 	}
 }
 
-// WithRetry はリトライ設定を行います
-// 通信エラーと一時的なHTTPエラーだけを再送し、metricsの検証・変換や
-// request生成の失敗はrequestを送らずにすぐ返します。
+// WithRetry sets how many times a failed request is retried and the delay
+// between retries. maxRetries counts the retries after the first request:
+// with 1, a batch is sent at most twice; with 0, it is sent once and not
+// retried. A negative maxRetries makes Send and SendAsync return
+// ErrInvalidRetryCount. The wait before the nth retry is n times retryDelay.
+// Only communication errors and temporary HTTP errors are retried; failures to
+// validate or convert the metrics or to build the request return immediately
+// without sending a request.
 func WithRetry(maxRetries int, retryDelay time.Duration) ClientOption {
 	return func(c *Client) {
 		c.maxRetries = maxRetries
@@ -115,53 +121,59 @@ func WithRetry(maxRetries int, retryDelay time.Duration) ClientOption {
 	}
 }
 
-// WithBatchSize はバッチサイズを設定します
-// 0は既定値1000を使用します。負数ではSendとSendAsyncがエラーを返し、
-// 非同期ワーカーは起動しません。
+// WithBatchSize sets the batch size. Zero uses the default of 1000. With a
+// negative size, Send and SendAsync return an error and the asynchronous
+// workers are not started.
 func WithBatchSize(size int) ClientOption {
 	return func(c *Client) {
 		c.batchSize = size
 	}
 }
 
-// WithWorkerCount は非同期ワーカーの数を設定します
-// 0以下の場合は非同期ワーカーを起動せず、SendAsyncはエラーを返します。
-// 同期送信のSendは引き続き使用できます。
+// WithWorkerCount sets the number of asynchronous workers. If it is 0 or less,
+// no asynchronous workers are started and SendAsync returns an error. The
+// synchronous Send can still be used.
 func WithWorkerCount(count int) ClientOption {
 	return func(c *Client) {
 		c.workerCount = count
 	}
 }
 
-// WithErrorHandler はエラーハンドラーを設定します
+// WithErrorHandler sets the error handler.
 func WithErrorHandler(handler func(error)) ClientOption {
 	return func(c *Client) {
 		c.onError = handler
 	}
 }
 
-// WithFormatter はカスタムフォーマッターを設定します
+// WithFormatter sets a custom formatter.
 func WithFormatter(formatter MetricFormatter) ClientOption {
 	return func(c *Client) {
 		c.formatter = formatter
 	}
 }
 
-// WithHTTPClient はカスタムHTTPクライアントを設定します。
-// 設定はコピーし、Transport、Jar、CheckRedirectを引き継ぎます。
-// TimeoutにはWithTimeoutの値（未指定なら既定値）を使い、元の設定は変更しません。
-// メトリクス送信では、POSTのメソッドや本文を失うリダイレクトを停止します。
+// WithHTTPClient sets a custom HTTP client. Its settings are copied, keeping
+// Transport, Jar and CheckRedirect. Timeout is set to the WithTimeout value
+// (the default if it is not specified), and the original settings are not
+// modified. When sending metrics, redirects that would lose the POST method or
+// body are stopped.
 func WithHTTPClient(httpClient *http.Client) ClientOption {
 	return func(c *Client) {
 		c.httpClient = httpClient
 	}
 }
 
-// Send はメトリクスを同期的にVictoriaMetricsに送信します
-// batch sizeが0以下ならErrInvalidBatchSizeを返します。
+// Send sends metrics to VictoriaMetrics synchronously. It returns
+// ErrInvalidBatchSize if the batch size given with WithBatchSize is negative,
+// and ErrInvalidRetryCount if the retry count given with WithRetry is
+// negative.
 func (c *Client) Send(ctx context.Context, metrics []Metric) error {
 	if c.batchSize <= 0 {
 		return ErrInvalidBatchSize
+	}
+	if c.maxRetries < 0 {
+		return ErrInvalidRetryCount
 	}
 	if len(metrics) == 0 {
 		return nil
@@ -184,11 +196,12 @@ func (c *Client) Send(ctx context.Context, metrics []Metric) error {
 	return nil
 }
 
-// SendAsync はメトリクスを非同期的に送信します
-// 非同期ワーカーがない場合は、データを受理せずエラーを返します。
-// メトリクスと各Labelsをコピーするため、戻った後に呼び出し元は入力を再利用できます。
-// 呼び出し中は入力を変更しないでください。受け付けなかった理由はErrClientClosed、
-// ErrInvalidBatchSize、ErrInvalidWorkerCount、ErrAsyncChannelFullとerrors.Isで判別できます。
+// SendAsync sends metrics asynchronously. If there are no asynchronous workers,
+// it returns an error without accepting the data. It copies the metrics and
+// each Labels map, so the caller can reuse the input after it returns. Do not
+// modify the input during the call. Use errors.Is with ErrClientClosed,
+// ErrInvalidBatchSize, ErrInvalidRetryCount, ErrInvalidWorkerCount or
+// ErrAsyncChannelFull to tell why the metrics were not accepted.
 func (c *Client) SendAsync(metrics []Metric) error {
 	c.mu.RLock()
 	// 受付が終わるまでCloseによるasyncChのcloseを待たせます。
@@ -198,6 +211,9 @@ func (c *Client) SendAsync(metrics []Metric) error {
 	}
 	if c.batchSize <= 0 {
 		return ErrInvalidBatchSize
+	}
+	if c.maxRetries < 0 {
+		return ErrInvalidRetryCount
 	}
 	if c.workerCount <= 0 {
 		return ErrInvalidWorkerCount
@@ -225,7 +241,7 @@ func (c *Client) newEndpointRequest(ctx context.Context, method string, body io.
 	return http.NewRequestWithContext(ctx, method, c.endpoint, body)
 }
 
-// HealthCheck はVictoriaMetricsエンドポイントの可用性を確認します
+// HealthCheck checks the availability of the VictoriaMetrics endpoint.
 func (c *Client) HealthCheck(ctx context.Context) error {
 	req, err := c.newEndpointRequest(ctx, http.MethodGet, nil)
 	if err != nil {
@@ -246,9 +262,10 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// Closeは非同期送信の受付を停止し、受理済みqueue・worker内bufferの送信と
-// エラー通知を待ちます。複数の呼び出し元も同じworkerの終了を待ちます。
-// 直接呼び出したSendの終了待機は、その呼び出し元が管理します。
+// Close stops accepting asynchronous sends and waits until the accepted queue
+// and the buffers in the workers are sent and errors are reported. Multiple
+// callers all wait for the same workers to finish. Waiting for a Send called
+// directly to finish is up to its caller.
 func (c *Client) Close() error {
 	c.mu.Lock()
 	if c.closed {
@@ -335,8 +352,8 @@ func (c *Client) sendBatch(ctx context.Context, metrics []Metric) error {
 	return nil
 }
 
-// doPost keeps the caller's redirect policy while refusing redirects that drop
-// the submitted metrics. Returning the last response preserves its HTTP error.
+// doPostは呼び出し元のredirect policyを保ちつつ、送信するmetricsを落とすredirectを拒否します。
+// 最後のresponseを返すことで、そのHTTP errorを保ちます。
 func (c *Client) doPost(req *http.Request) (*http.Response, error) {
 	httpClient := *c.httpClient
 	checkRedirect := httpClient.CheckRedirect
@@ -416,19 +433,19 @@ func (c *Client) sendBufferedMetrics(metrics []Metric) {
 	}
 }
 
-// HTTPError はHTTPエラーの詳細情報を含むエラー
+// HTTPError is an error that contains the details of an HTTP error.
 type HTTPError struct {
 	StatusCode int
 	Status     string
 	Body       string
 }
 
-// Error はエラーメッセージを返します
+// Error returns the error message.
 func (e *HTTPError) Error() string {
 	return fmt.Sprintf("HTTP %d %s: %s", e.StatusCode, e.Status, e.Body)
 }
 
-// IsRetryable はリトライ可能なエラーかどうかを返します
+// IsRetryable reports whether the error is retryable.
 func (e *HTTPError) IsRetryable() bool {
 	// 5xx エラーと一部の4xxエラーはリトライ可能
 	return e.StatusCode >= 500 || e.StatusCode == 429 || e.StatusCode == 408

@@ -4,16 +4,16 @@ import (
 	"context"
 	"io"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 type LoggerErrorHandler func(
 	ctx context.Context,
 	err error,
 	entry *LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 )
 
 type NamedLoggerErrorHandler struct {
@@ -28,8 +28,8 @@ type NamedLoggerErrorHandler struct {
 type LoggerHandlerFunc func(
 	ctx context.Context,
 	entry *LogEntry,
-	tracer observer.Tracer,
-	meter observer.Meter,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 )
 
 type NamedLoggerHandler struct {

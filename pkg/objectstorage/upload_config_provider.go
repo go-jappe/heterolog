@@ -6,8 +6,10 @@ import (
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 )
 
-// LogFileUploadConfigProviderは、通常・error・debugのログ系列で使う送信設定を提供します。
-// 利用側は具体的な設定構造体を受け取らず、各ログ系列のproviderから必要な値を取得します。
+// LogFileUploadConfigProvider provides the upload settings used by the normal,
+// error and debug log series. Consumers do not receive the concrete
+// configuration struct; they obtain the values they need from the provider of
+// each log series.
 type LogFileUploadConfigProvider interface {
 	Enabled() bool
 	Default() UploadTargetConfigProvider
@@ -18,7 +20,8 @@ type LogFileUploadConfigProvider interface {
 	CompressedLogFileUploadSpoolServices(separateError, separateDebug bool) []UploadTarget
 }
 
-// UploadTargetConfigProviderは、一つのログ系列の送信先と、送信失敗時の退避設定を提供します。
+// UploadTargetConfigProvider provides the destinations of one log series and
+// the evacuation settings used when an upload fails.
 type UploadTargetConfigProvider interface {
 	Enabled() bool
 	Targets() []UploadTarget
@@ -29,7 +32,8 @@ type UploadTargetConfigProvider interface {
 	CompressedLogFileUploadSpoolServices() []UploadTarget
 }
 
-// S3ConfigProviderは、一つのS3宛先の接続・認証・保存先設定を提供します。
+// S3ConfigProvider provides the connection, authentication and storage
+// location settings of one S3 destination.
 type S3ConfigProvider interface {
 	Region() string
 	Endpoint() string
@@ -42,13 +46,16 @@ type S3ConfigProvider interface {
 	Timeout() time.Duration
 }
 
-// CompressedLogFileUploadFailureStoreConfigProviderは、送信に失敗した圧縮ログの退避方式と保存先を提供します。
+// CompressedLogFileUploadFailureStoreConfigProvider provides the evacuation
+// method and the storage location for compressed logs whose upload failed.
 type CompressedLogFileUploadFailureStoreConfigProvider interface {
 	DurableType() []failurestore.DurableType
 	FileArchiveConfig() CompressedLogFileUploadFailureArchiveConfigProvider
 }
 
-// CompressedLogFileUploadFailureArchiveConfigProviderは、再送せず保管する圧縮ログの保存先と保持設定を提供します。
+// CompressedLogFileUploadFailureArchiveConfigProvider provides the storage
+// location and the retention settings for compressed logs that are kept
+// without being retried.
 type CompressedLogFileUploadFailureArchiveConfigProvider interface {
 	RootPath() string
 	LoggerContract() string

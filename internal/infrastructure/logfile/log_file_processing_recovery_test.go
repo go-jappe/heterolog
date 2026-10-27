@@ -456,7 +456,7 @@ func TestLogFileProcessingRecoveryClosePreservesNotificationSnapshots(t *testing
 				boundedwait.SendOrReport(t, notified, state, "notification")
 			}
 		}, nil))
-		// Every notification remains blocked while all accepted retries drain.
+		// 受理済みのretryをすべて排出する間、通知はすべてblockされたままです。
 		require.NoError(t, boundedwait.CloseInBubble(t, "recovery.Close()", recovery.Close, recovery.ForceClose))
 		require.Equal(t, 3, attemptState)
 		require.Empty(t, notified)
