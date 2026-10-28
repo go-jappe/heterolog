@@ -42,7 +42,7 @@ func newCircuitBreakerClientWithCircuitBreaker(
 			CircuitBreaker: circuitBreaker,
 			Tracer:         tracer,
 			Meter:          meter,
-			EventName:      "loki.retry_decision",
+			EventName:      "heterolog.loki.retry_decision",
 			Classify:       retryclassifier.ClassifyRetry,
 		}),
 	}

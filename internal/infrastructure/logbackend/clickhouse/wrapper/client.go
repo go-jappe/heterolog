@@ -12,7 +12,7 @@ import (
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
-const spanNameInsertLogs = "internal.infrastructure.clickhouse.wrapper.insert_logs"
+const spanNameInsertLogs = "heterolog.clickhouse.insert.attempt"
 
 type Client interface {
 	InsertLogsWithOptions(ctx context.Context, records []clickhouse.LogRecord, opts clickhouse.InsertOptions) (*clickhouse.InsertResponse, error)
@@ -97,7 +97,7 @@ func (c *retryingClient) doWithRetry(ctx context.Context, name string, op func(c
 		}
 		nextDelay = c.retryDelay(attempt, dec)
 
-		span.AddEvent("clickhouse.retry_decision",
+		span.AddEvent("heterolog.clickhouse.retry_decision",
 			pkgobserver.Attr{Key: "reason", Value: string(dec.Reason)},
 			pkgobserver.Attr{Key: "attempt", Value: attempt},
 			pkgobserver.Attr{Key: "retry", Value: dec.Retry},

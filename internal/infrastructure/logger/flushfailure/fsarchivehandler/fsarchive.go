@@ -197,7 +197,7 @@ func (fh *FsArchiveHandler) tryCompressArchiveSource(
 	format := fh.Fsstore.GetCompressFormat()
 	span.SetAttributes(
 		pkgobserver.Attr{
-			Key:   "compress.format",
+			Key:   "heterolog.compress.format",
 			Value: string(format),
 		},
 	)

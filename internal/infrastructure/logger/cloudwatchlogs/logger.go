@@ -30,13 +30,13 @@ import (
 
 const (
 	// SpanCloudWatchLogsLoggerCreate は、CloudWatch Logs ロガーの生成処理に使用するスパン名です。
-	SpanCloudWatchLogsLoggerCreate = "internal.infrastructure.logger.cloudwatchlogs.create"
+	SpanCloudWatchLogsLoggerCreate = "heterolog.cloudwatchlogs.create"
 
 	// SpanCloudWatchLogsLoggerFlush は、バッファをフラッシュする処理に使用するスパン名です。
-	SpanCloudWatchLogsLoggerFlush = "internal.infrastructure.logger.cloudwatchlogs.flush"
+	SpanCloudWatchLogsLoggerFlush = "heterolog.cloudwatchlogs.flush"
 
 	// SpanCloudWatchLogsPut は、PutLogEvents の呼び出しに使用するスパン名です。
-	SpanCloudWatchLogsPut = "internal.infrastructure.logger.cloudwatchlogs.put"
+	SpanCloudWatchLogsPut = "heterolog.cloudwatchlogs.put_log_events"
 
 	deliveryBackendCloudWatchLogs = "cloudwatchlogs"
 )

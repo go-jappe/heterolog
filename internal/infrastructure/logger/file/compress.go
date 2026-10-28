@@ -39,7 +39,7 @@ func (l *FileLogger) tryCompressOldFile(
 		format := l.Fsstore.GetCompressFormat()
 		span.SetAttributes(
 			pkgobserver.Attr{
-				Key:   "compress.format",
+				Key:   "heterolog.compress.format",
 				Value: string(format),
 			},
 		)

@@ -44,7 +44,7 @@ func newCircuitBreakerClientWithCircuitBreaker(
 			CircuitBreaker: circuitBreaker,
 			Tracer:         tracer,
 			Meter:          meter,
-			EventName:      "clickhouse.retry_decision",
+			EventName:      "heterolog.clickhouse.retry_decision",
 			Classify:       retryclassifier.ClassifyRetry,
 		}),
 	}

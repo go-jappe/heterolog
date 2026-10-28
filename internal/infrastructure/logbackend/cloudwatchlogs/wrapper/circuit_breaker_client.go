@@ -44,7 +44,7 @@ func newCircuitBreakerClientWithCircuitBreaker(
 			CircuitBreaker: circuitBreaker,
 			Tracer:         tracer,
 			Meter:          meter,
-			EventName:      "cloudwatchlogs.retry_decision",
+			EventName:      "heterolog.cloudwatchlogs.retry_decision",
 			Classify:       retryclassifier.ClassifyRetry,
 		}),
 	}

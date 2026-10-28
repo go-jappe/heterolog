@@ -1,7 +1,7 @@
 package slack
 
 const (
-	SpanSlackLoggerCreate         = "infra.logger.slack.create"
-	SpanFallbackSlackLoggerCreate = "infra.fallbacklogger.slack.create"
-	SpanSlackLoggerSendBatch      = "infra.logger.slack.send"
+	SpanSlackLoggerCreate         = "heterolog.slack.create"
+	SpanFallbackSlackLoggerCreate = "heterolog.fallback.slack.create"
+	SpanSlackLoggerSendBatch      = "heterolog.slack.send"
 )

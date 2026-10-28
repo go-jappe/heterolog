@@ -207,7 +207,7 @@ func TestObserverMeterReceivesFileDropNotification(t *testing.T) {
 				}
 			}
 			meter.mu.Lock()
-			total := meter.totals["file_overload_drop_total"]
+			total := meter.totals["heterolog_file_dropped_entries_total"]
 			meter.mu.Unlock()
 			if total != 1 {
 				t.Fatalf("file drop notification total = %d, want 1", total)

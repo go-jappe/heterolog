@@ -1,14 +1,13 @@
 package fsarchivehandler
 
 const (
-	SpanFileCompress                 = "infra.logger.flushfailure.filearchive.compress"
-	SpanFileArchiveUpload            = "infra.logger.flushfailure.filearchive.upload"
-	SpanFailureArchivePipelineCreate = "infra.logger.flushfailure.filearchive.create"
-	SpanFileWrite                    = "infra.logger.flushfailure.filearchive.write"
-	SpanRetryableArchiveWrite        = "infra.logger.flushfailure.filearchive.retryable.write"
-	SpanPermanentArchiveWrite        = "infra.logger.flushfailure.filearchive.permanent.write"
-	SpanDelegate                     = "infra.logger.flushfailure.filearchive.delegate"
-	SpanFilePurgeByAge               = "infra.logger.failurearchive.purge.age"
-	SpanFilePurgeByGeneration        = "infra.logger.failurearchive.purge.generation"
-	SpanFilePurgeByDirectorySize     = "infra.logger.failurearchive.purge.dirsize"
+	SpanFileCompress                 = "heterolog.failurearchive.compress"
+	SpanFailureArchivePipelineCreate = "heterolog.failurearchive.create"
+	SpanFileWrite                    = "heterolog.failurearchive.write"
+	SpanRetryableArchiveWrite        = "heterolog.failurearchive.write.retryable"
+	SpanPermanentArchiveWrite        = "heterolog.failurearchive.write.permanent"
+	SpanDelegate                     = "heterolog.failurearchive.delegate"
+	SpanFilePurgeByAge               = "heterolog.failurearchive.purge.age"
+	SpanFilePurgeByGeneration        = "heterolog.failurearchive.purge.generation"
+	SpanFilePurgeByDirectorySize     = "heterolog.failurearchive.purge.dirsize"
 )

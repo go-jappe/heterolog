@@ -11,7 +11,7 @@ import (
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
-const spanNamePutLogEvents = "internal.infrastructure.cloudwatchlogs.wrapper.put_log_events"
+const spanNamePutLogEvents = "heterolog.cloudwatchlogs.put_log_events.attempt"
 
 type retryBackoffConfigProvider interface {
 	MaxAttempts() int
@@ -93,7 +93,7 @@ func (c *retryingClient) doWithRetry(ctx context.Context, name string, op func(c
 			break
 		}
 
-		span.AddEvent("cloudwatchlogs.retry_decision",
+		span.AddEvent("heterolog.cloudwatchlogs.retry_decision",
 			pkgobserver.Attr{Key: "reason", Value: string(dec.Reason)},
 			pkgobserver.Attr{Key: "attempt", Value: attempt},
 			pkgobserver.Attr{Key: "retry", Value: dec.Retry},

@@ -23,9 +23,9 @@ import (
 )
 
 const (
-	SpanLokiLoggerCreate = "internal.infrastructure.logger.loki.create"
-	SpanLokiLoggerFlush  = "internal.infrastructure.logger.loki.flush"
-	SpanLokiPush         = "internal.infrastructure.logger.loki.push"
+	SpanLokiLoggerCreate = "heterolog.loki.create"
+	SpanLokiLoggerFlush  = "heterolog.loki.flush"
+	SpanLokiPush         = "heterolog.loki.push"
 
 	deliveryBackendLoki = "loki"
 )

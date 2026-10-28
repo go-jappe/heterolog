@@ -56,7 +56,7 @@ func (c *RetryPolicyClient) IndexDocuments(
 	docs []opensearch.DocumentWriteRequest,
 ) (*opensearch.BulkResponse, error) {
 	var out *opensearch.BulkResponse
-	err := c.doWithPolicyRetry(ctx, spanNameFlush, func(opCtx context.Context) error {
+	err := c.doWithPolicyRetry(ctx, spanNameBulk, func(opCtx context.Context) error {
 		resp, err := c.next.IndexDocuments(opCtx, docs)
 		if err != nil {
 			return err
@@ -108,7 +108,7 @@ func (c *RetryPolicyClient) doWithPolicyRetry(ctx context.Context, name string, 
 		}
 
 		delay, ok := retryable.PolicyDelay(ctx, attempt, c.baseDelay(), c.maxDelay(), decision)
-		span.AddEvent("opensearch.retry_decision",
+		span.AddEvent("heterolog.opensearch.retry_decision",
 			pkgobserver.Attr{Key: "reason", Value: string(decision.Reason)},
 			pkgobserver.Attr{Key: "retry_class", Value: string(retryable.PolicyClass(decision))},
 			pkgobserver.Attr{Key: "attempt", Value: attempt},

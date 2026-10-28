@@ -248,8 +248,8 @@ func TestIndexDocumentsRetriesAndReturnsBulkResponse(t *testing.T) {
 	require.Len(t, client.bulkCalls, 2)
 	failed, retried := spanFromContext(t, client.bulkCalls[0].ctx), spanFromContext(t, client.bulkCalls[1].ctx)
 	assert.NotSame(t, failed, retried, "each attempt runs in its own span")
-	assert.Equal(t, spanNameFlush, failed.name)
-	assert.Equal(t, spanNameFlush, retried.name)
+	assert.Equal(t, spanNameBulk, failed.name)
+	assert.Equal(t, spanNameBulk, retried.name)
 	requireSpansEnded(t, tracer.spans)
 	require.Len(t, failed.events, 1)
 	assertRetryEvent(t, failed.events[0], retryable.RetryReasonEOF, 1, 0)
@@ -605,7 +605,7 @@ func TestCircuitBreakerClientSharesOpenStateAcrossOperations(t *testing.T) {
 	_, err = circuitClient.IndexDocuments(context.Background(), []opensearch.DocumentWriteRequest{doc})
 	var openErr *retryable.CircuitBreakerOpenError
 	require.ErrorAs(t, err, &openErr)
-	assert.Equal(t, spanNameFlush, openErr.Operation)
+	assert.Equal(t, spanNameBulk, openErr.Operation)
 	assert.Empty(t, client.bulkCalls, "bulk operation must be suppressed by the backend-wide open circuit breaker")
 }
 
@@ -660,7 +660,7 @@ func (c staticRetryBackoffConfig) MaxDelay() time.Duration  { return c.maxDelay 
 func assertRetryEvent(t *testing.T, event recordedEvent, wantReason retryable.RetryReason, wantAttempt, wantStatus int) {
 	t.Helper()
 
-	assert.Equal(t, "opensearch.retry_decision", event.name)
+	assert.Equal(t, "heterolog.opensearch.retry_decision", event.name)
 	assert.Equal(t, string(wantReason), attrValue(event.attrs, "reason"))
 	assert.Equal(t, wantAttempt, attrValue(event.attrs, "attempt"))
 	assert.Equal(t, true, attrValue(event.attrs, "retry"))

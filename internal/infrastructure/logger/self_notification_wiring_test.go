@@ -632,7 +632,7 @@ const (
 	// 先頭です（filelogger.ErrorMsgWriteLog）。
 	selfNotificationFileFallbackFailure = "failed to write log to file; err "
 	// selfNotificationFileOverloadDropCounterは、過負荷のdropを数えるcounterです。
-	selfNotificationFileOverloadDropCounter = "file_overload_drop_total"
+	selfNotificationFileOverloadDropCounter = "heterolog_file_dropped_entries_total"
 )
 
 // selfNotificationStdoutFallbackFailureは、標準出力の通知先の書き込みの失敗を標準loggerへ残す行の

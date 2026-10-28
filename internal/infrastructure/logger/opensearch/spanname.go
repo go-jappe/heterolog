@@ -1,6 +1,6 @@
 package opensearch
 
 const (
-	SpanOpenSearchLoggerFlush  = "infra.logger.opensearch.flush"
-	SpanOpenSearchLoggerCreate = "infra.logger.opensearch.create"
+	SpanOpenSearchLoggerFlush  = "heterolog.opensearch.flush"
+	SpanOpenSearchLoggerCreate = "heterolog.opensearch.create"
 )

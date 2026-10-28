@@ -87,7 +87,7 @@ func (c *retryPolicyClient) doWithPolicyRetry(ctx context.Context, name string, 
 		}
 
 		delay, ok := retryable.PolicyDelay(ctx, attempt, c.baseDelay(), c.maxDelay(), decision)
-		span.AddEvent("cloudwatchlogs.retry_decision",
+		span.AddEvent("heterolog.cloudwatchlogs.retry_decision",
 			pkgobserver.Attr{Key: "reason", Value: string(decision.Reason)},
 			pkgobserver.Attr{Key: "retry_class", Value: string(retryable.PolicyClass(decision))},
 			pkgobserver.Attr{Key: "attempt", Value: attempt},

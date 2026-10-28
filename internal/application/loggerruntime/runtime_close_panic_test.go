@@ -149,7 +149,7 @@ type closePanicTracer struct {
 }
 
 func (tr *closePanicTracer) StartSpan(ctx context.Context, name string, _ ...pkgobserver.Attr) (context.Context, pkgobserver.Span) {
-	return ctx, closePanicSpan{tracer: tr, finalFlush: name == "internal.infrastructure.logger.loki.flush"}
+	return ctx, closePanicSpan{tracer: tr, finalFlush: name == "heterolog.loki.flush"}
 }
 
 type closePanicSpan struct {

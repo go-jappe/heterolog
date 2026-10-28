@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/evacuation"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/disk"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -41,9 +42,9 @@ func newFileOverload(cfg FileOverloadConfigProvider, meter pkgobserver.Meter) (*
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			meter.Counter("file_overload_drop_total").Add(ctx, 1)
+			meter.Counter(telemetry.FileDroppedEntries).Add(ctx, 1)
 			if span := observer.SpanFromContext(ctx); span != nil {
-				span.AddEvent("file_overload_drop")
+				span.AddEvent("heterolog.file.overload.dropped")
 			}
 			// 破棄したことを同期APIの呼び出し元がerrors.Isで判別できるよう、
 			// ErrLogDroppedを包んだerrorを返します。

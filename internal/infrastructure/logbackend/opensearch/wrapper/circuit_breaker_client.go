@@ -42,7 +42,7 @@ func newCircuitBreakerClientWithCircuitBreaker(
 			CircuitBreaker: circuitBreaker,
 			Tracer:         tracer,
 			Meter:          meter,
-			EventName:      "opensearch.retry_decision",
+			EventName:      "heterolog.opensearch.retry_decision",
 			Classify:       retryclassifier.ClassifyRetry,
 		}),
 	}
@@ -74,7 +74,7 @@ func (c *CircuitBreakerClient) IndexDocuments(
 	docs []opensearch.DocumentWriteRequest,
 ) (*opensearch.BulkResponse, error) {
 	var out *opensearch.BulkResponse
-	err := c.operationGuard.Do(ctx, spanNameFlush, func(opCtx context.Context) error {
+	err := c.operationGuard.Do(ctx, spanNameBulk, func(opCtx context.Context) error {
 		resp, err := c.next.IndexDocuments(opCtx, docs)
 		if err != nil {
 			return err

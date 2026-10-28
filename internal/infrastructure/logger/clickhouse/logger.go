@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	SpanClickHouseLoggerCreate = "internal.infrastructure.logger.clickhouse.create"
-	SpanClickHouseLoggerFlush  = "internal.infrastructure.logger.clickhouse.flush"
-	SpanClickHouseInsert       = "internal.infrastructure.logger.clickhouse.insert"
+	SpanClickHouseLoggerCreate = "heterolog.clickhouse.create"
+	SpanClickHouseLoggerFlush  = "heterolog.clickhouse.flush"
+	SpanClickHouseInsert       = "heterolog.clickhouse.insert"
 
 	deliveryBackendClickHouse = "clickhouse"
 )

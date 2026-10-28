@@ -578,7 +578,7 @@ func assertPolicyRetryTimeout(t *testing.T, ctx context.Context) {
 func assertRetryEvent(t *testing.T, event recordedEvent, wantReason retryable.RetryReason, wantAttempt, wantStatus int) {
 	t.Helper()
 
-	assert.Equal(t, "loki.retry_decision", event.name)
+	assert.Equal(t, "heterolog.loki.retry_decision", event.name)
 	assert.Equal(t, string(wantReason), attrValue(event.attrs, "reason"))
 	assert.Equal(t, wantAttempt, attrValue(event.attrs, "attempt"))
 	assert.Equal(t, true, attrValue(event.attrs, "retry"))

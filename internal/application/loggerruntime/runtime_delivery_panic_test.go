@@ -123,7 +123,7 @@ type deliveryPanicTracer struct {
 }
 
 func (tracer deliveryPanicTracer) StartSpan(ctx context.Context, name string, _ ...pkgobserver.Attr) (context.Context, pkgobserver.Span) {
-	if name != "internal.infrastructure.logger.cloudwatchlogs.put" {
+	if name != "heterolog.cloudwatchlogs.put_log_events" {
 		return ctx, deliveryPanicSpan{}
 	}
 	if tracer.phase == "before_request" {

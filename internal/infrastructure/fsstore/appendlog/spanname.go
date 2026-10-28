@@ -1,7 +1,7 @@
 package appendlog
 
 const (
-	SpanFilePurgeByAge     = "infra.logger.file.purge.age"
-	SpanFilePurgeByDirSize = "infra.logger.file.purge.dirsize"
-	SpanFilePurgeByGen     = "infra.logger.file.purge.generation"
+	SpanFilePurgeByAge     = "heterolog.file.purge.age"
+	SpanFilePurgeByDirSize = "heterolog.file.purge.dirsize"
+	SpanFilePurgeByGen     = "heterolog.file.purge.generation"
 )

@@ -11,7 +11,7 @@ import (
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
-const SpanNamePush = "internal.infrastructure.loki.wrapper.push"
+const SpanNamePush = "heterolog.loki.push.attempt"
 
 // Client はLokiへログを送信する最小インターフェースです。
 type Client interface {
@@ -94,7 +94,7 @@ func (c *RetryingClient) doWithRetry(ctx context.Context, name string, op func(c
 		}
 		nextDelay = c.retryDelay(attempt, dec)
 
-		span.AddEvent("loki.retry_decision",
+		span.AddEvent("heterolog.loki.retry_decision",
 			pkgobserver.Attr{Key: "reason", Value: string(dec.Reason)},
 			pkgobserver.Attr{Key: "attempt", Value: attempt},
 			pkgobserver.Attr{Key: "retry", Value: dec.Retry},

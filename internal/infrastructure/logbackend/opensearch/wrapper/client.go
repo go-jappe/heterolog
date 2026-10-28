@@ -60,7 +60,7 @@ func (c *RetryingClient) IndexDocuments(
 	var out *opensearch.BulkResponse
 	err := c.doWithRetry(
 		ctx,
-		spanNameFlush,
+		spanNameBulk,
 		func(opCtx context.Context) error {
 			resp, err := c.next.IndexDocuments(opCtx, docs)
 			if err != nil {
@@ -120,7 +120,7 @@ func (c *RetryingClient) doWithRetry(ctx context.Context, name string, op func(c
 		// 次のattemptへ
 		// ここで「retry理由」をトレースに載せる
 		// 例：span := observer.SpanFromContext(ctx) みたいなのがあるならそこで attrs
-		span.AddEvent("opensearch.retry_decision",
+		span.AddEvent("heterolog.opensearch.retry_decision",
 			pkgobserver.Attr{Key: "reason", Value: string(dec.Reason)},
 			pkgobserver.Attr{Key: "attempt", Value: attempt},
 			pkgobserver.Attr{Key: "retry", Value: dec.Retry},
