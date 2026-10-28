@@ -221,8 +221,9 @@ func (l *pausedAuditLogger) Info(ctx context.Context, message string, fields ...
 }
 
 // 監査logの送信と、直列に処理する先のPATCHを待つ時間が、応答の書き込み期限を
-// 使い切らないことを、実際のHTTP接続で確かめます。
+// 使い切らないことを、実際のHTTP接続で確かめます。期限は試験のために短くします。
 func TestStartServerRespondsAfterSlowAuditAndQueuedPatch(t *testing.T) {
+	const responseWriteTimeout = 500 * time.Millisecond
 	controller := newControllerForTest(t)
 	audit := &pausedAuditLogger{
 		auditLoggerForTest: &auditLoggerForTest{},
@@ -231,8 +232,8 @@ func TestStartServerRespondsAfterSlowAuditAndQueuedPatch(t *testing.T) {
 	}
 	release := sync.OnceFunc(func() { close(audit.release) })
 	defer release()
-	server, err := StartServer(pkgadmin.ServerConfig{Addr: "127.0.0.1:0", Token: tokenForTest},
-		map[string]pkglogger.SettingsController{"app": controller}, audit)
+	server, err := startServer(pkgadmin.ServerConfig{Addr: "127.0.0.1:0", Token: tokenForTest},
+		map[string]pkglogger.SettingsController{"app": controller}, audit, responseWriteTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,8 +280,9 @@ func TestStartServerRespondsAfterSlowAuditAndQueuedPatch(t *testing.T) {
 	secondWritten := make(chan struct{})
 	second := patch(`{"loggers":{"app":{"outputs":{"stdout":{"sampling":{"warn_rate":20}}}}}}`, secondWritten)
 	boundedwait.Receive(t, secondWritten, "queued PATCH request write")
-	// 従来の要求全体のWriteTimeout（10秒）を確実に超えてから監査を再開します。
-	time.Sleep(11 * time.Second)
+	// 応答の書き込み期限を確実に超えてから監査を再開します。期限を要求の始まりから
+	// 数えていれば、どちらの応答も書けません。
+	time.Sleep(2 * responseWriteTimeout)
 	release()
 	for index, finished := range []<-chan result{first, second} {
 		response := boundedwait.Receive(t, finished, "PATCH response after audit")

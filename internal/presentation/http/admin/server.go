@@ -71,11 +71,20 @@ type Server struct {
 	serveErr error
 }
 
+// defaultResponseWriteTimeoutは、応答を書き始めてから書き終えるまでの期限です。
+const defaultResponseWriteTimeout = 10 * time.Second
+
 // StartServerは、管理用API専用のHTTP serverを起動し、待ち受けを始めてから返ります。
 // loggersは、APIで使う名前と、設定を読み取り・変更するloggerの対応で、auditは監査logの
 // 記録先です。cfgがhostを明示してTLSを有効にしない限り、loopback addressで待ち受けます。
 // 止めるにはShutdownかCloseを呼びます。auditは閉じないため、serverを止めた後で閉じます。
 func StartServer(cfg pkgadmin.ServerConfig, loggers map[string]pkglogger.SettingsController, audit pkglogger.DeliveryLogger) (*Server, error) {
+	return startServer(cfg, loggers, audit, defaultResponseWriteTimeout)
+}
+
+// startServerは、応答の書き込み期限をresponseWriteTimeoutにして、StartServerの処理を
+// 行います。試験は短い期限を渡します。
+func startServer(cfg pkgadmin.ServerConfig, loggers map[string]pkglogger.SettingsController, audit pkglogger.DeliveryLogger, responseWriteTimeout time.Duration) (*Server, error) {
 	address, err := listenAddress(cfg)
 	if err != nil {
 		return nil, err
@@ -101,7 +110,7 @@ func StartServer(cfg pkgadmin.ServerConfig, loggers map[string]pkglogger.Setting
 	}
 	s := &Server{
 		server: &http.Server{
-			Handler:           responseWriteTimeoutHandler{handler: handler, timeout: 10 * time.Second},
+			Handler:           responseWriteTimeoutHandler{handler: handler, timeout: responseWriteTimeout},
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       10 * time.Second,
 			// 監査logの送信と、ほかのPATCHの終了待ちには固定の応答期限を設けません。
