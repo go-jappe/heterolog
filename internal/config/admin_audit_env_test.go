@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	pkgenv "github.com/go-jappe/heterolog/pkg/env"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -19,6 +20,52 @@ func TestAdminAuditConfigIsLoadedOnlyWithTheAdminServer(t *testing.T) {
 	}
 	if _, err := MapAdminAuditLoggerConfig(cfg); !errors.Is(err, ErrAdminAuditNotEnabled) {
 		t.Errorf("MapAdminAuditLoggerConfig() error = %v, want ErrAdminAuditNotEnabled", err)
+	}
+}
+
+// 監査用loggerだけを使う場合も、共通の一件のlogのbyte上限を読み込み、検証します。
+func TestAdminAuditOnlyConfigLoadsAndValidatesMaxLogEntryBytes(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		value   string
+		want    int
+		wantErr error
+	}{
+		{name: "default", want: pkglogger.DefaultMaxLogEntryBytes},
+		{name: "explicit", value: "1024", want: 1024},
+		{name: "zero", value: "0", wantErr: pkglogger.ErrInvalidMaxLogEntryBytes},
+		{name: "negative", value: "-1", wantErr: pkglogger.ErrInvalidMaxLogEntryBytes},
+		{name: "not an integer", value: "invalid", wantErr: pkgenv.ErrNotInteger},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := []string{
+				"HETEROLOG_ENABLE_LOGGING=false",
+				"HETEROLOG_ENABLE_ASYNC_BEST_EFFORT_LOGGING=false",
+				"HETEROLOG_ENABLE_DELIVERY_LOGGING=false",
+				"HETEROLOG_ADMIN_ADDR=127.0.0.1:9100",
+				"HETEROLOG_ADMIN_AUDIT_LOG_TYPE=stdout",
+			}
+			if tt.value != "" {
+				lines = append(lines, "HETEROLOG_MAX_LOG_ENTRY_BYTES="+tt.value)
+			}
+			cfg, err := loadConfigErrorFromTempEnv(t, lines)
+			var mapped pkglogger.DeliveryLoggerConfig
+			if err == nil {
+				mapped, err = MapAdminAuditLoggerConfig(cfg)
+			}
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("audit configuration error = %v, want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("audit configuration error = %v", err)
+			}
+			if mapped.MaxLogEntryBytes != tt.want {
+				t.Errorf("audit MaxLogEntryBytes = %d, want %d", mapped.MaxLogEntryBytes, tt.want)
+			}
+		})
 	}
 }
 

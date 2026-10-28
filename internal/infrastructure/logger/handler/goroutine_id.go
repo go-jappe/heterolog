@@ -1,11 +1,10 @@
 package handler
 
 import (
-	"bytes"
-	"runtime"
-	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"github.com/go-jappe/heterolog/internal/goroutineid"
 )
 
 // currentGoroutineIDは、呼び出し元goroutineのidを返します。
@@ -18,26 +17,12 @@ import (
 // runtime.Stackはstackの深さに比例した時間（数µs程度）がかかるため、通知を始めるときと、
 // 通知が実行中のloggerで書き込みが内部ログを報告するときにだけ呼び、通常の書き込みでは呼びません。
 func currentGoroutineID() (uint64, bool) {
-	var buf [64]byte
-	n := runtime.Stack(buf[:], false)
-	return parseGoroutineID(buf[:n])
+	return goroutineid.Current()
 }
 
 // parseGoroutineIDは、runtime.Stackの先頭行「goroutine N [...]」からNを読みます。
 func parseGoroutineID(stack []byte) (uint64, bool) {
-	rest, found := bytes.CutPrefix(stack, []byte("goroutine "))
-	if !found {
-		return 0, false
-	}
-	end := bytes.IndexByte(rest, ' ')
-	if end <= 0 || !bytes.HasPrefix(rest[end:], []byte(" [")) {
-		return 0, false
-	}
-	id, err := strconv.ParseUint(string(rest[:end]), 10, 64)
-	if err != nil || id == 0 {
-		return 0, false
-	}
-	return id, true
+	return goroutineid.Parse(stack)
 }
 
 // goroutineDepthsは、Dispatchを実行中のgoroutineのidと、そのgoroutine上の入れ子の深さを

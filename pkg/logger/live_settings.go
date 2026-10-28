@@ -15,9 +15,12 @@ import (
 type LiveSettings struct {
 	level    atomic.Int64
 	sampling atomic.Pointer[SamplingConfig]
-	// updateMuは、levelとsamplingを置き換える処理を直列化します。読み取りは待ちません。
-	updateMu sync.Mutex
 }
+
+// liveSettingsUpdateMu serializes Set and complete batches of partial updates,
+// including updates from different runtimes that share a LiveSettings. Logging
+// only reads the atomics, so it does not wait for settings changes.
+var liveSettingsUpdateMu sync.Mutex
 
 // NewLiveSettings returns a LiveSettings that starts with level and sampling. It
 // returns a ConfigFieldError with ErrInvalidLogLevel if level is not a defined
@@ -53,10 +56,15 @@ func (s *LiveSettings) Set(level LogLevel, sampling SamplingConfig) error {
 	); err != nil {
 		return err
 	}
-	s.updateMu.Lock()
-	defer s.updateMu.Unlock()
-	stored := sampling
-	s.sampling.Store(&stored)
-	s.level.Store(int64(level))
+	liveSettingsUpdateMu.Lock()
+	defer liveSettingsUpdateMu.Unlock()
+	s.store(OutputSettings{Level: level, Sampling: sampling})
 	return nil
+}
+
+// store writes validated settings while liveSettingsUpdateMu is held.
+func (s *LiveSettings) store(settings OutputSettings) {
+	stored := settings.Sampling
+	s.sampling.Store(&stored)
+	s.level.Store(int64(settings.Level))
 }

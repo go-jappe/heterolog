@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-jappe/heterolog/internal/goroutineid"
 	"github.com/go-jappe/heterolog/pkg/internal/endpointurl"
 )
 
@@ -50,6 +51,9 @@ type Client struct {
 
 	// エラーハンドラー
 	onError func(error)
+	// errorHandlers contains the goroutines currently calling this client's
+	// handler, so a direct Close from a handler does not wait for its own worker.
+	errorHandlers sync.Map
 }
 
 // NewClient creates a new VictoriaMetrics client.
@@ -139,7 +143,12 @@ func WithWorkerCount(count int) ClientOption {
 	}
 }
 
-// WithErrorHandler sets the error handler.
+// WithErrorHandler sets the handler for asynchronous send errors. Workers call
+// it synchronously and may call it concurrently. Calling this client's Close
+// directly from the handler starts shutdown without waiting for workers; an
+// external Close still waits for all sends and handlers to finish. The handler
+// must not wait for another goroutine to Close the same client, because that
+// Close waits for the handler itself.
 func WithErrorHandler(handler func(error)) ClientOption {
 	return func(c *Client) {
 		c.onError = handler
@@ -265,20 +274,26 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 // Close stops accepting asynchronous sends and waits until the accepted queue
 // and the buffers in the workers are sent and errors are reported. Multiple
 // callers all wait for the same workers to finish. Waiting for a Send called
-// directly to finish is up to its caller.
+// directly to finish is up to its caller. A direct call from this client's
+// error handler only stops acceptance and starts draining the queue; it returns
+// without waiting for itself. Call Close outside the handler to wait for full
+// completion. A handler must not synchronously wait for another goroutine's
+// Close of the same client.
 func (c *Client) Close() error {
 	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
-		c.wg.Wait()
-		return nil
+	if !c.closed {
+		c.closed = true
+		// SendAsync holds RLock until acceptance completes. Close the queue
+		// exactly once before allowing a concurrent Close to observe shutdown.
+		close(c.asyncCh)
 	}
-	c.closed = true
 	c.mu.Unlock()
 
-	// channelを閉じ、受理済み要素をworkerが取り出し終わってから終了させます。
-	// 別の停止channelをselectすると、queueを残したまま終了する可能性があります。
-	close(c.asyncCh)
+	if id, ok := goroutineid.Current(); ok {
+		if _, inHandler := c.errorHandlers.Load(id); inHandler {
+			return nil
+		}
+	}
 
 	// すべてのワーカーが終了するのを待つ
 	c.wg.Wait()
@@ -421,6 +436,10 @@ func (c *Client) sendBufferedMetrics(metrics []Metric) {
 	// HTTPClientが各requestの期限を管理します。バッファ全体へ同じ期限を
 	// 課すと、分割requestや再送待機が増えたときに受理済みの後続を打ち切ります。
 	if err := c.Send(context.Background(), metrics); err != nil {
+		if id, ok := goroutineid.Current(); ok {
+			c.errorHandlers.Store(id, struct{}{})
+			defer c.errorHandlers.Delete(id)
+		}
 		c.onError(fmt.Errorf("failed to send buffered metrics: %w", err))
 	}
 }

@@ -6,10 +6,7 @@ package outputsettings
 
 import (
 	"errors"
-	"fmt"
 	"maps"
-	"slices"
-	"sync"
 
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -17,11 +14,7 @@ import (
 // Registryは、一つのloggerの出力先ごとのLiveSettingsを保持し、Controllerの処理を行います。
 type Registry struct {
 	// labelは、errorに含めるloggerの種類です。
-	label string
-	// muは変更を直列化し、一回の変更の全項目を反映してから次の変更が今の値を検証するように
-	// します。変更で指定していない項目は、muの中で読んだ今の値を使うため、同時の変更が
-	// 互いを打ち消しません。
-	mu      sync.Mutex
+	label   string
 	outputs map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings
 }
 
@@ -44,7 +37,8 @@ func (r *Registry) Snapshot() map[pkglogger.LogOutputDestination]pkglogger.Outpu
 }
 
 // Updateは、すべての変更を検証してから反映し、反映した出力先ごとに、反映の直前と直後の
-// 設定を返します。どちらもmuの中で読むため、別の変更を含みません。直後の設定は、計算した
+// 設定を返します。共有するLiveSettingsの変更も直列化し、別の変更を含めません。
+// 直後の設定は、計算した
 // 値ではなく、反映した後のLiveSettingsから読み直した値です。一つでも不正な変更があれば、
 // どれも反映しません。loggerが使っていない出力先はErrUnknownOutput、不正な値は
 // pkg/loggerのConfigFieldErrorです。nilのRegistryは、どの出力先も持たないものとして
@@ -53,42 +47,7 @@ func (r *Registry) Update(changes map[pkglogger.LogOutputDestination]pkglogger.O
 	if r == nil {
 		r = &Registry{}
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	type plan struct {
-		destination pkglogger.LogOutputDestination
-		live        *pkglogger.LiveSettings
-		before      pkglogger.OutputSettings
-		next        pkglogger.OutputSettings
-	}
-	plans := make([]plan, 0, len(changes))
-	var errs []error
-	// 毎回同じ順で確かめ、errorを同じ順で報告します。
-	for _, destination := range slices.Sorted(maps.Keys(changes)) {
-		live, ok := r.outputs[destination]
-		if !ok {
-			errs = append(errs, fmt.Errorf("%w: %q", pkglogger.ErrUnknownOutput, destination))
-			continue
-		}
-		before := current(live)
-		next := apply(before, changes[destination])
-		if err := validate(r.label, destination, next); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		plans = append(plans, plan{destination: destination, live: live, before: before, next: next})
-	}
-	if err := errors.Join(errs...); err != nil {
-		return nil, err
-	}
-	applied := make(map[pkglogger.LogOutputDestination]pkglogger.AppliedOutputSettings, len(plans))
-	for _, p := range plans {
-		if err := p.live.Set(p.next.Level, p.next.Sampling); err != nil {
-			return applied, err
-		}
-		applied[p.destination] = pkglogger.AppliedOutputSettings{Before: p.before, After: current(p.live)}
-	}
-	return applied, nil
+	return pkglogger.UpdateLiveSettings(r.label, r.outputs, changes)
 }
 
 // currentは、LiveSettingsの今の設定を返します。

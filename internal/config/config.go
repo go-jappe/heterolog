@@ -6103,7 +6103,7 @@ func loadConfig(source envSource) (AppConfig, error) {
 		enableAsyncLoggingErr,
 		enableDeliveryLoggingErr,
 	)
-	if enableLogging || enableAsyncLogging || enableDeliveryLogging {
+	if enableLogging || enableAsyncLogging || enableDeliveryLogging || appCfg.AdminServer.Addr != "" {
 		maxLogEntryBytes, maxLogEntryBytesErr := env.GetEnvInt(
 			"HETEROLOG_MAX_LOG_ENTRY_BYTES",
 			pkglogger.DefaultMaxLogEntryBytes,

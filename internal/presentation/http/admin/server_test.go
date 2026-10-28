@@ -8,18 +8,25 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -194,5 +201,152 @@ func TestStartServerServesHTTPSWithTheGivenCertificate(t *testing.T) {
 		if response.StatusCode == http.StatusOK {
 			t.Error("plain HTTP GET to the HTTPS server succeeded")
 		}
+	}
+}
+
+// pausedAuditLoggerは、最初の監査logを記録する前だけ待機します。
+type pausedAuditLogger struct {
+	*auditLoggerForTest
+	paused  atomic.Bool
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (l *pausedAuditLogger) Info(ctx context.Context, message string, fields ...pkglogger.Field) (pkglogger.DeliveryReport, error) {
+	if l.paused.CompareAndSwap(false, true) {
+		close(l.entered)
+		<-l.release
+	}
+	return l.auditLoggerForTest.Info(ctx, message, fields...)
+}
+
+// 監査logの送信と、直列に処理する先のPATCHを待つ時間が、応答の書き込み期限を
+// 使い切らないことを、実際のHTTP接続で確かめます。
+func TestStartServerRespondsAfterSlowAuditAndQueuedPatch(t *testing.T) {
+	controller := newControllerForTest(t)
+	audit := &pausedAuditLogger{
+		auditLoggerForTest: &auditLoggerForTest{},
+		entered:            make(chan struct{}),
+		release:            make(chan struct{}),
+	}
+	release := sync.OnceFunc(func() { close(audit.release) })
+	defer release()
+	server, err := StartServer(pkgadmin.ServerConfig{Addr: "127.0.0.1:0", Token: tokenForTest},
+		map[string]pkglogger.SettingsController{"app": controller}, audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	transport := &http.Transport{}
+	t.Cleanup(transport.CloseIdleConnections)
+	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
+	type result struct {
+		status    int
+		body      []byte
+		requestID string
+		err       error
+	}
+	patch := func(body string, wrote chan<- struct{}) <-chan result {
+		request, err := http.NewRequest(http.MethodPatch, "http://"+server.Addr()+"/settings", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Authorization", "Bearer "+tokenForTest)
+		if wrote != nil {
+			request = request.WithContext(httptrace.WithClientTrace(request.Context(), &httptrace.ClientTrace{
+				WroteRequest: func(info httptrace.WroteRequestInfo) {
+					if info.Err == nil {
+						close(wrote)
+					}
+				},
+			}))
+		}
+		finished := make(chan result, 1)
+		go func() {
+			response, err := client.Do(request)
+			if err != nil {
+				finished <- result{err: err}
+				return
+			}
+			body, err := io.ReadAll(response.Body)
+			_ = response.Body.Close()
+			finished <- result{status: response.StatusCode, body: body, requestID: response.Header.Get("X-Request-Id"), err: err}
+		}()
+		return finished
+	}
+	first := patch(`{"loggers":{"app":{"outputs":{"stdout":{"sampling":{"info_rate":10}}}}}}`, nil)
+	boundedwait.Receive(t, audit.entered, "first PATCH audit record")
+	secondWritten := make(chan struct{})
+	second := patch(`{"loggers":{"app":{"outputs":{"stdout":{"sampling":{"warn_rate":20}}}}}}`, secondWritten)
+	boundedwait.Receive(t, secondWritten, "queued PATCH request write")
+	// 従来の要求全体のWriteTimeout（10秒）を確実に超えてから監査を再開します。
+	time.Sleep(11 * time.Second)
+	release()
+	for index, finished := range []<-chan result{first, second} {
+		response := boundedwait.Receive(t, finished, "PATCH response after audit")
+		if response.err != nil {
+			t.Errorf("PATCH %d: %v", index+1, response.err)
+			continue
+		}
+		if response.status != http.StatusOK || response.requestID == "" {
+			t.Errorf("PATCH %d = %d %s, request ID %q; want 200 and a request ID", index+1, response.status, response.body, response.requestID)
+		}
+		var document settingsDocument
+		if err := json.Unmarshal(response.body, &document); err != nil {
+			t.Errorf("PATCH %d body: %v", index+1, err)
+		}
+		if got := document.Loggers["app"].Outputs[pkglogger.LogOutputStdout].Sampling; got.InfoRate != 10 || (index == 1 && got.WarnRate != 20) {
+			t.Errorf("PATCH %d response sampling = %+v, want the applied change", index+1, got)
+		}
+		if len(document.Warnings) != 0 {
+			t.Errorf("PATCH %d warnings = %q, want none after successful audit delivery", index+1, document.Warnings)
+		}
+	}
+	if got := stdoutSettings(controller).Sampling; got.SamplingInfoRate != 10 || got.SamplingWarnRate != 20 {
+		t.Errorf("sampling = %+v, want both info_rate 10 and warn_rate 20 applied", got)
+	}
+	if got := audit.snapshot(); len(got) != 6 {
+		t.Errorf("audit records = %q, want all three records of both PATCH requests", got)
+	}
+}
+
+type deadlineRecordingWriter struct {
+	*httptest.ResponseRecorder
+	deadlines []time.Time
+}
+
+func (w *deadlineRecordingWriter) SetWriteDeadline(deadline time.Time) error {
+	w.deadlines = append(w.deadlines, deadline)
+	return nil
+}
+
+// 処理中は期限を設けず、応答を書き始めた時点で一度だけ期限を設けます。
+func TestResponseWriteTimeoutStartsWithTheResponse(t *testing.T) {
+	for _, explicitHeader := range []bool{false, true} {
+		t.Run(fmt.Sprint(explicitHeader), func(t *testing.T) {
+			writer := &deadlineRecordingWriter{ResponseRecorder: httptest.NewRecorder()}
+			var started time.Time
+			handler := responseWriteTimeoutHandler{timeout: time.Second, handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if len(writer.deadlines) != 0 {
+					t.Fatal("write deadline was set before the response started")
+				}
+				started = time.Now()
+				if explicitHeader {
+					w.WriteHeader(http.StatusOK)
+				}
+				_, _ = io.WriteString(w, "first")
+				_, _ = io.WriteString(w, "second")
+			})}
+			handler.ServeHTTP(writer, httptest.NewRequest(http.MethodGet, "/settings", nil))
+			if len(writer.deadlines) != 1 {
+				t.Fatalf("write deadlines = %v, want one deadline for the whole response", writer.deadlines)
+			}
+			if deadline := writer.deadlines[0]; deadline.Before(started.Add(time.Second)) || deadline.After(time.Now().Add(time.Second)) {
+				t.Errorf("write deadline = %s, want one second from the first write", deadline)
+			}
+			if got := writer.Body.String(); got != "firstsecond" {
+				t.Errorf("response body = %q, want firstsecond", got)
+			}
+		})
 	}
 }

@@ -101,12 +101,13 @@ func StartServer(cfg pkgadmin.ServerConfig, loggers map[string]pkglogger.Setting
 	}
 	s := &Server{
 		server: &http.Server{
-			Handler:           handler,
+			Handler:           responseWriteTimeoutHandler{handler: handler, timeout: 10 * time.Second},
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       10 * time.Second,
-			WriteTimeout:      10 * time.Second,
-			IdleTimeout:       time.Minute,
-			MaxHeaderBytes:    16 << 10,
+			// 監査logの送信と、ほかのPATCHの終了待ちには固定の応答期限を設けません。
+			// 応答を書き始めてからの期限はresponseWriteTimeoutHandlerが設定します。
+			IdleTimeout:    time.Minute,
+			MaxHeaderBytes: 16 << 10,
 		},
 		listener: listener,
 		done:     make(chan struct{}),
@@ -119,6 +120,45 @@ func StartServer(cfg pkgadmin.ServerConfig, loggers map[string]pkglogger.Setting
 	}()
 	return s, nil
 }
+
+// responseWriteTimeoutHandlerは、要求の処理時間を含めず、応答の書き込みだけに期限を
+// 設けます。監査loggerは一件ごとに自身のtimeoutを持ち、要求ごとの記録数や、直列に
+// 処理するPATCHの待ち時間も異なるため、要求全体に固定のWriteTimeoutは使いません。
+type responseWriteTimeoutHandler struct {
+	handler http.Handler
+	timeout time.Duration
+}
+
+func (h responseWriteTimeoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.handler.ServeHTTP(&responseWriteTimeoutWriter{ResponseWriter: w, timeout: h.timeout}, r)
+}
+
+type responseWriteTimeoutWriter struct {
+	http.ResponseWriter
+	timeout time.Duration
+	started bool
+}
+
+func (w *responseWriteTimeoutWriter) beginWrite() {
+	if w.started {
+		return
+	}
+	w.started = true
+	_ = http.NewResponseController(w.ResponseWriter).SetWriteDeadline(time.Now().Add(w.timeout))
+}
+
+func (w *responseWriteTimeoutWriter) WriteHeader(status int) {
+	w.beginWrite()
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *responseWriteTimeoutWriter) Write(body []byte) (int, error) {
+	w.beginWrite()
+	return w.ResponseWriter.Write(body)
+}
+
+// Unwrapは、ResponseControllerが元のResponseWriterの機能へ到達できるようにします。
+func (w *responseWriteTimeoutWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // Addrは、待ち受けているaddressを返します。ServerConfig.Addrでport 0を指定した場合は、
 // 選ばれたportを含みます。

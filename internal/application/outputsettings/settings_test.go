@@ -129,6 +129,45 @@ func TestRegistryConcurrentUpdatesOfDifferentSamplingFieldsAllApply(t *testing.T
 	}
 }
 
+func TestRegistryMergesChangesToOutputsSharingLiveSettings(t *testing.T) {
+	_, live := newRegistryForTest(t)
+	registry := NewRegistry("shared outputs", map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings{
+		pkglogger.LogOutputStdout: live,
+		pkglogger.LogOutputFile:   live,
+	})
+	applied, err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+		pkglogger.LogOutputStdout: {Sampling: &pkglogger.SamplingChange{SamplingInfoRate: ptr(3)}},
+		pkglogger.LogOutputFile:   {Sampling: &pkglogger.SamplingChange{SamplingWarnRate: ptr(4)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := pkglogger.AppliedOutputSettings{
+		Before: pkglogger.OutputSettings{Level: pkglogger.LogLevelInfo},
+		After: pkglogger.OutputSettings{Level: pkglogger.LogLevelInfo,
+			Sampling: pkglogger.SamplingConfig{SamplingInfoRate: 3, SamplingWarnRate: 4}},
+	}
+	if got := registry.Snapshot(); got[pkglogger.LogOutputStdout] != want.After || got[pkglogger.LogOutputFile] != want.After {
+		t.Fatalf("Snapshot() = %+v, want both changes retained", got)
+	}
+	for destination, got := range applied {
+		if got != want {
+			t.Errorf("applied[%s] = %+v, want %+v", destination, got, want)
+		}
+	}
+	// A rejected change must not apply any of the staged alias changes.
+	_, err = registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+		pkglogger.LogOutputFile:   {Level: level(pkglogger.LogLevelDebug)},
+		pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevel(42))},
+	})
+	if !errors.Is(err, pkglogger.ErrInvalidLogLevel) {
+		t.Fatalf("Update(invalid alias) = %v, want ErrInvalidLogLevel", err)
+	}
+	if live.Level() != want.After.Level || live.Sampling() != want.After.Sampling {
+		t.Fatal("rejected alias change modified shared settings")
+	}
+}
+
 // 一つでも不正な変更があれば、どの変更も反映しません。
 func TestRegistryUpdateAppliesNothingWhenAChangeIsInvalid(t *testing.T) {
 	registry, live := newRegistryForTest(t)
