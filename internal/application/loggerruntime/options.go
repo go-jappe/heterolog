@@ -19,7 +19,8 @@ type Options struct {
 	Routing pkgcloudwatchlogs.StreamRouting
 	// Monitorは、WithMemoryPressureMonitorで渡したmemory圧迫の監視です。
 	Monitor memorypressure.Monitor
-	// TracerとMeterは計装の依存です。ResolveOptionsは、nilを何もしない実装に置き換えます。
+	// TracerとMeterは計装の依存です。ResolveOptionsは、nilを何もしない実装に置き換え、
+	// Tracerが始めたspanをcontextから取り出せるように包みます。
 	Tracer pkgobserver.Tracer
 	Meter  pkgobserver.Meter
 }
@@ -58,7 +59,7 @@ func ResolveOptions(opts []Option) (Options, error) {
 			apply(&o)
 		}
 	}
-	o.Tracer = observer.EnsureTracer(o.Tracer)
+	o.Tracer = observer.ExposeSpans(o.Tracer)
 	o.Meter = observer.EnsureMeter(o.Meter)
 	return o, o.Routing.Validate()
 }
