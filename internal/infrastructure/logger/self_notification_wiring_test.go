@@ -97,6 +97,10 @@ func (m *selfNotificationMeter) Gauge(string) pkgobserver.Gauge {
 	return observer.NopGauge{}
 }
 
+func (m *selfNotificationMeter) Histogram(string) pkgobserver.Histogram {
+	return observer.NopHistogram{}
+}
+
 func (m *selfNotificationMeter) total(name string) int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()

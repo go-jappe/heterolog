@@ -743,6 +743,10 @@ func (m *countingMeter) Gauge(string) pkgobserver.Gauge {
 	return observer.NopGauge{}
 }
 
+func (m *countingMeter) Histogram(string) pkgobserver.Histogram {
+	return observer.NopHistogram{}
+}
+
 func (m *countingMeter) total(name string) int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()

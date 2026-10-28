@@ -121,6 +121,9 @@ func (m *runtimeObserverMeter) Counter(name string) pkgobserver.Counter {
 }
 
 func (*runtimeObserverMeter) Gauge(string) pkgobserver.Gauge { return runtimeObserverGauge{} }
+func (*runtimeObserverMeter) Histogram(string) pkgobserver.Histogram {
+	return runtimeObserverHistogram{}
+}
 
 type runtimeObserverCounter struct {
 	meter *runtimeObserverMeter
@@ -139,6 +142,10 @@ func (c runtimeObserverCounter) Add(_ context.Context, value int64, _ ...pkgobse
 type runtimeObserverGauge struct{}
 
 func (runtimeObserverGauge) Record(context.Context, float64, ...pkgobserver.Attr) {}
+
+type runtimeObserverHistogram struct{}
+
+func (runtimeObserverHistogram) Record(context.Context, float64, ...pkgobserver.Attr) {}
 
 func TestObserverMeterReceivesFileDropNotification(t *testing.T) {
 	for _, kind := range []string{"sync", "async"} {

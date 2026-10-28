@@ -27,6 +27,7 @@ type (
 	Meter                 = pkgobserver.Meter
 	Counter               = pkgobserver.Counter
 	Gauge                 = pkgobserver.Gauge
+	Histogram             = pkgobserver.Histogram
 	MemoryPressureMonitor = memorypressure.Monitor
 )
 

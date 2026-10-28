@@ -1039,6 +1039,10 @@ func (m *recordingMeter) Gauge(name string) pkgobserver.Gauge {
 	return observer.NopGauge{}
 }
 
+func (m *recordingMeter) Histogram(string) pkgobserver.Histogram {
+	return observer.NopHistogram{}
+}
+
 func (m *recordingMeter) add(name string, value int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

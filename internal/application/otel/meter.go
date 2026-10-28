@@ -3,6 +3,7 @@ package otel
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
@@ -15,16 +16,18 @@ import (
 type OtelMeter struct {
 	m metric.Meter
 
-	mu       sync.RWMutex
-	counters map[string]metric.Int64Counter
-	gauges   map[string]metric.Float64Gauge
+	mu         sync.RWMutex
+	counters   map[string]metric.Int64Counter
+	gauges     map[string]metric.Float64Gauge
+	histograms map[string]metric.Float64Histogram
 }
 
 func NewOtelMeter(m metric.Meter) *OtelMeter {
 	return &OtelMeter{
-		m:        m,
-		counters: make(map[string]metric.Int64Counter),
-		gauges:   make(map[string]metric.Float64Gauge),
+		m:          m,
+		counters:   make(map[string]metric.Int64Counter),
+		gauges:     make(map[string]metric.Float64Gauge),
+		histograms: make(map[string]metric.Float64Histogram),
 	}
 }
 
@@ -138,6 +141,70 @@ func (o *OtelMeter) getOrCreateGauge(name string) (metric.Float64Gauge, error) {
 
 	o.gauges[name] = g
 	return g, nil
+}
+
+type otelHistogram struct {
+	h metric.Float64Histogram
+}
+
+func (h *otelHistogram) Record(ctx context.Context, value float64, attrs ...pkgobserver.Attr) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if h == nil || observer.IsNilInterface(h.h) {
+		return
+	}
+
+	h.h.Record(ctx, value, metric.WithAttributes(toOtelMetricAttrs(attrs)...))
+}
+
+func (o *OtelMeter) Histogram(name string) pkgobserver.Histogram {
+	if o == nil || observer.IsNilInterface(o.m) {
+		return observer.NopHistogram{}
+	}
+
+	h, err := o.getOrCreateHistogram(name)
+	if err != nil {
+		return observer.NopHistogram{}
+	}
+
+	return &otelHistogram{h: h}
+}
+
+// secondsBucketBoundariesは、名前が_secondsで終わるhistogramの境界です。SDKの既定の境界は
+// millisecondを想定しているため、秒の値ではほとんどが最初のbucketに入ってしまいます。
+var secondsBucketBoundaries = []float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10, 30, 60}
+
+func (o *OtelMeter) getOrCreateHistogram(name string) (metric.Float64Histogram, error) {
+	o.mu.RLock()
+	h, ok := o.histograms[name]
+	o.mu.RUnlock()
+	if ok {
+		return h, nil
+	}
+
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if o.histograms == nil {
+		o.histograms = make(map[string]metric.Float64Histogram)
+	}
+
+	if h, ok := o.histograms[name]; ok {
+		return h, nil
+	}
+
+	var opts []metric.Float64HistogramOption
+	if strings.HasSuffix(name, "_seconds") {
+		opts = append(opts, metric.WithUnit("s"), metric.WithExplicitBucketBoundaries(secondsBucketBoundaries...))
+	}
+	h, err := o.m.Float64Histogram(name, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create float64 histogram %q: %w", name, err)
+	}
+
+	o.histograms[name] = h
+	return h, nil
 }
 
 func toOtelMetricAttrs(attrs []pkgobserver.Attr) []attribute.KeyValue {

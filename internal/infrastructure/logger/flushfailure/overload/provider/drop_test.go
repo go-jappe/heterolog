@@ -23,6 +23,10 @@ func (m *countingDropMeter) Gauge(string) pkgobserver.Gauge {
 	return observer.NopGauge{}
 }
 
+func (m *countingDropMeter) Histogram(string) pkgobserver.Histogram {
+	return observer.NopHistogram{}
+}
+
 type countingDropCounter struct {
 	meter *countingDropMeter
 	name  string

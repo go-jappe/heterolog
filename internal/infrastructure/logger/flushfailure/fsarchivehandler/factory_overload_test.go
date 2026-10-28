@@ -147,6 +147,10 @@ func (*archiveFactoryTestMeter) Gauge(string) pkgobserver.Gauge {
 	return observer.NopGauge{}
 }
 
+func (*archiveFactoryTestMeter) Histogram(string) pkgobserver.Histogram {
+	return observer.NopHistogram{}
+}
+
 func TestNewFailureArchivePipelineRejectsNilConfig(t *testing.T) {
 	handler, err := NewFailureArchivePipeline(
 		context.Background(),

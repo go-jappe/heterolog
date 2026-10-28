@@ -34,6 +34,7 @@ type Span interface {
 type Meter interface {
 	Counter(name string) Counter
 	Gauge(name string) Gauge
+	Histogram(name string) Histogram
 }
 
 // Counter records a cumulative value.
@@ -44,5 +45,11 @@ type Counter interface {
 // Gauge records the current value of a measurement, such as a memory pressure
 // ratio or the available bytes, instead of a cumulative one.
 type Gauge interface {
+	Record(ctx context.Context, value float64, attrs ...Attr)
+}
+
+// Histogram records the distribution of a measurement, such as the duration
+// of a request in seconds or the number of records in a batch.
+type Histogram interface {
 	Record(ctx context.Context, value float64, attrs ...Attr)
 }

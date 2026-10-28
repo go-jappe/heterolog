@@ -79,6 +79,10 @@ func (NopMeter) Gauge(name string) pkgobserver.Gauge {
 	return NopGauge{}
 }
 
+func (NopMeter) Histogram(name string) pkgobserver.Histogram {
+	return NopHistogram{}
+}
+
 type NopCounter struct{}
 
 func (NopCounter) Add(ctx context.Context, value int64, attrs ...pkgobserver.Attr) {}
@@ -86,3 +90,7 @@ func (NopCounter) Add(ctx context.Context, value int64, attrs ...pkgobserver.Att
 type NopGauge struct{}
 
 func (NopGauge) Record(ctx context.Context, value float64, attrs ...pkgobserver.Attr) {}
+
+type NopHistogram struct{}
+
+func (NopHistogram) Record(ctx context.Context, value float64, attrs ...pkgobserver.Attr) {}
