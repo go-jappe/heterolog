@@ -25,6 +25,11 @@ const (
 	// ごとに数えます。
 	BackendRetries = "heterolog_backend_retries_total"
 
+	// FailureRecordsは、出力先へ送れなかったrecordを、行き先（action）ごとに数えます。
+	// 同じrecordを複数の行き先（spoolとfailure archiveなど）で処理する設定では、
+	// 行き先ごとに数えます。
+	FailureRecords = "heterolog_failure_records_total"
+
 	// CircuitBreakerRejectedRequestsは、circuit breakerが開いている間に、送らずに断った
 	// 送信の数です。
 	CircuitBreakerRejectedRequests = "heterolog_circuit_breaker_rejected_requests_total"
@@ -39,6 +44,21 @@ const (
 	AttrOutcome = "outcome"
 	AttrReason  = "reason"
 	AttrState   = "state"
+	AttrAction  = "action"
+)
+
+// action属性の値です。
+const (
+	// ActionSpooledは、spoolへ保存したrecordです。retryableのrecordは後で送り直します。
+	ActionSpooled = "spooled"
+	// ActionArchivedは、failure archiveへ保存したrecordです。
+	ActionArchived = "archived"
+	// ActionDegradedは、stdoutへ退避したrecordです。
+	ActionDegraded = "degraded"
+	// ActionDroppedは、overloadの方針dropで捨てたrecordです。
+	ActionDropped = "dropped"
+	// ActionFailedは、保存も退避もできなかったrecordです。
+	ActionFailed = "failed"
 )
 
 // state属性の値です。

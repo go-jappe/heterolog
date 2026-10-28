@@ -21,6 +21,7 @@ import (
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/overload"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -307,7 +308,12 @@ func (f *FsArchiveHandler) rotateAndWriteFailureArchive(
 ) failureArchiveWriteAttempt {
 	f.Fsstore.Mu.Lock()
 	defer f.Fsstore.Mu.Unlock()
+	// 追記の前に失敗した場合、recordは保存できていません。
+	recordFailed := func() {
+		telemetry.RecordFailureRecords(ctx, f.Meter, result.Meta.Backend, telemetry.ActionFailed, result.FailedCount())
+	}
 	if err := f.recoverArchiveAppendsLocked(); err != nil {
+		recordFailed()
 		return failureArchiveWriteAttempt{archiveErr: err}
 	}
 
@@ -319,11 +325,13 @@ func (f *FsArchiveHandler) rotateAndWriteFailureArchive(
 		rotationErr:               rotation.err,
 	}
 	if rotation.err != nil {
+		recordFailed()
 		return attempt
 	}
 
 	attempt.overloaded, attempt.archiveErr = f.isOverloaded(ctx)
 	if attempt.archiveErr != nil {
+		recordFailed()
 		return attempt
 	}
 	if !attempt.overloaded {

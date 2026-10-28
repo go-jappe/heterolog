@@ -25,6 +25,7 @@ import (
 	infralogger "github.com/go-jappe/heterolog/internal/infrastructure/logger"
 	memorymonitor "github.com/go-jappe/heterolog/internal/observer/memory/pressure"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
+	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -77,7 +78,7 @@ func TestLoggingOpenSearchSpoolOverflowWithMemoryMonitor(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			meter := newRecordingMeter()
+			meter := observertest.NewMeter()
 			server := newBulkFailureServer(t, []bulkFailureStatus{
 				{status: http.StatusTooManyRequests, errorType: "es_rejected_execution_exception", reason: "test queue is full"},
 				{status: http.StatusTooManyRequests, errorType: "es_rejected_execution_exception", reason: "test queue is full"},
@@ -129,7 +130,7 @@ func TestLoggingOpenSearchSpoolOverflowWithMemoryMonitor(t *testing.T) {
 				// 再送処理がactiveから移したfileも含め、spoolのどの状態にも保存していないことを
 				// 確認します。
 				closeIntegrationLogger(t, logger)
-				if drops := meter.counterValue("logger_failure_overload_drop_total"); drops < 1 {
+				if drops := meter.CountMatching("heterolog_failure_records_total", "backend", "opensearch", "action", "dropped"); drops < 1 {
 					t.Fatalf("overload drop counter = %d, want at least 1", drops)
 				}
 				spoolRoot := filepath.Dir(activeRoot)

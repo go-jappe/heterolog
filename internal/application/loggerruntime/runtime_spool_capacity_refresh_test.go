@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
+	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -28,7 +29,7 @@ func TestSpoolCapacityRefreshWithNonpositiveInterval(t *testing.T) {
 				overload.StatsScanInterval = interval
 				spool := loggerruntime.DefaultSpoolConfig()
 				spool.RunnerConfig.LokiConfig.Runner.Interval = time.Hour
-				meter := &runtimeObserverMeter{}
+				meter := observertest.NewMeter()
 				logger, err := loggerruntime.New(ctx, cfg, loggerruntime.WithSpool(spool), loggerruntime.WithObservers(nil, meter))
 				if err != nil {
 					t.Fatal(err)
@@ -79,9 +80,7 @@ func TestSpoolCapacityRefreshWithNonpositiveInterval(t *testing.T) {
 				if messages["initial failure"] != 1 || messages["failure during refresh"] != len(records)-1 {
 					t.Fatalf("spooled messages = %v, want accepted failures unchanged and no post-refresh failure", messages)
 				}
-				meter.mu.Lock()
-				drops := meter.totals["logger_failure_overload_drop_total"]
-				meter.mu.Unlock()
+				drops := meter.CountMatching("heterolog_failure_records_total", "action", "dropped")
 				if wantDrops := int64(3 - len(records)); drops != wantDrops || transport.calls.Load() != 3 {
 					t.Fatalf("overload drops = %d, HTTP requests = %d, want %d and 3", drops, transport.calls.Load(), wantDrops)
 				}

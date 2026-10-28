@@ -15,6 +15,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/overload"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/runtime/memory"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
@@ -172,11 +173,13 @@ func (s *SpoolStoreHandler) handleFailure(
 	// 統計走査の前に、activeまたは今回の日時別保存先を塞ぐ不正な項目を保全します。
 	// 走査エラーや妨害ファイルの容量による過負荷判定で、保存へ進めない状態を防ぎます。
 	if err := s.Store.EnsureCurrentTimePartitionDirectory(ctx, pkgspool.StateActive); err != nil {
+		telemetry.RecordFailureRecords(ctx, s.Meter, result.Meta.Backend, telemetry.ActionFailed, result.FailedCount())
 		s.notifyError(ctx, err, "failed to prepare active spool time partition directory")
 		return err
 	}
 	isOverload, err := s.isActiveSpoolStorageOverloaded(ctx, s.Store.RootDir.ActiveDir())
 	if err != nil {
+		telemetry.RecordFailureRecords(ctx, s.Meter, result.Meta.Backend, telemetry.ActionFailed, result.FailedCount())
 		s.notifyError(ctx, fmt.Errorf("failed to check spool overload: %w", err), "failed to check spool overload")
 		return err
 	}
@@ -514,18 +517,33 @@ func (s *SpoolStoreHandler) storeSendResultByState(
 		quarantineRecords = append(quarantineRecords, record)
 	}
 
+	// spool recordへ変換できなかったrecordは保存できません。保存できたかはstateごとに数えます。
+	stored := 0
+	failed := result.FailedCount() - len(activeRecords) - len(deadRecords) - len(quarantineRecords)
 	if err := s.Store.StoreByState(ctx, pkgspool.StateActive, activeRecords); err != nil {
+		failed += len(activeRecords)
 		errs = append(errs, fmt.Errorf("failed to store retryable records to %s spool: %w", pkgspool.StateActive, err))
-	} else if clamp != nil {
-		s.notifyRetryAfterClamp(ctx, result.Meta, *clamp, clampedRecords)
-		retryAfterClampNotified = true
+	} else {
+		stored += len(activeRecords)
+		if clamp != nil {
+			s.notifyRetryAfterClamp(ctx, result.Meta, *clamp, clampedRecords)
+			retryAfterClampNotified = true
+		}
 	}
 	if err := s.Store.StoreByState(ctx, pkgspool.StateDead, deadRecords); err != nil {
+		failed += len(deadRecords)
 		errs = append(errs, fmt.Errorf("failed to store dead records to dead spool: %w", err))
+	} else {
+		stored += len(deadRecords)
 	}
 	if err := s.Store.StoreByState(ctx, pkgspool.StateQuarantine, quarantineRecords); err != nil {
+		failed += len(quarantineRecords)
 		errs = append(errs, fmt.Errorf("failed to store quarantine records to quarantine spool: %w", err))
+	} else {
+		stored += len(quarantineRecords)
 	}
+	telemetry.RecordFailureRecords(ctx, s.Meter, result.Meta.Backend, telemetry.ActionSpooled, stored)
+	telemetry.RecordFailureRecords(ctx, s.Meter, result.Meta.Backend, telemetry.ActionFailed, failed)
 
 	if len(errs) > 0 {
 		return retryAfterClampNotified, errors.Join(errs...)

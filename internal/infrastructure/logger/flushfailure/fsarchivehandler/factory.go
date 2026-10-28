@@ -23,6 +23,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/notification"
 	failurearchiveuploader "github.com/go-jappe/heterolog/internal/infrastructure/objectstorage/failurearchive"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
@@ -343,7 +344,11 @@ func newOverloadHandler(
 	case durable.OverloadPolicyDrop:
 		return provider.NewOverloadDropHandler(meter), nil
 	case durable.OverloadPolicyDegrade:
-		return provider.NewDegradeHandlerWithStdout(overloadCfg, spillStdout)
+		handler, err := provider.NewDegradeHandlerWithStdout(overloadCfg, spillStdout)
+		if err != nil {
+			return nil, err
+		}
+		return telemetry.CountFailureRecords(handler, meter, telemetry.ActionDegraded), nil
 	default:
 		return nil, fmt.Errorf(
 			"%w: %q",

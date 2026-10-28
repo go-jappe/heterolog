@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
+	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/loki"
@@ -76,7 +77,7 @@ func TestMemoryPressureMonitorControlsFailureOverload(t *testing.T) {
 				root := t.TempDir()
 				transport := &runtimeMemoryFailureTransport{}
 				monitor := &runtimeMemoryMonitor{critical: pressure.critical}
-				meter := &runtimeObserverMeter{}
+				meter := observertest.NewMeter()
 				cfg := runtimeMemoryPressureConfig(root, transport)
 				spool := loggerruntime.DefaultSpoolConfig()
 				spool.RunnerConfig.LokiConfig.Runner.Interval = time.Hour
@@ -123,9 +124,7 @@ func TestMemoryPressureMonitorControlsFailureOverload(t *testing.T) {
 				if starts, resets := monitor.starts.Load(), monitor.resets.Load(); starts != 0 || resets != 0 {
 					t.Errorf("caller-owned monitor was started %d times and reset %d times", starts, resets)
 				}
-				meter.mu.Lock()
-				drops := meter.totals["logger_failure_overload_drop_total"]
-				meter.mu.Unlock()
+				drops := meter.CountMatching("heterolog_failure_records_total", "action", "dropped")
 				wantDrops := int64(0)
 				if pressure.critical {
 					wantDrops = 1

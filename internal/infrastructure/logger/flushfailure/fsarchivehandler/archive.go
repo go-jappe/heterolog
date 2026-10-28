@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 )
 
 const (
@@ -93,19 +94,28 @@ type archiveFailureRecord struct {
 func (f *FsArchiveHandler) archiveLocked(ctx context.Context, r loggerfailure.SendResult) error {
 	bg := contextWithoutCancel(ctx)
 	var errs []error
+	archived, failed := 0, 0
 
 	if len(r.RetryableRecords) > 0 {
 		if err := f.archiveRetryableRecordsLocked(bg, r); err != nil {
+			failed += len(r.RetryableRecords)
 			errs = append(errs, err)
+		} else {
+			archived += len(r.RetryableRecords)
 		}
 	}
 
-	if len(r.DeadRecords) > 0 || len(r.QuarantineRecords) > 0 {
+	if terminal := len(r.DeadRecords) + len(r.QuarantineRecords); terminal > 0 {
 		if err := f.archiveTerminalRecordsLocked(bg, r); err != nil {
+			failed += terminal
 			errs = append(errs, err)
+		} else {
+			archived += terminal
 		}
 	}
 
+	telemetry.RecordFailureRecords(bg, f.Meter, r.Meta.Backend, telemetry.ActionArchived, archived)
+	telemetry.RecordFailureRecords(bg, f.Meter, r.Meta.Backend, telemetry.ActionFailed, failed)
 	return errors.Join(errs...)
 }
 

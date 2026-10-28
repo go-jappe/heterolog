@@ -109,7 +109,7 @@ Each destination in a report has one of these statuses:
 - When the log is saved by `degrade`, no error is returned.
 - Logging calls of the asynchronous API do not return errors. If logs are discarded in the final flush of `Close`, `Close` returns the error.
 - With the delivery API, check `DeliveryReport.HasDrop()`.
-- The number of discarded logs can also be observed with the `logger_failure_overload_drop_total` metric.
+- The number of discarded logs can also be observed with the `heterolog_failure_records_total` metric with `action="dropped"`.
 
 ### Shutdown
 

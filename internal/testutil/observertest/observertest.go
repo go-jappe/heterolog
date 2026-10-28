@@ -5,6 +5,7 @@ package observertest
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -65,6 +66,35 @@ func (m *Meter) Count(key string) int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.counters[key]
+}
+
+// CountMatchingは、名前がnameで、keyValuesの属性をすべて持つcounterの合計を返します。
+// 例: CountMatching("x_total", "action", "dropped")は、backendが何でも数えます。
+func (m *Meter) CountMatching(name string, keyValues ...string) int64 {
+	if len(keyValues)%2 != 0 {
+		panic("observertest.CountMatching needs key and value pairs")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var total int64
+	for k, v := range m.counters {
+		attrs, ok := strings.CutPrefix(k, name+"{")
+		if !ok {
+			continue
+		}
+		parts := strings.Split(strings.TrimSuffix(attrs, "}"), ",")
+		matched := true
+		for i := 0; i < len(keyValues); i += 2 {
+			if !slices.Contains(parts, keyValues[i]+"="+keyValues[i+1]) {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			total += v
+		}
+	}
+	return total
 }
 
 // Countersは、記録したすべてのcounterの合計をkeyごとに返します。

@@ -102,6 +102,7 @@ func Build(
 		return buildDirectDegrade(
 			maxConcurrent,
 			cfg.SpillType(),
+			meter,
 		)
 	}
 	if err := pkgdurable.ValidateFailureHandlerMaxConcurrent(maxConcurrent); err != nil {
@@ -250,6 +251,7 @@ func BuildDelivery(
 		return buildDirectDegradeWithReport(
 			deliveryFailureHandlerMaxConcurrent,
 			cfg.SpillType(),
+			meter,
 		)
 	}
 	if cfg.DeliveryDurableStoreConfig() == nil {
@@ -297,6 +299,7 @@ func BuildDelivery(
 func buildDirectDegrade(
 	maxConcurrent int,
 	destinations []pkgdurable.SpillType,
+	meter pkgobserver.Meter,
 ) (*CompositeFailureHandler, error) {
 	if err := pkgdurable.ValidateDirectDegradeSpillTypes(destinations); err != nil {
 		return newFactoryErrorComposite(), fmt.Errorf(
@@ -305,7 +308,7 @@ func buildDirectDegrade(
 		)
 	}
 
-	degradeHandlers, err := newDirectDegradeHandlers(destinations)
+	degradeHandlers, err := newDirectDegradeHandlers(destinations, meter)
 	handlers := make([]FailureHandler, 0, len(degradeHandlers))
 	for _, handler := range degradeHandlers {
 		handlers = append(handlers, handler)
@@ -317,6 +320,7 @@ func buildDirectDegrade(
 func buildDirectDegradeWithReport(
 	maxConcurrent int,
 	destinations []pkgdurable.SpillType,
+	meter pkgobserver.Meter,
 ) (*ReportingCompositeFailureHandler, error) {
 	if err := pkgdurable.ValidateDirectDegradeSpillTypes(destinations); err != nil {
 		return newFactoryErrorReportingComposite(), fmt.Errorf(
@@ -325,7 +329,7 @@ func buildDirectDegradeWithReport(
 		)
 	}
 
-	degradeHandlers, err := newDirectDegradeHandlers(destinations)
+	degradeHandlers, err := newDirectDegradeHandlers(destinations, meter)
 	handlers := make([]FailureHandlerWithReport, 0, len(degradeHandlers))
 	for _, handler := range degradeHandlers {
 		handlers = append(handlers, handler)
@@ -347,11 +351,12 @@ func newFactoryErrorReportingComposite() *ReportingCompositeFailureHandler {
 
 func newDirectDegradeHandlers(
 	destinations []pkgdurable.SpillType,
+	meter pkgobserver.Meter,
 ) ([]*degradehandler.Handler, error) {
 	handlers := make([]*degradehandler.Handler, 0, len(destinations))
 	var errs []error
 	for _, destination := range destinations {
-		handler, err := degradehandler.New(destination)
+		handler, err := degradehandler.New(destination, meter)
 		if err != nil {
 			errs = append(errs, fmt.Errorf(
 				"failed to create direct degrade handler for %q: %w",

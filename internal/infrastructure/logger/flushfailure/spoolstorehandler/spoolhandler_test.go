@@ -17,9 +17,9 @@ import (
 	fsstorestore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/store"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/overload"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/overload/provider"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	spoolstorecfg "github.com/go-jappe/heterolog/internal/infrastructure/spool/log/store"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/memorypressure"
@@ -404,8 +404,9 @@ func TestHandleFailureDropPolicyDropsOverloadedRecords(t *testing.T) {
 	if len(notified) != 0 {
 		t.Fatalf("OnError notifications = %v, want none for the configured drop", notified)
 	}
-	if got := meter.total(provider.FailureOverloadDropTotal); got != 1 {
-		t.Fatalf("%s = %d, want 1", provider.FailureOverloadDropTotal, got)
+	// 捨てたrecordだけを数え、spoolへの保存は数えません。
+	if got := meter.total(telemetry.FailureRecords); got != 1 {
+		t.Fatalf("%s = %d, want 1", telemetry.FailureRecords, got)
 	}
 	if records := readSpoolRecords(t, handler.Store.RootDir.ActiveDir().Path()); len(records) != 0 {
 		t.Fatalf("active records count = %d, want 0 after drop", len(records))

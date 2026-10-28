@@ -8,8 +8,10 @@ import (
 
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/evacuation"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 var ErrNilHandler = errors.New("direct degrade handler is nil")
@@ -22,14 +24,15 @@ type Handler struct {
 	delegate evacuation.Handler
 }
 
-// Newは、設定された1つの退避先へ直接退避するhandlerを構築します。
-func New(destination pkgdurable.SpillType) (*Handler, error) {
+// Newは、設定された1つの退避先へ直接退避するhandlerを構築します。退避したrecordは
+// meterで数えます。
+func New(destination pkgdurable.SpillType, meter pkgobserver.Meter) (*Handler, error) {
 	delegate, err := evacuation.NewHandler(pkgdurable.SpillDestination(destination))
 	if err != nil {
 		return nil, err
 	}
 
-	return newHandler(delegate), nil
+	return newHandler(telemetry.CountFailureRecords(delegate, meter, telemetry.ActionDegraded)), nil
 }
 
 func newHandler(delegate evacuation.Handler) *Handler {

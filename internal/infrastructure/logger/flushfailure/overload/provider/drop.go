@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
@@ -18,11 +19,11 @@ func NewOverloadDropHandler(meter pkgobserver.Meter) *dropHandler {
 	return &dropHandler{meter: meter}
 }
 
-// Handleは過負荷のためfailure recordを保存せずに破棄し、drop件数のmetricとspan eventを
-// 記録します。破棄したことを同期APIの呼び出し元が判別できるよう、
+// Handleは過負荷のためfailure recordを保存せずに破棄し、破棄したrecordの数のmetricと
+// span eventを記録します。破棄したことを同期APIの呼び出し元が判別できるよう、
 // pkglogger.ErrLogDroppedを包んだerrorを返します。
 func (h *dropHandler) Handle(ctx context.Context, result loggerfailure.SendResult) error {
-	h.meter.Counter(FailureOverloadDropTotal).Add(ctx, 1)
+	telemetry.RecordFailureRecords(ctx, h.meter, result.Meta.Backend, telemetry.ActionDropped, result.FailedCount())
 
 	span := observer.SpanFromContext(ctx)
 	if span != nil {

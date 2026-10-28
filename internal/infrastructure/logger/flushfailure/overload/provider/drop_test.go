@@ -7,37 +7,11 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
+	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
-
-type countingDropMeter struct {
-	totals map[string]int64
-}
-
-func (m *countingDropMeter) Counter(name string) pkgobserver.Counter {
-	return countingDropCounter{meter: m, name: name}
-}
-
-func (m *countingDropMeter) Gauge(string) pkgobserver.Gauge {
-	return observer.NopGauge{}
-}
-
-func (m *countingDropMeter) Histogram(string) pkgobserver.Histogram {
-	return observer.NopHistogram{}
-}
-
-type countingDropCounter struct {
-	meter *countingDropMeter
-	name  string
-}
-
-func (c countingDropCounter) Add(_ context.Context, value int64, _ ...pkgobserver.Attr) {
-	if c.meter.totals == nil {
-		c.meter.totals = make(map[string]int64)
-	}
-	c.meter.totals[c.name] += value
-}
 
 type recordingDropSpan struct {
 	observer.NopSpan
@@ -58,10 +32,11 @@ func (s *recordingDropSpan) SetAttributes(attrs ...pkgobserver.Attr) {
 
 // dropは保存せずに破棄したことを、metricとspan eventに加えてErrLogDroppedで返します。
 func TestOverloadDropHandlerReportsDroppedRecords(t *testing.T) {
-	meter := &countingDropMeter{}
+	meter := observertest.NewMeter()
 	span := &recordingDropSpan{}
 	ctx := observer.WithSpan(context.Background(), span)
 	result := loggerfailure.SendResult{
+		Meta:              loggerfailure.Meta{Backend: "loki"},
 		RetryableRecords:  []loggerfailure.FailedRecord{{}, {}},
 		DeadRecords:       []loggerfailure.FailedRecord{{}},
 		QuarantineRecords: []loggerfailure.FailedRecord{{}},
@@ -71,8 +46,9 @@ func TestOverloadDropHandlerReportsDroppedRecords(t *testing.T) {
 	if !errors.Is(err, pkglogger.ErrLogDropped) {
 		t.Fatalf("Handle error = %v, want ErrLogDropped", err)
 	}
-	if got := meter.totals[FailureOverloadDropTotal]; got != 1 {
-		t.Fatalf("%s = %d, want 1", FailureOverloadDropTotal, got)
+	dropped := observertest.Key(telemetry.FailureRecords, telemetry.AttrBackend, "loki", telemetry.AttrAction, telemetry.ActionDropped)
+	if got := meter.Count(dropped); got != 4 {
+		t.Fatalf("%s = %d, want the 4 dropped records; counters = %v", dropped, got, meter.Counters())
 	}
 	attrs, ok := span.events[SpanEventDrop]
 	if !ok {

@@ -109,7 +109,7 @@ reportの宛先ごとの結果は、次のいずれかです。
 - `degrade` で退避できた場合はerrorを返しません。
 - 非同期APIのログ呼出しはerrorを返しません。`Close` の最終flushで破棄した場合は `Close` が返します。
 - Delivery APIでは `DeliveryReport.HasDrop()` で確認します。
-- 破棄件数は `logger_failure_overload_drop_total` でも観測できます。
+- 破棄件数は、メトリクス `heterolog_failure_records_total` の `action="dropped"` でも観測できます。
 
 ### 終了処理
 

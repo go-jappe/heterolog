@@ -10,6 +10,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/overload/provider"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	spoolstoreconfig "github.com/go-jappe/heterolog/internal/infrastructure/spool/log/store"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/memorypressure"
@@ -81,7 +82,11 @@ func NewOverloadHandlerProvider(
 	case durable.OverloadPolicyDrop:
 		return provider.NewOverloadDropHandler(meter), nil
 	case durable.OverloadPolicyDegrade:
-		return provider.NewDegradeHandler(overloadCfg)
+		handler, err := provider.NewDegradeHandler(overloadCfg)
+		if err != nil {
+			return nil, err
+		}
+		return telemetry.CountFailureRecords(handler, meter, telemetry.ActionDegraded), nil
 	default:
 		return nil, fmt.Errorf(
 			"%w: %q",
