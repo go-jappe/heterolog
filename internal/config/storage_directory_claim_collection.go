@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/go-jappe/heterolog/internal/config/failure"
 	"github.com/go-jappe/heterolog/internal/config/filelifecycle"
@@ -231,6 +233,34 @@ func (a AppConfig) collectStorageDirectoryClaims() ([]storageDirectoryClaim, err
 			entry.deliveryStore.selected,
 			entry.deliveryStore.config,
 		)
+	}
+
+	// 管理用APIの監査用loggerは、Delivery loggerとは別の送達確認loggerとして、監査logの
+	// fileとfailure archiveのdirectoryを所有します。
+	if a.AdminAudit.Enabled {
+		auditFile := a.AdminAudit.DeliveryLogger.DeliveryFileConfig.FileSystemStoreConfig
+		appendFileClaims(
+			adminAuditLoggerLabel+"."+logconfig.LogOutputFile.String(),
+			a.AdminAudit.requires(logconfig.LogOutputFile),
+			pkgfsstore.FsstoreConfig{
+				LogPath:                      a.FsstoreConfig.LogPath,
+				Target:                       a.RuntimeConfig.Target,
+				LogDir:                       auditFile.LogDir,
+				ErrorLogDir:                  auditFile.ErrorLogDir,
+				DebugLogDir:                  auditFile.DebugLogDir,
+				IsSeparateDebugLogDirEnabled: auditFile.IsSeparateDebugLogDirEnabled,
+				IsSeparateErrorLogsEnabled:   auditFile.IsSeparateErrorLogsEnabled,
+				IsSeparateDebugLogsEnabled:   auditFile.IsSeparateDebugLogsEnabled,
+			},
+		)
+		stores := a.AdminAudit.failureStores()
+		for _, destination := range slices.Sorted(maps.Keys(stores)) {
+			appendDeliveryArchiveClaims(
+				adminAuditLoggerLabel+"."+destination.String(),
+				a.AdminAudit.DeliveryLogger.LogOutputDestinations.Has(destination),
+				*stores[destination],
+			)
+		}
 	}
 
 	// compressed log file upload failure storeは通常ログとbackend送信失敗archiveの

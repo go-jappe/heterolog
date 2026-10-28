@@ -89,13 +89,13 @@ func (r *Runtime) OutputSettings() map[pkglogger.LogOutputDestination]pkglogger.
 	return r.outputs.Snapshot()
 }
 
-// UpdateOutputSettingsは、稼働中のloggerの出力先のlevelとsamplingを変えます。各変更は
-// 反映する時点の設定に適用するため、別の項目への同時の変更が互いを打ち消しません。すべての
-// 変更を先に確かめ、一つでも不正な変更があれば、どれも反映しません。loggerが使って
-// いない出力先はpkg/loggerのErrUnknownOutput、不正な値はpkg/loggerの
-// ConfigFieldErrorで報告します。
+// UpdateOutputSettingsは、稼働中のloggerの出力先のlevelとsamplingを変え、変えた出力先
+// ごとに、反映の直前と直後の設定を返します。各変更は反映する時点の設定に適用するため、
+// 別の項目への同時の変更が互いを打ち消しません。すべての変更を先に確かめ、一つでも
+// 不正な変更があれば、どれも反映しません。loggerが使っていない出力先はpkg/loggerの
+// ErrUnknownOutput、不正な値はpkg/loggerのConfigFieldErrorで報告します。
 // 変更は次のlogから反映し、processが終了すると残りません。
-func (r *Runtime) UpdateOutputSettings(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) error {
+func (r *Runtime) UpdateOutputSettings(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) (map[pkglogger.LogOutputDestination]pkglogger.AppliedOutputSettings, error) {
 	return r.outputs.Update(changes)
 }
 
@@ -107,6 +107,6 @@ func (r *AsyncRuntime) OutputSettings() map[pkglogger.LogOutputDestination]pkglo
 
 // UpdateOutputSettingsは、Runtime.UpdateOutputSettingsと同じく、稼働中のloggerの
 // 出力先のlevelとsamplingを変えます。非同期loggerは、logを処理する時点の設定を使います。
-func (r *AsyncRuntime) UpdateOutputSettings(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) error {
+func (r *AsyncRuntime) UpdateOutputSettings(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) (map[pkglogger.LogOutputDestination]pkglogger.AppliedOutputSettings, error) {
 	return r.outputs.Update(changes)
 }

@@ -1,6 +1,7 @@
 // Package admin holds the configuration types of the admin API, which reads and
 // changes the level and sampling of the outputs of running loggers. The
-// heterolog package serves the API with NewAdminHandler and StartAdminServer.
+// heterolog package serves the API with NewAdminHandler and StartAdminServer,
+// which record every change request in an audit logger.
 package admin
 
 import pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -17,24 +18,6 @@ type HandlerConfig struct {
 	// Loggers maps the names used in the API to the loggers whose settings it
 	// reads and changes.
 	Loggers map[string]pkglogger.SettingsController
-	// OnChange, when set, is called after each change of an output, for example
-	// to keep an audit log. When it is nil, each change is written as one line to
-	// the standard logger of the log package.
-	OnChange func(Change)
-}
-
-// Change describes a change of one output made through the admin API.
-type Change struct {
-	// RemoteAddr is the network address of the client that made the request.
-	RemoteAddr string
-	// Logger is the name of the logger in HandlerConfig.Loggers.
-	Logger string
-	// Output is the output that changed.
-	Output pkglogger.LogOutputDestination
-	// Before and After are the settings of the output before and after the
-	// change.
-	Before pkglogger.OutputSettings
-	After  pkglogger.OutputSettings
 }
 
 // ServerConfig configures the dedicated admin API server.
@@ -50,6 +33,4 @@ type ServerConfig struct {
 	// its private key. Setting both serves HTTPS.
 	TLSCertFile string
 	TLSKeyFile  string
-	// OnChange is called after each change, as in HandlerConfig.
-	OnChange func(Change)
 }

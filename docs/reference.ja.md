@@ -169,22 +169,49 @@ reportの宛先ごとの結果は、次のいずれかです。
 
 同期・非同期のロガーの出力先ごとのログレベルとサンプリングは、アプリケーションの稼働中に、コードまたはHTTP APIから変更できます。
 
-- コードでは、`runtime.OutputSettings()` が現在の設定を返し、`runtime.UpdateOutputSettings(changes)` が設定を変えます。変更は、指定したレベルとサンプリングの項目だけを変えます（`OutputSettingsChange` と `SamplingChange`）。ほかの項目は反映する時点の値のままなので、コードやHTTP APIからの同時の変更が、互いを打ち消しません。すべての変更を先に検証し、一つでも不正なら何も反映しません。ロガーが使っていない出力先は `ErrUnknownOutput`、不正な値は `pkg/logger` の `ConfigFieldError` です。
+- コードでは、`runtime.OutputSettings()` が現在の設定を返し、`runtime.UpdateOutputSettings(changes)` が設定を変えて、変えた出力先ごとに、反映の直前と直後の設定（`AppliedOutputSettings`）を返します。変更は、指定したレベルとサンプリングの項目だけを変えます（`OutputSettingsChange` と `SamplingChange`）。ほかの項目は反映する時点の値のままなので、コードやHTTP APIからの同時の変更が、互いを打ち消しません。すべての変更を先に検証し、一つでも不正なら何も反映しません。ロガーが使っていない出力先は `ErrUnknownOutput`、不正な値は `pkg/logger` の `ConfigFieldError` です。
 - 変更は次のログから反映します。非同期のロガーは、ログを処理する時点の設定を使います。
 - 変更はメモリ上だけに保持するため、再起動すると設定どおりに戻ります。
 - Deliveryのロガーには、この設定はありません。サンプリングはせず、レベルで絞り込むのはSlackの出力だけで、そのレベルは設定どおりです。内部ログの通知だけに使う出力先は、設定どおりのままです。
 
 HTTP API（管理用API）は、curlなどのツールから呼べます。
 
-- `NewAdminHandler` は、アプリケーション自身のサーバーに組み込む `http.Handler` を返します。代わりに `StartAdminServer` で専用のサーバーを起動することもできます。
+- `NewAdminHandler` は、アプリケーション自身のサーバーに組み込む `http.Handler` を返します。代わりに `StartAdminServer` で専用のサーバーを起動することもできます。どちらにも、[監査ログ](#管理用apiの監査ログ)を記録する送達確認ロガーを渡します。
 - `GET /settings` はすべてのロガーの現在の設定を返し、`PATCH /settings` はJSONの本文で指定した項目を変えます。レベルは `DEBUG`・`INFO`・`WARN`・`ERROR`（大文字小文字を区別しません）で、`PATCH` で省略したサンプリングの項目は、別の `PATCH` が同時にほかの項目を変えても、今の値のままです。
 - すべての要求で `Authorization: Bearer <トークン>` が必要です。トークンは32バイト以上（`MinAdminTokenLength`）で、例えば `openssl rand -hex 32` のように無作為に作ります。比較は一定時間で行い、エラーにトークンを含めません。
-- `PATCH` は、すべてのロガーのすべての変更を検証してから反映します。本文は64KiBまでで、未知の項目は拒否します。
-- 変更は、記録のために `OnChange` へ渡します。`OnChange` がない場合は、`log` パッケージの標準のloggerへ一行出力します。
+- `PATCH` は1件ずつ順に処理し、処理中に届いた要求は、前の要求が終わるまで待ちます。`PATCH` は、すべてのロガーのすべての変更を検証してから反映します。本文は64KiBまでで、未知の項目は拒否します。
+- どの応答にも、監査ログでの要求IDを `X-Request-Id` ヘッダーで返します。
 - 専用のサーバーは、アドレスのホストが空の場合（例: `:9100`）は127.0.0.1で待ち受けます。ほかのアドレスで待ち受ける場合は、ホストを明示し、TLSの証明書と鍵を設定します。トークンをネットワーク上に平文で流さないためです。
 - 環境設定では、`HETEROLOG_ADMIN_ADDR` でサーバーを有効にし、`HETEROLOG_ADMIN_TOKEN`・`HETEROLOG_ADMIN_TLS_CERT_FILE`・`HETEROLOG_ADMIN_TLS_KEY_FILE` とともに設定します。`LoadEnvConfig` が検証し、`env.AdminServerConfig()` が返します。
 
 curlを使った例は、READMEの[稼働中にログレベルとサンプリングを変える](../README.ja.md#稼働中にログレベルとサンプリングを変える)にあります。
+
+### 管理用APIの監査ログ
+
+管理用APIは、変更の要求をすべて監査ログに記録します。監査ログは専用の送達確認ロガーが書くため、あとから変更を確かめられ、管理用APIが変えるレベルやサンプリングで記録が隠れることもありません。
+
+- `PATCH` は、次の段階ごとに記録し、要求IDで結びます。
+
+  | 段階 | レベル | 記録する時点 |
+  | --- | --- | --- |
+  | `requested` | INFO | 要求が届いた時点。要求した項目（`changes`）を含めます |
+  | `started` | INFO | 変更を始める時点。変更する出力先の設定（`settings`）を含めます |
+  | `applied` | INFO | 変更を反映した時点。変更後の設定（`settings`）と、要求どおりか（`verified`）を含めます |
+  | `mismatch` | ERROR | 変更後の設定が、始める時点の設定に要求を適用した設定と違う出力先ごと（`expected`・`actual`） |
+  | `rejected` | WARN | 要求を拒否した時点。理由（`reason`）を含めます。トークンがない・違う要求や、ほかの経路・方法への要求も含みます |
+  | `failed` | ERROR | 検証を通った変更を反映できなかった時点 |
+  | `undelivered` | ERROR | その要求の記録の一部が、監査用ロガーの出力先のすべてに届かなかった時点（`undelivered_phases`） |
+
+- どの記録にも `log_kind=audit`・`audit_phase`・`remote_addr` のフィールドと、ログの要求IDとしての要求IDが付きます。形式は出力先ごとの作法に従います（例: ファイルでは1行のテキスト、OpenSearchではJSONの文書）。記録しないのは、成功した `GET` だけです。
+- 食い違いがあっても変更は戻さず、応答は `500` で今の設定を返します。記録が届かなくても変更は止めず、応答は変更の結果のまま警告を含めます。届かなかった記録は、送達確認ロガーの通常の動きとして、失敗時の保存先（failure archive）に残ります。
+- 環境設定では、`HETEROLOG_ADMIN_ADDR` を設定すると、`env.NewAdminAudit(ctx)` が監査用ロガーを作り、`env.AdminAuditConfig()` がその設定を返します。コードでは、heterologが作った送達確認ロガー（`*DeliveryRuntime`）を `NewAdminHandler` か `StartAdminServer` に渡し、管理用APIを止めた後で閉じます。
+
+環境設定から作る監査用ロガーは、接続先・認証・タイムアウトなどに送達確認ロガーの設定（`HETEROLOG_DELIVERY_*`）を使います。`HETEROLOG_ENABLE_DELIVERY_LOGGING` がfalseでも同じです。変えるのは次の点だけです。
+
+- 出力先: `HETEROLOG_ADMIN_AUDIT_LOG_TYPE`。監査ログは欠けてはいけないため、ほかのロガーと違い、既定は `stdout` と `file` の両方です。`slack` を加えると、送達確認ロガーのSlackの出力は既定でERRORだけを記録するため、ERRORの記録が通知になります。
+- ファイル: `HETEROLOG_ADMIN_AUDIT_FILE_LOG_DIR`（既定は `/audit_logs`）。ほかのログのディレクトリと同じく、`HETEROLOG_SYSTEM_LOG_DIR` と `HETEROLOG_TARGET` を基準に解決します。一つの要求の記録が分かれないよう、すべてのレベルを同じファイルに書き、保守での削除・圧縮・アップロードはしません。ほかの保存先と重なるディレクトリは使えず、`LoadEnvConfig` が `StorageDirectoryCollisionError` を返します。
+- 出力先ごとの記録先: `HETEROLOG_ADMIN_AUDIT_SLACK_CHANNEL`（すべてのレベル）・`HETEROLOG_ADMIN_AUDIT_OPENSEARCH_INDEX`・`HETEROLOG_ADMIN_AUDIT_LOKI_LABELS`（ラベルのJSONオブジェクト）・`HETEROLOG_ADMIN_AUDIT_CLOUDWATCH_LOG_GROUP_NAME`・`HETEROLOG_ADMIN_AUDIT_CLOUDWATCH_LOG_STREAM_NAME`・`HETEROLOG_ADMIN_AUDIT_CLICKHOUSE_DATABASE`・`HETEROLOG_ADMIN_AUDIT_CLICKHOUSE_TABLE`。空の項目は送達確認ロガーの設定のままです。監査ログをほかのログと分けるには、これらを指定します。
+- 失敗時の保存先（failure archive）は、専用のディレクトリ `admin_audit_logger_<backend>_failure_archives` を使い、アップロードしません。送達確認ロガーの内部ログ専用の出力先（`HETEROLOG_DELIVERY_LOG_INTERNAL_LOG_*`）は使いません。
 
 ### メモリ逼迫の監視器
 

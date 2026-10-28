@@ -169,22 +169,49 @@ An example is in [Sending logs to several destinations](../README.md#sending-log
 
 The level and sampling of each output of a synchronous or asynchronous logger can change while the application runs, in code or through an HTTP API.
 
-- In code, `runtime.OutputSettings()` returns the current settings, and `runtime.UpdateOutputSettings(changes)` changes them. A change sets only the level and the sampling fields it gives (`OutputSettingsChange` with a `SamplingChange`); the others keep the values in effect when the change is applied, so changes made at the same time, in code or through the HTTP API, do not undo each other. All changes are checked first, and none is applied if any is invalid: an output the logger does not use is `ErrUnknownOutput`, and an invalid value is a `ConfigFieldError` of `pkg/logger`.
+- In code, `runtime.OutputSettings()` returns the current settings, and `runtime.UpdateOutputSettings(changes)` changes them and returns the settings of each changed output right before and after the change (`AppliedOutputSettings`). A change sets only the level and the sampling fields it gives (`OutputSettingsChange` with a `SamplingChange`); the others keep the values in effect when the change is applied, so changes made at the same time, in code or through the HTTP API, do not undo each other. All changes are checked first, and none is applied if any is invalid: an output the logger does not use is `ErrUnknownOutput`, and an invalid value is a `ConfigFieldError` of `pkg/logger`.
 - Changes take effect from the next entry. An asynchronous logger uses the settings in effect when it processes an entry.
 - Changes are kept in memory only, so a restart returns to the configured settings.
 - Delivery loggers have no such settings: they do not sample, and only their Slack output filters by level, at its configured level. Outputs used only for internal log notifications keep their configured settings.
 
 The HTTP API (admin API) can be called with tools such as curl:
 
-- `NewAdminHandler` returns an `http.Handler` to mount on your own server. `StartAdminServer` starts a dedicated server instead.
+- `NewAdminHandler` returns an `http.Handler` to mount on your own server. `StartAdminServer` starts a dedicated server instead. Both take the delivery logger that records the [audit log](#audit-log-of-the-admin-api).
 - `GET /settings` returns the current settings of every logger, and `PATCH /settings` changes the fields given in the JSON body. Levels are `DEBUG`, `INFO`, `WARN`, and `ERROR` (case-insensitive), and sampling fields omitted in a `PATCH` keep their values, also when another `PATCH` changes other fields at the same time.
 - Every request must send `Authorization: Bearer <token>`. The token must be at least 32 bytes (`MinAdminTokenLength`); generate it randomly, for example with `openssl rand -hex 32`. It is compared in constant time, and errors never contain it.
-- A `PATCH` checks every change of every logger before applying any of them. The body is limited to 64 KiB, and unknown fields are rejected.
-- Each change is passed to `OnChange` for audit logs. Without `OnChange`, it is written as one line to the standard logger of the `log` package.
+- `PATCH` requests are processed one at a time; a request that arrives during another waits for it. A `PATCH` checks every change of every logger before applying any of them. The body is limited to 64 KiB, and unknown fields are rejected.
+- Every response has the header `X-Request-Id`, the ID of the request in the audit log.
 - The dedicated server listens on 127.0.0.1 when the host of its address is empty (for example, `:9100`). To listen on another address, give the host explicitly and set a TLS certificate and key, so the token is not sent over a network in clear text.
 - From the environment configuration, `HETEROLOG_ADMIN_ADDR` enables the server, together with `HETEROLOG_ADMIN_TOKEN`, `HETEROLOG_ADMIN_TLS_CERT_FILE`, and `HETEROLOG_ADMIN_TLS_KEY_FILE`. `LoadEnvConfig` checks them, and `env.AdminServerConfig()` returns them.
 
 Examples with curl are in [Changing the level and sampling while running](../README.md#changing-the-level-and-sampling-while-running) of the README.
+
+### Audit log of the admin API
+
+The admin API records every change request in an audit log, written by a delivery logger of its own, so that the changes can be checked later and are not hidden by the level and sampling that the API itself changes.
+
+- Each `PATCH` is recorded in these steps, linked by the request ID:
+
+  | Step | Level | Recorded when |
+  | --- | --- | --- |
+  | `requested` | INFO | the request arrives, with the requested fields (`changes`) |
+  | `started` | INFO | the change starts, with the settings of the outputs to change (`settings`) |
+  | `applied` | INFO | the change is applied, with the settings after it (`settings`) and whether they match the request (`verified`) |
+  | `mismatch` | ERROR | for each output whose settings do not match the settings at the start with the request applied (`expected`, `actual`) |
+  | `rejected` | WARN | a request is rejected, with the reason (`reason`); this includes requests with a missing or wrong token, and requests to other paths and methods |
+  | `failed` | ERROR | a change cannot be applied after it was checked |
+  | `undelivered` | ERROR | some records of the request did not reach every output of the audit logger (`undelivered_phases`) |
+
+- Every record has the fields `log_kind=audit`, `audit_phase`, and `remote_addr`, and the request ID as the request ID of the log entry. Each output writes them in its own format, for example one text line in a file or a JSON document in OpenSearch. Only a successful `GET` is not recorded.
+- A mismatch is not reverted: the response is `500` with the current settings. Undelivered records do not stop the change either: the response is still the result of the change and carries a warning, and the delivery logger keeps the records in its failure archive as usual.
+- From the environment configuration, `env.NewAdminAudit(ctx)` builds the audit logger when `HETEROLOG_ADMIN_ADDR` is set; `env.AdminAuditConfig()` returns its settings. In code, pass a delivery logger created by heterolog (`*DeliveryRuntime`) to `NewAdminHandler` or `StartAdminServer`, and close it after the admin API stops.
+
+The audit logger built from the environment uses the settings of the delivery logger (`HETEROLOG_DELIVERY_*`) for endpoints, credentials, and timeouts, even when `HETEROLOG_ENABLE_DELIVERY_LOGGING` is false, and changes only these:
+
+- Outputs: `HETEROLOG_ADMIN_AUDIT_LOG_TYPE`. Unlike the other loggers, it defaults to both `stdout` and `file`, because the audit log must not be lost. Adding `slack` notifies the ERROR records, since the Slack output of a delivery logger records only ERROR by default.
+- File: `HETEROLOG_ADMIN_AUDIT_FILE_LOG_DIR`, by default `/audit_logs`, resolved against `HETEROLOG_SYSTEM_LOG_DIR` and `HETEROLOG_TARGET` like the other log directories. All levels are written to the same file, so the records of a request are not split, and the files are not compressed, uploaded, or removed by maintenance. The directory must not overlap the directory of another store; `LoadEnvConfig` reports a `StorageDirectoryCollisionError`.
+- Where each output records: `HETEROLOG_ADMIN_AUDIT_SLACK_CHANNEL` (every level), `HETEROLOG_ADMIN_AUDIT_OPENSEARCH_INDEX`, `HETEROLOG_ADMIN_AUDIT_LOKI_LABELS` (a JSON object of labels), `HETEROLOG_ADMIN_AUDIT_CLOUDWATCH_LOG_GROUP_NAME`, `HETEROLOG_ADMIN_AUDIT_CLOUDWATCH_LOG_STREAM_NAME`, `HETEROLOG_ADMIN_AUDIT_CLICKHOUSE_DATABASE`, and `HETEROLOG_ADMIN_AUDIT_CLICKHOUSE_TABLE`. Empty values keep those of the delivery logger; set them to keep the audit log apart from other logs.
+- Failure archives use their own directories, `admin_audit_logger_<backend>_failure_archives`, and are not uploaded. The dedicated internal-log destinations of the delivery logger (`HETEROLOG_DELIVERY_LOG_INTERNAL_LOG_*`) are not used.
 
 ### Memory pressure monitor
 

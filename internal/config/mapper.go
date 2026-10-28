@@ -257,7 +257,13 @@ func MapAsyncLoggerConfig(cfg AppConfig) (logger.AsyncBestEffortMultiLoggerConfi
 // MapDeliveryLoggerConfig はDelivery logger用DTOへ変換し、変換後に選択されたbackendの
 // 設定が受け取り先packageの契約を満たすことを検証します。
 func MapDeliveryLoggerConfig(cfg AppConfig) (logger.DeliveryLoggerConfig, error) {
-	mapped := ToDeliveryLoggerConfig(cfg)
+	return validateMappedDeliveryLoggerConfig(cfg, ToDeliveryLoggerConfig(cfg))
+}
+
+// validateMappedDeliveryLoggerConfigは、cfgのDelivery loggerから変換したmappedが、受け取り先
+// packageの契約を満たすことを検証します。管理用APIの監査用loggerも、変換後の設定を
+// 監査用へ変えてから、この検証を使います。
+func validateMappedDeliveryLoggerConfig(cfg AppConfig, mapped logger.DeliveryLoggerConfig) (logger.DeliveryLoggerConfig, error) {
 	sourceLabel := logger.LoggerContractDelivery.DisplayName()
 	if err := collapseResolvedDeliveryInternalLogFileDestination(
 		mapped.File, mapped.InternalLogDestinations, mapped.LogOutputDestinations.Has(logger.LogOutputFile),

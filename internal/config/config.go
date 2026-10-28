@@ -90,6 +90,9 @@ type AppConfig struct {
 	ObservabilityCfg                    observability.ObservabilityConfig
 	// AdminServerは、管理用APIの管理用サーバーの設定です。loggerの設定には含めません。
 	AdminServer AdminServerConfig
+	// AdminAuditは、管理用APIの監査logを記録する送達確認loggerの設定です。管理用
+	// サーバーを有効にした場合だけ読み込みます。
+	AdminAudit AdminAuditConfig
 }
 
 // envSourceは、設定値の参照先です。process environmentの値を優先し、process environmentに
@@ -452,7 +455,13 @@ func loadAppendLogRunnerConfig(env pkgenv.Lookup) (appendlogrunner.Config, error
 // Slackなど認証情報を必要とする出力先は利用者が明示した場合だけ有効になり、
 // その認証情報はmapper後のvalidationで必須として検証します。
 func loadLogOutputDestinations(env pkgenv.Lookup, key string) (pkglogger.LogOutputDestinations, error) {
-	rawDestinations := env.GetEnvSliceString(key, logconfig.LogDefaultOutputs)
+	return loadLogOutputDestinationsWithDefault(env, key, logconfig.LogDefaultOutputs)
+}
+
+// loadLogOutputDestinationsWithDefaultは、keyの出力先を読み込みます。未設定か空の場合は
+// defaultsを使います。
+func loadLogOutputDestinationsWithDefault(env pkgenv.Lookup, key string, defaults []string) (pkglogger.LogOutputDestinations, error) {
+	rawDestinations := env.GetEnvSliceString(key, defaults)
 	destinations, err := pkglogger.ParseLogOutputDestinations(rawDestinations)
 	if err != nil {
 		return nil, newInvalidEnvironmentValueError(
@@ -461,7 +470,7 @@ func loadLogOutputDestinations(env pkgenv.Lookup, key string) (pkglogger.LogOutp
 	}
 	if len(destinations) == 0 {
 		// 出力先なしの構成ではログが黙って失われるため、未設定と同じ既定値へ戻します。
-		return pkglogger.ParseLogOutputDestinations(logconfig.LogDefaultOutputs)
+		return pkglogger.ParseLogOutputDestinations(defaults)
 	}
 	return destinations, nil
 }
@@ -750,11 +759,20 @@ func loadAsyncBestEffortMultiLoggerConfig(env pkgenv.Lookup) (logconfig.AsyncBes
 }
 
 func loadDeliveryLoggerConfig(env pkgenv.Lookup) (logconfig.DeliveryLoggerConfig, error) {
-	var environmentErrors []error
 	destinations, err := loadLogOutputDestinations(env, "HETEROLOG_DELIVERY_LOG_TYPE")
 	if err != nil {
 		return logconfig.DeliveryLoggerConfig{}, err
 	}
+	return loadDeliveryLoggerConfigWithDestinations(env, destinations)
+}
+
+// loadDeliveryLoggerConfigWithDestinationsは、destinationsを出力先として、Delivery loggerの
+// 設定を読み込みます。管理用APIの監査用loggerも、出力先だけを変えてこの設定を使います。
+func loadDeliveryLoggerConfigWithDestinations(
+	env pkgenv.Lookup,
+	destinations pkglogger.LogOutputDestinations,
+) (logconfig.DeliveryLoggerConfig, error) {
+	var environmentErrors []error
 	timeoutBudgetPolicy, err := loadTimeoutBudgetPolicy(
 		env.GetEnvString("HETEROLOG_DELIVERY_LOG_TIMEOUT_BUDGET_POLICY", string(timeoutbudget.DefaultTimeoutBudgetPolicy)),
 		"HETEROLOG_DELIVERY_LOG_TIMEOUT_BUDGET_POLICY",
@@ -6111,6 +6129,14 @@ func loadConfig(source envSource) (AppConfig, error) {
 		errs = append(errs, err)
 	}
 
+	// 管理用APIの監査用loggerは、Delivery loggerを無効にしても、管理用サーバーを有効に
+	// すれば使います。
+	if appCfg.AdminServer.Addr != "" {
+		var err error
+		appCfg.AdminAudit, err = loadAdminAuditConfig(env)
+		errs = append(errs, err)
+	}
+
 	var objectStorageCompressedLogFileUploadFailureStoreErr error
 	appCfg.CompressedLogFileUploadFailureStore, objectStorageCompressedLogFileUploadFailureStoreErr =
 		loadObjectStorageCompressedLogFileUploadFailureStoreConfig(env, appCfg)
@@ -6148,7 +6174,7 @@ func loadConfig(source envSource) (AppConfig, error) {
 		appCfg.DeliveryLogger.LogOutputDestinations,
 		appCfg.DeliveryLogger.HandlerTargetDestinations,
 		logconfig.LogOutputOpenSearch,
-	) {
+	) || appCfg.AdminAudit.requires(logconfig.LogOutputOpenSearch) {
 		var err error
 		appCfg.DeliveryOpenSearchClient, err = loadDeliveryOpenSearchClientConfig(env)
 		errs = append(errs, err)
@@ -6176,7 +6202,7 @@ func loadConfig(source envSource) (AppConfig, error) {
 		appCfg.DeliveryLogger.LogOutputDestinations,
 		appCfg.DeliveryLogger.HandlerTargetDestinations,
 		logconfig.LogOutputLoki,
-	) {
+	) || appCfg.AdminAudit.requires(logconfig.LogOutputLoki) {
 		var err error
 		appCfg.DeliveryLokiClient, err = loadDeliveryLokiClientConfig(env)
 		errs = append(errs, err)
@@ -6204,7 +6230,7 @@ func loadConfig(source envSource) (AppConfig, error) {
 		appCfg.DeliveryLogger.LogOutputDestinations,
 		appCfg.DeliveryLogger.HandlerTargetDestinations,
 		logconfig.LogOutputCloudWatchLogs,
-	) {
+	) || appCfg.AdminAudit.requires(logconfig.LogOutputCloudWatchLogs) {
 		var err error
 		appCfg.DeliveryCloudWatchLogsClient, err = loadDeliveryCloudWatchLogsClientConfig(env)
 		errs = append(errs, err)
@@ -6232,7 +6258,7 @@ func loadConfig(source envSource) (AppConfig, error) {
 		appCfg.DeliveryLogger.LogOutputDestinations,
 		appCfg.DeliveryLogger.HandlerTargetDestinations,
 		logconfig.LogOutputClickHouse,
-	) {
+	) || appCfg.AdminAudit.requires(logconfig.LogOutputClickHouse) {
 		var err error
 		appCfg.DeliveryClickHouseClient, err = loadDeliveryClickHouseClientConfig(env)
 		errs = append(errs, err)

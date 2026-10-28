@@ -23,7 +23,7 @@ func newRegistryForTest(t *testing.T) (*Registry, *pkglogger.LiveSettings) {
 func TestRegistryUpdateChangesTheLiveSettings(t *testing.T) {
 	registry, live := newRegistryForTest(t)
 	sampling := pkglogger.SamplingConfig{IsSamplingEnabled: true, SamplingDebugRate: 1, SamplingInfoRate: 5, SamplingWarnRate: 1, SamplingErrorRate: 1}
-	if err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+	if _, err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 		pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevelDebug), Sampling: &pkglogger.SamplingChange{
 			IsSamplingEnabled: ptr(true), SamplingDebugRate: ptr(1), SamplingInfoRate: ptr(5), SamplingWarnRate: ptr(1), SamplingErrorRate: ptr(1),
 		}},
@@ -37,13 +37,35 @@ func TestRegistryUpdateChangesTheLiveSettings(t *testing.T) {
 		t.Errorf("Snapshot() = %+v, want the updated settings", got)
 	}
 	// 省略した項目は今の値のままです。
-	if err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+	if _, err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 		pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevelWarn)},
 	}); err != nil {
 		t.Fatalf("Update(level only): %v", err)
 	}
 	if live.Level() != pkglogger.LogLevelWarn || live.Sampling() != sampling {
 		t.Errorf("LiveSettings = %v, %+v; want WARN with the previous sampling", live.Level(), live.Sampling())
+	}
+}
+
+// Updateは、変えた出力先ごとに、反映の直前と直後の設定を返します。直後の設定は、反映した
+// 後のLiveSettingsから読み直した値です。
+func TestRegistryUpdateReturnsTheSettingsRightBeforeAndAfterTheChange(t *testing.T) {
+	registry, live := newRegistryForTest(t)
+	applied, err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+		pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevelDebug), Sampling: &pkglogger.SamplingChange{SamplingInfoRate: ptr(7)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := pkglogger.AppliedOutputSettings{
+		Before: pkglogger.OutputSettings{Level: pkglogger.LogLevelInfo},
+		After:  pkglogger.OutputSettings{Level: pkglogger.LogLevelDebug, Sampling: pkglogger.SamplingConfig{SamplingInfoRate: 7}},
+	}
+	if len(applied) != 1 || applied[pkglogger.LogOutputStdout] != want {
+		t.Fatalf("Update() = %+v, want only stdout with %+v", applied, want)
+	}
+	if got := (pkglogger.OutputSettings{Level: live.Level(), Sampling: live.Sampling()}); got != want.After {
+		t.Errorf("LiveSettings = %+v, want the returned after settings %+v", got, want.After)
 	}
 }
 
@@ -56,7 +78,7 @@ func TestRegistryUpdateChangesOnlyTheSamplingFieldsItSets(t *testing.T) {
 		{SamplingInfoRate: ptr(10)},
 		{SamplingWarnRate: ptr(20)},
 	} {
-		if err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+		if _, err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 			pkglogger.LogOutputStdout: {Sampling: &change},
 		}); err != nil {
 			t.Fatalf("Update(%+v): %v", change, err)
@@ -87,9 +109,10 @@ func TestRegistryConcurrentUpdatesOfDifferentSamplingFieldsAllApply(t *testing.T
 		go func() {
 			defer wg.Done()
 			<-start
-			errs <- registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+			_, err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 				pkglogger.LogOutputStdout: {Sampling: &change},
 			})
+			errs <- err
 		}()
 	}
 	close(start)
@@ -126,7 +149,7 @@ func TestRegistryUpdateAppliesNothingWhenAChangeIsInvalid(t *testing.T) {
 		}, pkglogger.ErrInvalidSamplingRate},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := registry.Update(tt.changes); !errors.Is(err, tt.want) {
+			if _, err := registry.Update(tt.changes); !errors.Is(err, tt.want) {
 				t.Fatalf("Update() = %v, want %v", err, tt.want)
 			}
 			if live.Level() != pkglogger.LogLevelInfo || live.Sampling().IsSamplingEnabled {
@@ -142,7 +165,7 @@ func TestNilRegistryHasNoOutputs(t *testing.T) {
 	if got := registry.Snapshot(); len(got) != 0 {
 		t.Errorf("Snapshot() = %v, want empty", got)
 	}
-	if err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+	if _, err := registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 		pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevelDebug)},
 	}); !errors.Is(err, pkglogger.ErrUnknownOutput) {
 		t.Errorf("Update() = %v, want ErrUnknownOutput", err)

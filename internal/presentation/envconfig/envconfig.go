@@ -20,6 +20,10 @@ import (
 // falseにして無効にしたloggerを、EnvConfigに求めたことを表します。
 var ErrLoggerDisabled = errors.New("logger is disabled by the environment")
 
+// ErrAdminAuditNotEnabledは、HETEROLOG_ADMIN_ADDRが空で管理用serverを有効にしていない
+// ため、監査用loggerの設定がないことを表します。
+var ErrAdminAuditNotEnabled = appconfig.ErrAdminAuditNotEnabled
+
 // EnvConfigは、LoadがHETEROLOG_の環境変数から読んだ設定を持ちます。New・NewAsync・
 // NewDeliveryはこの設定からloggerを作ります。Config・AsyncConfig・DeliveryConfigは、
 // 調整してからconstructorへ渡すための設定を返します。
@@ -67,6 +71,10 @@ func Load(path string) (*EnvConfig, error) {
 	}
 	if app.DeliveryLoggerEnabled {
 		_, err := appconfig.MapDeliveryLoggerConfig(app)
+		errs = append(errs, err)
+	}
+	if app.AdminAudit.Enabled {
+		_, err := appconfig.MapAdminAuditLoggerConfig(app)
 		errs = append(errs, err)
 	}
 	if err := errors.Join(errs...); err != nil {
@@ -162,9 +170,33 @@ func (c *EnvConfig) NewDelivery(ctx context.Context, opts ...loggerruntime.Optio
 // AdminServerConfigは、HETEROLOG_ADMIN_ADDR・HETEROLOG_ADMIN_TOKEN・
 // HETEROLOG_ADMIN_TLS_CERT_FILE・HETEROLOG_ADMIN_TLS_KEY_FILEから読んだ管理用serverの
 // 設定と、HETEROLOG_ADMIN_ADDRでserverを有効にしたかを返します。Loadで確認済みです。
-// 設定は管理用serverの起動へ渡します。独自の監査logを残すには、先にOnChangeを設定します。
+// 設定は、NewAdminAuditが作る監査用loggerとともに、管理用serverの起動へ渡します。
 func (c *EnvConfig) AdminServerConfig() (pkgadmin.ServerConfig, bool) {
 	return newAdminServerConfig(c.app.AdminServer)
+}
+
+// AdminAuditConfigは、管理用APIの監査logを記録する送達確認loggerの設定と、NewAdminAuditの
+// optionを返します。出力先はHETEROLOG_ADMIN_AUDIT_LOG_TYPE、出力先ごとの記録の場所は
+// HETEROLOG_ADMIN_AUDIT_*で、接続先・認証・timeoutなどはHETEROLOG_DELIVERY_*の設定を
+// 引き継ぎます。HETEROLOG_ADMIN_ADDRが空の場合は、ErrAdminAuditNotEnabledを返します。
+func (c *EnvConfig) AdminAuditConfig() (pkglogger.DeliveryLoggerConfig, []loggerruntime.Option, error) {
+	cfg, err := appconfig.MapAdminAuditLoggerConfig(c.app)
+	if err != nil {
+		return pkglogger.DeliveryLoggerConfig{}, nil, err
+	}
+	return cfg, []loggerruntime.Option{
+		loggerruntime.WithCloudWatchLogsStreamRouting(c.app.AdminAudit.DeliveryLogger.DeliveryCloudWatchLogsConfig.LogStreamRoutingGranularity),
+	}, nil
+}
+
+// NewAdminAuditは、AdminAuditConfigが返す設定とoptionに続けてoptsを適用し、管理用APIの
+// 監査logを記録する送達確認loggerを作ります。
+func (c *EnvConfig) NewAdminAudit(ctx context.Context, opts ...loggerruntime.Option) (*loggerruntime.DeliveryRuntime, error) {
+	cfg, envOpts, err := c.AdminAuditConfig()
+	if err != nil {
+		return nil, err
+	}
+	return loggerruntime.NewDelivery(ctx, cfg, append(envOpts, opts...)...)
 }
 
 func newAdminServerConfig(cfg appconfig.AdminServerConfig) (pkgadmin.ServerConfig, bool) {

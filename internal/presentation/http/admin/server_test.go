@@ -60,8 +60,8 @@ func TestServerConfigListenAddress(t *testing.T) {
 // hostを省略すると127.0.0.1だけで待ち受け、HTTP clientから管理用APIを使えます。
 func TestStartServerServesTheAdminAPIOnLoopback(t *testing.T) {
 	controller := newControllerForTest(t)
-	server, err := StartServer(pkgadmin.ServerConfig{Addr: ":0", Token: tokenForTest, OnChange: func(pkgadmin.Change) {}},
-		map[string]pkglogger.SettingsController{"app": controller})
+	server, err := StartServer(pkgadmin.ServerConfig{Addr: ":0", Token: tokenForTest},
+		map[string]pkglogger.SettingsController{"app": controller}, &auditLoggerForTest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestStartServerRejectsUnsafeConfigurations(t *testing.T) {
 		{"short token", pkgadmin.ServerConfig{Addr: "127.0.0.1:0", Token: "short"}, ErrTokenTooShort},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			server, err := StartServer(tt.cfg, loggers)
+			server, err := StartServer(tt.cfg, loggers, &auditLoggerForTest{})
 			if server != nil {
 				_ = server.Close()
 			}
@@ -164,7 +164,7 @@ func writeSelfSignedCertificateForTest(t *testing.T) (certFile, keyFile string, 
 func TestStartServerServesHTTPSWithTheGivenCertificate(t *testing.T) {
 	certFile, keyFile, pool := writeSelfSignedCertificateForTest(t)
 	server, err := StartServer(pkgadmin.ServerConfig{Addr: "127.0.0.1:0", Token: tokenForTest, TLSCertFile: certFile, TLSKeyFile: keyFile},
-		map[string]pkglogger.SettingsController{"app": newControllerForTest(t)})
+		map[string]pkglogger.SettingsController{"app": newControllerForTest(t)}, &auditLoggerForTest{})
 	if err != nil {
 		t.Fatal(err)
 	}

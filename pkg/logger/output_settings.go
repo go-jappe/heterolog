@@ -31,13 +31,22 @@ type SamplingChange struct {
 	SamplingErrorRate        *int
 }
 
+// AppliedOutputSettings holds the settings of one output right before and
+// right after UpdateOutputSettings changed it. Both are read while no other
+// change of the logger can run, so they show exactly what the change did.
+type AppliedOutputSettings struct {
+	Before OutputSettings
+	After  OutputSettings
+}
+
 // SettingsController is a logger whose output settings can change while it
 // runs. OutputSettings returns the current settings of each output.
 // UpdateOutputSettings applies each change to the settings current when it
-// runs and checks every result before applying any of them.
+// runs, checks every result before applying any of them, and returns the
+// settings of each changed output right before and after the change.
 type SettingsController interface {
 	OutputSettings() map[LogOutputDestination]OutputSettings
-	UpdateOutputSettings(changes map[LogOutputDestination]OutputSettingsChange) error
+	UpdateOutputSettings(changes map[LogOutputDestination]OutputSettingsChange) (map[LogOutputDestination]AppliedOutputSettings, error)
 }
 
 // ErrUnknownOutput reports a change to an output that the logger does not use.

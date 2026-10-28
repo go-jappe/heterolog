@@ -19,6 +19,9 @@ var (
 	ErrAdminTokenTooShort = admin.ErrTokenTooShort
 	// ErrAdminNoLoggers reports an admin API configuration without loggers.
 	ErrAdminNoLoggers = outputsettings.ErrNoLoggers
+	// ErrAdminAuditLoggerRequired reports an admin API without the delivery
+	// logger that records its audit log.
+	ErrAdminAuditLoggerRequired = outputsettings.ErrNoAuditLogger
 	// ErrAdminServerAddrRequired reports an AdminServerConfig without Addr.
 	ErrAdminServerAddrRequired = admin.ErrServerAddrRequired
 	// ErrAdminServerInsecure reports an admin server that would listen on a
@@ -40,20 +43,13 @@ var (
 )
 
 // AdminHandlerConfig configures NewAdminHandler: the bearer Token (at least
-// MinAdminTokenLength bytes), the Loggers by the names used in the API, and an
-// optional OnChange called after each change, for example for audit logs.
-// Without OnChange, each change is written as one line to the standard logger.
+// MinAdminTokenLength bytes) and the Loggers by the names used in the API.
 type AdminHandlerConfig = pkgadmin.HandlerConfig
-
-// AdminChange describes a change of one output made through the admin API: the
-// client's RemoteAddr, the Logger name, the Output, and the settings Before
-// and After the change.
-type AdminChange = pkgadmin.Change
 
 // AdminServerConfig configures StartAdminServer. Addr is the TCP address to
 // listen on; with an empty host, such as ":9100", the server listens on
 // 127.0.0.1 only. Listening on a non-loopback address requires TLSCertFile and
-// TLSKeyFile. Token and OnChange are as in AdminHandlerConfig.
+// TLSKeyFile. Token is as in AdminHandlerConfig.
 type AdminServerConfig = pkgadmin.ServerConfig
 
 // AdminServer serves the admin API until Shutdown or Close stops it.
@@ -70,21 +66,40 @@ type AdminServer struct {
 //	GET   /settings  returns the current settings of every logger
 //	PATCH /settings  changes the fields given in the JSON body
 //
-// Every request must send "Authorization: Bearer <Token>". A PATCH checks all
-// of its changes before applying any of them. Changes take effect from the
-// next entry and are kept in memory only, so a restart returns to the
-// configured settings.
-func NewAdminHandler(cfg AdminHandlerConfig) (http.Handler, error) {
-	return admin.NewHandler(cfg)
+// Every request must send "Authorization: Bearer <Token>". PATCH requests are
+// processed one at a time, and a PATCH checks all of its changes before
+// applying any of them. Changes take effect from the next entry and are kept
+// in memory only, so a restart returns to the configured settings.
+//
+// audit records the audit log of the API: each change request, the settings
+// when the change starts and after it, and every rejected request; only a
+// successful GET is not recorded. Every record has the field log_kind=audit
+// and the request ID, which the response also sends in X-Request-Id. When the
+// settings after a change do not match the request, the change is not
+// reverted: the mismatch is recorded at ERROR and the response is 500. When a
+// record does not reach every output of audit, the change still goes ahead,
+// the response carries a warning, and this is recorded at ERROR too. Use a
+// delivery logger made for the audit log, such as the one of
+// EnvConfig.NewAdminAudit, and close it after the handler is no longer used.
+// It returns ErrAdminAuditLoggerRequired if audit is nil.
+func NewAdminHandler(cfg AdminHandlerConfig, audit *DeliveryRuntime) (http.Handler, error) {
+	if audit == nil || audit.DeliveryLogger == nil {
+		return nil, ErrAdminAuditLoggerRequired
+	}
+	return admin.NewHandler(cfg, audit)
 }
 
 // StartAdminServer starts a dedicated HTTP server for the admin API of
 // NewAdminHandler and returns once it listens. loggers maps the names used in
-// the API to the loggers whose settings it reads and changes. The server
-// listens on a loopback address unless cfg names another host and enables TLS.
-// Call Shutdown or Close to stop it.
-func StartAdminServer(cfg AdminServerConfig, loggers map[string]SettingsController) (*AdminServer, error) {
-	server, err := admin.StartServer(cfg, loggers)
+// the API to the loggers whose settings it reads and changes, and audit records
+// the audit log as in NewAdminHandler. The server listens on a loopback address
+// unless cfg names another host and enables TLS. Call Shutdown or Close to stop
+// it, and close audit after that.
+func StartAdminServer(cfg AdminServerConfig, loggers map[string]SettingsController, audit *DeliveryRuntime) (*AdminServer, error) {
+	if audit == nil || audit.DeliveryLogger == nil {
+		return nil, ErrAdminAuditLoggerRequired
+	}
+	server, err := admin.StartServer(cfg, loggers, audit)
 	if err != nil {
 		return nil, err
 	}

@@ -216,8 +216,14 @@ HETEROLOG_ADMIN_TOKEN=<token>
 
 ```go
 if adminCfg, ok := env.AdminServerConfig(); ok {
+    // Records every change request; by default to stdout and a file in audit_logs.
+    audit, err := env.NewAdminAudit(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer audit.Close()
     admin, err := heterolog.StartAdminServer(adminCfg,
-        map[string]heterolog.SettingsController{"app": runtime})
+        map[string]heterolog.SettingsController{"app": runtime}, audit)
     if err != nil {
         log.Fatal(err)
     }
@@ -270,8 +276,10 @@ Every request returns the settings of every logger. For example, this is the std
 - A rate of N keeps 1 in N logs of that level. With `by_request_id`, logs that carry a request ID are kept or skipped by request (1 in `request_id_rate` requests), so the logs of a kept request are complete.
 - Levels are `DEBUG`, `INFO`, `WARN`, and `ERROR`. Fields omitted in a `PATCH` keep their values. A `PATCH` is checked as a whole: if any change is invalid, nothing is applied, and the response is `400` with the reason.
 - Every request needs the token. It is compared in constant time and never appears in errors. To listen on an address other than 127.0.0.1, give the host and a TLS certificate and key (`HETEROLOG_ADMIN_TLS_CERT_FILE` and `HETEROLOG_ADMIN_TLS_KEY_FILE`), so the token is not sent in clear text.
-- Each change is written as one line to the standard logger of the `log` package. To keep changes in your own audit log, receive them with `OnChange` in the server configuration.
-- To serve the API from your own HTTP server, use `NewAdminHandler`. In code, `runtime.OutputSettings()` returns the settings and `runtime.UpdateOutputSettings(changes)` changes them.
+- Changes are processed one at a time, and each is recorded in an audit log: the request, the settings when the change starts, the settings after it, and every rejected request (only a successful `GET` is not recorded). Every record has the field `log_kind=audit` and the request ID, which the response also returns in `X-Request-Id`.
+- The audit log is written by a delivery logger of its own, by default to stdout and to a file in `audit_logs`, next to the other log directories. Other outputs, such as CloudWatch Logs, can be chosen with `HETEROLOG_ADMIN_AUDIT_LOG_TYPE`; see [Audit log of the admin API](docs/reference.md#audit-log-of-the-admin-api).
+- If the settings after a change do not match the request, the change is not reverted: the response is `500` with the current settings, and the mismatch is recorded at ERROR, which a Slack output of the audit log turns into a notification. If an audit record does not reach every output, the change still goes ahead and the response carries a warning.
+- To serve the API from your own HTTP server, use `NewAdminHandler` with the same audit logger. In code, `runtime.OutputSettings()` returns the settings and `runtime.UpdateOutputSettings(changes)` changes them.
 - Only the level and sampling can change while running; destinations and storage cannot. The delivery logger has no such settings.
 
 See [Changing settings while running](docs/reference.md#changing-settings-while-running) for details.

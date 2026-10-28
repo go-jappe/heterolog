@@ -38,23 +38,28 @@ func (r *Registry) Snapshot() map[pkglogger.LogOutputDestination]pkglogger.Outpu
 		return result
 	}
 	for destination, live := range r.outputs {
-		result[destination] = pkglogger.OutputSettings{Level: live.Level(), Sampling: live.Sampling()}
+		result[destination] = current(live)
 	}
 	return result
 }
 
-// Updateは、すべての変更を検証してから反映します。一つでも不正な変更があれば、どれも
-// 反映しません。loggerが使っていない出力先はErrUnknownOutput、不正な値はpkg/loggerの
-// ConfigFieldErrorです。nilのRegistryは、どの出力先も持たないものとして扱います。
-func (r *Registry) Update(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) error {
+// Updateは、すべての変更を検証してから反映し、反映した出力先ごとに、反映の直前と直後の
+// 設定を返します。どちらもmuの中で読むため、別の変更を含みません。直後の設定は、計算した
+// 値ではなく、反映した後のLiveSettingsから読み直した値です。一つでも不正な変更があれば、
+// どれも反映しません。loggerが使っていない出力先はErrUnknownOutput、不正な値は
+// pkg/loggerのConfigFieldErrorです。nilのRegistryは、どの出力先も持たないものとして
+// 扱います。
+func (r *Registry) Update(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) (map[pkglogger.LogOutputDestination]pkglogger.AppliedOutputSettings, error) {
 	if r == nil {
 		r = &Registry{}
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	type plan struct {
-		live     *pkglogger.LiveSettings
-		settings pkglogger.OutputSettings
+		destination pkglogger.LogOutputDestination
+		live        *pkglogger.LiveSettings
+		before      pkglogger.OutputSettings
+		next        pkglogger.OutputSettings
 	}
 	plans := make([]plan, 0, len(changes))
 	var errs []error
@@ -65,22 +70,30 @@ func (r *Registry) Update(changes map[pkglogger.LogOutputDestination]pkglogger.O
 			errs = append(errs, fmt.Errorf("%w: %q", pkglogger.ErrUnknownOutput, destination))
 			continue
 		}
-		next := apply(pkglogger.OutputSettings{Level: live.Level(), Sampling: live.Sampling()}, changes[destination])
+		before := current(live)
+		next := apply(before, changes[destination])
 		if err := validate(r.label, destination, next); err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		plans = append(plans, plan{live: live, settings: next})
+		plans = append(plans, plan{destination: destination, live: live, before: before, next: next})
 	}
 	if err := errors.Join(errs...); err != nil {
-		return err
+		return nil, err
 	}
+	applied := make(map[pkglogger.LogOutputDestination]pkglogger.AppliedOutputSettings, len(plans))
 	for _, p := range plans {
-		if err := p.live.Set(p.settings.Level, p.settings.Sampling); err != nil {
-			return err
+		if err := p.live.Set(p.next.Level, p.next.Sampling); err != nil {
+			return applied, err
 		}
+		applied[p.destination] = pkglogger.AppliedOutputSettings{Before: p.before, After: current(p.live)}
 	}
-	return nil
+	return applied, nil
+}
+
+// currentは、LiveSettingsの今の設定を返します。
+func current(live *pkglogger.LiveSettings) pkglogger.OutputSettings {
+	return pkglogger.OutputSettings{Level: live.Level(), Sampling: live.Sampling()}
 }
 
 // applyは、currentにchangeを適用した設定を返します。changeで指定していないsamplingの

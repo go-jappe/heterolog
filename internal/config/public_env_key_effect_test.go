@@ -350,8 +350,10 @@ var publicEnvKeyMapperExemptions = func() map[string]string {
 	} {
 		exemptions[key] = observability
 	}
+	// HETEROLOG_ADMIN_ADDRは、管理用serverとともに監査用loggerも有効にするため、監査用loggerの
+	// 実行時の設定が変わります。除外しません。
 	for _, key := range []string{
-		"HETEROLOG_ADMIN_ADDR", "HETEROLOG_ADMIN_TOKEN", "HETEROLOG_ADMIN_TLS_CERT_FILE", "HETEROLOG_ADMIN_TLS_KEY_FILE",
+		"HETEROLOG_ADMIN_TOKEN", "HETEROLOG_ADMIN_TLS_CERT_FILE", "HETEROLOG_ADMIN_TLS_KEY_FILE",
 	} {
 		exemptions[key] = adminServer
 	}
@@ -422,6 +424,12 @@ func publicEnvKeyEffectActivation(key string) map[string]*string {
 	if prefix, ok := strings.CutSuffix(key, "LOG_INTERNAL_LOG_FILE_DEBUG_LOG_DIR"); ok {
 		activation[prefix+"LOG_INTERNAL_LOG_FILE_SEPARATE_DEBUG_LOG_DIR"] = publicEnvKeyEffectValue("true")
 	}
+	// 管理用APIの監査用loggerの設定は、管理用serverを有効にした場合だけ読みます。全出力先を
+	// 監査logの出力先にして、出力先ごとの記録の場所も実行時の設定まで届くことを確認します。
+	if strings.HasPrefix(key, "HETEROLOG_ADMIN_AUDIT_") {
+		activation["HETEROLOG_ADMIN_ADDR"] = publicEnvKeyEffectValue("127.0.0.1:9100")
+		activation["HETEROLOG_ADMIN_AUDIT_LOG_TYPE"] = publicEnvKeyEffectValue(publicEnvKeyEffectAllDestinations)
+	}
 	// HETEROLOG_ENABLE_OPENSEARCH・HETEROLOG_ENABLE_ASYNC_OPENSEARCHは、出力先にOpenSearchを含まない場合でも
 	// client設定を読ませるkeyです。共通の環境では出力先とinternal logの委譲先に含むため、
 	// 両方から外して読みます。
@@ -483,9 +491,11 @@ var publicEnvKeyEffectSuffixCandidates = []struct {
 
 // publicEnvKeyEffectCandidateOverridesは、名前と公開例の値から候補を決められないkeyの候補です。
 var publicEnvKeyEffectCandidateOverrides = map[string][]string{
-	"HETEROLOG_LOG_TYPE":              {"file,stdout", "stdout"},
-	"HETEROLOG_ASYNC_LOG_TYPE":        {"file,stdout", "stdout"},
-	"HETEROLOG_DELIVERY_LOG_TYPE":     {"file,stdout", "stdout"},
+	"HETEROLOG_LOG_TYPE":          {"file,stdout", "stdout"},
+	"HETEROLOG_ASYNC_LOG_TYPE":    {"file,stdout", "stdout"},
+	"HETEROLOG_DELIVERY_LOG_TYPE": {"file,stdout", "stdout"},
+	// 監査logの出力先の既定値はstdoutとfileの両方なので、それ以外を候補にします。
+	"HETEROLOG_ADMIN_AUDIT_LOG_TYPE":  {"stdout", "file", "stdout,slack"},
 	"HETEROLOG_MEMORY_CRITICAL_RATIO": {"0.5", "0.75"},
 	"HETEROLOG_APP_ENV":               {"prod", "stg", "dev"},
 	"HETEROLOG_RUNTIME_TYPE":          {"k8s", "ecs", "local"},

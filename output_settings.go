@@ -22,6 +22,10 @@ type OutputSettingsChange = pkglogger.OutputSettingsChange
 // it sets. A nil field keeps the current value. See pkg/logger.
 type SamplingChange = pkglogger.SamplingChange
 
+// AppliedOutputSettings holds the settings of one output right before and right
+// after UpdateOutputSettings changed it.
+type AppliedOutputSettings = pkglogger.AppliedOutputSettings
+
 // ErrUnknownOutput reports that UpdateOutputSettings named an output that the
 // logger does not use.
 var ErrUnknownOutput = pkglogger.ErrUnknownOutput
@@ -33,14 +37,15 @@ func (r *Runtime) OutputSettings() map[LogOutputDestination]OutputSettings {
 }
 
 // UpdateOutputSettings changes the level and sampling of outputs while the
-// logger runs. It applies each change to the settings current when it runs, so
-// changes to different fields made at the same time, for example through the
-// admin API, do not undo each other. It checks every change first and applies
-// none of them when any is invalid; an output the logger does not use is
-// reported as ErrUnknownOutput, and an invalid value as a pkg/logger
+// logger runs and returns the settings of each changed output right before and
+// after the change. It applies each change to the settings current when it
+// runs, so changes to different fields made at the same time, for example
+// through the admin API, do not undo each other. It checks every change first
+// and applies none of them when any is invalid; an output the logger does not
+// use is reported as ErrUnknownOutput, and an invalid value as a pkg/logger
 // ConfigFieldError. Changes take effect from the next entry and are not kept
 // after the process exits.
-func (r *Runtime) UpdateOutputSettings(changes map[LogOutputDestination]OutputSettingsChange) error {
+func (r *Runtime) UpdateOutputSettings(changes map[LogOutputDestination]OutputSettingsChange) (map[LogOutputDestination]AppliedOutputSettings, error) {
 	return r.impl().UpdateOutputSettings(changes)
 }
 
@@ -53,6 +58,6 @@ func (r *AsyncRuntime) OutputSettings() map[LogOutputDestination]OutputSettings 
 // UpdateOutputSettings changes the level and sampling of outputs while the
 // logger runs, like Runtime.UpdateOutputSettings. An asynchronous logger
 // applies the settings in effect when it processes an entry.
-func (r *AsyncRuntime) UpdateOutputSettings(changes map[LogOutputDestination]OutputSettingsChange) error {
+func (r *AsyncRuntime) UpdateOutputSettings(changes map[LogOutputDestination]OutputSettingsChange) (map[LogOutputDestination]AppliedOutputSettings, error) {
 	return r.impl().UpdateOutputSettings(changes)
 }

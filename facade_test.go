@@ -30,7 +30,7 @@ func TestRuntimeForwardsToTheImplementation(t *testing.T) {
 			t.Fatalf("Log: %v", err)
 		}
 		warn := heterolog.LevelWarn
-		if err := runtime.UpdateOutputSettings(map[heterolog.LogOutputDestination]heterolog.OutputSettingsChange{
+		if _, err := runtime.UpdateOutputSettings(map[heterolog.LogOutputDestination]heterolog.OutputSettingsChange{
 			pkglogger.LogOutputStdout: {Level: &warn},
 		}); err != nil {
 			t.Fatalf("UpdateOutputSettings: %v", err)
@@ -76,7 +76,7 @@ func TestAsyncAndDeliveryRuntimesForwardToTheImplementation(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = async.Close() })
 		debug := heterolog.LevelDebug
-		if err := async.UpdateOutputSettings(map[heterolog.LogOutputDestination]heterolog.OutputSettingsChange{
+		if _, err := async.UpdateOutputSettings(map[heterolog.LogOutputDestination]heterolog.OutputSettingsChange{
 			pkglogger.LogOutputStdout: {Level: &debug},
 		}); err != nil {
 			t.Fatalf("async UpdateOutputSettings: %v", err)
@@ -137,7 +137,7 @@ func TestZeroValuesOfThePublicTypes(t *testing.T) {
 		t.Errorf("zero value OutputSettings = %v, want empty", got)
 	}
 	debug := heterolog.LevelDebug
-	if err := async.UpdateOutputSettings(map[heterolog.LogOutputDestination]heterolog.OutputSettingsChange{
+	if _, err := async.UpdateOutputSettings(map[heterolog.LogOutputDestination]heterolog.OutputSettingsChange{
 		pkglogger.LogOutputStdout: {Level: &debug},
 	}); !errors.Is(err, heterolog.ErrUnknownOutput) {
 		t.Errorf("zero value UpdateOutputSettings = %v, want ErrUnknownOutput", err)

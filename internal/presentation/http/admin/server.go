@@ -72,15 +72,15 @@ type Server struct {
 }
 
 // StartServerは、管理用API専用のHTTP serverを起動し、待ち受けを始めてから返ります。
-// loggersは、APIで使う名前と、設定を読み取り・変更するloggerの対応です。cfgがhostを
-// 明示してTLSを有効にしない限り、loopback addressで待ち受けます。止めるには
-// ShutdownかCloseを呼びます。
-func StartServer(cfg pkgadmin.ServerConfig, loggers map[string]pkglogger.SettingsController) (*Server, error) {
+// loggersは、APIで使う名前と、設定を読み取り・変更するloggerの対応で、auditは監査logの
+// 記録先です。cfgがhostを明示してTLSを有効にしない限り、loopback addressで待ち受けます。
+// 止めるにはShutdownかCloseを呼びます。auditは閉じないため、serverを止めた後で閉じます。
+func StartServer(cfg pkgadmin.ServerConfig, loggers map[string]pkglogger.SettingsController, audit pkglogger.DeliveryLogger) (*Server, error) {
 	address, err := listenAddress(cfg)
 	if err != nil {
 		return nil, err
 	}
-	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: cfg.Token, Loggers: loggers, OnChange: cfg.OnChange})
+	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: cfg.Token, Loggers: loggers}, audit)
 	if err != nil {
 		return nil, err
 	}

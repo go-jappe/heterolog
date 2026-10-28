@@ -36,7 +36,6 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 	var errs []error
 	loggerPolicy := appCfg.Logger.TimeoutBudgetPolicy
 	asyncPolicy := appCfg.AsyncBestEffortMultiLoggerConfig.TimeoutBudgetPolicy
-	deliveryPolicy := appCfg.DeliveryLogger.TimeoutBudgetPolicy
 
 	if appCfg.Logger.LogOutputDestinations.Has(logconfig.LogOutputOpenSearch) {
 		retryCfg := appCfg.Logger.OpenSearchConfig.OpenSearchRetryAbleClientConfig
@@ -154,6 +153,22 @@ func validateLoggerTimeoutHierarchy(appCfg AppConfig) error {
 		))
 	}
 
+	errs = append(errs, validateDeliveryTimeoutHierarchy(appCfg))
+	// 管理用APIの監査logを記録する送達確認loggerも、Delivery loggerと同じtimeoutと
+	// clientで、監査logの出力先へ送ります。
+	if appCfg.AdminAudit.Enabled {
+		if err := validateDeliveryTimeoutHierarchy(appCfg.adminAuditAppConfig()); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", adminAuditLoggerLabel, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// validateDeliveryTimeoutHierarchyは、Delivery loggerの親timeoutと、出力先のclientの
+// timeoutの階層を検証します。
+func validateDeliveryTimeoutHierarchy(appCfg AppConfig) error {
+	var errs []error
+	deliveryPolicy := appCfg.DeliveryLogger.TimeoutBudgetPolicy
 	if appCfg.DeliveryLogger.LogOutputDestinations.Has(logconfig.LogOutputOpenSearch) {
 		retryCfg := appCfg.DeliveryLogger.DeliveryOpenSearchConfig.OpenSearchRetryAbleClientConfig
 		errs = append(errs, validateClientTimeoutBudget(

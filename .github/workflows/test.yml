@@ -29,11 +29,12 @@ jobs:
         run: |
           ./testenv/windows/summarize-all-package-results_test.ps1 -OutputDirectory "$env:RUNNER_TEMP/summary-all-package-self-test"
           ./testenv/windows/summarize-results_test.ps1 -OutputDirectory "$env:RUNNER_TEMP/summary-self-test"
-      - name: Race tests for logging, tracing, and spool persistence
+      - name: Race tests for logging, tracing, spool persistence, and the admin API
         if: runner.os == 'Linux'
         run: >-
           go test -race . ./internal/application/logging ./internal/application/loggerruntime
-          ./internal/application/trace/tracer ./internal/presentation/envconfig ./internal/presentation/sloghandler
+          ./internal/application/outputsettings ./internal/application/trace/tracer
+          ./internal/presentation/envconfig ./internal/presentation/http/admin ./internal/presentation/sloghandler
           ./internal/infrastructure/logger/multi ./internal/infrastructure/logger/slack
           ./internal/infrastructure/logger/opensearch ./internal/infrastructure/fsstore/spool/...
           ./internal/infrastructure/spool/log/...

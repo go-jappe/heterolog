@@ -216,8 +216,14 @@ HETEROLOG_ADMIN_TOKEN=<トークン>
 
 ```go
 if adminCfg, ok := env.AdminServerConfig(); ok {
+    // 変更の要求をすべて記録します。既定では標準出力と、audit_logsのファイルです。
+    audit, err := env.NewAdminAudit(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer audit.Close()
     admin, err := heterolog.StartAdminServer(adminCfg,
-        map[string]heterolog.SettingsController{"app": runtime})
+        map[string]heterolog.SettingsController{"app": runtime}, audit)
     if err != nil {
         log.Fatal(err)
     }
@@ -270,8 +276,10 @@ curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
 - 割合がNなら、そのレベルのログをN件に1件残します。`by_request_id` を有効にすると、request IDを持つログはrequest単位で残すかどうかを決めます（`request_id_rate` 件のrequestに1件）。そのため、残したrequestのログは欠けません。
 - レベルは `DEBUG`・`INFO`・`WARN`・`ERROR` です。`PATCH` で省略した項目は今の値のままです。`PATCH` はまとめて検証し、一つでも不正なら何も反映せず、理由を付けて `400` を返します。
 - すべての要求でトークンが必要です。比較は一定時間で行い、エラーにトークンを含めません。127.0.0.1以外で待ち受ける場合は、ホストとTLSの証明書・鍵（`HETEROLOG_ADMIN_TLS_CERT_FILE`・`HETEROLOG_ADMIN_TLS_KEY_FILE`）を指定します。トークンを平文で流さないためです。
-- 変更は1件ごとに、`log` パッケージの標準のloggerへ一行書きます。独自の監査ログに残す場合は、サーバーの設定の `OnChange` で受け取ります。
-- 自分のHTTPサーバーで提供する場合は `NewAdminHandler` を使います。コードでは、`runtime.OutputSettings()` が設定を返し、`runtime.UpdateOutputSettings(changes)` が設定を変えます。
+- 変更は1件ずつ順に処理し、監査ログに記録します。記録するのは、変更の要求、変更を始める時点の設定、変更後の設定と、拒否した要求です（記録しないのは、成功した `GET` だけです）。どの記録にも `log_kind=audit` のフィールドと要求IDが付き、要求IDは応答の `X-Request-Id` でも返します。
+- 監査ログは専用の送達確認ロガーが書き、既定では標準出力と、ほかのログのディレクトリと並ぶ `audit_logs` のファイルに残します。CloudWatch Logsなどの出力先は `HETEROLOG_ADMIN_AUDIT_LOG_TYPE` で選べます。詳しくは[管理用APIの監査ログ](docs/reference.ja.md#管理用apiの監査ログ)を見てください。
+- 変更後の設定が要求どおりでない場合、変更は戻しません。応答は `500` で今の設定を返し、食い違いをERRORで記録します。監査ログの出力先にSlackを加えると、これが通知になります。監査の記録が出力先のすべてに届かない場合も変更は続け、応答に警告を含めます。
+- 自分のHTTPサーバーで提供する場合は、同じ監査用ロガーを渡して `NewAdminHandler` を使います。コードでは、`runtime.OutputSettings()` が設定を返し、`runtime.UpdateOutputSettings(changes)` が設定を変えます。
 - 稼働中に変えられるのはレベルとサンプリングだけで、出力先や保存先は変えられません。Deliveryのロガーには、この設定はありません。
 
 詳しくは[稼働中の設定変更](docs/reference.ja.md#稼働中の設定変更)を参照してください。

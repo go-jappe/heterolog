@@ -1,10 +1,12 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -25,7 +27,7 @@ func (c controllerForTest) OutputSettings() map[pkglogger.LogOutputDestination]p
 	return c.Snapshot()
 }
 
-func (c controllerForTest) UpdateOutputSettings(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) error {
+func (c controllerForTest) UpdateOutputSettings(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) (map[pkglogger.LogOutputDestination]pkglogger.AppliedOutputSettings, error) {
 	return c.Update(changes)
 }
 
@@ -45,8 +47,70 @@ func stdoutSettings(c controllerForTest) pkglogger.OutputSettings {
 	return c.OutputSettings()[pkglogger.LogOutputStdout]
 }
 
-// requestForTestは、handlerへ要求を送り、状態codeと本文を返します。
-func requestForTest(t *testing.T, handler http.Handler, method, path, token, body string) (int, string) {
+// auditLoggerForTestは、受け取った監査logの段階・要求ID・理由を順に保持する試験用の
+// 送達確認loggerです。undeliveredがtrueなら、どの記録も記録先へ届かなかったと報告します。
+type auditLoggerForTest struct {
+	mu          sync.Mutex
+	records     []string
+	undelivered bool
+}
+
+func (l *auditLoggerForTest) record(fields []pkglogger.Field) (pkglogger.DeliveryReport, error) {
+	values := map[string]any{}
+	for _, field := range fields {
+		values[field.Key()] = field.Value()
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.records = append(l.records, strings.TrimSpace(strings.Join([]string{
+		asString(values["request_id"]), asString(values["audit_phase"]), asString(values["reason"]),
+	}, " ")))
+	if l.undelivered {
+		return pkglogger.DeliveryReport{}, errors.New("audit record was not delivered")
+	}
+	return pkglogger.DeliveryReport{Targets: []pkglogger.DeliveryResult{{Backend: "stdout", Status: pkglogger.DeliverySucceeded}}}, nil
+}
+
+func asString(value any) string { s, _ := value.(string); return s }
+
+func (l *auditLoggerForTest) Debug(_ context.Context, _ string, fields ...pkglogger.Field) (pkglogger.DeliveryReport, error) {
+	return l.record(fields)
+}
+
+func (l *auditLoggerForTest) Info(_ context.Context, _ string, fields ...pkglogger.Field) (pkglogger.DeliveryReport, error) {
+	return l.record(fields)
+}
+
+func (l *auditLoggerForTest) Warn(_ context.Context, _ string, fields ...pkglogger.Field) (pkglogger.DeliveryReport, error) {
+	return l.record(fields)
+}
+
+func (l *auditLoggerForTest) Error(_ context.Context, _ string, fields ...pkglogger.Field) (pkglogger.DeliveryReport, error) {
+	return l.record(fields)
+}
+
+func (l *auditLoggerForTest) ErrorWithStack(_ context.Context, _ string, _ error, fields ...pkglogger.Field) (pkglogger.DeliveryReport, error) {
+	return l.record(fields)
+}
+
+func (l *auditLoggerForTest) snapshot() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.records)
+}
+
+func newHandlerForTest(t *testing.T, loggers map[string]pkglogger.SettingsController) (http.Handler, *auditLoggerForTest) {
+	t.Helper()
+	audit := &auditLoggerForTest{}
+	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Loggers: loggers}, audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler, audit
+}
+
+// requestForTestは、handlerへ要求を送り、状態code・本文・要求IDを返します。
+func requestForTest(t *testing.T, handler http.Handler, method, path, token, body string) (int, string, string) {
 	t.Helper()
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
 	if token != "" {
@@ -54,54 +118,57 @@ func requestForTest(t *testing.T, handler http.Handler, method, path, token, bod
 	}
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
-	return recorder.Code, recorder.Body.String()
+	return recorder.Code, recorder.Body.String(), recorder.Header().Get("X-Request-Id")
 }
 
-func TestNewHandlerRejectsAShortTokenAndNoLoggers(t *testing.T) {
-	if _, err := NewHandler(pkgadmin.HandlerConfig{
-		Token: "short", Loggers: map[string]pkglogger.SettingsController{"app": newControllerForTest(t)},
-	}); !errors.Is(err, ErrTokenTooShort) {
+func TestNewHandlerRejectsAShortTokenNoLoggersAndNoAuditLogger(t *testing.T) {
+	loggers := map[string]pkglogger.SettingsController{"app": newControllerForTest(t)}
+	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: "short", Loggers: loggers}, &auditLoggerForTest{}); !errors.Is(err, ErrTokenTooShort) {
 		t.Errorf("NewHandler(short token) error = %v, want ErrTokenTooShort", err)
 	}
-	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest}); !errors.Is(err, outputsettings.ErrNoLoggers) {
+	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest}, &auditLoggerForTest{}); !errors.Is(err, outputsettings.ErrNoLoggers) {
 		t.Errorf("NewHandler(no loggers) error = %v, want ErrNoLoggers", err)
+	}
+	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Loggers: loggers}, nil); !errors.Is(err, outputsettings.ErrNoAuditLogger) {
+		t.Errorf("NewHandler(no audit logger) error = %v, want ErrNoAuditLogger", err)
 	}
 }
 
-// tokenのない要求、違うtokenの要求は、どの経路でも401で拒否し、本文にtokenを含めません。
+// tokenのない要求、違うtokenの要求は、どの経路でも401で拒否して監査logへ記録し、本文に
+// tokenを含めません。監査logが届かなかったことも、tokenのない要求には知らせません。
 func TestHandlerRequiresTheBearerToken(t *testing.T) {
 	controller := newControllerForTest(t)
-	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Loggers: map[string]pkglogger.SettingsController{"app": controller}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler, audit := newHandlerForTest(t, map[string]pkglogger.SettingsController{"app": controller})
+	audit.undelivered = true
+	var ids []string
 	for _, token := range []string{"", "wrong-token-wrong-token-wrong-token", tokenForTest + "x"} {
 		for _, method := range []string{http.MethodGet, http.MethodPatch} {
-			status, body := requestForTest(t, handler, method, "/settings", token, `{"loggers":{"app":{"outputs":{"stdout":{"level":"DEBUG"}}}}}`)
-			if status != http.StatusUnauthorized || strings.Contains(body, tokenForTest) {
-				t.Errorf("%s with token %q = %d %s, want 401 without the token", method, token, status, body)
+			status, body, id := requestForTest(t, handler, method, "/settings", token, `{"loggers":{"app":{"outputs":{"stdout":{"level":"DEBUG"}}}}}`)
+			if status != http.StatusUnauthorized || strings.Contains(body, tokenForTest) || strings.Contains(body, "warnings") {
+				t.Errorf("%s with token %q = %d %s, want 401 without the token and without warnings", method, token, status, body)
 			}
+			ids = append(ids, id)
 		}
 	}
 	if got := stdoutSettings(controller).Level; got != pkglogger.LogLevelInfo {
 		t.Errorf("stdout level = %v after unauthorized requests, want INFO", got)
 	}
+	var want []string
+	for _, id := range ids {
+		want = append(want, id+" rejected missing or invalid bearer token", id+" undelivered")
+	}
+	if got := audit.snapshot(); !slices.Equal(got, want) {
+		t.Errorf("audit records = %q, want a rejection of every request", got)
+	}
 }
 
-// GETは現在の設定を返し、PATCHは指定した項目だけを変えて、変えた後の設定を返します。
+// GETは現在の設定を返して監査logへは記録せず、PATCHは指定した項目だけを変えて、要求・
+// 開始時点・変更後を記録し、変えた後の設定と要求IDを返します。
 func TestHandlerReadsAndChangesSettings(t *testing.T) {
 	controller := newControllerForTest(t)
-	var changes []pkgadmin.Change
-	handler, err := NewHandler(pkgadmin.HandlerConfig{
-		Token:    tokenForTest,
-		Loggers:  map[string]pkglogger.SettingsController{"app": controller},
-		OnChange: func(change pkgadmin.Change) { changes = append(changes, change) },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler, audit := newHandlerForTest(t, map[string]pkglogger.SettingsController{"app": controller})
 
-	status, body := requestForTest(t, handler, http.MethodGet, "/settings", tokenForTest, "")
+	status, body, _ := requestForTest(t, handler, http.MethodGet, "/settings", tokenForTest, "")
 	if status != http.StatusOK {
 		t.Fatalf("GET = %d %s, want 200", status, body)
 	}
@@ -112,8 +179,11 @@ func TestHandlerReadsAndChangesSettings(t *testing.T) {
 	if got := document.Loggers["app"].Outputs[pkglogger.LogOutputStdout].Level; got != "INFO" {
 		t.Fatalf("GET stdout level = %q, want INFO: %s", got, body)
 	}
+	if got := audit.snapshot(); len(got) != 0 {
+		t.Fatalf("audit records after GET = %q, want none", got)
+	}
 
-	status, body = requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest,
+	status, body, first := requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest,
 		`{"loggers":{"app":{"outputs":{"stdout":{"level":"debug","sampling":{"enabled":true,"debug_rate":1,"info_rate":10,"warn_rate":1,"error_rate":1}}}}}}`)
 	if status != http.StatusOK {
 		t.Fatalf("PATCH = %d %s, want 200", status, body)
@@ -124,12 +194,15 @@ func TestHandlerReadsAndChangesSettings(t *testing.T) {
 	if got := document.Loggers["app"].Outputs[pkglogger.LogOutputStdout]; got.Level != "DEBUG" || !got.Sampling.Enabled || got.Sampling.InfoRate != 10 {
 		t.Errorf("PATCH response stdout = %+v, want DEBUG with sampling enabled at info_rate 10", got)
 	}
+	if len(document.Warnings) != 0 {
+		t.Errorf("PATCH response warnings = %q, want none", document.Warnings)
+	}
 	if got := stdoutSettings(controller); got.Level != pkglogger.LogLevelDebug || got.Sampling.SamplingInfoRate != 10 {
 		t.Errorf("stdout settings = %+v, want the patched values", got)
 	}
 
 	// 省略したsamplingの項目は、今の値のままです。
-	status, body = requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest,
+	status, body, second := requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest,
 		`{"loggers":{"app":{"outputs":{"stdout":{"sampling":{"info_rate":20}}}}}}`)
 	if status != http.StatusOK {
 		t.Fatalf("second PATCH = %d %s, want 200", status, body)
@@ -139,10 +212,72 @@ func TestHandlerReadsAndChangesSettings(t *testing.T) {
 		t.Errorf("stdout settings = %+v, want only info_rate changed to 20", got)
 	}
 
-	if len(changes) != 2 || changes[0].Logger != "app" || changes[0].Output != pkglogger.LogOutputStdout ||
-		changes[0].Before.Level != pkglogger.LogLevelInfo || changes[0].After.Level != pkglogger.LogLevelDebug ||
-		changes[1].Before.Sampling.SamplingInfoRate != 10 || changes[1].After.Sampling.SamplingInfoRate != 20 {
-		t.Errorf("OnChange calls = %+v, want the two changes with their before and after settings", changes)
+	if first == "" || first == second {
+		t.Fatalf("request IDs = %q and %q, want two different IDs", first, second)
+	}
+	want := []string{first + " requested", first + " started", first + " applied", second + " requested", second + " started", second + " applied"}
+	if got := audit.snapshot(); !slices.Equal(got, want) {
+		t.Errorf("audit records = %q, want %q", got, want)
+	}
+}
+
+// 監査logが記録先のすべてへ届かなくても変更は反映し、応答の警告で知らせます。
+func TestHandlerWarnsWhenAuditRecordsAreNotDelivered(t *testing.T) {
+	controller := newControllerForTest(t)
+	handler, audit := newHandlerForTest(t, map[string]pkglogger.SettingsController{"app": controller})
+	audit.undelivered = true
+	status, body, _ := requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest, `{"loggers":{"app":{"outputs":{"stdout":{"level":"DEBUG"}}}}}`)
+	var document settingsDocument
+	if err := json.Unmarshal([]byte(body), &document); err != nil || status != http.StatusOK {
+		t.Fatalf("PATCH = %d %s, want 200 with a JSON body", status, body)
+	}
+	if !slices.Equal(document.Warnings, []string{warningAuditUndelivered}) {
+		t.Errorf("warnings = %q, want the undelivered audit warning", document.Warnings)
+	}
+	if got := stdoutSettings(controller).Level; got != pkglogger.LogLevelDebug {
+		t.Errorf("stdout level = %v, want DEBUG applied", got)
+	}
+}
+
+// interferingControllerは、変更を反映した直後に、別の処理がlevelを書き換えたControllerです。
+type interferingController struct{ controllerForTest }
+
+func (c interferingController) UpdateOutputSettings(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) (map[pkglogger.LogOutputDestination]pkglogger.AppliedOutputSettings, error) {
+	applied, err := c.controllerForTest.UpdateOutputSettings(changes)
+	if err != nil {
+		return applied, err
+	}
+	warn := pkglogger.LogLevelWarn
+	if _, err := c.controllerForTest.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+		pkglogger.LogOutputStdout: {Level: &warn},
+	}); err != nil {
+		return applied, err
+	}
+	for output, a := range applied {
+		a.After = c.controllerForTest.OutputSettings()[output]
+		applied[output] = a
+	}
+	return applied, nil
+}
+
+// 変更後の設定が要求どおりでなければ、設定は戻さず、500と今の設定を返して記録します。
+func TestHandlerReportsAMismatchWithoutReverting(t *testing.T) {
+	controller := newControllerForTest(t)
+	handler, audit := newHandlerForTest(t, map[string]pkglogger.SettingsController{"app": interferingController{controller}})
+	status, body, id := requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest, `{"loggers":{"app":{"outputs":{"stdout":{"level":"DEBUG"}}}}}`)
+	var document errorDocument
+	if err := json.Unmarshal([]byte(body), &document); err != nil || status != http.StatusInternalServerError {
+		t.Fatalf("PATCH = %d %s, want 500 with a JSON body", status, body)
+	}
+	if document.Error == "" || document.Loggers["app"].Outputs[pkglogger.LogOutputStdout].Level != "WARN" {
+		t.Errorf("error document = %+v, want an error with the current WARN settings", document)
+	}
+	if got := stdoutSettings(controller).Level; got != pkglogger.LogLevelWarn {
+		t.Errorf("stdout level = %v, want WARN left as it is", got)
+	}
+	want := []string{id + " requested", id + " started", id + " applied", id + " mismatch"}
+	if got := audit.snapshot(); !slices.Equal(got, want) {
+		t.Errorf("audit records = %q, want %q", got, want)
 	}
 }
 
@@ -164,14 +299,7 @@ func (c slowReadController) OutputSettings() map[pkglogger.LogOutputDestination]
 // PATCHの変更を古い値へ戻します。
 func TestConcurrentPatchesOfDifferentSamplingFieldsBothApply(t *testing.T) {
 	controller := newControllerForTest(t)
-	handler, err := NewHandler(pkgadmin.HandlerConfig{
-		Token:    tokenForTest,
-		Loggers:  map[string]pkglogger.SettingsController{"app": slowReadController{controllerForTest: controller, delay: 20 * time.Millisecond}},
-		OnChange: func(pkgadmin.Change) {},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler, _ := newHandlerForTest(t, map[string]pkglogger.SettingsController{"app": slowReadController{controllerForTest: controller, delay: 20 * time.Millisecond}})
 	bodies := []string{
 		`{"loggers":{"app":{"outputs":{"stdout":{"sampling":{"info_rate":10}}}}}}`,
 		`{"loggers":{"app":{"outputs":{"stdout":{"sampling":{"warn_rate":20}}}}}}`,
@@ -184,7 +312,7 @@ func TestConcurrentPatchesOfDifferentSamplingFieldsBothApply(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			statuses[i], _ = requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest, body)
+			statuses[i], _, _ = requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest, body)
 		}()
 	}
 	close(start)
@@ -195,35 +323,31 @@ func TestConcurrentPatchesOfDifferentSamplingFieldsBothApply(t *testing.T) {
 	}
 }
 
-// 不正な要求は、一つも反映せずに拒否し、errorを状態codeとJSONの本文で返します。
+// 不正な要求は、一つも反映せずに拒否して監査logへ記録し、errorを状態codeとJSONの本文で
+// 返します。
 func TestHandlerRejectsInvalidRequestsWithoutChanges(t *testing.T) {
 	app, other := newControllerForTest(t), newControllerForTest(t)
-	handler, err := NewHandler(pkgadmin.HandlerConfig{
-		Token:    tokenForTest,
-		Loggers:  map[string]pkglogger.SettingsController{"app": app, "other": other},
-		OnChange: func(pkgadmin.Change) { t.Error("OnChange called for a rejected request") },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler, audit := newHandlerForTest(t, map[string]pkglogger.SettingsController{"app": app, "other": other})
 	for _, tt := range []struct {
 		name   string
 		body   string
 		status int
+		phases []string
 	}{
-		{"not JSON", `level=DEBUG`, http.StatusBadRequest},
-		{"unknown field", `{"loggers":{"app":{"outputs":{"stdout":{"colour":"red"}}}}}`, http.StatusBadRequest},
-		{"two objects", `{} {}`, http.StatusBadRequest},
-		{"invalid level", `{"loggers":{"app":{"outputs":{"stdout":{"level":"LOUD"}}}}}`, http.StatusBadRequest},
-		{"invalid sampling rate", `{"loggers":{"app":{"outputs":{"stdout":{"sampling":{"enabled":true}}}}}}`, http.StatusBadRequest},
-		{"unknown logger", `{"loggers":{"missing":{"outputs":{"stdout":{"level":"DEBUG"}}}}}`, http.StatusNotFound},
-		{"unknown output", `{"loggers":{"app":{"outputs":{"file":{"level":"DEBUG"}}}}}`, http.StatusNotFound},
+		{"not JSON", `level=DEBUG`, http.StatusBadRequest, []string{"rejected"}},
+		{"unknown field", `{"loggers":{"app":{"outputs":{"stdout":{"colour":"red"}}}}}`, http.StatusBadRequest, []string{"rejected"}},
+		{"two objects", `{} {}`, http.StatusBadRequest, []string{"rejected"}},
+		{"invalid level", `{"loggers":{"app":{"outputs":{"stdout":{"level":"LOUD"}}}}}`, http.StatusBadRequest, []string{"rejected"}},
+		{"invalid sampling rate", `{"loggers":{"app":{"outputs":{"stdout":{"sampling":{"enabled":true}}}}}}`, http.StatusBadRequest, []string{"requested", "rejected"}},
+		{"unknown logger", `{"loggers":{"missing":{"outputs":{"stdout":{"level":"DEBUG"}}}}}`, http.StatusNotFound, []string{"requested", "rejected"}},
+		{"unknown output", `{"loggers":{"app":{"outputs":{"file":{"level":"DEBUG"}}}}}`, http.StatusNotFound, []string{"requested", "rejected"}},
 		// 有効な変更があっても、別のloggerの不正な変更があれば反映しません。
-		{"one invalid among valid", `{"loggers":{"app":{"outputs":{"stdout":{"level":"DEBUG"}}},"other":{"outputs":{"stdout":{"sampling":{"enabled":true}}}}}}`, http.StatusBadRequest},
-		{"too large", `{"loggers":{"app":{"outputs":{"stdout":{"level":"` + strings.Repeat("D", 70<<10) + `"}}}}}`, http.StatusRequestEntityTooLarge},
+		{"one invalid among valid", `{"loggers":{"app":{"outputs":{"stdout":{"level":"DEBUG"}}},"other":{"outputs":{"stdout":{"sampling":{"enabled":true}}}}}}`, http.StatusBadRequest, []string{"requested", "rejected"}},
+		{"too large", `{"loggers":{"app":{"outputs":{"stdout":{"level":"` + strings.Repeat("D", 70<<10) + `"}}}}}`, http.StatusRequestEntityTooLarge, []string{"rejected"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			status, body := requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest, tt.body)
+			before := len(audit.snapshot())
+			status, body, id := requestForTest(t, handler, http.MethodPatch, "/settings", tokenForTest, tt.body)
 			if status != tt.status || !strings.Contains(body, `"error"`) {
 				t.Errorf("PATCH = %d %s, want %d with an error message", status, body, tt.status)
 			}
@@ -232,19 +356,34 @@ func TestHandlerRejectsInvalidRequestsWithoutChanges(t *testing.T) {
 					t.Errorf("%s stdout settings = %+v after a rejected request, want the original settings", name, got)
 				}
 			}
+			var got []string
+			for _, record := range audit.snapshot()[before:] {
+				phase, ok := strings.CutPrefix(record, id+" ")
+				if !ok {
+					t.Fatalf("audit record %q does not belong to request %q", record, id)
+				}
+				got = append(got, strings.Fields(phase)[0])
+			}
+			if !slices.Equal(got, tt.phases) {
+				t.Errorf("audit phases = %q, want %q", got, tt.phases)
+			}
 		})
 	}
 }
 
+// 認証した要求でも、ほかの経路や方法は拒否して記録します。
 func TestHandlerRejectsOtherMethodsAndPaths(t *testing.T) {
-	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Loggers: map[string]pkglogger.SettingsController{"app": newControllerForTest(t)}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status, body := requestForTest(t, handler, http.MethodPost, "/settings", tokenForTest, "{}"); status != http.StatusMethodNotAllowed {
+	handler, audit := newHandlerForTest(t, map[string]pkglogger.SettingsController{"app": newControllerForTest(t)})
+	status, body, post := requestForTest(t, handler, http.MethodPost, "/settings", tokenForTest, "{}")
+	if status != http.StatusMethodNotAllowed {
 		t.Errorf("POST = %d %s, want 405", status, body)
 	}
-	if status, body := requestForTest(t, handler, http.MethodGet, "/other", tokenForTest, ""); status != http.StatusNotFound {
+	status, body, other := requestForTest(t, handler, http.MethodGet, "/other", tokenForTest, "")
+	if status != http.StatusNotFound {
 		t.Errorf("GET /other = %d %s, want 404", status, body)
+	}
+	want := []string{post + " rejected method not allowed", other + " rejected not found"}
+	if got := audit.snapshot(); !slices.Equal(got, want) {
+		t.Errorf("audit records = %q, want %q", got, want)
 	}
 }

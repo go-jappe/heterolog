@@ -20,20 +20,25 @@ const (
 	contractEnvSync     contractEnvSection = "sync"
 	contractEnvAsync    contractEnvSection = "async"
 	contractEnvDelivery contractEnvSection = "delivery"
-	contractEnvOther    contractEnvSection = "other"
+	// contractEnvAdminAuditは、管理用APIの監査用loggerです。Delivery loggerの設定を基にした
+	// 別の送達確認loggerで、HETEROLOG_ADMIN_AUDIT_*のkeyが属します。
+	contractEnvAdminAudit contractEnvSection = "admin audit"
+	contractEnvOther      contractEnvSection = "other"
 
-	contractEnvMappedSync     contractEnvSection = "mapped sync"
-	contractEnvMappedAsync    contractEnvSection = "mapped async"
-	contractEnvMappedDelivery contractEnvSection = "mapped delivery"
-	contractEnvMappedOther    contractEnvSection = "mapped other"
+	contractEnvMappedSync       contractEnvSection = "mapped sync"
+	contractEnvMappedAsync      contractEnvSection = "mapped async"
+	contractEnvMappedDelivery   contractEnvSection = "mapped delivery"
+	contractEnvMappedAdminAudit contractEnvSection = "mapped admin audit"
+	contractEnvMappedOther      contractEnvSection = "mapped other"
 )
 
 // contractEnvMappedSectionsは、読込結果の区分と、同じLoggerContractKindの実行時の設定の区分です。
 var contractEnvMappedSections = map[contractEnvSection]contractEnvSection{
-	contractEnvSync:     contractEnvMappedSync,
-	contractEnvAsync:    contractEnvMappedAsync,
-	contractEnvDelivery: contractEnvMappedDelivery,
-	contractEnvOther:    contractEnvMappedOther,
+	contractEnvSync:       contractEnvMappedSync,
+	contractEnvAsync:      contractEnvMappedAsync,
+	contractEnvDelivery:   contractEnvMappedDelivery,
+	contractEnvAdminAudit: contractEnvMappedAdminAudit,
+	contractEnvOther:      contractEnvMappedOther,
 }
 
 // contractEnvSectionsは、cfgをLoggerContractKindごとの設定とそれ以外の設定へ分けます。
@@ -46,6 +51,7 @@ func contractEnvSections(cfg AppConfig) map[contractEnvSection]any {
 	other.Logger = logconfig.LoggerConfig{}
 	other.AsyncBestEffortMultiLoggerConfig = logconfig.AsyncBestEffortMultiLoggerConfig{}
 	other.DeliveryLogger = logconfig.DeliveryLoggerConfig{}
+	other.AdminAudit = AdminAuditConfig{}
 	other.OpenSearchClient, other.AsyncOpenSearchClient, other.DeliveryOpenSearchClient =
 		configopensearchClientZero, configopensearchClientZero, configopensearchClientZero
 	other.LokiClient, other.AsyncLokiClient, other.DeliveryLokiClient =
@@ -66,12 +72,14 @@ func contractEnvSections(cfg AppConfig) map[contractEnvSection]any {
 			cfg.DeliveryLogger, cfg.DeliveryOpenSearchClient, cfg.DeliveryLokiClient,
 			cfg.DeliveryCloudWatchLogsClient, cfg.DeliveryClickHouseClient,
 		},
-		contractEnvOther: other,
+		contractEnvAdminAudit: cfg.AdminAudit,
+		contractEnvOther:      other,
 
-		contractEnvMappedSync:     ToLoggerConfig(cfg),
-		contractEnvMappedAsync:    ToAsyncBestEffortMultiLoggerConfig(cfg),
-		contractEnvMappedDelivery: ToDeliveryLoggerConfig(cfg),
-		contractEnvMappedOther:    []any{NewSpoolConfig(&cfg), NewOtelResourceConfig(&cfg)},
+		contractEnvMappedSync:       ToLoggerConfig(cfg),
+		contractEnvMappedAsync:      ToAsyncBestEffortMultiLoggerConfig(cfg),
+		contractEnvMappedDelivery:   ToDeliveryLoggerConfig(cfg),
+		contractEnvMappedAdminAudit: ToAdminAuditLoggerConfig(cfg),
+		contractEnvMappedOther:      []any{NewSpoolConfig(&cfg), NewOtelResourceConfig(&cfg)},
 	}
 }
 
@@ -124,6 +132,8 @@ func unmappedLoadedSections(loaded, mapped []contractEnvSection) []contractEnvSe
 // contractEnvKeySectionは、keyの名前に含まれる接頭辞からLoggerContractKindを判定します。
 func contractEnvKeySection(key string) contractEnvSection {
 	switch {
+	case strings.HasPrefix(key, "HETEROLOG_ADMIN_AUDIT_"):
+		return contractEnvAdminAudit
 	case strings.Contains(key, "DELIVERY_"):
 		return contractEnvDelivery
 	case strings.Contains(key, "ASYNC_"):

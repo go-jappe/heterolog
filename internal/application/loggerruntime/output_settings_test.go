@@ -26,7 +26,7 @@ func TestUpdateOutputSettingsChangesTheLevelOfARunningLogger(t *testing.T) {
 		if err := runtime.Debug(ctx, "debug before the change"); err != nil {
 			t.Errorf("Debug: %v", err)
 		}
-		if err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+		if _, err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 			pkglogger.LogOutputStdout: {Level: levelPointer(pkglogger.LogLevelDebug)},
 		}); err != nil {
 			t.Fatalf("UpdateOutputSettings: %v", err)
@@ -76,7 +76,7 @@ func TestUpdateOutputSettingsChangesTheLevelOfARunningAsyncLogger(t *testing.T) 
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+				if _, err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 					pkglogger.LogOutputStdout: {Level: levelPointer(tt.level)},
 				}); err != nil {
 					t.Fatalf("UpdateOutputSettings: %v", err)
@@ -105,7 +105,7 @@ func TestUpdateOutputSettingsChangesTheLevelOfAFileOutput(t *testing.T) {
 	if err := runtime.Info(ctx, "info before the change"); err != nil {
 		t.Fatalf("Info: %v", err)
 	}
-	if err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+	if _, err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 		pkglogger.LogOutputFile: {Level: levelPointer(pkglogger.LogLevelError)},
 	}); err != nil {
 		t.Fatalf("UpdateOutputSettings: %v", err)
@@ -133,7 +133,7 @@ func TestUpdateOutputSettingsChangesSampling(t *testing.T) {
 		// INFOの割合を最大にすると、1件だけ記録される確率は無視できるほど小さくなります。
 		// 既定で有効なrequest IDでの選択は無効にし、INFOの割合だけで決まるようにします。
 		on, off, one, maxRate := true, false, 1, 1<<31-1
-		if err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+		if _, err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 			pkglogger.LogOutputStdout: {Sampling: &pkglogger.SamplingChange{
 				IsSamplingEnabled: &on, EnableLoggingByRequestID: &off,
 				SamplingDebugRate: &one, SamplingInfoRate: &maxRate, SamplingWarnRate: &one, SamplingErrorRate: &one,
@@ -144,7 +144,7 @@ func TestUpdateOutputSettingsChangesSampling(t *testing.T) {
 		if err := runtime.Info(ctx, "info while sampling"); err != nil {
 			t.Errorf("Info: %v", err)
 		}
-		if err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+		if _, err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 			pkglogger.LogOutputStdout: {Sampling: &pkglogger.SamplingChange{IsSamplingEnabled: &off}},
 		}); err != nil {
 			t.Fatalf("UpdateOutputSettings(sampling off): %v", err)
@@ -178,7 +178,7 @@ func TestNewUsesTheLiveSettingsOfTheConfig(t *testing.T) {
 	if got := runtime.OutputSettings()[pkglogger.LogOutputStdout].Level; got != pkglogger.LogLevelWarn {
 		t.Fatalf("stdout level = %v, want WARN from the Live settings", got)
 	}
-	if err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
+	if _, err := runtime.UpdateOutputSettings(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 		pkglogger.LogOutputStdout: {Level: levelPointer(pkglogger.LogLevelError)},
 	}); err != nil {
 		t.Fatal(err)

@@ -13,6 +13,10 @@ import (
 // HETEROLOG_ENABLE_DELIVERY_LOGGING set to false.
 var ErrEnvLoggerDisabled = envconfig.ErrLoggerDisabled
 
+// ErrEnvAdminAuditNotEnabled reports that EnvConfig has no settings for the
+// audit logger of the admin API because HETEROLOG_ADMIN_ADDR is empty.
+var ErrEnvAdminAuditNotEnabled = envconfig.ErrAdminAuditNotEnabled
+
 // EnvFileError reports that LoadEnvConfig could not read the env file. Path is
 // the file and Err the cause; errors.Is(err, fs.ErrNotExist) reports a missing
 // file.
@@ -124,7 +128,29 @@ func (c *EnvConfig) NewDelivery(ctx context.Context, opts ...Option) (*DeliveryR
 // HETEROLOG_ADMIN_ADDR, HETEROLOG_ADMIN_TOKEN, HETEROLOG_ADMIN_TLS_CERT_FILE and
 // HETEROLOG_ADMIN_TLS_KEY_FILE, and whether HETEROLOG_ADMIN_ADDR enables the
 // server. LoadEnvConfig has already checked them. Pass the settings to
-// StartAdminServer; set OnChange first to keep your own audit log.
+// StartAdminServer together with the audit logger of NewAdminAudit.
 func (c *EnvConfig) AdminServerConfig() (AdminServerConfig, bool) {
 	return c.impl().AdminServerConfig()
+}
+
+// AdminAuditConfig returns the settings of the delivery logger that records the
+// audit log of the admin API, and the options for NewAdminAudit. Its outputs
+// are HETEROLOG_ADMIN_AUDIT_LOG_TYPE, by default stdout and file, and the
+// HETEROLOG_ADMIN_AUDIT_* settings give where each output records, such as the
+// file directory, by default audit_logs. The other settings, such as endpoints,
+// credentials and timeouts, are those of the delivery logger
+// (HETEROLOG_DELIVERY_*), even when HETEROLOG_ENABLE_DELIVERY_LOGGING is false.
+// The audit logger keeps its own directories: its files are written to one file
+// per period for every level, are not compressed, uploaded or removed, and its
+// failure archives use their own directories. It returns
+// ErrEnvAdminAuditNotEnabled when HETEROLOG_ADMIN_ADDR is empty.
+func (c *EnvConfig) AdminAuditConfig() (DeliveryConfig, []Option, error) {
+	return c.impl().AdminAuditConfig()
+}
+
+// NewAdminAudit constructs the audit logger of the admin API from the settings
+// and options that AdminAuditConfig returns, followed by opts. Pass it to
+// StartAdminServer or NewAdminHandler, and close it after the admin API stops.
+func (c *EnvConfig) NewAdminAudit(ctx context.Context, opts ...Option) (*DeliveryRuntime, error) {
+	return newDeliveryRuntime(c.impl().NewAdminAudit(ctx, opts...))
 }

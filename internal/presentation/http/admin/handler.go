@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"maps"
 	"net/http"
 	"slices"
@@ -19,6 +18,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/outputsettings"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	"github.com/google/uuid"
 )
 
 // maxRequestBytesは、管理用APIの要求本文の上限です。
@@ -32,34 +32,32 @@ var ErrTokenTooShort = fmt.Errorf("admin token must be at least %d bytes", pkgad
 //	GET   /settings  全loggerの現在の設定を返します
 //	PATCH /settings  JSONの本文で指定した項目を変更し、変更後の設定を返します
 //
-// すべての要求で「Authorization: Bearer <Token>」が必要です。PATCHは全loggerの全変更を
-// 検証してから反映し、一つでも不正なら何も反映しません。変更は次のlogから反映し、
-// メモリ上だけに保持します。
-func NewHandler(cfg pkgadmin.HandlerConfig) (http.Handler, error) {
+// すべての要求で「Authorization: Bearer <Token>」が必要です。PATCHは一つずつ順に処理し、
+// 全loggerの全変更を検証してから反映して、一つでも不正なら何も反映しません。要求、変更を
+// 始める時点の設定、変更後の設定はauditへ監査logとして記録し、拒否した要求も記録します。
+// 記録しないのは、成功したGETだけです。変更は次のlogから反映し、メモリ上だけに保持します。
+func NewHandler(cfg pkgadmin.HandlerConfig, audit pkglogger.DeliveryLogger) (http.Handler, error) {
 	if len(cfg.Token) < pkgadmin.MinTokenLength {
 		return nil, ErrTokenTooShort
 	}
-	service, err := outputsettings.NewService(cfg.Loggers)
+	service, err := outputsettings.NewService(cfg.Loggers, audit)
 	if err != nil {
 		return nil, err
 	}
-	onChange := cfg.OnChange
-	if onChange == nil {
-		onChange = logChange
-	}
-	return &handler{tokenDigest: sha256.Sum256([]byte(cfg.Token)), service: service, onChange: onChange}, nil
+	return &handler{tokenDigest: sha256.Sum256([]byte(cfg.Token)), service: service}, nil
 }
 
 type handler struct {
 	tokenDigest [sha256.Size]byte
 	service     *outputsettings.Service
-	onChange    func(pkgadmin.Change)
 }
 
 // 管理用APIのJSONの文書です。
 type (
 	settingsDocument struct {
 		Loggers map[string]loggerDocument `json:"loggers"`
+		// Warningsは、変更は反映したが知らせることがある場合の説明です。
+		Warnings []string `json:"warnings,omitempty"`
 	}
 	loggerDocument struct {
 		Outputs map[pkglogger.LogOutputDestination]outputDocument `json:"outputs"`
@@ -98,28 +96,43 @@ type (
 	}
 	errorDocument struct {
 		Error string `json:"error"`
+		// Loggersは、変更を反映した後の誤りで、今の設定を返す場合だけ含めます。
+		Loggers  map[string]loggerDocument `json:"loggers,omitempty"`
+		Warnings []string                  `json:"warnings,omitempty"`
 	}
 )
 
+// warningAuditUndeliveredは、監査logの一部が記録先のすべてへ届かなかったときの説明です。
+const warningAuditUndelivered = "some audit records of this request were not delivered to every audit output"
+
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// 経路より先に認証し、tokenのない要求に経路の有無を知らせません。
+	// 要求IDは、応答のheaderと監査logの両方に含め、利用者が自分の要求の記録を探せる
+	// ようにします。
+	request := outputsettings.Request{ID: uuid.NewString(), RemoteAddr: r.RemoteAddr}
+	w.Header().Set("X-Request-Id", request.ID)
+	// 経路より先に認証し、tokenのない要求に経路の有無を知らせません。監査logが届いたか
+	// どうかも、tokenのない要求には知らせません。
 	if !h.authorized(r) {
+		const reason = "missing or invalid bearer token"
+		h.service.Reject(r.Context(), request, reason)
 		w.Header().Set("WWW-Authenticate", `Bearer realm="heterolog"`)
-		writeError(w, http.StatusUnauthorized, "missing or invalid bearer token")
+		writeError(w, http.StatusUnauthorized, reason, false)
 		return
 	}
 	if r.URL.Path != "/settings" {
-		writeError(w, http.StatusNotFound, "not found")
+		const reason = "not found"
+		writeError(w, http.StatusNotFound, reason, h.service.Reject(r.Context(), request, reason))
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, newSettingsDocument(h.service.Settings()))
 	case http.MethodPatch:
-		h.patch(w, r)
+		h.patch(w, r, request)
 	default:
+		const reason = "method not allowed"
 		w.Header().Set("Allow", "GET, PATCH")
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		writeError(w, http.StatusMethodNotAllowed, reason, h.service.Reject(r.Context(), request, reason))
 	}
 }
 
@@ -134,37 +147,52 @@ func (h *handler) authorized(r *http.Request) bool {
 	return subtle.ConstantTimeCompare(digest[:], h.tokenDigest[:]) == 1
 }
 
-func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
+func (h *handler) patch(w http.ResponseWriter, r *http.Request, request outputsettings.Request) {
+	reject := func(status int, reason string) {
+		writeError(w, status, reason, h.service.Reject(r.Context(), request, reason))
+	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBytes))
 	decoder.DisallowUnknownFields()
 	var patch patchDocument
 	if err := decoder.Decode(&patch); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeError(w, http.StatusRequestEntityTooLarge, "request body is too large")
+			reject(http.StatusRequestEntityTooLarge, "request body is too large")
 			return
 		}
-		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		reject(http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		writeError(w, http.StatusBadRequest, "invalid JSON: the body must contain a single JSON object")
+		reject(http.StatusBadRequest, "invalid JSON: the body must contain a single JSON object")
 		return
 	}
 	changes, err := newChanges(patch)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		reject(http.StatusBadRequest, err.Error())
 		return
 	}
-	events, err := h.service.Update(changes)
-	for _, event := range events {
-		h.onChange(pkgadmin.Change{RemoteAddr: r.RemoteAddr, Logger: event.Logger, Output: event.Output, Before: event.Before, After: event.After})
-	}
+	result, err := h.service.Update(r.Context(), request, changes)
 	if err != nil {
-		writeError(w, statusOf(err), err.Error())
+		writeError(w, statusOf(err), err.Error(), result.AuditUndelivered)
 		return
 	}
-	writeJSON(w, http.StatusOK, newSettingsDocument(h.service.Settings()))
+	var warnings []string
+	if result.AuditUndelivered {
+		warnings = append(warnings, warningAuditUndelivered)
+	}
+	settings := newSettingsDocument(h.service.Settings())
+	if len(result.Mismatches) > 0 {
+		// 変更は反映済みで、戻しません。今の設定を返し、要求どおりでないことを知らせます。
+		writeJSON(w, http.StatusInternalServerError, errorDocument{
+			Error:    "the settings were changed but do not match the request; they were not reverted",
+			Loggers:  settings.Loggers,
+			Warnings: warnings,
+		})
+		return
+	}
+	settings.Warnings = warnings
+	writeJSON(w, http.StatusOK, settings)
 }
 
 // newChangesは、PATCHの文書を変更へ変換します。文書で省略したsamplingの項目は変更に
@@ -249,13 +277,12 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = encoder.Encode(body)
 }
 
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, errorDocument{Error: message})
-}
-
-// logChangeは、変更を標準のloggerへ一行出力します。
-func logChange(change pkgadmin.Change) {
-	log.Printf("heterolog: admin API changed %s/%s from %s: level %s -> %s, sampling %+v -> %+v",
-		change.Logger, change.Output, change.RemoteAddr,
-		change.Before.Level, change.After.Level, change.Before.Sampling, change.After.Sampling)
+// writeErrorは、errorの文書を返します。auditUndeliveredは、この要求の監査logの一部が
+// 記録先のすべてへ届かなかったことを表し、警告として含めます。
+func writeError(w http.ResponseWriter, status int, message string, auditUndelivered bool) {
+	document := errorDocument{Error: message}
+	if auditUndelivered {
+		document.Warnings = []string{warningAuditUndelivered}
+	}
+	writeJSON(w, status, document)
 }
