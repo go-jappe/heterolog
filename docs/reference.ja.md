@@ -369,7 +369,7 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 
 - `MaxRestThreshold` はログ到着の休止時間です。この時間を超えてログが届くと、待機中のログとともに即時送信を予約します。送信中の通知がある場合は、その完了を待ちます。
 - `pkg/logger` の `SlackLoggerConfig`・`DeliverySlackLoggerConfig` の `HTTPClient` には、Slack APIの呼び出しに使う `*http.Client`（プロキシや独自のtransportを使う場合など）を指定できます。nilの場合は `net/http` の既定のtransportを使います。
-  - 指定したクライアントはロガーの構築時にコピーし、`Transport`・`Jar`・`CheckRedirect` を引き継ぎます。元のクライアントは変更せず、構築後に変更しても反映しません。
+  - 指定したクライアントはロガーの構築時にコピーし、`Transport`・`Jar` を引き継ぎます。元のクライアントは変更せず、構築後に変更しても反映しません。リダイレクトは、`CheckRedirect` の設定にかかわらず追従しません（[送信先URLとリダイレクト](#送信先urlとリダイレクト)）。
   - タイムアウトには各設定の `Timeout`（正の値が必須）を使い、元のクライアントの `Timeout` より優先します。
   - 同じSlack設定を使う内部ログの送信にも、同じクライアントを使います。
   - 環境設定からは指定できないため、環境設定で有効にしたSlack出力は既定のtransportを使います。
@@ -398,9 +398,8 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 ### 送信先URLとリダイレクト
 
 - LokiとCloudWatch Logsの送信先URLは、末尾の通常の `/` を除く際にも `%2F` などのエスケープ表現を保持します。エンコードされた `/` をパス区切りに変換しません。
-- Loki、ClickHouse、VictoriaMetricsへの送信では、POSTの本文を失うリダイレクトを停止し、エラーを返します。307・308によるPOSTと本文を保った転送は、HTTPクライアントのリダイレクト設定に従います。
-- CloudWatch Logsへの送信とS3へのアップロードは、署名済みのリクエスト（CloudWatch LogsはPOST、S3はPUT）を一回だけ送信し、301・302・303・307・308を含むリダイレクトを追従せず、HTTPステータスのエラーとして返します。渡したHTTPクライアントのリダイレクト設定は変更しません。
-- リダイレクトは、宛先・設定の誤りで配送不能が確定した失敗（permanent）として扱います。圧縮ログはfileArchiveの `permanent`・spoolの `dead` に保持して、自動再送しません。S3がbucketのDNS更新中に返す `307 TemporaryRedirect` だけは、一時的な失敗として再送します。
+- どの出力先もリダイレクトを追従しません。Loki・ClickHouse・OpenSearch・CloudWatch Logs・Slack・VictoriaMetricsへの送信とS3へのアップロードは、各リクエストを一回だけ送信し、301・302・303・307・308を含むリダイレクトをHTTPステータスのエラーとして返します。追従すると、リクエストが本文なしのGETに変わるか、設定していないURLへログを送るためです。渡したHTTPクライアントのリダイレクト設定は使わず、変更もしません。
+- リダイレクトは、宛先・設定の誤りで配送不能が確定した失敗（permanent）として扱い、自動再送しません。たとえば圧縮ログは、fileArchiveの `permanent`・spoolの `dead` に保持します。S3がbucketのDNS更新中に返す `307 TemporaryRedirect` だけは、一時的な失敗として再送します。
 
 ### ClickHouse
 

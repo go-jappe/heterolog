@@ -20,11 +20,6 @@ var (
 	// ErrAsyncChannelFull reports that SendAsync did not accept metrics because the
 	// asynchronous send queue is full.
 	ErrAsyncChannelFull = errors.New("async channel is full")
-	// ErrTooManyRedirects reports that a request sending metrics stopped after 10
-	// redirects, the default limit, because the HTTP client has no CheckRedirect.
-	// This applies to the default client and to a client given with
-	// WithHTTPClient.
-	ErrTooManyRedirects = errors.New("stopped after 10 redirects")
 
 	// ErrEmptyMetricName reports that Metric.Name is empty.
 	ErrEmptyMetricName = errors.New("metric name cannot be empty")

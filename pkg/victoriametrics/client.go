@@ -154,10 +154,10 @@ func WithFormatter(formatter MetricFormatter) ClientOption {
 }
 
 // WithHTTPClient sets a custom HTTP client. Its settings are copied, keeping
-// Transport, Jar and CheckRedirect. Timeout is set to the WithTimeout value
-// (the default if it is not specified), and the original settings are not
-// modified. When sending metrics, redirects that would lose the POST method or
-// body are stopped.
+// Transport and Jar. Timeout is set to the WithTimeout value (the default if
+// it is not specified), and the original settings are not modified. Sending
+// metrics does not follow redirects and returns a 3xx response as an
+// HTTPError, so the CheckRedirect of the client is not used.
 func WithHTTPClient(httpClient *http.Client) ClientOption {
 	return func(c *Client) {
 		c.httpClient = httpClient
@@ -352,23 +352,15 @@ func (c *Client) sendBatch(ctx context.Context, metrics []Metric) error {
 	return nil
 }
 
-// doPostは呼び出し元のredirect policyを保ちつつ、送信するmetricsを落とすredirectを拒否します。
-// 最後のresponseを返すことで、そのHTTP errorを保ちます。
+// doPostはPOSTを一度だけ送信し、redirectを追従せずにそのresponseを返します。redirectは
+// 設定した送信先が本来の送信先ではないことを表し、追従すると301/302/303では本文なしの
+// GETへ変わり、307/308ではmetricsを別URLへ再送します。どれも追従せず、最後のresponseを
+// 返すことで、そのHTTP errorを保ちます。元のhttp.Clientは変更せず、shallow copyだけで
+// redirectを停止します。
 func (c *Client) doPost(req *http.Request) (*http.Response, error) {
 	httpClient := *c.httpClient
-	checkRedirect := httpClient.CheckRedirect
-	httpClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
-		if checkRedirect != nil {
-			if err := checkRedirect(next, via); err != nil {
-				return err
-			}
-		} else if len(via) >= 10 {
-			return ErrTooManyRedirects
-		}
-		if next.Method != http.MethodPost || next.Body == nil || next.Body == http.NoBody {
-			return http.ErrUseLastResponse
-		}
-		return nil
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
 	return httpClient.Do(req)
 }

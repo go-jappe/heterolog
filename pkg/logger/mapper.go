@@ -447,11 +447,13 @@ type SlackLoggerConfig struct {
 	Timeout time.Duration
 	// HTTPClient is the HTTP client used to call the Slack API. When it is nil,
 	// the default transport of net/http is used. When it is set, its settings
-	// are copied when the logger is built, carrying over Transport, Jar and
-	// CheckRedirect, and the original client is not modified. The Timeout of
-	// this config is used as the timeout and takes precedence over the Timeout
-	// of the original client. The same settings are used for the Slack posts of
-	// the regular output and of the internal-log fallback.
+	// are copied when the logger is built, carrying over Transport and Jar, and
+	// the original client is not modified. The Timeout of this config is used
+	// as the timeout and takes precedence over the Timeout of the original
+	// client. Slack API calls do not follow redirects, whatever the
+	// CheckRedirect of the original client, and treat a 3xx response as a
+	// failure. The same settings are used for the Slack posts of the regular
+	// output and of the internal-log fallback.
 	HTTPClient             *http.Client
 	Token                  string
 	Channel                string
@@ -489,11 +491,13 @@ type DeliverySlackLoggerConfig struct {
 	Timeout time.Duration
 	// HTTPClient is the HTTP client used to call the Slack API. When it is nil,
 	// the default transport of net/http is used. When it is set, its settings
-	// are copied when the logger is built, carrying over Transport, Jar and
-	// CheckRedirect, and the original client is not modified. The Timeout of
-	// this config is used as the timeout and takes precedence over the Timeout
-	// of the original client. The same settings are used for the Slack posts of
-	// the Delivery logger's own sending and of the internal-log fallback.
+	// are copied when the logger is built, carrying over Transport and Jar, and
+	// the original client is not modified. The Timeout of this config is used
+	// as the timeout and takes precedence over the Timeout of the original
+	// client. Slack API calls do not follow redirects, whatever the
+	// CheckRedirect of the original client, and treat a 3xx response as a
+	// failure. The same settings are used for the Slack posts of the Delivery
+	// logger's own sending and of the internal-log fallback.
 	HTTPClient                      *http.Client
 	Token                           string
 	Channel                         string

@@ -67,8 +67,9 @@ type Config struct {
 	CompressRequest bool
 
 	// HTTPClient, if set, is used with its own settings, and Timeout is not
-	// applied. Redirects are additionally restricted so that the POST body is
-	// preserved. The original client is not modified.
+	// applied. Pushes do not follow redirects of the POST and return a 3xx
+	// response as an HTTPStatusError. The CheckRedirect of the original client
+	// is not changed.
 	HTTPClient *http.Client
 }
 
@@ -203,24 +204,15 @@ func (c *Client) Push(ctx context.Context, streams []Stream) error {
 	return nil
 }
 
-// doPostは呼び出し元のredirect制限とnet/httpの既定の上限を保ちつつ、logのpayloadを
-// 捨てるredirectを拒否します。最後のresponseを返すことで、PushはGETの成功ではなく、
-// 元のHTTP statusを報告できます。
+// doPostはPOSTを一度だけ送信し、redirectを追従せずにそのresponseを返します。redirectは
+// 設定した送信先が本来の送信先ではないことを表し、追従すると301/302/303では本文なしの
+// GETへ変わり、307/308ではlogの本文を別URLへ再送します。どれも追従せず、PushがGETの
+// 成功ではなく元のHTTP statusを報告できるよう、元のhttp.Clientは変更せず、shallow copy
+// だけでredirectを停止します。
 func (c *Client) doPost(req *http.Request) (*http.Response, error) {
 	httpClient := *c.httpClient
-	checkRedirect := httpClient.CheckRedirect
-	httpClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
-		if checkRedirect != nil {
-			if err := checkRedirect(next, via); err != nil {
-				return err
-			}
-		} else if len(via) >= 10 {
-			return ErrTooManyRedirects
-		}
-		if next.Method != http.MethodPost || next.Body == nil || next.Body == http.NoBody {
-			return http.ErrUseLastResponse
-		}
-		return nil
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
 	return httpClient.Do(req)
 }

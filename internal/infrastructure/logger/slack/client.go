@@ -21,8 +21,11 @@ func newSlackAPI(token string, timeout time.Duration, httpClient *http.Client, d
 
 // newSlackHTTPClientは、Slack API呼び出し専用のHTTP clientを返します。baseがnilの場合は
 // net/httpの既定transportを使います。baseを指定した場合はその設定をcopyして
-// Transport、Jar、CheckRedirectを引き継ぎ、base自体は変更しません。
+// TransportとJarを引き継ぎ、base自体は変更しません。
 // Timeoutはどちらの場合もtimeoutを使い、baseのTimeoutより優先します。
+// redirectは、設定した送信先が本来の送信先ではないことを表します。追従すると、301/302/303
+// では本文なしのGETへ変わり、307/308ではmessageを別URLへ再送するため、baseの
+// CheckRedirectにかかわらず追従せず、redirectのresponseを失敗としてSDKへ返します。
 func newSlackHTTPClient(timeout time.Duration, base *http.Client) *http.Client {
 	client := cloneHTTPClient(base)
 	if client == nil {
@@ -30,11 +33,14 @@ func newSlackHTTPClient(timeout time.Duration, base *http.Client) *http.Client {
 	}
 	// timeoutはconstructorで正の値に検証済みです。この境界では補正しません。
 	client.Timeout = timeout
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	return client
 }
 
 // cloneHTTPClientは、呼び出し元のhttp.Clientを変更せずに設定を保持するcopyを返します。
-// Transport、Jar、CheckRedirectは元のclientと共有し、nilはnilのまま返します。
+// TransportとJarは元のclientと共有し、nilはnilのまま返します。
 func cloneHTTPClient(client *http.Client) *http.Client {
 	if client == nil {
 		return nil

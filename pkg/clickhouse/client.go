@@ -48,8 +48,9 @@ type Config struct {
 	Headers  map[string]string
 
 	CompressRequest bool
-	// HTTPClient settings are retained, with an additional redirect restriction
-	// that preserves POST bodies. The supplied client is never modified.
+	// HTTPClient settings are retained, except that an INSERT does not follow
+	// redirects of the POST and returns a 3xx response as an HTTPStatusError.
+	// The supplied client is never modified.
 	HTTPClient *http.Client
 }
 
@@ -310,23 +311,15 @@ func (c *Client) InsertLogsWithOptions(
 	return &InsertResponse{StatusCode: resp.StatusCode}, nil
 }
 
-// doPostは呼び出し元のredirect制限とnet/httpの既定の上限を保ちつつ、INSERTのpayloadを
-// 捨てるredirectを拒否します。既存のHTTP statusによる分類に回すため、元のredirect responseを返します。
+// doPostはPOSTを一度だけ送信し、redirectを追従せずにそのresponseを返します。redirectは
+// 設定した送信先が本来の送信先ではないことを表し、追従すると301/302/303では本文なしの
+// GETへ変わり、307/308ではINSERTの本文を別URLへ再送します。どれも追従せず、既存の
+// HTTP statusによる分類に回すため、元のredirect responseを返します。
+// 元のhttp.Clientは変更せず、shallow copyだけでredirectを停止します。
 func (c *Client) doPost(req *http.Request) (*http.Response, error) {
 	httpClient := *c.httpClient
-	checkRedirect := httpClient.CheckRedirect
-	httpClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
-		if checkRedirect != nil {
-			if err := checkRedirect(next, via); err != nil {
-				return err
-			}
-		} else if len(via) >= 10 {
-			return ErrTooManyRedirects
-		}
-		if next.Method != http.MethodPost || next.Body == nil || next.Body == http.NoBody {
-			return http.ErrUseLastResponse
-		}
-		return nil
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
 	return httpClient.Do(req)
 }

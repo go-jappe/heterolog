@@ -55,19 +55,68 @@ func (waitingForRequestContextRoundTripper) RoundTrip(r *http.Request) (*http.Re
 	return nil, r.Context().Err()
 }
 
-// 設定のHTTPClientがnilの場合は、net/httpの既定transport・cookie・redirect設定を使います。
+// 設定のHTTPClientがnilの場合は、net/httpの既定transport・cookie設定を使い、redirectは
+// 追従しません。
 func TestNewSlackHTTPClientWithoutConfiguredClientUsesNetHTTPDefaults(t *testing.T) {
 	t.Parallel()
 	const timeout = 30 * time.Second
 	client := newSlackHTTPClient(timeout, nil)
 	require.Nil(t, client.Transport, "nil Transport selects http.DefaultTransport")
 	require.Nil(t, client.Jar)
-	require.Nil(t, client.CheckRedirect)
+	require.NotNil(t, client.CheckRedirect)
+	require.ErrorIs(t, client.CheckRedirect(nil, nil), http.ErrUseLastResponse)
 	require.Equal(t, timeout, client.Timeout)
 }
 
-// 設定したHTTPClientはcopyして使い、Transport・Jar・CheckRedirectを引き継ぎます。
-// Timeoutだけを設定の値へ置き換え、呼び出し元のclientは変更しません。
+type redirectRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f redirectRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// redirectは、設定した送信先が本来の送信先ではないことを表します。301/302/303を追従すると
+// 本文なしのGETへ変わり、307/308を追従するとmessageを別URLへ再送します。どのredirectも
+// 追従せず、元の要求一回のresponseをSDKへ返し、呼び出し元のredirect方針も使いません。
+func TestNewSlackHTTPClientReturnsEveryRedirectWithoutFollowing(t *testing.T) {
+	t.Parallel()
+	for _, status := range []int{
+		http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusSeeOther,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect,
+	} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			t.Parallel()
+			var requests []string
+			policyCalls := 0
+			base := &http.Client{
+				Transport: redirectRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+					requests = append(requests, r.Method+" "+r.URL.Path)
+					if r.URL.Path != "/redirected" {
+						return &http.Response{StatusCode: status, Header: http.Header{"Location": []string{"/redirected"}},
+							Body: io.NopCloser(strings.NewReader("redirected by gateway")), Request: r}, nil
+					}
+					// 転送先は、どの要求にもSlackの成功に見える応答を返します。
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
+						Body: io.NopCloser(strings.NewReader(`{"ok":true,"channel":"C1","ts":"1.2"}`)), Request: r}, nil
+				}),
+				CheckRedirect: func(*http.Request, []*http.Request) error {
+					policyCalls++
+					return nil
+				},
+			}
+			client := newSlackHTTPClient(30*time.Second, base)
+			response, err := client.Post("https://slack.com/api/chat.postMessage", "application/x-www-form-urlencoded", strings.NewReader("text=preserve+this+log"))
+			require.NoError(t, err)
+			defer response.Body.Close()
+			require.Equal(t, status, response.StatusCode)
+			require.Equal(t, []string{"POST /api/chat.postMessage"}, requests)
+			require.Zero(t, policyCalls)
+		})
+	}
+}
+
+// 設定したHTTPClientはcopyして使い、Transport・Jarを引き継ぎます。Timeoutは設定の値へ
+// 置き換え、redirectは追従しないようにして、呼び出し元のclientは変更しません。
 func TestNewSlackHTTPClientCopiesConfiguredClientWithoutMutatingIt(t *testing.T) {
 	t.Parallel()
 	const timeout = 30 * time.Second
@@ -90,7 +139,7 @@ func TestNewSlackHTTPClientCopiesConfiguredClientWithoutMutatingIt(t *testing.T)
 	require.Same(t, transport, client.Transport)
 	require.Same(t, jar, client.Jar)
 	require.NotNil(t, client.CheckRedirect)
-	require.ErrorIs(t, client.CheckRedirect(nil, nil), errConfiguredRedirectPolicy)
+	require.ErrorIs(t, client.CheckRedirect(nil, nil), http.ErrUseLastResponse)
 	require.Equal(t, timeout, client.Timeout)
 
 	require.Equal(t, time.Hour, base.Timeout, "the caller's client Timeout must not change")

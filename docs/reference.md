@@ -369,7 +369,7 @@ How the deadline survives restarts:
 
 - `MaxRestThreshold` is the idle time between arriving logs. When a log arrives after this time has passed, an immediate send is scheduled together with the waiting logs. If a notification is being sent, it waits for that send to complete.
 - The `HTTPClient` of `SlackLoggerConfig` and `DeliverySlackLoggerConfig` in `pkg/logger` accepts the `*http.Client` used to call the Slack API (for example, to use a proxy or a custom transport). When it is nil, the default transport of `net/http` is used.
-  - The given client is copied at construction, keeping `Transport`, `Jar`, and `CheckRedirect`. The original client is not modified, and changes after construction are not reflected.
+  - The given client is copied at construction, keeping `Transport` and `Jar`. The original client is not modified, and changes after construction are not reflected. Redirects are not followed, whatever its `CheckRedirect` (see [Endpoint URLs and redirects](#endpoint-urls-and-redirects)).
   - The timeout is the `Timeout` of each configuration (it must be positive), which takes precedence over the `Timeout` of the original client.
   - The same client is used for internal logs sent with the same Slack settings.
   - It cannot be set from the environment configuration, so Slack output enabled there uses the default transport.
@@ -398,9 +398,8 @@ How the deadline survives restarts:
 ### Endpoint URLs and redirects
 
 - When the trailing `/` of a Loki or CloudWatch Logs endpoint URL is removed, escaped forms such as `%2F` are kept; an encoded `/` is not turned into a path separator.
-- Sending to Loki, ClickHouse, and VictoriaMetrics stops with an error at redirects that would lose the POST body. 307 and 308 redirects that keep the POST and its body follow the redirect settings of the HTTP client.
-- Sending to CloudWatch Logs and uploading to S3 send the signed request (a POST to CloudWatch Logs, a PUT to S3) only once and do not follow redirects, including 301, 302, 303, 307, and 308; they are returned as HTTP status errors. The redirect settings of the given HTTP client are not changed.
-- A redirect is treated as a permanent failure caused by a wrong destination or setting, so compressed logs are kept in the fileArchive `permanent` or the spool `dead` and are not resent automatically. Only the `307 TemporaryRedirect` that S3 returns while the DNS of a bucket is being updated is treated as a temporary failure and resent.
+- No output follows redirects. Sending to Loki, ClickHouse, OpenSearch, CloudWatch Logs, Slack, and VictoriaMetrics and uploading to S3 send each request only once and return a redirect, including 301, 302, 303, 307, and 308, as an HTTP status error: following it would turn the request into a GET without a body, or send the logs to a URL that is not configured. The redirect settings of a given HTTP client are not used and not changed.
+- A redirect is treated as a permanent failure caused by a wrong destination or setting and is not resent automatically; compressed logs, for example, are kept in the fileArchive `permanent` or the spool `dead`. Only the `307 TemporaryRedirect` that S3 returns while the DNS of a bucket is being updated is treated as a temporary failure and resent.
 
 ### ClickHouse
 

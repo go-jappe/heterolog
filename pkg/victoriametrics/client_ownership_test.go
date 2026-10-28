@@ -186,7 +186,7 @@ func TestSharedHTTPClientKeepsIndependentRequestTimeouts(t *testing.T) {
 	}
 }
 
-func TestHTTPClientCopyPreservesTransportJarAndRedirectPolicy(t *testing.T) {
+func TestHTTPClientCopyPreservesTransportAndJarWithoutFollowingRedirects(t *testing.T) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -222,10 +222,10 @@ func TestHTTPClientCopyPreservesTransportJarAndRedirectPolicy(t *testing.T) {
 	err = client.Send(context.Background(), []vm.Metric{{Name: "metric", Value: 1}})
 	var httpErr *vm.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusTemporaryRedirect {
-		t.Fatalf("Send error = %v, want redirect response rejected by caller policy", err)
+		t.Fatalf("Send error = %v, want the redirect response returned without following it", err)
 	}
-	if requests != 1 || redirects != 1 {
-		t.Errorf("requests = %d, redirect policy calls = %d; want 1 each", requests, redirects)
+	if requests != 1 || redirects != 0 {
+		t.Errorf("requests = %d, redirect policy calls = %d; want 1 request without consulting the redirect policy", requests, redirects)
 	}
 	if cookies := jar.Cookies(endpoint); len(cookies) != 1 || cookies[0].Value != "updated" {
 		t.Errorf("shared cookie jar after response = %v, want session=updated", cookies)

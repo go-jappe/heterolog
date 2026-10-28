@@ -140,7 +140,7 @@ if err := client.HealthCheck(ctx); err != nil {
 | `WithFormatter` | カスタムメトリクスフォーマッター | PrometheusTextFormatter |
 | `WithHTTPClient` | カスタムHTTPクライアント | デフォルトクライアント |
 
-`WithHTTPClient` の設定はコピーし、`Transport`、`Jar`、`CheckRedirect` を引き継ぎます。
+`WithHTTPClient` の設定はコピーし、`Transport`、`Jar` を引き継ぎます。
 元の HTTP クライアントは変更しません。タイムアウトには各 VictoriaMetrics クライアントの
 `WithTimeout`（未指定なら10秒）を使います。オプションの指定順にかかわらず、
 元の HTTP クライアントの `Timeout` より優先します。
@@ -155,8 +155,8 @@ n回目の再試行の前には、待機時間のn倍だけ待ちます。負の
 `ErrInvalidRetryCount` を返します。
 メトリクスの検証・変換やHTTP要求の生成に失敗した場合は、送信や待機をせずにすぐエラーを返します。
 
-メトリクス送信では、POSTのメソッドや本文を失うリダイレクトを停止し、元のHTTPエラーを返します。
-307・308によるPOSTと本文を保った転送は、HTTPクライアントのリダイレクト設定に従います。
+メトリクス送信は、301・302・303・307・308を含むリダイレクトを追従せず、元のHTTPエラーを返します。
+HTTPクライアントのリダイレクト設定（`CheckRedirect`）は使いません。
 
 `WithWorkerCount` が0以下の場合、非同期ワーカーは起動しません。
 `SendAsync` はデータを受理せずエラーを返します。同期送信の `Send` は利用できます。

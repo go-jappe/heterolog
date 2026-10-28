@@ -18,10 +18,6 @@ var (
 	// ErrTableRequired reports that the table to INSERT into is empty or contains
 	// only whitespace.
 	ErrTableRequired = errors.New("clickhouse table is required")
-	// ErrTooManyRedirects reports that a request stopped after 10 redirects, the
-	// default limit, because the HTTP client has no CheckRedirect. This applies to
-	// the default client and to Config.HTTPClient.
-	ErrTooManyRedirects = errors.New("stopped after 10 redirects")
 )
 
 // validationErrorは、従来のmessageを保ったまま、errors.Isで種類を判別できる検証errorです。

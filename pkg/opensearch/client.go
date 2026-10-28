@@ -192,7 +192,8 @@ const (
 	WriteOpCreate WriteOp = "create"
 )
 
-// New creates a new OpenSearch client.
+// New creates a new OpenSearch client. Its requests do not follow redirects
+// and return a 3xx response as an HTTPStatusError.
 func New(cfg Config) (Client, error) {
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, err
@@ -220,9 +221,15 @@ func New(cfg Config) (Client, error) {
 	if timeout == 0 {
 		timeout = defaultTimeout
 	}
+	// redirectは、設定した送信先が本来の送信先ではないことを表します。追従すると、301/302/303
+	// では本文なしのGETへ変わり、307/308では文書を別URLへ再送するため、どれも追従せず、
+	// 元のHTTP statusを報告します。
 	httpClient := &http.Client{
 		Timeout:   timeout,
 		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	// fmt.Printf("AuthConfig.Type=%q\n", cfg.AuthConfig.Type)
 

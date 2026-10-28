@@ -27,10 +27,6 @@ var (
 	ErrInvalidLabelName = errors.New("invalid loki label name")
 	// ErrStreamWithoutEntries reports that a stream to be sent has no entries.
 	ErrStreamWithoutEntries = errors.New("loki stream has no entries")
-	// ErrTooManyRedirects reports that a request stopped after 10 redirects, the
-	// default limit, because the HTTP client has no CheckRedirect. This applies to
-	// the default client and to Config.HTTPClient.
-	ErrTooManyRedirects = errors.New("stopped after 10 redirects")
 )
 
 // InvalidLabelNameError reports that a label name is not in the Prometheus form
