@@ -9,7 +9,6 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -43,7 +42,7 @@ func (c *otelCounter) Add(ctx context.Context, value int64, attrs ...pkgobserver
 		return
 	}
 
-	c.c.Add(ctx, value, metric.WithAttributes(toOtelMetricAttrs(attrs)...))
+	c.c.Add(ctx, value, metric.WithAttributes(toOtelAttrs(attrs)...))
 }
 
 func (o *OtelMeter) Counter(name string) pkgobserver.Counter {
@@ -99,7 +98,7 @@ func (g *otelGauge) Record(ctx context.Context, value float64, attrs ...pkgobser
 		return
 	}
 
-	g.g.Record(ctx, value, metric.WithAttributes(toOtelMetricAttrs(attrs)...))
+	g.g.Record(ctx, value, metric.WithAttributes(toOtelAttrs(attrs)...))
 }
 
 func (o *OtelMeter) Gauge(name string) pkgobserver.Gauge {
@@ -155,7 +154,7 @@ func (h *otelHistogram) Record(ctx context.Context, value float64, attrs ...pkgo
 		return
 	}
 
-	h.h.Record(ctx, value, metric.WithAttributes(toOtelMetricAttrs(attrs)...))
+	h.h.Record(ctx, value, metric.WithAttributes(toOtelAttrs(attrs)...))
 }
 
 func (o *OtelMeter) Histogram(name string) pkgobserver.Histogram {
@@ -205,49 +204,4 @@ func (o *OtelMeter) getOrCreateHistogram(name string) (metric.Float64Histogram, 
 
 	o.histograms[name] = h
 	return h, nil
-}
-
-func toOtelMetricAttrs(attrs []pkgobserver.Attr) []attribute.KeyValue {
-	otelAttrs := make([]attribute.KeyValue, 0, len(attrs))
-
-	for _, a := range attrs {
-		switch v := a.Value.(type) {
-		case string:
-			otelAttrs = append(otelAttrs, attribute.String(a.Key, v))
-		case bool:
-			otelAttrs = append(otelAttrs, attribute.Bool(a.Key, v))
-		case int:
-			otelAttrs = append(otelAttrs, attribute.Int(a.Key, v))
-		case int8:
-			otelAttrs = append(otelAttrs, attribute.Int64(a.Key, int64(v)))
-		case int16:
-			otelAttrs = append(otelAttrs, attribute.Int64(a.Key, int64(v)))
-		case int32:
-			otelAttrs = append(otelAttrs, attribute.Int64(a.Key, int64(v)))
-		case int64:
-			otelAttrs = append(otelAttrs, attribute.Int64(a.Key, v))
-		case uint:
-			otelAttrs = append(otelAttrs, attribute.Int64(a.Key, int64(v)))
-		case uint8:
-			otelAttrs = append(otelAttrs, attribute.Int64(a.Key, int64(v)))
-		case uint16:
-			otelAttrs = append(otelAttrs, attribute.Int64(a.Key, int64(v)))
-		case uint32:
-			otelAttrs = append(otelAttrs, attribute.Int64(a.Key, int64(v)))
-		case uint64:
-			if v <= uint64(^uint64(0)>>1) {
-				otelAttrs = append(otelAttrs, attribute.Int64(a.Key, int64(v)))
-			} else {
-				otelAttrs = append(otelAttrs, attribute.String(a.Key, fmt.Sprint(v)))
-			}
-		case float32:
-			otelAttrs = append(otelAttrs, attribute.Float64(a.Key, float64(v)))
-		case float64:
-			otelAttrs = append(otelAttrs, attribute.Float64(a.Key, v))
-		default:
-			otelAttrs = append(otelAttrs, attribute.String(a.Key, fmt.Sprint(v)))
-		}
-	}
-
-	return otelAttrs
 }

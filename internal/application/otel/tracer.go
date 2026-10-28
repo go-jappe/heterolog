@@ -2,12 +2,11 @@ package otel
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
-	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -42,6 +41,9 @@ func (sp *otelSpan) RecordError(err error, attrs ...pkgobserver.Attr) {
 
 	otelAttrs := toOtelAttrs(attrs)
 	sp.s.RecordError(err, trace.WithAttributes(otelAttrs...))
+	// RecordErrorだけではspanのstatusが変わらず、trace UIでは成功として表示されます。
+	// errorを記録したspanは失敗した操作として扱います。
+	sp.s.SetStatus(codes.Error, err.Error())
 }
 
 func (sp *otelSpan) End() {
@@ -100,14 +102,4 @@ func (o *OtelTracer) StartSpan(ctx context.Context, name string, attrs ...pkgobs
 	ctx = observer.WithSpan(ctx, wrapped)
 
 	return ctx, wrapped
-}
-
-func toOtelAttrs(attrs []pkgobserver.Attr) []attribute.KeyValue {
-	otelAttrs := make([]attribute.KeyValue, 0, len(attrs))
-
-	for _, a := range attrs {
-		otelAttrs = append(otelAttrs, attribute.String(a.Key, fmt.Sprint(a.Value)))
-	}
-
-	return otelAttrs
 }
