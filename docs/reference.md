@@ -11,6 +11,7 @@ This document describes the behavior of heterolog in detail: what each API retur
 - [Configuration](#configuration)
 - [Log files](#log-files)
 - [Failure handling and replay](#failure-handling-and-replay)
+- [Metrics and traces](#metrics-and-traces)
 - [Destination notes](#destination-notes)
 - [Log recovery CLI](#log-recovery-cli)
 - [Testing](#testing)
@@ -390,6 +391,52 @@ How the deadline survives restarts:
 - The timeout budget check of `must_fit` includes waits for `Retry-After` up to `MaxDelay`, also for regular retries of Loki and ClickHouse.
 - When timeout and retry settings of loggers and clients are omitted in the environment configuration, the defaults are the same as the values in `.env.example` and satisfy the default `must_fit` (18 seconds for the regular and asynchronous loggers, 12 seconds for the delivery logger, 1 second for the OpenSearch client, and 2 seconds for the Loki, ClickHouse, and CloudWatch Logs clients).
 - The recovery CLI, which reads the environment configuration, checks the whole configuration including this budget before starting recovery, and exits with a configuration error if it is not satisfied.
+
+## Metrics and traces
+
+Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and spans below. Without them, nothing is recorded.
+
+### Metrics
+
+- Names follow the Prometheus conventions: they start with `heterolog_`, counters end with `_total`, and units are part of the name. Durations are in seconds.
+- The `backend` attribute is the name of a `pkg/logger.LogOutputDestination`, such as `opensearch` or `slack`.
+- Spool replay sends through the same kind of retry client and circuit breaker as regular sending, so the retry and circuit breaker metrics include its requests. The other metrics count only regular sending.
+- Internal log notifications sent to OpenSearch, Loki, ClickHouse, CloudWatch Logs, or Slack are not counted in `heterolog_backend_records_total` or in the flush metrics.
+
+| Metric | Type | Attributes | Meaning |
+|---|---|---|---|
+| `heterolog_backend_records_total` | Counter | `backend`, `outcome` | Records sent to OpenSearch, Loki, ClickHouse, CloudWatch Logs, or Slack, by result: `success`, or the failure classes `retryable`, `dead`, and `quarantine` described in [How failures are classified](#how-failures-are-classified). Slack keeps the records it could not send for its next batch and counts them as `retryable` at each try, and counts records it discards because its buffer is full as `dropped`. A failed Slack delivery is `dead`. |
+| `heterolog_backend_request_duration_seconds` | Histogram | `backend`, `outcome` (`success`, `failure`) | Duration of one request, including the retries of the retry client and the waits between them. A response that rejects only some records is a `success`; the records are counted in `heterolog_backend_records_total`. |
+| `heterolog_backend_flush_records` | Histogram | `backend` | Records in one buffered batch. |
+| `heterolog_backend_flush_bytes` | Histogram | `backend` | Bytes of one buffered batch, as counted against `BufferFlushBytes`. Slack does not record it. |
+| `heterolog_backend_retries_total` | Counter | `backend`, `reason` | Retries by the retry client, by the reason for the retry, such as `http_throttling` or `net_timeout`. |
+| `heterolog_circuit_breaker_rejected_requests_total` | Counter | `backend` | Requests that the circuit breaker rejected without sending. |
+| `heterolog_circuit_breaker_transitions_total` | Counter | `backend`, `state` (`open`, `closed`) | Times the circuit breaker opened, and times it closed after a probe confirmed recovery. |
+| `heterolog_failure_records_total` | Counter | `backend`, `action` | Records that failed to send, by what happened to them: `spooled`, `archived` (to the failure archive), `degraded` (written to stdout), `dropped` (by the overload policy `drop`), or `failed` (could not be stored or written). When several durable types are configured, each one counts the record. |
+| `heterolog_file_dropped_entries_total` | Counter | none | Entries that the file logger discarded with the overload policy `drop`. |
+
+### Spans
+
+- Span names start with `heterolog.`, followed by the destination and the operation. Span attributes start with `heterolog.`.
+- When the operation fails, the span records the error.
+- A span is a child of the span in the context of the operation. A send started by a logging call, for example when a buffer reaches its threshold, is part of the caller's trace.
+
+| Span | Operation | Attributes |
+|---|---|---|
+| `heterolog.<destination>.create` | Constructing the logger of a destination (`file`, `stdout`, `slack`, `opensearch`, `loki`, `cloudwatchlogs`, `clickhouse`). | |
+| `heterolog.opensearch.flush`, `heterolog.loki.flush`, `heterolog.cloudwatchlogs.flush`, `heterolog.clickhouse.flush`, `heterolog.slack.send` | Sending one buffered batch. | `heterolog.records`, `heterolog.bytes` (not Slack) |
+| `heterolog.opensearch.bulk`, `heterolog.opensearch.index`, `heterolog.loki.push`, `heterolog.cloudwatchlogs.put_log_events`, `heterolog.clickhouse.insert`, `heterolog.slack.post` | One request, including the retries of the retry client. | `heterolog.records` |
+| The request name followed by `.attempt`, such as `heterolog.loki.push.attempt` | One try by the retry client, without the wait before it. | `heterolog.attempt` (1 for the first try) |
+| `heterolog.file.write`, `heterolog.file.write.io`, `heterolog.fallback.file.write` | Writing one entry to a log file, and one internal log notification to a log file. | |
+| `heterolog.file.compress`, `heterolog.file.purge.age`, `heterolog.file.purge.generation`, `heterolog.file.purge.dirsize` | Compressing a rotated log file, and deleting log files by age, generation count, and directory size. | `heterolog.compress.format` |
+| `heterolog.failurearchive.write`, `heterolog.failurearchive.write.retryable`, `heterolog.failurearchive.write.permanent`, `heterolog.failurearchive.compress`, `heterolog.failurearchive.purge.age`, `heterolog.failurearchive.purge.generation`, `heterolog.failurearchive.purge.dirsize`, `heterolog.failurearchive.delegate`, `heterolog.failurearchive.create` | Saving failed records to the failure archive, maintaining its files, notifying its internal logs, and constructing it. | |
+| `heterolog.fallback.slack.create` | Constructing the Slack logger for internal log notifications. | |
+
+Events added to the span of the operation:
+
+- `heterolog.<destination>.retry_decision` (`opensearch`, `loki`, `cloudwatchlogs`, `clickhouse`): the retry decision of the retry client after a failed try (the reason, the attempt, and the HTTP status), and the decision of the circuit breaker when it records a failure or rejects a request.
+- `heterolog.failure.overload.dropped`: failed records discarded by the overload policy `drop`, with the number of records of each failure class. The span also gets the attribute `heterolog.failure.overload.drop_occurred`.
+- `heterolog.file.overload.dropped`: an entry discarded by the file logger with the overload policy `drop`.
 
 ## Destination notes
 
