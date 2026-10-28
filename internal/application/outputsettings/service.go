@@ -21,7 +21,17 @@ var (
 	// ErrApplyFailedは、検証を通った変更を反映できなかったことを表します。検証の後で
 	// 別の変更と競合した場合などに生じ、それより前のloggerの変更は反映済みです。
 	ErrApplyFailed = errors.New("output settings change could not be applied")
+	// ErrSharedLiveSettingsは、Serviceで扱う出力先のうち二つが、同じLiveSettingsを共有する
+	// ことを表します。一方への変更がもう一方も変え、その変化を監査logに記録することも、
+	// 要求と照合することもできないため、Serviceを作りません。
+	ErrSharedLiveSettings = errors.New("outputs managed by the admin API share live settings")
 )
+
+// LiveSettingsOwnerは、出力先ごとのLiveSettingsを示せるloggerです。heterologが作る
+// loggerの内部のruntimeが実装し、NewServiceは、これで出力先どうしの共有を見つけます。
+type LiveSettingsOwner interface {
+	OutputLiveSettings() map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings
+}
 
 // Serviceは、名前を付けた複数のloggerの出力先の設定を、まとめて読み取り・変更します。
 // 管理用APIの処理です。変更は一つずつ順に処理し、要求、変更を始める時点の設定、変更後の
@@ -36,7 +46,9 @@ type Service struct {
 
 // NewServiceは、loggersを扱い、監査logをauditへ記録するServiceを返します。loggersは
 // 複製して保持します。loggerが一つもない場合はErrNoLoggers、auditがnilの場合は
-// ErrNoAuditLoggerを返します。
+// ErrNoAuditLoggerを返します。LiveSettingsOwnerを実装するloggerの出力先どうしが、同じ
+// LiveSettingsを共有している場合はErrSharedLiveSettingsを返します。同じloggerを二つの
+// 名前で渡した場合も共有です。
 func NewService(loggers map[string]pkglogger.SettingsController, audit pkglogger.DeliveryLogger) (*Service, error) {
 	if len(loggers) == 0 {
 		return nil, ErrNoLoggers
@@ -44,7 +56,43 @@ func NewService(loggers map[string]pkglogger.SettingsController, audit pkglogger
 	if audit == nil {
 		return nil, ErrNoAuditLogger
 	}
+	if err := checkSharedLiveSettings(loggers); err != nil {
+		return nil, err
+	}
 	return &Service{loggers: maps.Clone(loggers), audit: audit}, nil
+}
+
+// checkSharedLiveSettingsは、LiveSettingsOwnerを実装するloggerの出力先どうしで、同じ
+// LiveSettingsを共有していないかを確かめ、共有している組ごとのerrorを返します。実装
+// しないloggerは確かめられないため、対象外です。
+func checkSharedLiveSettings(loggers map[string]pkglogger.SettingsController) error {
+	type owner struct {
+		logger string
+		output pkglogger.LogOutputDestination
+	}
+	owners := map[*pkglogger.LiveSettings]owner{}
+	var errs []error
+	// 毎回同じ順で確かめ、errorを同じ順で報告します。
+	for _, name := range slices.Sorted(maps.Keys(loggers)) {
+		source, ok := loggers[name].(LiveSettingsOwner)
+		if !ok {
+			continue
+		}
+		outputs := source.OutputLiveSettings()
+		for _, output := range slices.Sorted(maps.Keys(outputs)) {
+			live := outputs[output]
+			if live == nil {
+				continue
+			}
+			if first, shared := owners[live]; shared {
+				errs = append(errs, fmt.Errorf("%w: logger %q output %q and logger %q output %q",
+					ErrSharedLiveSettings, first.logger, first.output, name, output))
+				continue
+			}
+			owners[live] = owner{logger: name, output: output}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Requestは、一つの要求を監査logで識別する情報です。

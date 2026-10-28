@@ -264,7 +264,9 @@ type RuntimeConfig struct {
 	// Live, when set, makes the output use the values of Live, which can be
 	// changed while the output runs, instead of LogLevel and the SamplingConfig
 	// of the same backend configuration. New and NewAsync of heterolog create one
-	// for each output that does not set Live.
+	// for each output that does not set Live. Outputs that share one Live change
+	// together; the admin API of heterolog does not accept loggers whose outputs
+	// share one.
 	Live *LiveSettings
 }
 

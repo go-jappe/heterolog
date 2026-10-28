@@ -36,6 +36,8 @@ var ErrTokenTooShort = fmt.Errorf("admin token must be at least %d bytes", pkgad
 // 全loggerの全変更を検証してから反映して、一つでも不正なら何も反映しません。要求、変更を
 // 始める時点の設定、変更後の設定はauditへ監査logとして記録し、拒否した要求も記録します。
 // 記録しないのは、成功したGETだけです。変更は次のlogから反映し、メモリ上だけに保持します。
+// loggersの出力先どうしが同じLiveSettingsを共有している場合は、outputsettingsの
+// ErrSharedLiveSettingsを返します。
 func NewHandler(cfg pkgadmin.HandlerConfig, audit pkglogger.DeliveryLogger) (http.Handler, error) {
 	if len(cfg.Token) < pkgadmin.MinTokenLength {
 		return nil, ErrTokenTooShort

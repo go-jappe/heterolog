@@ -11,6 +11,9 @@ import (
 // values instead of RuntimeConfig.LogLevel and the SamplingConfig of the same
 // backend configuration, and changes take effect from the next log. New and
 // NewAsync of heterolog create one for each output that does not set Live.
+// Outputs that share one LiveSettings change together; the admin API of
+// heterolog does not accept loggers whose outputs share one, because it
+// records and verifies each change for the output it names.
 // Create it with NewLiveSettings. It is safe for concurrent use.
 type LiveSettings struct {
 	level    atomic.Int64

@@ -36,6 +36,17 @@ func (r *Registry) Snapshot() map[pkglogger.LogOutputDestination]pkglogger.Outpu
 	return result
 }
 
+// OutputLiveSettingsは、出力先ごとのLiveSettingsを複製したmapで返します。nilの
+// Registryは空のmapを返します。
+func (r *Registry) OutputLiveSettings() map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings {
+	result := map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings{}
+	if r == nil {
+		return result
+	}
+	maps.Copy(result, r.outputs)
+	return result
+}
+
 // Updateは、すべての変更を検証してから反映し、反映した出力先ごとに、反映の直前と直後の
 // 設定を返します。共有するLiveSettingsの変更も直列化し、別の変更を含めません。
 // 直後の設定は、計算した

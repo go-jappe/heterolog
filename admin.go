@@ -22,6 +22,13 @@ var (
 	// ErrAdminAuditLoggerRequired reports an admin API without the delivery
 	// logger that records its audit log.
 	ErrAdminAuditLoggerRequired = outputsettings.ErrNoAuditLogger
+	// ErrAdminSharedLiveSettings reports that two outputs of the loggers given
+	// to the admin API share one pkg/logger LiveSettings, set through
+	// RuntimeConfig.Live, in one logger or in different loggers. A logger given
+	// under two names shares all of its outputs. A change of one output would
+	// also change the other, which the audit log could neither record nor
+	// verify.
+	ErrAdminSharedLiveSettings = outputsettings.ErrSharedLiveSettings
 	// ErrAdminServerAddrRequired reports an AdminServerConfig without Addr.
 	ErrAdminServerAddrRequired = admin.ErrServerAddrRequired
 	// ErrAdminServerInsecure reports an admin server that would listen on a
@@ -82,28 +89,57 @@ type AdminServer struct {
 // delivery logger made for the audit log, such as the one of
 // EnvConfig.NewAdminAudit, and close it after the handler is no longer used.
 // It returns ErrAdminAuditLoggerRequired if audit is nil.
+//
+// Each output of the loggers must have its own settings, so that every change
+// is recorded and verified for the output it changes. It returns
+// ErrAdminSharedLiveSettings if two outputs share one LiveSettings. Loggers
+// created by New and NewAsync are checked; other implementations of
+// SettingsController are not.
 func NewAdminHandler(cfg AdminHandlerConfig, audit *DeliveryRuntime) (http.Handler, error) {
 	if audit == nil || audit.DeliveryLogger == nil {
 		return nil, ErrAdminAuditLoggerRequired
 	}
+	cfg.Loggers = adminLoggers(cfg.Loggers)
 	return admin.NewHandler(cfg, audit)
 }
 
 // StartAdminServer starts a dedicated HTTP server for the admin API of
 // NewAdminHandler and returns once it listens. loggers maps the names used in
 // the API to the loggers whose settings it reads and changes, and audit records
-// the audit log as in NewAdminHandler. The server listens on a loopback address
-// unless cfg names another host and enables TLS. Call Shutdown or Close to stop
-// it, and close audit after that.
+// the audit log; both are checked as in NewAdminHandler. The server listens on
+// a loopback address unless cfg names another host and enables TLS. Call
+// Shutdown or Close to stop it, and close audit after that.
 func StartAdminServer(cfg AdminServerConfig, loggers map[string]SettingsController, audit *DeliveryRuntime) (*AdminServer, error) {
 	if audit == nil || audit.DeliveryLogger == nil {
 		return nil, ErrAdminAuditLoggerRequired
 	}
-	server, err := admin.StartServer(cfg, loggers, audit)
+	server, err := admin.StartServer(cfg, adminLoggers(loggers), audit)
 	if err != nil {
 		return nil, err
 	}
 	return &AdminServer{server: server}, nil
+}
+
+// adminLoggersは、heterologが作るloggerを、処理を受け持つ内部のruntimeに置き換えた
+// 複製を返します。内部のruntimeは出力先ごとのLiveSettingsを示せるため、管理用APIは
+// 出力先どうしの共有を見つけられます。設定の読み取りと変更は、公開の型を通した場合と
+// 同じく内部のruntimeが行います。
+func adminLoggers(loggers map[string]SettingsController) map[string]SettingsController {
+	result := make(map[string]SettingsController, len(loggers))
+	for name, logger := range loggers {
+		switch runtime := logger.(type) {
+		case *Runtime:
+			if runtime != nil {
+				logger = runtime.impl()
+			}
+		case *AsyncRuntime:
+			if runtime != nil {
+				logger = runtime.impl()
+			}
+		}
+		result[name] = logger
+	}
+	return result
 }
 
 // Addr returns the address the server listens on, including the port chosen

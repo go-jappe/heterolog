@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -183,6 +184,79 @@ func TestNewServiceRequiresALoggerAndAnAuditLogger(t *testing.T) {
 	}
 	if _, err := NewService(map[string]pkglogger.SettingsController{"a": newControllerForTest(t)}, nil); !errors.Is(err, ErrNoAuditLogger) {
 		t.Errorf("NewService(nil audit) error = %v, want ErrNoAuditLogger", err)
+	}
+}
+
+// 出力先どうしが同じLiveSettingsを共有していると、一方への変更がもう一方も変え、監査logで
+// 記録も照合もできないため、Serviceを作りません。errorは共有している組を名前で示します。
+func TestNewServiceRejectsOutputsSharingLiveSettings(t *testing.T) {
+	shared, other := newLiveForTest(t), newLiveForTest(t)
+	registry := func(outputs map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings) registryController {
+		return registryController{NewRegistry("test logger", outputs)}
+	}
+	app := registry(map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings{pkglogger.LogOutputStdout: shared})
+	for _, tt := range []struct {
+		name    string
+		loggers map[string]pkglogger.SettingsController
+		want    string
+	}{
+		{
+			name: "outputs of one logger",
+			loggers: map[string]pkglogger.SettingsController{"app": registry(map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings{
+				pkglogger.LogOutputStdout: shared,
+				pkglogger.LogOutputFile:   shared,
+			})},
+			want: `logger "app" output "file" and logger "app" output "stdout"`,
+		},
+		{
+			name: "outputs of two loggers",
+			loggers: map[string]pkglogger.SettingsController{"app": app, "worker": registry(map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings{
+				pkglogger.LogOutputFile:   shared,
+				pkglogger.LogOutputStdout: other,
+			})},
+			want: `logger "app" output "stdout" and logger "worker" output "file"`,
+		},
+		{
+			name:    "one logger under two names",
+			loggers: map[string]pkglogger.SettingsController{"app": app, "copy": app},
+			want:    `logger "app" output "stdout" and logger "copy" output "stdout"`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewService(tt.loggers, &auditLoggerForTest{})
+			if !errors.Is(err, ErrSharedLiveSettings) || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("NewService() error = %v, want ErrSharedLiveSettings naming %s", err, tt.want)
+			}
+		})
+	}
+}
+
+// plainControllerは、LiveSettingsOwnerを実装しないControllerです。
+type plainController struct{ inner registryController }
+
+func (c plainController) OutputSettings() map[pkglogger.LogOutputDestination]pkglogger.OutputSettings {
+	return c.inner.OutputSettings()
+}
+
+func (c plainController) UpdateOutputSettings(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) (map[pkglogger.LogOutputDestination]pkglogger.AppliedOutputSettings, error) {
+	return c.inner.UpdateOutputSettings(changes)
+}
+
+// LiveSettingsを示さないloggerは共有を確かめられないため、共有していてもServiceを作ります。
+// 別々のLiveSettingsを示すloggerも、そのまま受け付けます。
+func TestNewServiceChecksOnlyLoggersThatShowTheirLiveSettings(t *testing.T) {
+	shared := newLiveForTest(t)
+	hidden := plainController{registryController{NewRegistry("test logger", map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings{
+		pkglogger.LogOutputStdout: shared,
+	})}}
+	loggers := map[string]pkglogger.SettingsController{
+		"hidden": hidden,
+		"copy":   hidden,
+		"a":      newControllerForTest(t),
+		"b":      newControllerForTest(t),
+	}
+	if _, err := NewService(loggers, &auditLoggerForTest{}); err != nil {
+		t.Fatalf("NewService() error = %v, want no error", err)
 	}
 }
 

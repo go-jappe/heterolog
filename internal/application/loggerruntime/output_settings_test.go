@@ -189,6 +189,43 @@ func TestNewUsesTheLiveSettingsOfTheConfig(t *testing.T) {
 	}
 }
 
+// OutputLiveSettingsは、管理用APIが共有を確かめられるよう、出力先が実際に使う
+// LiveSettingsを返します。設定で渡したものはそのまま、渡さない出力先には専用に作った
+// ものを返します。
+func TestOutputLiveSettingsReturnsTheLiveSettingsInUse(t *testing.T) {
+	ctx := context.Background()
+	live, err := pkglogger.NewLiveSettings(pkglogger.LogLevelWarn, pkglogger.SamplingConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loggerruntime.DefaultConfig()
+	cfg.Stdout.RuntimeConfig.Live = live
+	runtime, err := loggerruntime.New(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close() })
+	if got := runtime.OutputLiveSettings(); len(got) != 1 || got[pkglogger.LogOutputStdout] != live {
+		t.Errorf("Runtime.OutputLiveSettings() = %v, want only the Live of the stdout configuration", got)
+	}
+
+	async, err := loggerruntime.NewAsync(ctx, loggerruntime.DefaultAsyncConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = async.Close() })
+	created := async.OutputLiveSettings()[pkglogger.LogOutputStdout]
+	if created == nil || created == live {
+		t.Fatalf("AsyncRuntime.OutputLiveSettings()[stdout] = %p, want its own LiveSettings", created)
+	}
+	if err := created.Set(pkglogger.LogLevelError, created.Sampling()); err != nil {
+		t.Fatal(err)
+	}
+	if got := async.OutputSettings()[pkglogger.LogOutputStdout].Level; got != pkglogger.LogLevelError {
+		t.Errorf("stdout level = %v after setting the returned LiveSettings, want ERROR", got)
+	}
+}
+
 // 別々のRuntimeも、共有するLiveSettingsの読み取りから反映までを直列化します。
 func TestRuntimesSharingLiveSettingsKeepConcurrentPartialUpdates(t *testing.T) {
 	previous := runtime.GOMAXPROCS(4)

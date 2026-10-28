@@ -8,8 +8,10 @@ import (
 )
 
 var (
-	_ pkglogger.SettingsController = (*Runtime)(nil)
-	_ pkglogger.SettingsController = (*AsyncRuntime)(nil)
+	_ pkglogger.SettingsController     = (*Runtime)(nil)
+	_ pkglogger.SettingsController     = (*AsyncRuntime)(nil)
+	_ outputsettings.LiveSettingsOwner = (*Runtime)(nil)
+	_ outputsettings.LiveSettingsOwner = (*AsyncRuntime)(nil)
 )
 
 // attachOutputSettingsは、通常の出力先それぞれに、設定がまだ持っていなければ専用の
@@ -109,4 +111,16 @@ func (r *AsyncRuntime) OutputSettings() map[pkglogger.LogOutputDestination]pkglo
 // 出力先のlevelとsamplingを変えます。非同期loggerは、logを処理する時点の設定を使います。
 func (r *AsyncRuntime) UpdateOutputSettings(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) (map[pkglogger.LogOutputDestination]pkglogger.AppliedOutputSettings, error) {
 	return r.outputs.Update(changes)
+}
+
+// OutputLiveSettingsは、各出力先の設定を保持するLiveSettingsを返します。管理用APIが、
+// 出力先どうしの共有を確かめるために使います。内部logの通知だけに使う出力先は含みません。
+func (r *Runtime) OutputLiveSettings() map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings {
+	return r.outputs.OutputLiveSettings()
+}
+
+// OutputLiveSettingsは、Runtime.OutputLiveSettingsと同じく、各出力先のLiveSettingsを
+// 返します。
+func (r *AsyncRuntime) OutputLiveSettings() map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings {
+	return r.outputs.OutputLiveSettings()
 }

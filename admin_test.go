@@ -101,3 +101,63 @@ func TestAdminAPIRequiresTheAuditLogger(t *testing.T) {
 		t.Errorf("StartAdminServer(zero audit) error = %v, want ErrAdminAuditLoggerRequired", err)
 	}
 }
+
+// 管理用APIに渡すloggerの出力先がLiveSettingsを共有していれば、NewAdminHandlerと
+// StartAdminServerはErrAdminSharedLiveSettingsを返します。公開の型で渡しても見つかる
+// ことを確かめます。共有の検査そのものはinternal/application/outputsettingsで試験します。
+func TestAdminAPIRejectsLoggersSharingLiveSettings(t *testing.T) {
+	ctx := context.Background()
+	live, err := pkglogger.NewLiveSettings(pkglogger.LogLevelInfo, pkglogger.SamplingConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newRuntime := func(cfg heterolog.Config) *heterolog.Runtime {
+		t.Helper()
+		runtime, err := heterolog.New(ctx, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = runtime.Close() })
+		return runtime
+	}
+	sharedConfig := heterolog.DefaultConfig()
+	sharedConfig.Stdout.RuntimeConfig.Live = live
+	app := newRuntime(sharedConfig)
+	sharedAsyncConfig := heterolog.DefaultAsyncConfig()
+	sharedAsyncConfig.Stdout.RuntimeConfig.Live = live
+	async, err := heterolog.NewAsync(ctx, sharedAsyncConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = async.Close() })
+	separate := newRuntime(heterolog.DefaultConfig())
+	audit, err := heterolog.NewDelivery(ctx, heterolog.DefaultDeliveryConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = audit.Close() })
+
+	for name, loggers := range map[string]map[string]heterolog.SettingsController{
+		"a synchronous and an asynchronous logger": {"app": app, "async": async},
+		"one logger under two names":               {"app": separate, "copy": separate},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Loggers: loggers}, audit); !errors.Is(err, heterolog.ErrAdminSharedLiveSettings) {
+				t.Errorf("NewAdminHandler() error = %v, want ErrAdminSharedLiveSettings", err)
+			}
+			server, err := heterolog.StartAdminServer(heterolog.AdminServerConfig{Addr: "127.0.0.1:0", Token: adminTokenForTest}, loggers, audit)
+			if err == nil {
+				_ = server.Close()
+			}
+			if !errors.Is(err, heterolog.ErrAdminSharedLiveSettings) {
+				t.Errorf("StartAdminServer() error = %v, want ErrAdminSharedLiveSettings", err)
+			}
+		})
+	}
+
+	// それぞれ自分の設定を持つloggerは受け付けます。
+	loggers := map[string]heterolog.SettingsController{"app": app, "separate": separate}
+	if _, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Loggers: loggers}, audit); err != nil {
+		t.Errorf("NewAdminHandler(own settings) error = %v, want no error", err)
+	}
+}
