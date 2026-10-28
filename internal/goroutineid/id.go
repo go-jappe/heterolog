@@ -1,4 +1,5 @@
-// Package goroutineid identifies direct callback reentry on the current goroutine.
+// Package goroutineidは、callbackが同じgoroutineから直接呼び直されたことを見分けるために、
+// 今のgoroutineのidを読みます。
 package goroutineid
 
 import (
@@ -7,17 +8,17 @@ import (
 	"strconv"
 )
 
-// Current reads the current goroutine ID from runtime.Stack's header. Go does
-// not expose a public goroutine ID API; this internal helper is used only to
-// recognize direct callback reentry. It returns false if the runtime's header
-// cannot be read, rather than confusing an unrelated goroutine with the caller.
+// Currentは、runtime.Stackの先頭行から、今のgoroutineのidを読みます。Goにはgoroutineの
+// idを読む公開のAPIがないため、callbackの直接の呼び直しを見分ける用途だけに使う内部の
+// 補助です。先頭行を読めない場合は、無関係のgoroutineを呼び出し元と取り違えないよう、
+// falseを返します。
 func Current() (uint64, bool) {
 	var buf [64]byte
 	n := runtime.Stack(buf[:], false)
 	return Parse(buf[:n])
 }
 
-// Parse reads the ID in the runtime.Stack header "goroutine N [...]".
+// Parseは、runtime.Stackの先頭行「goroutine N [...]」からNを読みます。
 func Parse(stack []byte) (uint64, bool) {
 	rest, found := bytes.CutPrefix(stack, []byte("goroutine "))
 	if !found {

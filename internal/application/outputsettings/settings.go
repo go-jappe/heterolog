@@ -47,12 +47,11 @@ func (r *Registry) OutputLiveSettings() map[pkglogger.LogOutputDestination]*pkgl
 }
 
 // Updateは、すべての変更を検証してから反映し、反映した出力先ごとに、反映の直前と直後の
-// 設定を返します。共有するLiveSettingsの変更も直列化し、別の変更を含めません。
-// 直後の設定は、計算した
-// 値ではなく、反映した後のLiveSettingsから読み直した値です。一つでも不正な変更があれば、
-// どれも反映しません。loggerが使っていない出力先はErrUnknownOutput、不正な値は
-// pkg/loggerのConfigFieldErrorです。nilのRegistryは、どの出力先も持たないものとして
-// 扱います。
+// 設定を返します。共有するLiveSettingsの変更も直列化し、別の変更を含めません。直後の
+// 設定は、計算した値ではなく、反映した後のLiveSettingsから読み直した値です。一つでも
+// 不正な変更があれば、どれも反映しません。loggerが使っていない出力先はErrUnknownOutput、
+// 不正な値はpkg/loggerのConfigFieldErrorです。nilのRegistryは、どの出力先も持たないもの
+// として扱います。
 func (r *Registry) Update(changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange) (map[pkglogger.LogOutputDestination]pkglogger.AppliedOutputSettings, error) {
 	if r == nil {
 		r = &Registry{}

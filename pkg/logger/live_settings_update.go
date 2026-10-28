@@ -59,12 +59,14 @@ func UpdateLiveSettings(source string, outputs map[LogOutputDestination]*LiveSet
 	return applied, nil
 }
 
-// currentLiveSettings reads both settings while liveSettingsUpdateMu is held.
+// currentLiveSettingsは、levelとsamplingの両方を読みます。liveSettingsUpdateMuを持って
+// 呼びます。
 func currentLiveSettings(live *LiveSettings) OutputSettings {
 	return OutputSettings{Level: live.Level(), Sampling: live.Sampling()}
 }
 
-// applyLiveSettingsChange keeps each field that change does not specify.
+// applyLiveSettingsChangeは、currentにchangeを当てた設定を返します。changeが指定しない
+// 項目は、currentの値のままです。
 func applyLiveSettingsChange(current OutputSettings, change OutputSettingsChange) OutputSettings {
 	if change.Level != nil {
 		current.Level = *change.Level
@@ -87,7 +89,8 @@ func setIfPresent[T any](target *T, value *T) {
 	}
 }
 
-// validateLiveSettings includes the source and destination in validation errors.
+// validateLiveSettingsは、設定がpkg/loggerの規則を満たすかを確かめます。errorには、設定の
+// 出所のsourceと出力先を含めます。
 func validateLiveSettings(source string, destination LogOutputDestination, settings OutputSettings) error {
 	return errors.Join(
 		ValidateLogLevel(source, destination, settings.Level),

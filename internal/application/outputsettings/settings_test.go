@@ -155,7 +155,7 @@ func TestRegistryMergesChangesToOutputsSharingLiveSettings(t *testing.T) {
 			t.Errorf("applied[%s] = %+v, want %+v", destination, got, want)
 		}
 	}
-	// A rejected change must not apply any of the staged alias changes.
+	// 拒否した変更では、共有する出力先へまとめた変更も、どれも反映しません。
 	_, err = registry.Update(map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange{
 		pkglogger.LogOutputFile:   {Level: level(pkglogger.LogLevelDebug)},
 		pkglogger.LogOutputStdout: {Level: level(pkglogger.LogLevel(42))},

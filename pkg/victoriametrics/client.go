@@ -51,8 +51,8 @@ type Client struct {
 
 	// エラーハンドラー
 	onError func(error)
-	// errorHandlers contains the goroutines currently calling this client's
-	// handler, so a direct Close from a handler does not wait for its own worker.
+	// errorHandlersは、このclientのエラーハンドラーを実行中のgoroutineのidを持ちます。
+	// ハンドラーから直接呼んだCloseが、自分のworkerの終了を待たないようにするためです。
 	errorHandlers sync.Map
 }
 
@@ -283,8 +283,8 @@ func (c *Client) Close() error {
 	c.mu.Lock()
 	if !c.closed {
 		c.closed = true
-		// SendAsync holds RLock until acceptance completes. Close the queue
-		// exactly once before allowing a concurrent Close to observe shutdown.
+		// SendAsyncは受付を終えるまでRLockを持ちます。同時に呼ばれた別のCloseが停止を
+		// 見る前に、queueを一度だけ閉じます。
 		close(c.asyncCh)
 	}
 	c.mu.Unlock()

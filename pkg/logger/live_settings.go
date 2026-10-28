@@ -20,9 +20,9 @@ type LiveSettings struct {
 	sampling atomic.Pointer[SamplingConfig]
 }
 
-// liveSettingsUpdateMu serializes Set and complete batches of partial updates,
-// including updates from different runtimes that share a LiveSettings. Logging
-// only reads the atomics, so it does not wait for settings changes.
+// liveSettingsUpdateMuは、Setと、部分的な変更をまとめて反映する処理の全体を直列化します。
+// 別々のruntimeが同じLiveSettingsを共有する場合の変更も含みます。logの書き込みは
+// atomicな値を読むだけなので、設定の変更を待ちません。
 var liveSettingsUpdateMu sync.Mutex
 
 // NewLiveSettings returns a LiveSettings that starts with level and sampling. It
@@ -65,7 +65,7 @@ func (s *LiveSettings) Set(level LogLevel, sampling SamplingConfig) error {
 	return nil
 }
 
-// store writes validated settings while liveSettingsUpdateMu is held.
+// storeは、検証済みの設定を書き込みます。liveSettingsUpdateMuを持って呼びます。
 func (s *LiveSettings) store(settings OutputSettings) {
 	stored := settings.Sampling
 	s.sampling.Store(&stored)

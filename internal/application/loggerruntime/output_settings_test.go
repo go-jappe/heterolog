@@ -276,8 +276,8 @@ func TestRuntimesSharingLiveSettingsKeepConcurrentPartialUpdates(t *testing.T) {
 		if got.SamplingInfoRate != info || got.SamplingWarnRate != warn {
 			t.Fatalf("attempt %d: lost a successful change: %+v", attempt, got)
 		}
-		// Completion order may differ from update order, but the transitions must
-		// form one history rather than both claiming the same starting state.
+		// 終わる順は反映の順と違うことがあります。それでも二つの変化は一続きの履歴になり、
+		// 両方が同じ変更前の状態から始まったことにはなりません。
 		if first.applied.After != second.applied.Before && second.applied.After != first.applied.Before {
 			t.Fatalf("attempt %d: inconsistent transitions: %+v, %+v", attempt, first.applied, second.applied)
 		}
