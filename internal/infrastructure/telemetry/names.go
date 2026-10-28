@@ -21,12 +21,30 @@ const (
 	// 閾値を持たないSlackは記録しません。
 	BackendFlushRecords = "heterolog_backend_flush_records"
 	BackendFlushBytes   = "heterolog_backend_flush_bytes"
+	// BackendRetriesは、client wrapperが送信をやり直した回数を、やり直す理由（reason）
+	// ごとに数えます。
+	BackendRetries = "heterolog_backend_retries_total"
+
+	// CircuitBreakerRejectedRequestsは、circuit breakerが開いている間に、送らずに断った
+	// 送信の数です。
+	CircuitBreakerRejectedRequests = "heterolog_circuit_breaker_rejected_requests_total"
+	// CircuitBreakerTransitionsは、circuit breakerが開いた回数（state=open）と、
+	// 復旧を確認して閉じた回数（state=closed）です。
+	CircuitBreakerTransitions = "heterolog_circuit_breaker_transitions_total"
 )
 
 // metricsの属性の名前です。
 const (
 	AttrBackend = "backend"
 	AttrOutcome = "outcome"
+	AttrReason  = "reason"
+	AttrState   = "state"
+)
+
+// state属性の値です。
+const (
+	StateOpen   = "open"
+	StateClosed = "closed"
 )
 
 // outcome属性の値です。
@@ -44,4 +62,5 @@ const (
 const (
 	SpanAttrRecords = "heterolog.records"
 	SpanAttrBytes   = "heterolog.bytes"
+	SpanAttrAttempt = "heterolog.attempt"
 )

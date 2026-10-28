@@ -12,6 +12,8 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
+	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 	"github.com/go-jappe/heterolog/pkg/loki"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
@@ -113,7 +115,7 @@ func TestNewRetryingClientKeepsValidatedConfigAndDefaultsTracer(t *testing.T) {
 		maxAttempts: 2,
 		baseDelay:   3 * time.Millisecond,
 		maxDelay:    5 * time.Millisecond,
-	}, nil)
+	}, nil, nil)
 
 	assert.Equal(t, 2, client.maxAttempts())
 	assert.Equal(t, 3*time.Millisecond, client.baseDelay())
@@ -124,9 +126,9 @@ func TestNewRetryingClientKeepsValidatedConfigAndDefaultsTracer(t *testing.T) {
 func TestNewRetryingClientAcceptsCircuitBreakerClientChild(t *testing.T) {
 	t.Parallel()
 
-	circuitClient := newCircuitBreakerClient(&recordingLokiClient{}, nil, nil)
+	circuitClient := newCircuitBreakerClient(&recordingLokiClient{}, nil)
 
-	retrying := newRetryingClient(circuitClient, staticRetryConfig{}, nil)
+	retrying := newRetryingClient(circuitClient, staticRetryConfig{}, nil, nil)
 
 	assert.Same(t, circuitClient, retrying.next)
 }
@@ -142,7 +144,7 @@ func TestBackoffIncreasesLinearlyAndStopsAtMaxDelay(t *testing.T) {
 			baseDelay:   100 * time.Millisecond,
 			maxDelay:    250 * time.Millisecond,
 		},
-		nil,
+		nil, nil,
 	)
 
 	assert.Equal(t, 100*time.Millisecond, client.backoff(1))
@@ -168,7 +170,7 @@ func TestPushRetriesHTTPStatusErrorAndReturnsNil(t *testing.T) {
 		}
 		return nil
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(2), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(2), tracer, nil)
 
 	err := retrying.Push(context.Background(), streams)
 
@@ -197,7 +199,7 @@ func TestPushDoesNotImmediatelyRetryLokiIngestionBlocked(t *testing.T) {
 		assert.Equal(t, streams, got)
 		return &loki.HTTPStatusError{Code: 260, Status: "260 Ingestion Blocked"}
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(3), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(3), tracer, nil)
 
 	err := retrying.Push(context.Background(), streams)
 
@@ -219,7 +221,7 @@ func TestRetryDelayUsesRetryAfterOnlyForThrottleAndServiceUnavailable(t *testing
 			baseDelay:   100 * time.Millisecond,
 			maxDelay:    250 * time.Millisecond,
 		},
-		nil,
+		nil, nil,
 	)
 
 	// 2回目の通常backoff(200ms)とも上限(250ms)とも異なる値にし、Retry-Afterを
@@ -259,7 +261,7 @@ func TestPushWrapsLastErrorWhenAttemptsExhausted(t *testing.T) {
 		return io.EOF
 	}
 	tracer := &recordingTracer{}
-	retrying := newRetryingClient(client, fastRetryConfig(2), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(2), tracer, nil)
 
 	err := retrying.Push(context.Background(), []loki.Stream{{Labels: map[string]string{"app": "service"}, Entries: []loki.Entry{{Line: "hello"}}}})
 
@@ -294,7 +296,7 @@ func TestPushStopsWhenContextCanceledDuringBackoff(t *testing.T) {
 				baseDelay:   time.Hour,
 				maxDelay:    time.Hour,
 			},
-			tracer,
+			tracer, nil,
 		)
 		done := make(chan error, 1)
 		go func() {
@@ -330,7 +332,7 @@ func TestRetryPolicyClientTimeoutRetriesOnceWithShortAttemptTimeout(t *testing.T
 		assertPolicyRetryTimeout(t, ctx)
 		return nil
 	}
-	retrying := newRetryPolicyClient(client, fastRetryConfig(3), tracer)
+	retrying := newRetryPolicyClient(client, fastRetryConfig(3), tracer, nil)
 
 	err := retrying.Push(context.Background(), streams)
 
@@ -365,11 +367,10 @@ func TestRetryPolicyClientCircuitBreakerSuppressesRetryAfterRepeatedFailure(t *t
 	}
 	circuitClient := newCircuitBreakerClientWithCircuitBreaker(
 		client,
-		tracer,
 		observer.NopMeter{},
 		circuitBreaker,
 	)
-	retrying := newRetryPolicyClient(circuitClient, fastCircuitBreakerConfig(3), tracer)
+	retrying := newRetryPolicyClient(circuitClient, fastCircuitBreakerConfig(3), tracer, nil)
 
 	err := retrying.Push(context.Background(), streams)
 	require.Error(t, err)
@@ -434,11 +435,10 @@ func TestRetryPolicyClientCircuitBreakerLifecycleIntegration(t *testing.T) {
 	}
 	circuitClient := newCircuitBreakerClientWithCircuitBreaker(
 		client,
-		tracer,
 		observer.NopMeter{},
 		circuitBreaker,
 	)
-	retrying := newRetryPolicyClient(circuitClient, fastCircuitBreakerConfig(3), tracer)
+	retrying := newRetryPolicyClient(circuitClient, fastCircuitBreakerConfig(3), tracer, nil)
 
 	err := retrying.Push(context.Background(), streams)
 	require.Error(t, err)
@@ -479,19 +479,27 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 		},
 	})
 	tracer := &recordingTracer{}
+	meter := observertest.NewMeter()
 	streams := []loki.Stream{{Labels: map[string]string{"app": "test"}, Entries: []loki.Entry{{Timestamp: now, Line: "line"}}}}
 	client := &recordingLokiClient{}
 	client.push = func(context.Context, []loki.Stream) error {
 		return &net.DNSError{IsTimeout: true}
 	}
-	circuitClient := newCircuitBreakerClientWithCircuitBreaker(client, tracer, observer.NopMeter{}, circuitBreaker)
+	circuitClient := newCircuitBreakerClientWithCircuitBreaker(client, meter, circuitBreaker)
+	// circuit breakerは自分のspanを始めず、呼び出し元の送信のspanへeventを足します。
+	var requests []pkgobserver.Span
+	requestCtx := func() context.Context {
+		ctx, span := tracer.StartSpan(context.Background(), "request")
+		requests = append(requests, span)
+		return ctx
+	}
 
-	err := circuitClient.Push(context.Background(), streams)
+	err := circuitClient.Push(requestCtx(), streams)
 	require.Error(t, err)
 	assert.Len(t, client.pushCalls, 1)
 
 	now = now.Add(time.Second)
-	err = circuitClient.Push(context.Background(), streams)
+	err = circuitClient.Push(requestCtx(), streams)
 	require.Error(t, err)
 	assert.Len(t, client.pushCalls, 2)
 	opening := spanFromContext(t, client.pushCalls[1].ctx)
@@ -500,7 +508,7 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 	assert.Equal(t, true, attrValue(opening.events[0].attrs, "circuit_breaker_suppressed"))
 
 	suppressed := tracer.mark()
-	err = circuitClient.Push(context.Background(), streams)
+	err = circuitClient.Push(requestCtx(), streams)
 	require.Error(t, err)
 	var circuitBreakerErr *retryable.CircuitBreakerOpenError
 	require.ErrorAs(t, err, &circuitBreakerErr)
@@ -509,7 +517,12 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 		tracer.spansSince(suppressed),
 		pkgobserver.Attr{Key: "reason", Value: string(retryable.RetryReasonCircuitBreakerOpen)},
 	), 1)
+	for _, span := range requests {
+		span.End()
+	}
 	requireSpansEnded(t, tracer.spans)
+	assert.Equal(t, int64(1), meter.Count(observertest.Key(telemetry.CircuitBreakerTransitions, telemetry.AttrBackend, "loki", telemetry.AttrState, telemetry.StateOpen)))
+	assert.Equal(t, int64(1), meter.Count(observertest.Key(telemetry.CircuitBreakerRejectedRequests, telemetry.AttrBackend, "loki")))
 }
 
 func TestCircuitBreakerClientDoesNotCountIngestionBlockedAsImmediateFailure(t *testing.T) {
@@ -535,7 +548,6 @@ func TestCircuitBreakerClientDoesNotCountIngestionBlockedAsImmediateFailure(t *t
 	}
 	circuitClient := newCircuitBreakerClientWithCircuitBreaker(
 		client,
-		nil,
 		observer.NopMeter{},
 		circuitBreaker,
 	)

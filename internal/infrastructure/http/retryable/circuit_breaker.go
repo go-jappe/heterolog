@@ -36,6 +36,10 @@ type CircuitBreakerFailureReport struct {
 	// OpenUntil は、circuit breaker が open している期限です。
 	// zero value の場合、この判断では circuit breaker は open していません。
 	OpenUntil time.Time
+
+	// Openedは、この失敗の記録でcircuit breakerが開いたかを表します。すでに開いていた場合は
+	// falseです。
+	Opened bool
 }
 
 // CircuitBreakerRequestDecisionは、backend処理を実行する前に
@@ -310,6 +314,7 @@ func (c *CircuitBreaker) observeFailureLocked(
 			Consecutive:     entry.consecutive,
 			FailureDuration: failureDuration,
 			OpenUntil:       entry.openUntil,
+			Opened:          true,
 		}
 	}
 
@@ -354,6 +359,7 @@ func (c *CircuitBreaker) RecordProbeFailure(key CircuitBreakerKey, decision Retr
 		Consecutive:     entry.consecutive,
 		FailureDuration: now.Sub(entry.firstSeen),
 		OpenUntil:       entry.openUntil,
+		Opened:          true,
 	}
 }
 
@@ -397,15 +403,16 @@ func ProbeReachedBackend(ctx context.Context, err error) bool {
 // RecordSuccessは現在の状態で許可された処理の成功を記録します。
 // 古い通常requestや完了済みprobeの結果は、新しいopen/probe状態を解除しません。
 // probeでは、backendの応答を確認できた場合だけ呼び出します。
-func (c *CircuitBreaker) RecordSuccess(requestDecision CircuitBreakerRequestDecision) {
+// probeの成功で開いていたcircuit breakerを閉じた場合は、closedにtrueを返します。
+func (c *CircuitBreaker) RecordSuccess(requestDecision CircuitBreakerRequestDecision) (closed bool) {
 	if c == nil {
-		return
+		return false
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.currentRequestLocked(requestDecision) {
-		return
+		return false
 	}
 
 	// closed内の成功は連続失敗列をリセットし、probeの成功は復旧を確定する。
@@ -416,6 +423,7 @@ func (c *CircuitBreaker) RecordSuccess(requestDecision CircuitBreakerRequestDeci
 	if requestDecision.Probe {
 		c.generation++
 	}
+	return requestDecision.Probe
 }
 
 func (c *CircuitBreaker) currentRequestLocked(request CircuitBreakerRequestDecision) bool {

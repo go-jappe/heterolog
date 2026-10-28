@@ -7,9 +7,13 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/loki/retryclassifier"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/loki"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
+
+// backendNameは、metricsのbackend属性の値です。
+const backendName = "loki"
 
 const SpanNamePush = "heterolog.loki.push.attempt"
 
@@ -35,17 +39,20 @@ type RetryingClient struct {
 	next   Client
 	cfg    retryBackoffConfigProvider
 	tracer pkgobserver.Tracer
+	meter  pkgobserver.Meter
 }
 
 func newRetryingClient(
 	next Client,
 	cfg retryBackoffConfigProvider,
 	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *RetryingClient {
 	return &RetryingClient{
 		next:   next,
 		cfg:    cfg,
 		tracer: observer.EnsureTracer(tracer),
+		meter:  observer.EnsureMeter(meter),
 	}
 }
 
@@ -63,33 +70,30 @@ func (c *RetryingClient) doWithRetry(ctx context.Context, name string, op func(c
 	attempts := 0
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		attempts = attempt
-		attemptCtx, span := c.tracer.StartSpan(ctx, name)
-
 		if attempt > 1 {
 			if !sleepWithContext(ctx, nextDelay) {
 				if err := ctx.Err(); err != nil {
-					span.End()
 					return retryable.InterruptedWait(lastErr, err)
 				}
-				span.End()
 				return lastErr
 			}
 		}
 
+		attemptCtx, span := telemetry.StartAttempt(ctx, c.tracer, name, attempt)
 		lastErr = op(attemptCtx)
 		if lastErr == nil {
-			span.End()
+			telemetry.EndSpan(span, lastErr)
 			return nil
 		}
 
 		dec := retryclassifier.ClassifyRetry(attemptCtx, lastErr)
 		if !dec.Retry || dec.Reason == retryable.RetryReasonCircuitBreakerOpen {
-			span.End()
+			telemetry.EndSpan(span, lastErr)
 			return lastErr
 		}
 
 		if attempt == maxAttempts {
-			span.End()
+			telemetry.EndSpan(span, lastErr)
 			break
 		}
 		nextDelay = c.retryDelay(attempt, dec)
@@ -101,7 +105,8 @@ func (c *RetryingClient) doWithRetry(ctx context.Context, name string, op func(c
 			pkgobserver.Attr{Key: "http_status", Value: dec.Code},
 			pkgobserver.Attr{Key: "error", Value: lastErr.Error()},
 		)
-		span.End()
+		telemetry.RecordRetry(ctx, c.meter, backendName, string(dec.Reason))
+		telemetry.EndSpan(span, lastErr)
 	}
 
 	return &retryable.RetryAttemptsExhaustedError{Policy: false, Attempts: attempts, LastErr: lastErr}

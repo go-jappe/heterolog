@@ -32,7 +32,7 @@ func TestCircuitBreakerClientKeepsBreakerOpenWhenProbeReturnsNoOutput(t *testing
 	client.send = func(context.Context, cloudwatchlogs.PutLogEventsRequest) (*cloudwatchlogs.PutLogEventsOutput, error) {
 		return output, outputErr
 	}
-	breaker := newCircuitBreakerClientWithCircuitBreaker(client, observer.NopTracer{}, observer.NopMeter{}, circuitBreaker)
+	breaker := newCircuitBreakerClientWithCircuitBreaker(client, observer.NopMeter{}, circuitBreaker)
 	request := testPutLogEventsRequest([]cloudwatchlogs.Event{{Timestamp: now, Message: "probe"}})
 	for range 2 {
 		_, err := breaker.PutLogEvents(context.Background(), request)

@@ -7,6 +7,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/loki/retryclassifier"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/loki"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
@@ -18,17 +19,20 @@ type RetryPolicyClient struct {
 	next   Client
 	cfg    retryBackoffConfigProvider
 	tracer pkgobserver.Tracer
+	meter  pkgobserver.Meter
 }
 
 func newRetryPolicyClient(
 	next Client,
 	cfg retryBackoffConfigProvider,
 	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) *RetryPolicyClient {
 	return &RetryPolicyClient{
 		next:   next,
 		cfg:    cfg,
 		tracer: observer.EnsureTracer(tracer),
+		meter:  observer.EnsureMeter(meter),
 	}
 }
 
@@ -52,26 +56,26 @@ func (c *RetryPolicyClient) doWithPolicyRetry(ctx context.Context, name string, 
 			attemptCtx, cancel = context.WithTimeout(ctx, nextAttemptTimeout)
 		}
 
-		spanCtx, span := c.tracer.StartSpan(attemptCtx, name)
+		spanCtx, span := telemetry.StartAttempt(attemptCtx, c.tracer, name, attempt)
 		lastErr = op(spanCtx)
 		if lastErr == nil {
 			cancel()
-			span.End()
+			telemetry.EndSpan(span, lastErr)
 			return nil
 		}
 
 		decision := retryclassifier.ClassifyRetry(ctx, lastErr)
 		cancel()
 		if !decision.Retry || decision.Reason == retryable.RetryReasonCircuitBreakerOpen {
-			span.End()
+			telemetry.EndSpan(span, lastErr)
 			return lastErr
 		}
 		if ctx != nil && ctx.Err() != nil {
-			span.End()
+			telemetry.EndSpan(span, lastErr)
 			return lastErr
 		}
 		if !retryable.PolicyShouldRetry(ctx, attempt, decision, maxAttempts) {
-			span.End()
+			telemetry.EndSpan(span, lastErr)
 			break
 		}
 
@@ -85,7 +89,10 @@ func (c *RetryPolicyClient) doWithPolicyRetry(ctx context.Context, name string, 
 			pkgobserver.Attr{Key: "error", Value: lastErr.Error()},
 			pkgobserver.Attr{Key: "retry_policy_client", Value: true},
 		)
-		span.End()
+		if ok {
+			telemetry.RecordRetry(ctx, c.meter, backendName, string(decision.Reason))
+		}
+		telemetry.EndSpan(span, lastErr)
 		if !ok {
 			return lastErr
 		}

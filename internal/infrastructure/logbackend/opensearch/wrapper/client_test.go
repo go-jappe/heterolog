@@ -12,6 +12,8 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
+	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 	"github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/opensearch"
@@ -121,7 +123,7 @@ func TestNewRetryingClientKeepsValidatedConfigAndDefaultsObserver(t *testing.T) 
 			BaseDelay:  3 * time.Millisecond,
 			MaxDelay:   5 * time.Millisecond,
 		}),
-		nil,
+		nil, nil,
 	)
 
 	assert.Equal(t, 2, client.maxAttempts())
@@ -133,12 +135,12 @@ func TestNewRetryingClientKeepsValidatedConfigAndDefaultsObserver(t *testing.T) 
 func TestNewRetryingClientAcceptsCircuitBreakerClientChild(t *testing.T) {
 	t.Parallel()
 
-	circuitClient := newCircuitBreakerClient(&recordingOpenSearchClient{}, nil, nil)
+	circuitClient := newCircuitBreakerClient(&recordingOpenSearchClient{}, nil)
 
 	retrying := newRetryingClient(
 		circuitClient,
 		retryConfigProvider(logger.OpenSearchRetryableClientCaseTransportErrorConfig{}),
-		nil,
+		nil, nil,
 	)
 
 	assert.Same(t, circuitClient, retrying.next)
@@ -155,7 +157,7 @@ func TestBackoffIncreasesLinearlyAndStopsAtMaxDelay(t *testing.T) {
 			BaseDelay:  100 * time.Millisecond,
 			MaxDelay:   250 * time.Millisecond,
 		}),
-		nil,
+		nil, nil,
 	)
 
 	assert.Equal(t, 100*time.Millisecond, client.backoff(1))
@@ -179,7 +181,7 @@ func TestIndexDocumentRetriesHTTPStatusErrorAndReturnsResponse(t *testing.T) {
 		}
 		return wantResp, nil
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(2), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(2), tracer, nil)
 
 	resp, err := retrying.IndexDocument(context.Background(), doc)
 
@@ -212,7 +214,7 @@ func TestIndexDocumentDoesNotTreatIndexConflictAsIdempotentSuccess(t *testing.T)
 			return nil, &opensearch.HTTPStatusError{Code: http.StatusConflict}
 		},
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{})
+	retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{}, nil)
 
 	response, err := retrying.IndexDocument(context.Background(), doc)
 
@@ -239,7 +241,7 @@ func TestIndexDocumentsRetriesAndReturnsBulkResponse(t *testing.T) {
 		}
 		return wantResp, nil
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(2), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(2), tracer, nil)
 
 	resp, err := retrying.IndexDocuments(context.Background(), docs)
 
@@ -266,7 +268,7 @@ func TestIndexDocumentReturnsNonRetryableErrorWithoutRetry(t *testing.T) {
 		return nil, wantErr
 	}
 	tracer := &recordingTracer{}
-	retrying := newRetryingClient(client, fastRetryConfig(3), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(3), tracer, nil)
 
 	resp, err := retrying.IndexDocument(context.Background(), opensearch.DocumentWriteRequest{Index: "logs", ID: "doc-1"})
 
@@ -288,7 +290,7 @@ func TestIndexDocumentWrapsLastErrorWhenAttemptsExhausted(t *testing.T) {
 		return nil, io.EOF
 	}
 	tracer := &recordingTracer{}
-	retrying := newRetryingClient(client, fastRetryConfig(2), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(2), tracer, nil)
 
 	resp, err := retrying.IndexDocument(context.Background(), opensearch.DocumentWriteRequest{Index: "logs", ID: "doc-1"})
 
@@ -324,7 +326,7 @@ func TestIndexDocumentStopsWhenContextCanceledDuringBackoff(t *testing.T) {
 				BaseDelay:  time.Hour,
 				MaxDelay:   time.Hour,
 			}),
-			tracer,
+			tracer, nil,
 		)
 		type result struct {
 			resp *opensearch.IndexResponse
@@ -371,7 +373,7 @@ func TestRetryPolicyClientTimeoutRetriesOnceWithShortAttemptTimeout(t *testing.T
 			BaseDelay:  time.Nanosecond,
 			MaxDelay:   time.Nanosecond,
 		}),
-		tracer,
+		tracer, nil,
 	)
 
 	resp, err := retrying.IndexDocument(context.Background(), doc)
@@ -395,7 +397,7 @@ func TestRetryPolicyClientTransientErrorUsesConfiguredMaxAttempts(t *testing.T) 
 		}
 		return &opensearch.IndexResponse{Index: "logs", ID: "doc-1", Status: http.StatusCreated}, nil
 	}
-	retrying := newRetryPolicyClient(client, fastRetryConfig(3), observer.NopTracer{})
+	retrying := newRetryPolicyClient(client, fastRetryConfig(3), observer.NopTracer{}, nil)
 
 	_, err := retrying.IndexDocument(context.Background(), doc)
 
@@ -423,9 +425,9 @@ func TestRetryPolicyClientCircuitBreakerSuppressesRetryAfterRepeatedFailure(t *t
 		return nil, &net.DNSError{IsTimeout: true}
 	}
 	retrying := newRetryPolicyClient(
-		newCircuitBreakerClientWithCircuitBreaker(client, tracer, observer.NopMeter{}, circuitBreaker),
+		newCircuitBreakerClientWithCircuitBreaker(client, observer.NopMeter{}, circuitBreaker),
 		fastCircuitBreakerConfig(3),
-		tracer,
+		tracer, nil,
 	)
 
 	_, err := retrying.IndexDocument(context.Background(), doc)
@@ -488,9 +490,9 @@ func TestRetryPolicyClientCircuitBreakerLifecycleIntegration(t *testing.T) {
 		return wantResp, nil
 	}
 	retrying := newRetryPolicyClient(
-		newCircuitBreakerClientWithCircuitBreaker(client, tracer, observer.NopMeter{}, circuitBreaker),
+		newCircuitBreakerClientWithCircuitBreaker(client, observer.NopMeter{}, circuitBreaker),
 		fastCircuitBreakerConfig(3),
-		tracer,
+		tracer, nil,
 	)
 
 	_, err := retrying.IndexDocument(context.Background(), doc)
@@ -534,19 +536,27 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 		},
 	})
 	tracer := &recordingTracer{}
+	meter := observertest.NewMeter()
 	doc := opensearch.DocumentWriteRequest{Index: "logs", ID: "doc-1", Op: opensearch.WriteOpIndex}
 	client := &recordingOpenSearchClient{}
 	client.indexDocument = func(context.Context, opensearch.DocumentWriteRequest) (*opensearch.IndexResponse, error) {
 		return nil, &net.DNSError{IsTimeout: true}
 	}
-	circuitClient := newCircuitBreakerClientWithCircuitBreaker(client, tracer, observer.NopMeter{}, circuitBreaker)
+	circuitClient := newCircuitBreakerClientWithCircuitBreaker(client, meter, circuitBreaker)
+	// circuit breakerは自分のspanを始めず、呼び出し元の送信のspanへeventを足します。
+	var requests []pkgobserver.Span
+	requestCtx := func() context.Context {
+		ctx, span := tracer.StartSpan(context.Background(), "request")
+		requests = append(requests, span)
+		return ctx
+	}
 
-	_, err := circuitClient.IndexDocument(context.Background(), doc)
+	_, err := circuitClient.IndexDocument(requestCtx(), doc)
 	require.Error(t, err)
 	assert.Len(t, client.documentCalls, 1)
 
 	now = now.Add(time.Second)
-	_, err = circuitClient.IndexDocument(context.Background(), doc)
+	_, err = circuitClient.IndexDocument(requestCtx(), doc)
 	require.Error(t, err)
 	assert.Len(t, client.documentCalls, 2)
 	opening := spanFromContext(t, client.documentCalls[1].ctx)
@@ -555,7 +565,7 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 	assert.Equal(t, true, attrValue(opening.events[0].attrs, "circuit_breaker_suppressed"))
 
 	suppressed := tracer.mark()
-	_, err = circuitClient.IndexDocument(context.Background(), doc)
+	_, err = circuitClient.IndexDocument(requestCtx(), doc)
 	require.Error(t, err)
 	var circuitBreakerErr *retryable.CircuitBreakerOpenError
 	require.ErrorAs(t, err, &circuitBreakerErr)
@@ -564,7 +574,12 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 		tracer.spansSince(suppressed),
 		pkgobserver.Attr{Key: "reason", Value: string(retryable.RetryReasonCircuitBreakerOpen)},
 	), 1)
+	for _, span := range requests {
+		span.End()
+	}
 	requireSpansEnded(t, tracer.spans)
+	assert.Equal(t, int64(1), meter.Count(observertest.Key(telemetry.CircuitBreakerTransitions, telemetry.AttrBackend, "opensearch", telemetry.AttrState, telemetry.StateOpen)))
+	assert.Equal(t, int64(1), meter.Count(observertest.Key(telemetry.CircuitBreakerRejectedRequests, telemetry.AttrBackend, "opensearch")))
 }
 
 func TestCircuitBreakerClientSharesOpenStateAcrossOperations(t *testing.T) {
@@ -591,7 +606,6 @@ func TestCircuitBreakerClientSharesOpenStateAcrossOperations(t *testing.T) {
 	}
 	circuitClient := newCircuitBreakerClientWithCircuitBreaker(
 		client,
-		observer.NopTracer{},
 		observer.NopMeter{},
 		circuitBreaker,
 	)

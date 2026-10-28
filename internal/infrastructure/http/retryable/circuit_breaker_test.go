@@ -469,3 +469,49 @@ func openTestCircuitBreaker(
 	}
 	return opened.OpenUntil
 }
+
+func TestCircuitBreakerReportsOpeningAndClosing(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	circuitBreaker := NewCircuitBreaker(CircuitBreakerOptions{
+		MinFailureDurationToOpen:         time.Second,
+		MaxFailureIntervalForConsecutive: 2 * time.Second,
+		MinConsecutiveFailuresToOpen:     2,
+		OpenCooldown:                     time.Minute,
+		Clock: func() time.Time {
+			return now
+		},
+	})
+	key := CircuitBreakerKey{Reason: RetryReasonNetTimeout}
+	decision := RetryDecision{Retry: true, Reason: RetryReasonNetTimeout}
+
+	if first := recordFailedRequest(t, circuitBreaker, key, decision); first.Opened {
+		t.Fatalf("first failure report = %+v, want not opened", first)
+	}
+	now = now.Add(time.Second)
+	second := recordFailedRequest(t, circuitBreaker, key, decision)
+	if !second.Opened {
+		t.Fatalf("second failure report = %+v, want opened", second)
+	}
+
+	// cooldown後の最初のrequestはprobeです。probeの失敗はbreakerを開き直します。
+	now = second.OpenUntil.Add(time.Nanosecond)
+	probe := circuitBreaker.BeforeRequest()
+	if !probe.Probe {
+		t.Fatalf("request after cooldown = %+v, want a probe", probe)
+	}
+	if reopened := circuitBreaker.RecordProbeFailure(key, decision, probe); !reopened.Opened {
+		t.Fatalf("probe failure report = %+v, want opened", reopened)
+	}
+
+	now = now.Add(2 * time.Minute)
+	probe = circuitBreaker.BeforeRequest()
+	if !probe.Probe {
+		t.Fatalf("request after the second cooldown = %+v, want a probe", probe)
+	}
+	if closed := circuitBreaker.RecordSuccess(probe); !closed {
+		t.Fatal("RecordSuccess(probe) = false, want the breaker closed")
+	}
+	if closed := circuitBreaker.RecordSuccess(circuitBreaker.BeforeRequest()); closed {
+		t.Fatal("RecordSuccess on a closed breaker = true, want false")
+	}
+}

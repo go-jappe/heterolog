@@ -24,26 +24,23 @@ var _ cloudwatchlogs.Client = (*circuitBreakerClient)(nil)
 
 func newCircuitBreakerClient(
 	next cloudwatchlogs.Client,
-	tracer pkgobserver.Tracer,
 	meter pkgobserver.Meter,
 ) *circuitBreakerClient {
-	return newCircuitBreakerClientWithCircuitBreaker(next, tracer, meter, retryable.NewCircuitBreaker(retryable.CircuitBreakerOptions{}))
+	return newCircuitBreakerClientWithCircuitBreaker(next, meter, retryable.NewCircuitBreaker(retryable.CircuitBreakerOptions{}))
 }
 
 func newCircuitBreakerClientWithCircuitBreaker(
 	next cloudwatchlogs.Client,
-	tracer pkgobserver.Tracer,
 	meter pkgobserver.Meter,
 	circuitBreaker *retryable.CircuitBreaker,
 ) *circuitBreakerClient {
-	tracer = observer.EnsureTracer(tracer)
 	meter = observer.EnsureMeter(meter)
 	return &circuitBreakerClient{
 		next: next,
 		operationGuard: circuitbreaker.NewOperationGuard(circuitbreaker.OperationGuardOptions{
 			CircuitBreaker: circuitBreaker,
-			Tracer:         tracer,
 			Meter:          meter,
+			Backend:        backendName,
 			EventName:      "heterolog.cloudwatchlogs.retry_decision",
 			Classify:       retryclassifier.ClassifyRetry,
 		}),

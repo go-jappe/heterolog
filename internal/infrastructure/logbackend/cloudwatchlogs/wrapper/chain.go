@@ -40,12 +40,12 @@ func BuildClientChain(
 	}
 	wrapped := client
 	if selection.UseCircuitBreakerClient {
-		wrapped = newCircuitBreakerClient(wrapped, tracer, meter)
+		wrapped = newCircuitBreakerClient(wrapped, meter)
 	}
 	if selection.UseRetryPolicyClient {
-		wrapped = newRetryPolicyClient(wrapped, retryCfg, tracer)
+		wrapped = newRetryPolicyClient(wrapped, retryCfg, tracer, meter)
 	} else if selection.UseRetryingClient {
-		wrapped = newRetryingClient(wrapped, retryCfg, tracer)
+		wrapped = newRetryingClient(wrapped, retryCfg, tracer, meter)
 	}
 	return wrapped, nil
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-jappe/heterolog/internal/application/observer"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
@@ -120,6 +121,8 @@ func (r recorder) Record(_ context.Context, value float64, attrs ...pkgobserver.
 }
 
 // Tracerは、始めたspanを始めた順に保持します。親のspanは、contextに入れたspanから決めます。
+// constructorがcallerのtracerを包むときと同じく、始めたspanはobserver.SpanFromContextでも
+// 取り出せます。
 type Tracer struct {
 	mu    sync.Mutex
 	spans []*Span
@@ -139,7 +142,7 @@ func (t *Tracer) StartSpan(ctx context.Context, name string, attrs ...pkgobserve
 	t.mu.Lock()
 	t.spans = append(t.spans, sp)
 	t.mu.Unlock()
-	return context.WithValue(ctx, spanKey{}, sp), sp
+	return observer.WithSpan(context.WithValue(ctx, spanKey{}, sp), sp), sp
 }
 
 // Spansは、始めたspanのうち、名前がnameのものを始めた順に返します。

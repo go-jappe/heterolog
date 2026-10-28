@@ -24,7 +24,7 @@ func TestClickHouseResponseReadFailureDoesNotRetryButTransportEOFDoes(t *testing
 			}
 			return &clickhouse.InsertResponse{StatusCode: http.StatusOK}, nil
 		}
-		retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{})
+		retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{}, nil)
 		_, err := retrying.InsertLogsWithOptions(context.Background(), []clickhouse.LogRecord{{Message: "keep"}}, clickhouse.InsertOptions{})
 		if uncertain {
 			require.ErrorIs(t, err, cause)

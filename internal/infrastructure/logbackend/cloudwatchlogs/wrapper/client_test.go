@@ -12,6 +12,8 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
+	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 	"github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
@@ -126,7 +128,7 @@ func TestNewRetryingClientKeepsValidatedConfigAndDefaultsTracer(t *testing.T) {
 		maxAttempts: 2,
 		baseDelay:   3 * time.Millisecond,
 		maxDelay:    5 * time.Millisecond,
-	}, nil)
+	}, nil, nil)
 
 	assert.Equal(t, 2, client.maxAttempts())
 	assert.Equal(t, 3*time.Millisecond, client.baseDelay())
@@ -137,9 +139,9 @@ func TestNewRetryingClientKeepsValidatedConfigAndDefaultsTracer(t *testing.T) {
 func TestNewRetryingClientAcceptsCircuitBreakerClientChild(t *testing.T) {
 	t.Parallel()
 
-	circuitClient := newCircuitBreakerClient(&recordingClient{}, nil, nil)
+	circuitClient := newCircuitBreakerClient(&recordingClient{}, nil)
 
-	retrying := newRetryingClient(circuitClient, staticRetryConfig{}, nil)
+	retrying := newRetryingClient(circuitClient, staticRetryConfig{}, nil, nil)
 
 	assert.Same(t, circuitClient, retrying.next)
 }
@@ -154,7 +156,7 @@ func TestBackoffIncreasesLinearlyAndStopsAtMaxDelay(t *testing.T) {
 			baseDelay:   100 * time.Millisecond,
 			maxDelay:    250 * time.Millisecond,
 		},
-		nil,
+		nil, nil,
 	)
 
 	assert.Equal(t, 100*time.Millisecond, client.backoff(1))
@@ -181,7 +183,7 @@ func TestSendRetriesCloudWatchThrottleErrorType(t *testing.T) {
 		}
 		return wantOutput, nil
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(2), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(2), tracer, nil)
 
 	output, err := retrying.PutLogEvents(context.Background(), request)
 
@@ -222,7 +224,7 @@ func TestRetryingClientPreservesCanonicalRequestAcrossAttempts(t *testing.T) {
 		}
 		return &cloudwatchlogs.PutLogEventsOutput{}, nil
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(2), nil)
+	retrying := newRetryingClient(client, fastRetryConfig(2), nil, nil)
 
 	_, err := retrying.PutLogEvents(context.Background(), request)
 
@@ -241,7 +243,7 @@ func TestSendReturnsNonRetryableErrorWithoutRetry(t *testing.T) {
 		return nil, wantErr
 	}
 	tracer := &recordingTracer{}
-	retrying := newRetryingClient(client, fastRetryConfig(3), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(3), tracer, nil)
 
 	output, err := retrying.PutLogEvents(context.Background(), testPutLogEventsRequest(
 		[]cloudwatchlogs.Event{{Timestamp: time.Unix(10, 0), Message: "do not retry"}},
@@ -264,7 +266,7 @@ func TestSendWrapsLastErrorWhenAttemptsExhausted(t *testing.T) {
 		return nil, io.EOF
 	}
 	tracer := &recordingTracer{}
-	retrying := newRetryingClient(client, fastRetryConfig(2), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(2), tracer, nil)
 
 	output, err := retrying.PutLogEvents(context.Background(), testPutLogEventsRequest(
 		[]cloudwatchlogs.Event{{Timestamp: time.Unix(10, 0), Message: "retry me"}},
@@ -301,7 +303,7 @@ func TestSendStopsWhenContextCanceledDuringBackoff(t *testing.T) {
 				baseDelay:   time.Hour,
 				maxDelay:    time.Hour,
 			},
-			tracer,
+			tracer, nil,
 		)
 		type result struct {
 			output *cloudwatchlogs.PutLogEventsOutput
@@ -343,7 +345,7 @@ func TestRetryPolicyClientTimeoutRetriesOnceWithShortAttemptTimeout(t *testing.T
 		assertPolicyRetryTimeout(t, ctx)
 		return wantOutput, nil
 	}
-	retrying := newRetryPolicyClient(client, fastRetryConfig(3), tracer)
+	retrying := newRetryPolicyClient(client, fastRetryConfig(3), tracer, nil)
 
 	output, err := retrying.PutLogEvents(context.Background(), request)
 
@@ -371,7 +373,7 @@ func TestRetryPolicyClientRequestAbortedUsesSingleProbe(t *testing.T) {
 			AwsErrorType: cloudwatchlogs.ErrorTypeRequestAbortedException,
 		}
 	}
-	retrying := newRetryPolicyClient(client, fastRetryConfig(5), nil)
+	retrying := newRetryPolicyClient(client, fastRetryConfig(5), nil, nil)
 
 	_, err := retrying.PutLogEvents(context.Background(), testPutLogEventsRequest(
 		[]cloudwatchlogs.Event{{Timestamp: time.Unix(10, 0), Message: "probe once"}},
@@ -406,8 +408,8 @@ func TestRetryPolicyClientCircuitBreakerSuppressesRetryAfterRepeatedFailure(t *t
 	client.send = func(context.Context, cloudwatchlogs.PutLogEventsRequest) (*cloudwatchlogs.PutLogEventsOutput, error) {
 		return nil, &net.DNSError{IsTimeout: true}
 	}
-	child := newCircuitBreakerClientWithCircuitBreaker(client, tracer, observer.NopMeter{}, circuitBreaker)
-	retrying := newRetryPolicyClient(child, fastCircuitBreakerConfig(3), tracer)
+	child := newCircuitBreakerClientWithCircuitBreaker(client, observer.NopMeter{}, circuitBreaker)
+	retrying := newRetryPolicyClient(child, fastCircuitBreakerConfig(3), tracer, nil)
 
 	_, err := retrying.PutLogEvents(context.Background(), request)
 	require.Error(t, err)
@@ -468,8 +470,8 @@ func TestRetryPolicyClientCircuitBreakerLifecycleIntegration(t *testing.T) {
 		}
 		return wantOutput, nil
 	}
-	child := newCircuitBreakerClientWithCircuitBreaker(client, tracer, observer.NopMeter{}, circuitBreaker)
-	retrying := newRetryPolicyClient(child, fastCircuitBreakerConfig(3), tracer)
+	child := newCircuitBreakerClientWithCircuitBreaker(client, observer.NopMeter{}, circuitBreaker)
+	retrying := newRetryPolicyClient(child, fastCircuitBreakerConfig(3), tracer, nil)
 
 	_, err := retrying.PutLogEvents(context.Background(), request)
 	require.Error(t, err)
@@ -512,20 +514,28 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 		},
 	})
 	tracer := &recordingTracer{}
+	meter := observertest.NewMeter()
 	request := testPutLogEventsRequest([]cloudwatchlogs.Event{{Timestamp: now, Message: "line"}})
 	client := &recordingClient{}
 	client.send = func(context.Context, cloudwatchlogs.PutLogEventsRequest) (*cloudwatchlogs.PutLogEventsOutput, error) {
 		return nil, &net.DNSError{IsTimeout: true}
 	}
-	circuitClient := newCircuitBreakerClientWithCircuitBreaker(client, tracer, observer.NopMeter{}, circuitBreaker)
+	circuitClient := newCircuitBreakerClientWithCircuitBreaker(client, meter, circuitBreaker)
+	// circuit breakerは自分のspanを始めず、呼び出し元の送信のspanへeventを足します。
+	var requests []pkgobserver.Span
+	requestCtx := func() context.Context {
+		ctx, span := tracer.StartSpan(context.Background(), "request")
+		requests = append(requests, span)
+		return ctx
+	}
 
-	_, err := circuitClient.PutLogEvents(context.Background(), request)
+	_, err := circuitClient.PutLogEvents(requestCtx(), request)
 	require.Error(t, err)
 	assert.Len(t, client.calls, 1)
 	assert.Equal(t, request, client.calls[0].request)
 
 	now = now.Add(time.Second)
-	_, err = circuitClient.PutLogEvents(context.Background(), request)
+	_, err = circuitClient.PutLogEvents(requestCtx(), request)
 	require.Error(t, err)
 	assert.Len(t, client.calls, 2)
 	assert.Equal(t, request, client.calls[1].request)
@@ -535,7 +545,7 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 	assert.Equal(t, true, attrValue(opening.events[0].attrs, "circuit_breaker_suppressed"))
 
 	suppressed := tracer.mark()
-	_, err = circuitClient.PutLogEvents(context.Background(), request)
+	_, err = circuitClient.PutLogEvents(requestCtx(), request)
 	require.Error(t, err)
 	var circuitBreakerErr *retryable.CircuitBreakerOpenError
 	require.ErrorAs(t, err, &circuitBreakerErr)
@@ -544,7 +554,12 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 		tracer.spansSince(suppressed),
 		pkgobserver.Attr{Key: "reason", Value: string(retryable.RetryReasonCircuitBreakerOpen)},
 	), 1)
+	for _, span := range requests {
+		span.End()
+	}
 	requireSpansEnded(t, tracer.spans)
+	assert.Equal(t, int64(1), meter.Count(observertest.Key(telemetry.CircuitBreakerTransitions, telemetry.AttrBackend, "cloudwatchlogs", telemetry.AttrState, telemetry.StateOpen)))
+	assert.Equal(t, int64(1), meter.Count(observertest.Key(telemetry.CircuitBreakerRejectedRequests, telemetry.AttrBackend, "cloudwatchlogs")))
 }
 
 func fastRetryConfig(maxAttempts int) retryBackoffConfigProvider {

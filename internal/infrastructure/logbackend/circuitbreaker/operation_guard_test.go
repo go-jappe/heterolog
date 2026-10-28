@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
+	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 )
 
 func TestOperationGuardSharesCircuitBreakerStateAcrossBackendOperations(t *testing.T) {
@@ -23,10 +24,11 @@ func TestOperationGuardSharesCircuitBreakerStateAcrossBackendOperations(t *testi
 		},
 	})
 	backendErr := errors.New("backend unavailable")
+	meter := observertest.NewMeter()
 	guard := NewOperationGuard(OperationGuardOptions{
 		CircuitBreaker: breaker,
-		Tracer:         observer.NopTracer{},
-		Meter:          observer.NopMeter{},
+		Meter:          meter,
+		Backend:        "backend",
 		EventName:      "backend.retry_decision",
 		Classify: func(context.Context, error) retryable.RetryDecision {
 			return retryable.RetryDecision{
@@ -80,6 +82,18 @@ func TestOperationGuardSharesCircuitBreakerStateAcrossBackendOperations(t *testi
 	}
 	if !called {
 		t.Fatal("operation was not called after successful probe closed the circuit breaker")
+	}
+	for _, want := range []struct {
+		key   string
+		count int64
+	}{
+		{observertest.Key(telemetry.CircuitBreakerTransitions, telemetry.AttrBackend, "backend", telemetry.AttrState, telemetry.StateOpen), 1},
+		{observertest.Key(telemetry.CircuitBreakerTransitions, telemetry.AttrBackend, "backend", telemetry.AttrState, telemetry.StateClosed), 1},
+		{observertest.Key(telemetry.CircuitBreakerRejectedRequests, telemetry.AttrBackend, "backend"), 1},
+	} {
+		if got := meter.Count(want.key); got != want.count {
+			t.Errorf("%s = %d, want %d; counters = %v", want.key, got, want.count, meter.Counters())
+		}
 	}
 }
 

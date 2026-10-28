@@ -24,7 +24,7 @@ func TestCloudWatchResponseReadFailureDoesNotRetryButTransportEOFDoes(t *testing
 			}
 			return &cloudwatchlogs.PutLogEventsOutput{}, nil
 		}
-		retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{})
+		retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{}, nil)
 		_, err := retrying.PutLogEvents(context.Background(), testPutLogEventsRequest([]cloudwatchlogs.Event{{Timestamp: time.Unix(10, 0), Message: "keep"}}))
 		if uncertain {
 			require.ErrorIs(t, err, cause)

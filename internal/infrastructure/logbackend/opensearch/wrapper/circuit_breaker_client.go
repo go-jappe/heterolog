@@ -22,26 +22,23 @@ type CircuitBreakerClient struct {
 
 func newCircuitBreakerClient(
 	next opensearch.Client,
-	tracer pkgobserver.Tracer,
 	meter pkgobserver.Meter,
 ) *CircuitBreakerClient {
-	return newCircuitBreakerClientWithCircuitBreaker(next, tracer, meter, retryable.NewCircuitBreaker(retryable.CircuitBreakerOptions{}))
+	return newCircuitBreakerClientWithCircuitBreaker(next, meter, retryable.NewCircuitBreaker(retryable.CircuitBreakerOptions{}))
 }
 
 func newCircuitBreakerClientWithCircuitBreaker(
 	next opensearch.Client,
-	tracer pkgobserver.Tracer,
 	meter pkgobserver.Meter,
 	circuitBreaker *retryable.CircuitBreaker,
 ) *CircuitBreakerClient {
-	tracer = observer.EnsureTracer(tracer)
 	meter = observer.EnsureMeter(meter)
 	return &CircuitBreakerClient{
 		next: next,
 		operationGuard: circuitbreaker.NewOperationGuard(circuitbreaker.OperationGuardOptions{
 			CircuitBreaker: circuitBreaker,
-			Tracer:         tracer,
 			Meter:          meter,
+			Backend:        backendName,
 			EventName:      "heterolog.opensearch.retry_decision",
 			Classify:       retryclassifier.ClassifyRetry,
 		}),

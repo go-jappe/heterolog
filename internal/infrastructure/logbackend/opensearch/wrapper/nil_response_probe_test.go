@@ -64,7 +64,7 @@ func TestCircuitBreakerClientKeepsBreakerOpenWhenProbeReturnsNoResponse(t *testi
 			var failure error = &net.DNSError{IsTimeout: true}
 			client := &recordingOpenSearchClient{}
 			tt.respond(client, func() error { return failure })
-			breaker := newCircuitBreakerClientWithCircuitBreaker(client, observer.NopTracer{}, observer.NopMeter{}, circuitBreaker)
+			breaker := newCircuitBreakerClientWithCircuitBreaker(client, observer.NopMeter{}, circuitBreaker)
 			for range 2 {
 				_, err := tt.send(breaker)
 				require.Error(t, err)

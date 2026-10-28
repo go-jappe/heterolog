@@ -30,7 +30,7 @@ func TestOpenSearchResponseReadFailureDoesNotRetryButTransportEOFDoes(t *testing
 				}
 				return &opensearch.BulkResponse{}, nil
 			}
-			retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{})
+			retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{}, nil)
 			var err error
 			if bulk {
 				_, err = retrying.IndexDocuments(context.Background(), []opensearch.DocumentWriteRequest{{Index: "logs", ID: "fixed"}})

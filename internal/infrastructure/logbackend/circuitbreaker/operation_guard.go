@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
@@ -19,25 +20,25 @@ type ClassifyFunc func(context.Context, error) retryable.RetryDecision
 // 一つのOperationGuardが保持するbreaker状態は、同じbackend clientの全操作で共有します。
 // リトライと組み合わせる場合は、外側の RetryingClient または RetryPolicyClient が
 // 試行ごとにOperationGuard.Doを呼び出します。
+// OperationGuardは自分のspanを始めません。判定結果は、呼び出し元のcontextにあるspan
+// （retry wrapperの試行、またはflush managerの送信のspan）へeventとして足し、送信を断った
+// 回数とbreakerの開閉をmetricsで数えます。
 type OperationGuard struct {
 	circuitBreaker *retryable.CircuitBreaker
-	tracer         pkgobserver.Tracer
+	meter          pkgobserver.Meter
 
-	// meter は初期化して保持しますが、現時点ではメトリクスを記録していません。
-	// 判定結果はトレースイベントにのみ記録します。
-	meter pkgobserver.Meter
-
+	backend   string
 	eventName string
 	classify  ClassifyFunc
 }
 
 // OperationGuardOptionsは、OperationGuardの生成に必要な設定をまとめます。
 // CircuitBreaker には利用する状態管理オブジェクトを、Classify には
-// バックエンド固有のエラー判定処理を指定します。
+// バックエンド固有のエラー判定処理を指定します。Backendはmetricsのbackend属性の値です。
 type OperationGuardOptions struct {
 	CircuitBreaker *retryable.CircuitBreaker
-	Tracer         pkgobserver.Tracer
 	Meter          pkgobserver.Meter
+	Backend        string
 	EventName      string
 	Classify       ClassifyFunc
 }
@@ -55,8 +56,8 @@ func NewOperationGuard(opts OperationGuardOptions) *OperationGuard {
 
 	return &OperationGuard{
 		circuitBreaker: opts.CircuitBreaker,
-		tracer:         observer.EnsureTracer(opts.Tracer),
 		meter:          observer.EnsureMeter(opts.Meter),
+		backend:        opts.Backend,
 		eventName:      opts.EventName,
 		classify:       opts.Classify,
 	}
@@ -79,6 +80,10 @@ func NewOperationGuard(opts OperationGuardOptions) *OperationGuard {
 // 失敗・送信前のlocal errorでは復旧を確認できないため、breaker状態を変えずにprobe枠だけを
 // 解放し、次のrequestを改めてprobeとして許可します。
 func (g *OperationGuard) Do(ctx context.Context, name string, op func(context.Context) error) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	span := observer.SpanFromContext(ctx)
 	requestDecision := g.circuitBreaker.BeforeRequest()
 
 	if !requestDecision.AllowRequest {
@@ -87,7 +92,7 @@ func (g *OperationGuard) Do(ctx context.Context, name string, op func(context.Co
 			requestDecision.OpenUntil,
 		)
 
-		_, span := g.tracer.StartSpan(ctx, name)
+		telemetry.RecordCircuitBreakerRejection(ctx, g.meter, g.backend)
 		g.addDecisionEvent(
 			span,
 			retryable.RetryDecision{
@@ -101,21 +106,18 @@ func (g *OperationGuard) Do(ctx context.Context, name string, op func(context.Co
 			true,
 			requestDecision.Probe,
 		)
-		span.End()
 
 		return err
 	}
 
-	spanCtx, span := g.tracer.StartSpan(ctx, name)
-	err := op(spanCtx)
+	err := op(ctx)
 
 	if err == nil {
-		g.circuitBreaker.RecordSuccess(requestDecision)
-		span.End()
+		g.recordSuccess(ctx, requestDecision)
 		return nil
 	}
 
-	failureClassification := g.classify(spanCtx, err)
+	failureClassification := g.classify(ctx, err)
 
 	if requestDecision.Probe {
 		switch {
@@ -128,6 +130,7 @@ func (g *OperationGuard) Do(ctx context.Context, name string, op func(context.Co
 				failureClassification,
 				requestDecision,
 			)
+			g.recordOpened(ctx, failureReport)
 			g.addDecisionEvent(
 				span,
 				failureClassification,
@@ -138,16 +141,15 @@ func (g *OperationGuard) Do(ctx context.Context, name string, op func(context.Co
 				!failureReport.OpenUntil.IsZero(),
 				requestDecision.Probe,
 			)
-		case retryable.ProbeReachedBackend(spanCtx, err):
+		case retryable.ProbeReachedBackend(ctx, err):
 			// 再試行しない拒否でも、backendは明示的に応答しています。
-			g.circuitBreaker.RecordSuccess(requestDecision)
+			g.recordSuccess(ctx, requestDecision)
 		default:
 			// 再試行しないことは復旧の証拠になりません。open状態を維持したまま
 			// probe枠だけを解放し、後続のprobeで復旧を確認します。
 			g.circuitBreaker.ReleaseProbe(requestDecision)
 		}
 
-		span.End()
 		return err
 	}
 
@@ -161,6 +163,7 @@ func (g *OperationGuard) Do(ctx context.Context, name string, op func(context.Co
 			failureClassification,
 			requestDecision,
 		)
+		g.recordOpened(ctx, failureReport)
 		g.addDecisionEvent(
 			span,
 			failureClassification,
@@ -173,8 +176,21 @@ func (g *OperationGuard) Do(ctx context.Context, name string, op func(context.Co
 		)
 	}
 
-	span.End()
 	return err
+}
+
+// recordSuccessは成功を記録し、復旧を確認してbreakerを閉じた場合は数えます。
+func (g *OperationGuard) recordSuccess(ctx context.Context, requestDecision retryable.CircuitBreakerRequestDecision) {
+	if g.circuitBreaker.RecordSuccess(requestDecision) {
+		telemetry.RecordCircuitBreakerTransition(ctx, g.meter, g.backend, telemetry.StateClosed)
+	}
+}
+
+// recordOpenedは、失敗の記録でbreakerが開いた場合に数えます。
+func (g *OperationGuard) recordOpened(ctx context.Context, report retryable.CircuitBreakerFailureReport) {
+	if report.Opened {
+		telemetry.RecordCircuitBreakerTransition(ctx, g.meter, g.backend, telemetry.StateOpen)
+	}
 }
 
 func (g *OperationGuard) addDecisionEvent(
@@ -187,7 +203,7 @@ func (g *OperationGuard) addDecisionEvent(
 	suppressed bool,
 	probe bool,
 ) {
-	if span == nil {
+	if observer.IsNilInterface(span) {
 		return
 	}
 

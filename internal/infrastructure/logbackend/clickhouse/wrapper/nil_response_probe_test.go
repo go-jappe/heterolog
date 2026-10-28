@@ -33,7 +33,7 @@ func TestCircuitBreakerClientKeepsBreakerOpenWhenProbeReturnsNoResponse(t *testi
 	client.insertLogsWithOptions = func(context.Context, []clickhouse.LogRecord, clickhouse.InsertOptions) (*clickhouse.InsertResponse, error) {
 		return response, responseErr
 	}
-	breaker := newCircuitBreakerClientWithCircuitBreaker(client, observer.NopTracer{}, observer.NopMeter{}, circuitBreaker)
+	breaker := newCircuitBreakerClientWithCircuitBreaker(client, observer.NopMeter{}, circuitBreaker)
 	insert := func() (*clickhouse.InsertResponse, error) {
 		return breaker.InsertLogsWithOptions(context.Background(), []clickhouse.LogRecord{{Message: "probe"}}, clickhouse.InsertOptions{})
 	}

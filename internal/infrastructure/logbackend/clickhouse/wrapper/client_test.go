@@ -12,6 +12,8 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
+	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 	"github.com/go-jappe/heterolog/pkg/clickhouse"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
@@ -122,7 +124,7 @@ func TestNewRetryingClientKeepsValidatedConfigAndDefaultsTracer(t *testing.T) {
 		maxAttempts: 2,
 		baseDelay:   3 * time.Millisecond,
 		maxDelay:    5 * time.Millisecond,
-	}, nil)
+	}, nil, nil)
 
 	assert.Equal(t, 2, client.maxAttempts())
 	assert.Equal(t, 3*time.Millisecond, client.baseDelay())
@@ -133,9 +135,9 @@ func TestNewRetryingClientKeepsValidatedConfigAndDefaultsTracer(t *testing.T) {
 func TestNewRetryingClientAcceptsCircuitBreakerClientChild(t *testing.T) {
 	t.Parallel()
 
-	circuitClient := newCircuitBreakerClient(&recordingClickHouseClient{}, nil, nil)
+	circuitClient := newCircuitBreakerClient(&recordingClickHouseClient{}, nil)
 
-	retrying := newRetryingClient(circuitClient, staticRetryConfig{}, nil)
+	retrying := newRetryingClient(circuitClient, staticRetryConfig{}, nil, nil)
 
 	assert.Same(t, circuitClient, retrying.next)
 }
@@ -150,7 +152,7 @@ func TestBackoffIncreasesLinearlyAndStopsAtMaxDelay(t *testing.T) {
 			baseDelay:   100 * time.Millisecond,
 			maxDelay:    250 * time.Millisecond,
 		},
-		nil,
+		nil, nil,
 	)
 
 	assert.Equal(t, 100*time.Millisecond, client.backoff(1))
@@ -169,7 +171,7 @@ func TestRetryDelayUsesRetryAfterForThrottlingAndServiceUnavailable(t *testing.T
 			baseDelay:   100 * time.Millisecond,
 			maxDelay:    250 * time.Millisecond,
 		},
-		nil,
+		nil, nil,
 	)
 
 	for _, decision := range []retryable.RetryDecision{
@@ -213,7 +215,7 @@ func TestInsertLogsWithOptionsRetriesHTTPStatusErrorAndReturnsResponse(t *testin
 		}
 		return wantResp, nil
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(2), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(2), tracer, nil)
 
 	resp, err := retrying.InsertLogsWithOptions(context.Background(), records, opts)
 
@@ -244,7 +246,7 @@ func TestInsertLogsWithOptionsPreservesSingleRecordAndOptions(t *testing.T) {
 		assert.Equal(t, opts, gotOpts)
 		return wantResp, nil
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{})
+	retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{}, nil)
 
 	resp, err := retrying.InsertLogsWithOptions(context.Background(), []clickhouse.LogRecord{record}, opts)
 
@@ -268,7 +270,7 @@ func TestInsertLogsReturnsPermanentClickHouseErrorWithoutRetry(t *testing.T) {
 		return nil, wantErr
 	}
 	tracer := &recordingTracer{}
-	retrying := newRetryingClient(client, fastRetryConfig(3), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(3), tracer, nil)
 
 	resp, err := retrying.InsertLogsWithOptions(context.Background(), []clickhouse.LogRecord{{Timestamp: time.Unix(10, 0), Message: "do not retry"}}, clickhouse.InsertOptions{})
 
@@ -294,7 +296,7 @@ func TestInsertLogsDoesNotRetryKnownInputExceptionFromSuccessfulHTTPResponse(t *
 	client.insertLogsWithOptions = func(context.Context, []clickhouse.LogRecord, clickhouse.InsertOptions) (*clickhouse.InsertResponse, error) {
 		return nil, wantErr
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(3), observer.NopTracer{})
+	retrying := newRetryingClient(client, fastRetryConfig(3), observer.NopTracer{}, nil)
 
 	response, err := retrying.InsertLogsWithOptions(context.Background(), []clickhouse.LogRecord{{Message: "invalid"}}, clickhouse.InsertOptions{})
 
@@ -319,7 +321,7 @@ func TestInsertLogsDoesNotRetryUnknownExceptionFromSuccessfulHTTPResponse(t *tes
 		}
 		return wantResponse, nil
 	}
-	retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{})
+	retrying := newRetryingClient(client, fastRetryConfig(2), observer.NopTracer{}, nil)
 
 	response, err := retrying.InsertLogsWithOptions(context.Background(), []clickhouse.LogRecord{{Message: "retry"}}, clickhouse.InsertOptions{})
 
@@ -338,7 +340,7 @@ func TestInsertLogsWrapsLastErrorWhenAttemptsExhausted(t *testing.T) {
 		return nil, io.EOF
 	}
 	tracer := &recordingTracer{}
-	retrying := newRetryingClient(client, fastRetryConfig(2), tracer)
+	retrying := newRetryingClient(client, fastRetryConfig(2), tracer, nil)
 
 	resp, err := retrying.InsertLogsWithOptions(context.Background(), []clickhouse.LogRecord{{Timestamp: time.Unix(10, 0), Message: "retry me"}}, clickhouse.InsertOptions{})
 
@@ -373,7 +375,7 @@ func TestInsertLogsStopsWhenContextCanceledDuringBackoff(t *testing.T) {
 				baseDelay:   time.Hour,
 				maxDelay:    time.Hour,
 			},
-			tracer,
+			tracer, nil,
 		)
 		type result struct {
 			resp *clickhouse.InsertResponse
@@ -413,7 +415,7 @@ func TestRetryPolicyClientTimeoutRetriesOnceWithShortAttemptTimeout(t *testing.T
 		assertPolicyRetryTimeout(t, ctx)
 		return wantResp, nil
 	}
-	retrying := newRetryPolicyClient(client, fastRetryConfig(3), tracer)
+	retrying := newRetryPolicyClient(client, fastRetryConfig(3), tracer, nil)
 
 	resp, err := retrying.InsertLogsWithOptions(context.Background(), records, clickhouse.InsertOptions{})
 
@@ -446,8 +448,8 @@ func TestRetryPolicyClientCircuitBreakerSuppressesRetryAfterRepeatedFailure(t *t
 	client.insertLogsWithOptions = func(context.Context, []clickhouse.LogRecord, clickhouse.InsertOptions) (*clickhouse.InsertResponse, error) {
 		return nil, &net.DNSError{IsTimeout: true}
 	}
-	child := newCircuitBreakerClientWithCircuitBreaker(client, tracer, observer.NopMeter{}, circuitBreaker)
-	retrying := newRetryPolicyClient(child, fastCircuitBreakerConfig(3), tracer)
+	child := newCircuitBreakerClientWithCircuitBreaker(client, observer.NopMeter{}, circuitBreaker)
+	retrying := newRetryPolicyClient(child, fastCircuitBreakerConfig(3), tracer, nil)
 
 	_, err := retrying.InsertLogsWithOptions(context.Background(), records, clickhouse.InsertOptions{})
 	require.Error(t, err)
@@ -508,8 +510,8 @@ func TestRetryPolicyClientCircuitBreakerLifecycleIntegration(t *testing.T) {
 		}
 		return wantResp, nil
 	}
-	child := newCircuitBreakerClientWithCircuitBreaker(client, tracer, observer.NopMeter{}, circuitBreaker)
-	retrying := newRetryPolicyClient(child, fastCircuitBreakerConfig(3), tracer)
+	child := newCircuitBreakerClientWithCircuitBreaker(client, observer.NopMeter{}, circuitBreaker)
+	retrying := newRetryPolicyClient(child, fastCircuitBreakerConfig(3), tracer, nil)
 
 	_, err := retrying.InsertLogsWithOptions(context.Background(), records, clickhouse.InsertOptions{})
 	require.Error(t, err)
@@ -552,19 +554,27 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 		},
 	})
 	tracer := &recordingTracer{}
+	meter := observertest.NewMeter()
 	records := []clickhouse.LogRecord{{Timestamp: now, Level: "info", Message: "line"}}
 	client := &recordingClickHouseClient{}
 	client.insertLogsWithOptions = func(context.Context, []clickhouse.LogRecord, clickhouse.InsertOptions) (*clickhouse.InsertResponse, error) {
 		return nil, &net.DNSError{IsTimeout: true}
 	}
-	circuitClient := newCircuitBreakerClientWithCircuitBreaker(client, tracer, observer.NopMeter{}, circuitBreaker)
+	circuitClient := newCircuitBreakerClientWithCircuitBreaker(client, meter, circuitBreaker)
+	// circuit breakerは自分のspanを始めず、呼び出し元の送信のspanへeventを足します。
+	var requests []pkgobserver.Span
+	requestCtx := func() context.Context {
+		ctx, span := tracer.StartSpan(context.Background(), "request")
+		requests = append(requests, span)
+		return ctx
+	}
 
-	_, err := circuitClient.InsertLogsWithOptions(context.Background(), records, clickhouse.InsertOptions{})
+	_, err := circuitClient.InsertLogsWithOptions(requestCtx(), records, clickhouse.InsertOptions{})
 	require.Error(t, err)
 	assert.Len(t, client.calls, 1)
 
 	now = now.Add(time.Second)
-	_, err = circuitClient.InsertLogsWithOptions(context.Background(), records, clickhouse.InsertOptions{})
+	_, err = circuitClient.InsertLogsWithOptions(requestCtx(), records, clickhouse.InsertOptions{})
 	require.Error(t, err)
 	assert.Len(t, client.calls, 2)
 	opening := spanFromContext(t, client.calls[1].ctx)
@@ -573,7 +583,7 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 	assert.Equal(t, true, attrValue(opening.events[0].attrs, "circuit_breaker_suppressed"))
 
 	suppressed := tracer.mark()
-	_, err = circuitClient.InsertLogsWithOptions(context.Background(), records, clickhouse.InsertOptions{})
+	_, err = circuitClient.InsertLogsWithOptions(requestCtx(), records, clickhouse.InsertOptions{})
 	require.Error(t, err)
 	var circuitBreakerErr *retryable.CircuitBreakerOpenError
 	require.ErrorAs(t, err, &circuitBreakerErr)
@@ -582,7 +592,12 @@ func TestCircuitBreakerClientSuppressesBackendRequestAfterRepeatedFailure(t *tes
 		tracer.spansSince(suppressed),
 		pkgobserver.Attr{Key: "reason", Value: string(retryable.RetryReasonCircuitBreakerOpen)},
 	), 1)
+	for _, span := range requests {
+		span.End()
+	}
 	requireSpansEnded(t, tracer.spans)
+	assert.Equal(t, int64(1), meter.Count(observertest.Key(telemetry.CircuitBreakerTransitions, telemetry.AttrBackend, "clickhouse", telemetry.AttrState, telemetry.StateOpen)))
+	assert.Equal(t, int64(1), meter.Count(observertest.Key(telemetry.CircuitBreakerRejectedRequests, telemetry.AttrBackend, "clickhouse")))
 }
 
 func fastRetryConfig(maxAttempts int) retryBackoffConfigProvider {
