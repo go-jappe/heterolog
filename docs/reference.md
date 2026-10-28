@@ -439,6 +439,16 @@ How the deadline survives restarts:
 - Upload to S3 supports empty files.
 - The S3 region is signed with only its leading and trailing whitespace removed; its case is not changed. Destination IDs treat regions that differ only in case as the same destination.
 - An S3 endpoint cannot contain a query (including an empty query that is just `?`) or a fragment.
+- S3-compatible services work with the same `HETEROLOG_OBJECT_STORAGE_S3_*` settings if they accept AWS Signature Version 4 with an unsigned payload: uploads are PUT requests signed with `X-Amz-Content-Sha256: UNSIGNED-PAYLOAD`. Set `HETEROLOG_OBJECT_STORAGE_S3_ENDPOINT` to the endpoint of the service and `HETEROLOG_OBJECT_STORAGE_S3_REGION` to the region that the service expects in the signature.
+- Backblaze B2 works this way. Use the S3 endpoint shown for the bucket with `https://`, and the region in its name (such as `us-west-004`). The access key ID is the keyID of an application key that can write to the bucket, the secret access key is its applicationKey, and `HETEROLOG_OBJECT_STORAGE_S3_SESSION_TOKEN` stays empty. The master application key cannot be used with the S3-compatible API of B2. Both virtual-hosted-style and path-style requests work, so `HETEROLOG_ENABLE_OBJECT_STORAGE_S3_FORCE_PATH_STYLE` can stay `false`. Set the bucket in the `*_OBJECT_STORAGE_S3_BUCKET` key of each upload. For example:
+
+  ```sh
+  HETEROLOG_OBJECT_STORAGE_S3_ENDPOINT=https://s3.us-west-004.backblazeb2.com
+  HETEROLOG_OBJECT_STORAGE_S3_REGION=us-west-004
+  HETEROLOG_OBJECT_STORAGE_S3_ACCESS_KEY_ID=<keyID>
+  HETEROLOG_OBJECT_STORAGE_S3_SECRET_ACCESS_KEY=<applicationKey>
+  HETEROLOG_LOG_FILE_OBJECT_STORAGE_S3_BUCKET=<bucket>
+  ```
 
 ### VictoriaMetrics
 

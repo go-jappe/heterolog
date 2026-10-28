@@ -439,6 +439,16 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 - S3へのアップロードは空ファイルにも対応します。
 - S3のリージョンは前後の空白だけを除いた値で署名し、大文字小文字は変更しません。宛先IDでは、大文字小文字だけが異なるリージョンを同じ保存先として扱います。
 - S3のエンドポイントにはクエリ（`?` だけの空クエリを含む）とフラグメントを指定できません。
+- S3互換のサービスも、AWS Signature Version 4で本文に署名しない形を受け付けるなら、同じ `HETEROLOG_OBJECT_STORAGE_S3_*` の設定で使えます。アップロードは、`X-Amz-Content-Sha256: UNSIGNED-PAYLOAD` で署名したPUTです。`HETEROLOG_OBJECT_STORAGE_S3_ENDPOINT` にはそのサービスのエンドポイントを、`HETEROLOG_OBJECT_STORAGE_S3_REGION` にはそのサービスが署名に求めるリージョンを指定します。
+- Backblaze B2はこの方法で使えます。エンドポイントには、bucketの画面に表示されるS3のエンドポイントに `https://` を付けて指定し、リージョンにはその名前に含まれるもの（`us-west-004` など）を指定します。アクセスキーIDには、そのbucketに書き込めるapplication keyのkeyIDを、シークレットアクセスキーにはそのapplicationKeyを指定し、`HETEROLOG_OBJECT_STORAGE_S3_SESSION_TOKEN` は空にします。master application keyは、B2のS3互換APIでは使えません。virtual-hosted-styleとpath-styleのどちらでも送れるため、`HETEROLOG_ENABLE_OBJECT_STORAGE_S3_FORCE_PATH_STYLE` は `false` のままで構いません。bucketは、アップロードの用途ごとの `*_OBJECT_STORAGE_S3_BUCKET` に指定します。例:
+
+  ```sh
+  HETEROLOG_OBJECT_STORAGE_S3_ENDPOINT=https://s3.us-west-004.backblazeb2.com
+  HETEROLOG_OBJECT_STORAGE_S3_REGION=us-west-004
+  HETEROLOG_OBJECT_STORAGE_S3_ACCESS_KEY_ID=<keyID>
+  HETEROLOG_OBJECT_STORAGE_S3_SECRET_ACCESS_KEY=<applicationKey>
+  HETEROLOG_LOG_FILE_OBJECT_STORAGE_S3_BUCKET=<bucket>
+  ```
 
 ### VictoriaMetrics
 

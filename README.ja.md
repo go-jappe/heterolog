@@ -46,7 +46,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - 出力先: stdout、file、Slack、OpenSearch、Loki、CloudWatch Logs、ClickHouse。自由に組み合わせられます。
 - 保証の異なる3種類のロガー: 同期（errorを返す）、非同期（best effort）、Delivery（出力先ごとの結果を返す）。
 - `log/slog` のハンドラー。
-- ログファイルのローテーション、圧縮（gzip・zstd・lz4・xz）、保持、S3へのアップロード。
+- ログファイルのローテーション、圧縮（gzip・zstd・lz4・xz）、保持、S3またはBackblaze B2などのS3互換のストレージへのアップロード。
 - 送れなかったログを保存するローカルのspool。自動で送り直し、`Retry-After` には再起動後も従います。
 - 空き容量の閾値、任意のメモリ逼迫の監視器、`drop`・`degrade` の方針による過負荷の保護。
 - コードでの設定、または `HETEROLOG_` 環境変数と環境設定ファイルからの設定。

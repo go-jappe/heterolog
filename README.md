@@ -46,7 +46,7 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 - Destinations: stdout, file, Slack, OpenSearch, Loki, CloudWatch Logs, and ClickHouse, in any combination.
 - Three loggers with different guarantees: synchronous (returns errors), asynchronous (best effort), and delivery (reports the result for each destination).
 - A `log/slog` handler.
-- Log files with rotation, compression (gzip, zstd, lz4, xz), retention, and upload to S3.
+- Log files with rotation, compression (gzip, zstd, lz4, xz), retention, and upload to S3 or S3-compatible storage such as Backblaze B2.
 - A local spool for logs that could not be sent, replayed automatically and following `Retry-After` across restarts.
 - Overload protection with a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
 - Configuration in code, or from `HETEROLOG_` environment variables and an env file.
