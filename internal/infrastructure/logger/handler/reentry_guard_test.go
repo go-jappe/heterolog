@@ -43,51 +43,6 @@ func onOtherGoroutine[T any](t *testing.T, f func() T) T {
 	return value
 }
 
-func TestParseGoroutineIDReadsTheStackHeader(t *testing.T) {
-	for _, test := range []struct {
-		stack string
-		want  uint64
-		ok    bool
-	}{
-		{stack: "goroutine 1 [running]:\nmain.main()", want: 1, ok: true},
-		{stack: "goroutine 18446744073709551615 [running]:", want: 18446744073709551615, ok: true},
-		{stack: "goroutine 42 [chan receive, 3 minutes]:", want: 42, ok: true},
-		{stack: "goroutine 0 [running]:"},
-		{stack: "goroutine 18446744073709551616 [running]:"},
-		{stack: "goroutine -1 [running]:"},
-		{stack: "goroutine 12[running]:"},
-		{stack: "goroutine 12 running:"},
-		{stack: "goroutine  [running]:"},
-		{stack: "Goroutine 12 [running]:"},
-		{stack: "goroutine 12"},
-		{stack: ""},
-	} {
-		t.Run(fmt.Sprintf("%q", test.stack), func(t *testing.T) {
-			got, ok := parseGoroutineID([]byte(test.stack))
-			if got != test.want || ok != test.ok {
-				t.Fatalf("parseGoroutineID(%q) = %d, %t; want %d, %t", test.stack, got, ok, test.want, test.ok)
-			}
-		})
-	}
-}
-
-func TestCurrentGoroutineIDIdentifiesTheCallingGoroutine(t *testing.T) {
-	first, ok := currentGoroutineID()
-	if !ok {
-		t.Fatal("currentGoroutineID could not read the runtime stack header")
-	}
-	if again, _ := currentGoroutineID(); again != first {
-		t.Fatalf("the same goroutine returned ids %d and %d", first, again)
-	}
-	other := onOtherGoroutine(t, func() uint64 {
-		id, _ := currentGoroutineID()
-		return id
-	})
-	if other == 0 || other == first {
-		t.Fatalf("another goroutine returned id %d, the test goroutine %d", other, first)
-	}
-}
-
 func TestReentryGuardMarksDispatchContextAndItsDescendants(t *testing.T) {
 	var guard, other ReentryGuard
 	parent := context.WithValue(context.Background(), reentryTestKey{}, "parent value")

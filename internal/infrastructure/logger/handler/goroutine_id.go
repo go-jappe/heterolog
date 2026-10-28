@@ -20,11 +20,6 @@ func currentGoroutineID() (uint64, bool) {
 	return goroutineid.Current()
 }
 
-// parseGoroutineIDは、runtime.Stackの先頭行「goroutine N [...]」からNを読みます。
-func parseGoroutineID(stack []byte) (uint64, bool) {
-	return goroutineid.Parse(stack)
-}
-
 // goroutineDepthsは、Dispatchを実行中のgoroutineのidと、そのgoroutine上の入れ子の深さを
 // 数えます。並行に使用でき、panicで抜けた場合も呼び出し元がdeferでleaveします。
 type goroutineDepths struct {
