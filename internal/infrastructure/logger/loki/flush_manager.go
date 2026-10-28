@@ -18,6 +18,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	lokierrors "github.com/go-jappe/heterolog/internal/infrastructure/logger/loki/errors"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
@@ -204,10 +205,7 @@ func (fm *LokiFlushManager) pushLogEntries(ctx context.Context, entries []*loggi
 		)
 	}
 
-	ctx, span := fm.Tracer.StartSpan(ctx, SpanLokiPush)
-	defer span.End()
-
-	state := lokiPushState{result: &result, span: span}
+	state := lokiPushState{result: &result}
 	for _, request := range plan.Requests {
 		fm.pushRequest(ctx, &state, entryRecords, request, nil)
 	}
@@ -217,13 +215,13 @@ func (fm *LokiFlushManager) pushLogEntries(ctx context.Context, entries []*loggi
 	if len(state.requestErrors) > 0 && state.succeededPushes == 0 {
 		result.TerminalError = errors.Join(state.requestErrors...)
 	}
+	telemetry.RecordSendResult(ctx, fm.Meter, result)
 	return result, state.cancellationErr
 }
 
 // lokiPushStateは、一回のflushで送信する物理requestの結果を集約します。
 type lokiPushState struct {
 	result          *loggerfailure.SendResult
-	span            pkgobserver.Span
 	requestErrors   []error
 	cancellationErr error
 	succeededPushes int
@@ -261,9 +259,11 @@ func (fm *LokiFlushManager) pushRequest(
 		return
 	}
 
+	requestCtx, push := telemetry.StartRequest(ctx, fm.Tracer, fm.Meter, SpanLokiPush, deliveryBackendLoki, len(requestEntryRecords))
 	start := time.Now()
-	err := fm.client.Push(ctx, request.Streams)
+	err := fm.client.Push(requestCtx, request.Streams)
 	elapsed := time.Since(start)
+	push.End(err)
 	fm.handlePushDelayLog(ctx, elapsed)
 
 	// 確定したresponseは、その返却とcancellationが競合しても確定結果として扱います。
@@ -273,7 +273,6 @@ func (fm *LokiFlushManager) pushRequest(
 		return
 	}
 
-	state.span.RecordError(err)
 	if infraloki.IsRequestEntityTooLarge(err) {
 		if first, second, ok := infraloki.SplitPushRequest(request); ok {
 			fm.pushRequest(ctx, state, entryRecords, first, err)

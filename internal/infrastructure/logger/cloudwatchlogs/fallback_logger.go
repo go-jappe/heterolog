@@ -121,7 +121,7 @@ func (f *FallbackLogger) doFallbackFlush(ctx context.Context) error {
 // flushFallbackBatchは現在のsnapshotを一度だけno-fallback経路へ渡します。
 // 送信結果にかかわらずsnapshotを再投入せず、OnErrorやfailure handlerも呼びません。
 func (f *FallbackLogger) flushFallbackBatch(ctx context.Context) error {
-	snapshot := f.detachBufferedBatch(f.config.FallbackQueueMaxEvents())
+	snapshot, _ := f.detachBufferedBatch(f.config.FallbackQueueMaxEvents())
 	if len(snapshot) == 0 {
 		return nil
 	}

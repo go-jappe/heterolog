@@ -15,6 +15,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/sampling"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -490,7 +491,7 @@ func (l *ClickHouseLogger) flushBuffered(ctx context.Context) error {
 		l.mu.Unlock()
 		return nil
 	}
-	batch := l.entries
+	batch, batchBytes := l.entries, l.bufferedBytes
 	// 一時的に拡張されたbatchのcapacityは引き継がず、設定上のflush件数を
 	// entriesと対応metadataの初期容量として使用します。
 	nextBufferCapacity := l.config.MaxEntries()
@@ -517,10 +518,10 @@ func (l *ClickHouseLogger) flushBuffered(ctx context.Context) error {
 		return err
 	}
 
-	ctx, span := l.Tracer.StartSpan(ctx, SpanClickHouseLoggerFlush)
-	defer span.End()
-
-	return flushManager.Flush(ctx, batch)
+	ctx, span := telemetry.StartFlush(ctx, l.Tracer, l.Meter, SpanClickHouseLoggerFlush, deliveryBackendClickHouse, len(batch), batchBytes)
+	err := flushManager.Flush(ctx, batch)
+	telemetry.EndSpan(span, err)
+	return err
 }
 
 func (l *ClickHouseLogger) measureEntryForBuffer(entry *logging.LogEntry) (int, bool) {

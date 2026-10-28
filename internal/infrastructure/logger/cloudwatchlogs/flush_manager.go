@@ -17,6 +17,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
@@ -154,6 +155,7 @@ func (fm *CloudWatchLogsFlushManager) Flush(
 			request.LogStreamName,
 			requestRecords,
 		)
+		telemetry.RecordSendResult(ctx, fm.Meter, requestResult)
 		if !requestResult.HasFailedRecords() {
 			flushErr = errors.Join(flushErr, err)
 			continue
@@ -172,6 +174,7 @@ func (fm *CloudWatchLogsFlushManager) Flush(
 			invalidResult.Meta.AttemptedAt,
 			invalidRecords,
 		)
+		telemetry.RecordSendResult(ctx, fm.Meter, invalidResult)
 		flushErr = errors.Join(
 			flushErr,
 			joinUnhandledSendFailure(nil, invalidResult, fm.handleFailure(ctx, invalidResult)),
@@ -338,6 +341,7 @@ func (fm *CloudWatchLogsFlushManager) putEntryAsSingleRequest(
 		)
 	}
 	if len(requests) == 0 {
+		telemetry.RecordSendResult(ctx, fm.Meter, result)
 		return result, nil
 	}
 
@@ -358,6 +362,7 @@ func (fm *CloudWatchLogsFlushManager) putEntryAsSingleRequest(
 	result.DeadRecords = append(result.DeadRecords, requestResult.DeadRecords...)
 	result.QuarantineRecords = append(result.QuarantineRecords, requestResult.QuarantineRecords...)
 	result.TerminalError = requestResult.TerminalError
+	telemetry.RecordSendResult(ctx, fm.Meter, result)
 	return result, err
 }
 
@@ -381,11 +386,10 @@ func (fm *CloudWatchLogsFlushManager) putCloudWatchLogsRequest(
 		return result, err
 	}
 
-	ctx, span := fm.Tracer.StartSpan(ctx, SpanCloudWatchLogsPut)
-	defer span.End()
+	requestCtx, put := telemetry.StartRequest(ctx, fm.Tracer, fm.Meter, SpanCloudWatchLogsPut, deliveryBackendCloudWatchLogs, len(eventRecords))
 
 	start := time.Now()
-	output, putErr := fm.client.PutLogEvents(ctx, pkgcloudwatchlogs.PutLogEventsRequest{
+	output, putErr := fm.client.PutLogEvents(requestCtx, pkgcloudwatchlogs.PutLogEventsRequest{
 		LogStreamName: logStreamName,
 		Events:        cloudWatchLogsEventsFromRecords(eventRecords),
 		AttemptedAt:   meta.AttemptedAt,
@@ -398,8 +402,8 @@ func (fm *CloudWatchLogsFlushManager) putCloudWatchLogsRequest(
 		// clientがerrorなしでnilを返した場合、Validateは送信結果を確認できない原因として
 		// pkgcloudwatchlogs.ErrNilPutLogEventsOutputを返します。
 		outputErr := output.Validate(len(eventRecords))
+		put.End(outputErr)
 		if outputErr != nil {
-			span.RecordError(outputErr)
 			result.TerminalError = outputErr
 			result.QuarantineRecords = append(
 				result.QuarantineRecords,
@@ -424,7 +428,7 @@ func (fm *CloudWatchLogsFlushManager) putCloudWatchLogsRequest(
 		)
 		return result, nil
 	}
-	span.RecordError(putErr)
+	put.End(putErr)
 	if infracloudwatchlogs.IsRequestEntityTooLarge(putErr) && len(eventRecords) > 1 {
 		// 413ではどのeventも受理されていないため、timestamp順を保って半分ずつ再送し、
 		// 一件でも拒否されたeventだけを分類器の判定どおりquarantineへ隔離します。

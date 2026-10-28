@@ -18,6 +18,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/opensearch/errors"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/opaqueid"
@@ -298,6 +299,7 @@ func (fm *OpenSearchFlushManager) indexLogEntry(ctx context.Context, entry *logg
 
 	// ドキュメント1件をOpenSearchに送信
 	res, err := fm.sendDocumentToOpenSearch(ctx, doc)
+	telemetry.RecordSendResult(ctx, fm.Meter, res)
 	if err != nil {
 		return res, fmt.Errorf("failed to send single log after retries: %w", err)
 	}
@@ -509,9 +511,10 @@ func (fm *OpenSearchFlushManager) sendDocumentToOpenSearch(
 		return res, err
 	}
 
+	requestCtx, request := telemetry.StartRequest(ctx, fm.Tracer, fm.Meter, SpanOpenSearchIndex, deliveryBackendOpenSearch, 1)
 	indexRes, err := duration.MeasureAndLogDuration[*opensearch.IndexResponse](
 		func() (*opensearch.IndexResponse, error) {
-			return fm.osClient.IndexDocument(ctx, requestDocument)
+			return fm.osClient.IndexDocument(requestCtx, requestDocument)
 		},
 		func(level pkglogger.LogLevel, elapsed time.Duration, opaqueID any) {
 			if level <= pkglogger.LogLevelInfo && !fm.config.IndexLatencyEnabled() {
@@ -531,6 +534,7 @@ func (fm *OpenSearchFlushManager) sendDocumentToOpenSearch(
 	// 単件createもBulk itemと同じbackend規則で409を成功扱いにする。
 	// 固定IDの同じrequestを再送して409になった場合、以前の試行で目的の状態へ到達済みです。
 	if infraopensearch.IsIdempotentCreateConflict(requestDocument, err) {
+		request.End(nil)
 		return res, nil
 	}
 	// custom clientでも、HTTP clientと同じrequestとresponseの対応関係が成り立って
@@ -539,6 +543,11 @@ func (fm *OpenSearchFlushManager) sendDocumentToOpenSearch(
 		if validationErr := indexRes.Validate(requestDocument); validationErr != nil {
 			err = &opensearch.ResponseDecodeError{Operation: "index", Err: validationErr}
 		}
+	}
+	if err == nil && indexRes == nil {
+		request.End(errOpenSearchNilIndexResponse)
+	} else {
+		request.End(err)
 	}
 
 	if err != nil {
@@ -701,6 +710,7 @@ func (fm *OpenSearchFlushManager) sendDocumentsToOpenSearch(
 	if result.FailedCount() < result.Meta.InputCount {
 		result.TerminalError = nil
 	}
+	telemetry.RecordSendResult(ctx, fm.Meter, result)
 	return result, stderrors.Join(sendErrors...)
 }
 
@@ -1125,9 +1135,10 @@ func (fm *OpenSearchFlushManager) indexBulkDocuments(
 	ctx context.Context,
 	requestDocument []opensearch.DocumentWriteRequest,
 ) (*opensearch.BulkResponse, error) {
-	return duration.MeasureAndIndexDocumentsDuration(
+	requestCtx, request := telemetry.StartRequest(ctx, fm.Tracer, fm.Meter, SpanOpenSearchBulk, deliveryBackendOpenSearch, len(requestDocument))
+	resp, err := duration.MeasureAndIndexDocumentsDuration(
 		func() (*opensearch.BulkResponse, error) {
-			return fm.osClient.IndexDocuments(ctx, requestDocument)
+			return fm.osClient.IndexDocuments(requestCtx, requestDocument)
 		},
 		func(level pkglogger.LogLevel, elapsed time.Duration, opaqueID any) {
 			if level <= pkglogger.LogLevelInfo && !fm.config.IndexLatencyEnabled() {
@@ -1140,4 +1151,6 @@ func (fm *OpenSearchFlushManager) indexBulkDocuments(
 		fm.config.PostErrorThresholdDuration(),
 		fm.config.PostWarnThresholdDuration(),
 	)
+	request.End(err)
+	return resp, err
 }

@@ -18,7 +18,7 @@ func TestDetachBufferedBatchUsesRequestedContractCapacity(t *testing.T) {
 		entries: append(make([]*logging.LogEntry, 0, expandedCapacity), entry),
 	}
 
-	snapshot := logger.detachBufferedBatch(nextBufferCapacity)
+	snapshot, _ := logger.detachBufferedBatch(nextBufferCapacity)
 
 	// 切り離したsnapshotの容量は実装詳細なので検証せず、内容と次のbufferの容量だけを検証します。
 	require.Equal(t, []*logging.LogEntry{entry}, snapshot)

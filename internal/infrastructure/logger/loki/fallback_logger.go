@@ -107,7 +107,7 @@ func (f *FallbackLogger) doFallbackFlush(ctx context.Context) error {
 // flushFallbackBatchは現在のfallback snapshotをFlushWithNoFallbackで一度だけ送信します。
 // 送信失敗やFlushManager未初期化でもsnapshotをbufferへ戻しません。
 func (f *FallbackLogger) flushFallbackBatch(ctx context.Context) error {
-	batch := f.detachBufferedBatch(
+	batch, _ := f.detachBufferedBatch(
 		f.config.FallbackQueueMaxEntries(),
 	)
 	if len(batch) == 0 {

@@ -12,6 +12,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/sampling"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/slack/errors"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
@@ -176,6 +177,9 @@ func (s *SlackLogger) enqueueLocked(ctx context.Context, entry *logging.LogEntry
 		return nil, nil
 	}
 
+	dropped := 0
+	// deferは逆順に実行されるため、metricsはs.muを解放した後に記録します。
+	defer func() { telemetry.RecordRecords(ctx, s.Meter, BackendServices, telemetry.OutcomeDropped, dropped) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -199,6 +203,7 @@ func (s *SlackLogger) enqueueLocked(ctx context.Context, entry *logging.LogEntry
 	maxLogs := s.config.MaxLogsPerNotification()
 	if len(s.logs) >= maxLogs {
 		s.logs = s.logs[1:] // 先頭の古いログを削除
+		dropped++
 		mes := fmt.Sprintf("先頭の古いログを削除しました。現在のlogsは%vです", len(s.logs))
 		debugEntries = append(debugEntries, s.InternalDebugEntry(mes, entry.RequestID))
 	}
@@ -245,10 +250,7 @@ func (s *SlackLogger) sendBuffered(ctx context.Context) error {
 }
 
 // sendLogsはsendMuを保持した呼び出し元が取り出し済みのbatchを送信します。
-func (s *SlackLogger) sendLogs(ctx context.Context, logs []*logging.LogEntry) error {
-	ctx, span := s.Tracer.StartSpan(ctx, SpanSlackLoggerSendBatch)
-	defer span.End()
-
+func (s *SlackLogger) sendLogs(ctx context.Context, logs []*logging.LogEntry) (err error) {
 	mesSlackStart := "slack送信バッチ処理の開始"
 	handler.CallInfoHandlerIfPresent(s.OnInfo, ctx, s.InternalInfoEntry(mesSlackStart, ""), s.Tracer, s.Meter)
 
@@ -257,6 +259,10 @@ func (s *SlackLogger) sendLogs(ctx context.Context, logs []*logging.LogEntry) er
 		handler.CallDebugHandlerIfPresent(s.OnDebug, ctx, s.InternalDebugEntry(mes, ""), s.Tracer, s.Meter, s.config.Runtime().IsDebug())
 		return nil
 	}
+	// 送るlogがある場合だけspanを始めます。
+	ctx, span := telemetry.StartFlush(ctx, s.Tracer, s.Meter, SpanSlackLoggerSendBatch, BackendServices, len(logs), -1)
+	defer func() { telemetry.EndSpan(span, err) }()
+
 	mesTrySlackSend := "Slackへ送信を試みています..."
 	handler.CallDebugHandlerIfPresent(s.OnDebug, ctx, s.InternalDebugEntry(mesTrySlackSend, ""), s.Tracer, s.Meter, s.config.Runtime().IsDebug())
 
@@ -271,14 +277,19 @@ func (s *SlackLogger) sendLogs(ctx context.Context, logs []*logging.LogEntry) er
 		}
 
 		// slackを送信　遅延が発生したらログを出力
-		channel, timestamp, err := s.sendSlackWithLatencyCheck(ctx, batch.channel, msgToSend)
+		postCtx, post := telemetry.StartRequest(ctx, s.Tracer, s.Meter, SpanSlackPost, BackendServices, len(batch.messages))
+		channel, timestamp, err := s.sendSlackWithLatencyCheck(postCtx, batch.channel, msgToSend)
+		post.End(err)
 
 		if err != nil {
-			s.restoreUnsentLogs(logs, succeededChannels)
+			restored, dropped := s.restoreUnsentLogs(logs, succeededChannels)
+			telemetry.RecordRecords(ctx, s.Meter, BackendServices, telemetry.OutcomeRetryable, restored)
+			telemetry.RecordRecords(ctx, s.Meter, BackendServices, telemetry.OutcomeDropped, dropped)
 			// 送信失敗時のインターナルログを出力
 			s.handleSlackError(ctx, err)
 			return err
 		}
+		telemetry.RecordRecords(ctx, s.Meter, BackendServices, telemetry.OutcomeSuccess, len(batch.messages))
 		succeededChannels[batch.channel] = struct{}{}
 		mesTriedSlackSend := "Slackへ送信成功"
 		handler.CallDebugHandlerIfPresent(s.OnDebug, ctx, s.InternalDebugEntry(mesTriedSlackSend, ""), s.Tracer, s.Meter, s.config.Runtime().IsDebug())
@@ -291,11 +302,12 @@ func (s *SlackLogger) sendLogs(ctx context.Context, logs []*logging.LogEntry) er
 }
 
 // restoreUnsentLogsは、既に送信成功したchannelを除くentryだけを、
-// 送信中に追加された新しいentryより前へ元の順序で戻します。
+// 送信中に追加された新しいentryより前へ元の順序で戻します。bufferの上限を超えて
+// 捨てたentryの数をdroppedに、戻したentryのうち捨てずに残った数をrestoredに返します。
 func (s *SlackLogger) restoreUnsentLogs(
 	logs []*logging.LogEntry,
 	succeededChannels map[string]struct{},
-) {
+) (restored, dropped int) {
 	unsent := make([]*logging.LogEntry, 0, len(logs))
 	for _, entry := range logs {
 		if entry == nil {
@@ -308,19 +320,21 @@ func (s *SlackLogger) restoreUnsentLogs(
 	}
 
 	s.mu.Lock()
-	restored := make([]*logging.LogEntry, 0, len(unsent)+len(s.logs))
-	restored = append(restored, unsent...)
-	restored = append(restored, s.logs...)
+	defer s.mu.Unlock()
+	logsToKeep := make([]*logging.LogEntry, 0, len(unsent)+len(s.logs))
+	logsToKeep = append(logsToKeep, unsent...)
+	logsToKeep = append(logsToKeep, s.logs...)
 	maxLogs := s.config.MaxLogsPerNotification()
-	if len(restored) > maxLogs {
-		dropCount := len(restored) - maxLogs
-		for i := 0; i < dropCount; i++ {
-			restored[i] = nil
+	if len(logsToKeep) > maxLogs {
+		dropped = len(logsToKeep) - maxLogs
+		for i := 0; i < dropped; i++ {
+			logsToKeep[i] = nil
 		}
-		restored = restored[dropCount:]
+		logsToKeep = logsToKeep[dropped:]
 	}
-	s.logs = restored
-	s.mu.Unlock()
+	s.logs = logsToKeep
+	// 捨てるのは古いentryからなので、戻したentryから先に捨てます。
+	return max(len(unsent)-dropped, 0), dropped
 }
 
 // スラックの送信と遅延が発生した場合には警告ログ

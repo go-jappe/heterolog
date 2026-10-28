@@ -22,6 +22,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/sampling"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -528,7 +529,7 @@ func (l *CloudWatchLogsLogger) flushBuffered(ctx context.Context) error {
 		return nil
 	}
 
-	snapshot := l.detachBufferedBatch(l.config.BufferFlushMaxEvents())
+	snapshot, snapshotBytes := l.detachBufferedBatch(l.config.BufferFlushMaxEvents())
 	if len(snapshot) == 0 {
 		return nil
 	}
@@ -549,31 +550,32 @@ func (l *CloudWatchLogsLogger) flushBuffered(ctx context.Context) error {
 		return err
 	}
 
-	ctx, span := l.Tracer.StartSpan(ctx, SpanCloudWatchLogsLoggerFlush)
-	defer span.End()
-
-	return flushManager.Flush(ctx, snapshot)
+	ctx, span := telemetry.StartFlush(ctx, l.Tracer, l.Meter, SpanCloudWatchLogsLoggerFlush, deliveryBackendCloudWatchLogs, len(snapshot), snapshotBytes)
+	err := flushManager.Flush(ctx, snapshot)
+	telemetry.EndSpan(span, err)
+	return err
 }
 
 // detachBufferedBatchは現在のbufferを一回限りの送信用snapshotとして切り離します。
 // 通常LoggerとFallbackのどちらも切り離したsnapshotをbufferへ戻しません。
 // nextBufferCapacityには、呼び出し側のbuffer契約に対応する
-// 設定件数を指定します。entryがない場合は空のsnapshotを返します。
-func (l *CloudWatchLogsLogger) detachBufferedBatch(nextBufferCapacity int) []*logging.LogEntry {
+// 設定件数を指定します。entryがない場合は空のsnapshotを返します。bytesは、切り離した
+// entryについてbufferが数えていたbyte数です。
+func (l *CloudWatchLogsLogger) detachBufferedBatch(nextBufferCapacity int) (snapshot []*logging.LogEntry, bytes int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	if len(l.entries) == 0 {
 		l.bufferBytes = 0
-		return nil
+		return nil, 0
 	}
 
-	snapshot := l.entries
+	snapshot, bytes = l.entries, l.bufferBytes
 	// 以後の追加は別bufferへ流し、backend送信中はmuを保持しません。一時的に
 	// 拡張されたsnapshotのcapacityは引き継がず、設定上の容量へ戻します。
 	l.entries = make([]*logging.LogEntry, 0, nextBufferCapacity)
 	l.bufferBytes = 0
-	return snapshot
+	return snapshot, bytes
 }
 
 // putImmediately は、即時送信モードでログを 1 件だけ FlushManager へ渡します。

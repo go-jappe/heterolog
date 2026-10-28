@@ -15,6 +15,7 @@ import (
 	lokierrors "github.com/go-jappe/heterolog/internal/infrastructure/logger/loki/errors"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/sampling"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloki "github.com/go-jappe/heterolog/pkg/loki"
@@ -554,7 +555,7 @@ func (l *LokiLogger) flushBuffered(ctx context.Context) error {
 		return nil
 	}
 
-	batch := l.detachBufferedBatch(
+	batch, batchBytes := l.detachBufferedBatch(
 		l.config.MaxEntries(),
 	)
 	if len(batch) == 0 {
@@ -577,30 +578,31 @@ func (l *LokiLogger) flushBuffered(ctx context.Context) error {
 		return err
 	}
 
-	ctx, span := l.Tracer.StartSpan(ctx, SpanLokiLoggerFlush)
-	defer span.End()
-
-	return flushManager.Flush(ctx, batch)
+	ctx, span := telemetry.StartFlush(ctx, l.Tracer, l.Meter, SpanLokiLoggerFlush, deliveryBackendLoki, len(batch), batchBytes)
+	err := flushManager.Flush(ctx, batch)
+	telemetry.EndSpan(span, err)
+	return err
 }
 
 // detachBufferedBatchは現在のbufferを一回限りの送信用snapshotとして切り離します。
 // 切り離したsnapshotは送信結果にかかわらず通常bufferへ戻しません。
 // nextBufferCapacityには、呼び出し側のbuffer契約に対応する設定件数を指定します。
-func (l *LokiLogger) detachBufferedBatch(nextBufferCapacity int) []*logging.LogEntry {
+// bytesは、切り離したentryについてbufferが数えていたbyte数です。
+func (l *LokiLogger) detachBufferedBatch(nextBufferCapacity int) (batch []*logging.LogEntry, bytes int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	if len(l.entries) == 0 {
-		return nil
+		return nil, 0
 	}
 
-	batch := l.entries
+	batch, bytes = l.entries, l.bufferBytes
 	// 以後の追加は別bufferへ流し、backend送信中はmuを保持しません。一時的に
 	// 拡張されたsnapshotのcapacityは引き継がず、設定上の容量へ戻します。
 	l.entries = make([]*logging.LogEntry, 0, nextBufferCapacity)
 	l.entryBytes = make([]int, 0, nextBufferCapacity)
 	l.bufferBytes = 0
-	return batch
+	return batch, bytes
 }
 
 // measureBufferedEntryBytesはbufferのsoft thresholdだけに使う測定です。

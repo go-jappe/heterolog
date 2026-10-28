@@ -14,6 +14,7 @@ import (
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/slack/errors"
 	loggertime "github.com/go-jappe/heterolog/internal/infrastructure/logger/time"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	"github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
@@ -164,10 +165,13 @@ func (s *DeliverySlackLogger) formatMessage(entry *infralogging.LogEntry) string
 func (s *DeliverySlackLogger) sendEntry(ctx context.Context, entry *infralogging.LogEntry) (logger.DeliveryResult, error) {
 	message := s.formatMessage(entry)
 
+	postCtx, post := telemetry.StartRequest(ctx, s.Tracer, s.Meter, SpanSlackPost, BackendServices, 1)
 	start := time.Now()
-	_, _, err := s.send(ctx, entry.Level, message)
+	_, _, err := s.send(postCtx, entry.Level, message)
 	elapsed := time.Since(start)
+	post.End(err)
 	if err != nil {
+		telemetry.RecordRecords(ctx, s.Meter, BackendServices, telemetry.OutcomeDead, 1)
 		internalErr := &errors.SlackLoggerInternalError{
 			Op:  OperationSlackPostError,
 			Err: err,
@@ -175,6 +179,7 @@ func (s *DeliverySlackLogger) sendEntry(ctx context.Context, entry *infralogging
 		s.handleDeliveryInternalError(ctx, internalErr, entry)
 		return logger.DeliveryResult{Backend: BackendServices, Status: slackFailureDeliveryStatus(err), Err: internalErr}, internalErr
 	}
+	telemetry.RecordRecords(ctx, s.Meter, BackendServices, telemetry.OutcomeSuccess, 1)
 	s.handleDeliveryLatency(ctx, elapsed, entry)
 
 	return s.deliverySucceededResult(), nil

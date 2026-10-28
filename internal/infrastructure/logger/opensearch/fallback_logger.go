@@ -136,7 +136,7 @@ func (f *FallbackLogger) doFallbackFlush(ctx context.Context) error {
 // FlushWithNoFallbackへ一度だけ渡します。送信結果は呼び出し元のlog処理へ
 // 返さず、snapshotもqueueへ戻しません。
 func (f *FallbackLogger) flushFallbackBuffered(ctx context.Context) error {
-	batch := f.detachBufferedBatch()
+	batch, _ := f.detachBufferedBatch()
 	if len(batch) == 0 {
 		return nil
 	}

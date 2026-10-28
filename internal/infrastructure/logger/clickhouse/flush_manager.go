@@ -16,6 +16,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/resource"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
@@ -61,7 +62,7 @@ func NewClickHouseFlushManager(
 }
 
 func (fm *ClickHouseFlushManager) Flush(ctx context.Context, entries []*logging.LogEntry) error {
-	return fm.flushPhysicalInsertRequests(ctx, entries, fm.handleFailure)
+	return fm.flushPhysicalInsertRequests(ctx, entries, fm.handleFailure, true)
 }
 
 // FlushWithNoFallbackはfallback logger専用に、一回のsnapshotをfailure handlerへ
@@ -70,7 +71,7 @@ func (fm *ClickHouseFlushManager) FlushWithNoFallback(
 	ctx context.Context,
 	entries []*logging.LogEntry,
 ) {
-	if err := fm.flushPhysicalInsertRequests(ctx, entries, fm.logDroppedFallbackFailure); err != nil {
+	if err := fm.flushPhysicalInsertRequests(ctx, entries, fm.logDroppedFallbackFailure, false); err != nil {
 		log.Printf("failed to flush ClickHouse fallback logger: %v", err)
 	}
 }
@@ -79,11 +80,13 @@ func (fm *ClickHouseFlushManager) FlushWithNoFallback(
 // 分割し、requestごとに固有のdeduplication tokenを割り当てます。失敗recordの処理方法は
 // failure callbackが決め、errorは集約して返します。snapshotは呼び出し元へ返しません。
 // 送信失敗をdurable処理できなかった場合は、failure callbackのerrorとbackendの送信失敗の
-// 原因を併せて返します。
+// 原因を併せて返します。countRecordsがtrueなら、送信の結果をrecordの件数のmetricsに
+// 数えます。fallback loggerが送る内部logは数えません。
 func (fm *ClickHouseFlushManager) flushPhysicalInsertRequests(
 	ctx context.Context,
 	entries []*logging.LogEntry,
 	handleFailure func(context.Context, loggerfailure.SendResult) error,
+	countRecords bool,
 ) error {
 	if len(entries) == 0 {
 		return nil
@@ -106,6 +109,9 @@ func (fm *ClickHouseFlushManager) flushPhysicalInsertRequests(
 
 	if len(plan.Rejected) > 0 {
 		result := fm.buildPreSendRejectedResult(ctx, entryRecords, plan.Rejected)
+		if countRecords {
+			telemetry.RecordSendResult(ctx, fm.Meter, result)
+		}
 		if err := joinUnhandledSendFailure(nil, result, handleFailure(ctx, result)); err != nil {
 			errs = append(errs, err)
 		}
@@ -128,6 +134,9 @@ func (fm *ClickHouseFlushManager) flushPhysicalInsertRequests(
 			requestEntryRecords,
 			newClickHouseInsertDeduplicationToken(),
 		)
+		if countRecords {
+			telemetry.RecordSendResult(ctx, fm.Meter, result)
+		}
 		if result.HasFailedRecords() {
 			err = joinUnhandledSendFailure(err, result, handleFailure(ctx, result))
 		}
@@ -263,11 +272,10 @@ func (fm *ClickHouseFlushManager) insertEntryRecords(
 	}
 
 	records := clickHouseLogRecordsFromEntryRecords(entryRecords)
-	ctx, span := fm.Tracer.StartSpan(ctx, SpanClickHouseInsert)
-	defer span.End()
+	requestCtx, insert := telemetry.StartRequest(ctx, fm.Tracer, fm.Meter, SpanClickHouseInsert, deliveryBackendClickHouse, len(entryRecords))
 
 	start := time.Now()
-	response, err := fm.client.InsertLogsWithOptions(ctx, records, pkgclickhouse.InsertOptions{
+	response, err := fm.client.InsertLogsWithOptions(requestCtx, records, pkgclickhouse.InsertOptions{
 		InsertDeduplicationToken: insertDeduplicationToken,
 	})
 	elapsed := time.Since(start)
@@ -276,6 +284,7 @@ func (fm *ClickHouseFlushManager) insertEntryRecords(
 	// cancellationが完了と競合しても、成功responseを確定した結果として扱います。
 	// quarantineが必要なのは、結果を確認できない場合だけです。
 	if err == nil && response != nil {
+		insert.End(nil)
 		return result, nil
 	}
 	if err == nil {
@@ -284,7 +293,7 @@ func (fm *ClickHouseFlushManager) insertEntryRecords(
 		err = infraclickhouse.ErrMissingInsertResponse
 	}
 
-	span.RecordError(err)
+	insert.End(err)
 	result.TerminalError = err
 	dec := retryable.ClassifyDurableRequestOutcome(ctx, err, func(classifyCtx context.Context, attemptErr error) retryable.RetryDecision {
 		return infraclickhouse.ClassifyDurableInsertFailure(classifyCtx, attemptErr, len(entryRecords))
