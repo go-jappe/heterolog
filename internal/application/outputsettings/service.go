@@ -179,7 +179,7 @@ func (s *Service) Update(ctx context.Context, request Request, changes map[strin
 			break
 		}
 		for _, output := range slices.Sorted(maps.Keys(p.changes)) {
-			expected := apply(p.start[output], p.changes[output])
+			expected := p.expected[output]
 			actual, ok := outputs[output]
 			if !ok || actual.After != expected {
 				result.Mismatches = append(result.Mismatches, Mismatch{Logger: p.name, Output: output, Expected: expected, Actual: actual.After})
@@ -203,12 +203,14 @@ func (s *Service) Update(ctx context.Context, request Request, changes map[strin
 	return result, nil
 }
 
-// planは、一つのloggerへの変更と、変更を始める時点のそのloggerの設定です。
+// planは、一つのloggerへの変更と、変更を始める時点のそのloggerの設定、変更後に期待する
+// 設定です。
 type plan struct {
-	name    string
-	logger  pkglogger.SettingsController
-	start   map[pkglogger.LogOutputDestination]pkglogger.OutputSettings
-	changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange
+	name     string
+	logger   pkglogger.SettingsController
+	start    map[pkglogger.LogOutputDestination]pkglogger.OutputSettings
+	changes  map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange
+	expected map[pkglogger.LogOutputDestination]pkglogger.OutputSettings
 }
 
 // planは、全loggerの全変更を今の設定に適用して検証し、loggerの名前の順に反映の計画を
@@ -221,18 +223,45 @@ func (s *Service) plan(changes map[string]map[pkglogger.LogOutputDestination]pkg
 			return nil, fmt.Errorf("%w: %q", ErrUnknownLogger, name)
 		}
 		start := logger.OutputSettings()
-		for _, output := range slices.Sorted(maps.Keys(changes[name])) {
-			current, ok := start[output]
-			if !ok {
-				return nil, fmt.Errorf("logger %q: %w: %q", name, pkglogger.ErrUnknownOutput, output)
-			}
-			if err := validate(name, output, apply(current, changes[name][output])); err != nil {
-				return nil, err
-			}
+		expected, err := expect(name, start, changes[name])
+		if err != nil {
+			return nil, err
 		}
-		plans = append(plans, plan{name: name, logger: logger, start: start, changes: changes[name]})
+		plans = append(plans, plan{name: name, logger: logger, start: start, changes: changes[name], expected: expected})
 	}
 	return plans, nil
+}
+
+// expectは、startの設定を写したLiveSettingsへchangesを当てて、変更後に期待する設定を
+// 出力先ごとに返します。反映と同じpkg/loggerのUpdateLiveSettingsを使うため、項目の当て方と
+// 検証は反映と一致します。startにない出力先はErrUnknownOutput、不正な値はpkg/loggerの
+// ConfigFieldErrorです。
+func expect(
+	name string,
+	start map[pkglogger.LogOutputDestination]pkglogger.OutputSettings,
+	changes map[pkglogger.LogOutputDestination]pkglogger.OutputSettingsChange,
+) (map[pkglogger.LogOutputDestination]pkglogger.OutputSettings, error) {
+	outputs := make(map[pkglogger.LogOutputDestination]*pkglogger.LiveSettings, len(changes))
+	for _, output := range slices.Sorted(maps.Keys(changes)) {
+		current, ok := start[output]
+		if !ok {
+			return nil, fmt.Errorf("logger %q: %w: %q", name, pkglogger.ErrUnknownOutput, output)
+		}
+		live, err := pkglogger.NewLiveSettings(current.Level, current.Sampling)
+		if err != nil {
+			return nil, err
+		}
+		outputs[output] = live
+	}
+	applied, err := pkglogger.UpdateLiveSettings(name, outputs, changes)
+	if err != nil {
+		return nil, err
+	}
+	expected := make(map[pkglogger.LogOutputDestination]pkglogger.OutputSettings, len(applied))
+	for output, a := range applied {
+		expected[output] = a.After
+	}
+	return expected, nil
 }
 
 // startValueは、変更する出力先の、変更を始める時点の設定を監査logの値にします。

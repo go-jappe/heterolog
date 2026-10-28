@@ -5,7 +5,6 @@
 package outputsettings
 
 import (
-	"errors"
 	"maps"
 
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -64,37 +63,4 @@ func (r *Registry) Update(changes map[pkglogger.LogOutputDestination]pkglogger.O
 // currentは、LiveSettingsの今の設定を返します。
 func current(live *pkglogger.LiveSettings) pkglogger.OutputSettings {
 	return pkglogger.OutputSettings{Level: live.Level(), Sampling: live.Sampling()}
-}
-
-// applyは、currentにchangeを適用した設定を返します。changeで指定していないsamplingの
-// 項目は、currentの値のままです。
-func apply(current pkglogger.OutputSettings, change pkglogger.OutputSettingsChange) pkglogger.OutputSettings {
-	if change.Level != nil {
-		current.Level = *change.Level
-	}
-	if s := change.Sampling; s != nil {
-		setIfPresent(&current.Sampling.IsSamplingEnabled, s.IsSamplingEnabled)
-		setIfPresent(&current.Sampling.EnableLoggingByRequestID, s.EnableLoggingByRequestID)
-		setIfPresent(&current.Sampling.LoggingByRequestIDRate, s.LoggingByRequestIDRate)
-		setIfPresent(&current.Sampling.SamplingDebugRate, s.SamplingDebugRate)
-		setIfPresent(&current.Sampling.SamplingInfoRate, s.SamplingInfoRate)
-		setIfPresent(&current.Sampling.SamplingWarnRate, s.SamplingWarnRate)
-		setIfPresent(&current.Sampling.SamplingErrorRate, s.SamplingErrorRate)
-	}
-	return current
-}
-
-func setIfPresent[T any](target *T, value *T) {
-	if value != nil {
-		*target = *value
-	}
-}
-
-// validateは、出力先の設定がpkg/loggerの規則を満たすかを確かめます。sourceはerrorに
-// 含める設定の出所です。
-func validate(source string, destination pkglogger.LogOutputDestination, settings pkglogger.OutputSettings) error {
-	return errors.Join(
-		pkglogger.ValidateLogLevel(source, destination, settings.Level),
-		pkglogger.ValidateSamplingConfig(source, destination, settings.Sampling),
-	)
 }
