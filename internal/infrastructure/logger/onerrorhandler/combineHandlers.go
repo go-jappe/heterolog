@@ -2,7 +2,9 @@ package onerrorhandler
 
 import (
 	"context"
+	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"log"
@@ -24,6 +26,7 @@ func CombineErrorHandlers(handlers ...logging.NamedLoggerErrorHandler) logging.L
 			}
 			entry = missingEntryErrorLogEntry(err)
 		}
+		telemetry.RecordInternalLog(ctx, meter, entry.Level)
 
 		var wg sync.WaitGroup
 
@@ -42,7 +45,9 @@ func CombineErrorHandlers(handlers ...logging.NamedLoggerErrorHandler) logging.L
 						log.Printf("panic in error handler %s: %v", h.Name, r)
 					}
 				}()
-				h.Handler(ctx, err, localEntry, tracer, meter)
+				handlerCtx, span := startNotifySpan(ctx, tracer, h.Name, localEntry.Level)
+				defer span.End()
+				h.Handler(handlerCtx, err, localEntry, tracer, meter)
 			}(handler, handlerEntry)
 		}
 
@@ -84,6 +89,7 @@ func combineHandlers(
 			log.Printf(MismatchLevel+"\n", entry.Level, expectedLevel)
 			return
 		}
+		telemetry.RecordInternalLog(ctx, meter, entry.Level)
 
 		var wg sync.WaitGroup
 
@@ -109,12 +115,31 @@ func combineHandlers(
 					}
 				}()
 
-				h.Handler(ctx, localEntry, tracer, meter)
+				handlerCtx, span := startNotifySpan(ctx, tracer, h.Name, localEntry.Level)
+				defer span.End()
+				h.Handler(handlerCtx, localEntry, tracer, meter)
 			}(handler, handlerEntry)
 		}
 
 		wg.Wait()
 	}
+}
+
+// startNotifySpanは、内部ログをdestinationの通知先へ渡す処理のspanを始めます。通知先の
+// panicをrecoverで止めるgoroutineの中で呼び、spanの開始で起きたpanicも同じrecoverで止めます。
+func startNotifySpan(
+	ctx context.Context,
+	tracer pkgobserver.Tracer,
+	destination string,
+	level logger.LogLevel,
+) (context.Context, pkgobserver.Span) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return observer.EnsureTracer(tracer).StartSpan(ctx, SpanInternalLogNotify,
+		pkgobserver.Attr{Key: telemetry.SpanAttrDestination, Value: destination},
+		pkgobserver.Attr{Key: telemetry.SpanAttrLevel, Value: telemetry.LevelName(level)},
+	)
 }
 
 func CombineWarnHandlers(handlers ...logging.NamedLoggerHandler) logging.LoggerHandlerFunc {

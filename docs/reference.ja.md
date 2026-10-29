@@ -414,6 +414,7 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 | `heterolog_circuit_breaker_transitions_total` | Counter | `backend`・`state`（`open`・`closed`） | circuit breakerが開いた回数と、復旧確認（probe）で復旧を確かめて閉じた回数です。 |
 | `heterolog_failure_records_total` | Counter | `backend`・`action` | 送れなかったrecordを、その後の扱いごとに数えます。`spooled`（spoolへ保存）・`archived`（failure archiveへ保存）・`degraded`（stdoutへ退避）・`dropped`（過負荷時の方針 `drop` で破棄）・`failed`（保存も退避もできなかった）です。複数の保存方法を設定した場合は、それぞれが数えます。 |
 | `heterolog_file_dropped_entries_total` | Counter | なし | fileロガーが過負荷時の方針 `drop` で破棄したentryの数です。 |
+| `heterolog_internal_logs_total` | Counter | `level`（`error`・`warn`・`info`・`debug`） | 内部ログの通知先（`OnErrorConfig` など）へ渡した内部ログ（書き込みの失敗や遅いリクエストなど）の数を、levelごとに数えます。[内部ログの通知](#内部ログの通知)を参照してください。 |
 
 ### span
 
@@ -431,6 +432,7 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 | `heterolog.file.compress`・`heterolog.file.purge.age`・`heterolog.file.purge.generation`・`heterolog.file.purge.dirsize` | ローテーションしたログファイルの圧縮と、期間・世代数・ディレクトリの容量によるログファイルの削除です。 | `heterolog.compress.format` |
 | `heterolog.failurearchive.write`・`heterolog.failurearchive.write.retryable`・`heterolog.failurearchive.write.permanent`・`heterolog.failurearchive.compress`・`heterolog.failurearchive.purge.age`・`heterolog.failurearchive.purge.generation`・`heterolog.failurearchive.purge.dirsize`・`heterolog.failurearchive.delegate`・`heterolog.failurearchive.create` | 送れなかったrecordのfailure archiveへの保存、そのファイルの保守、内部ログの通知、構築です。 | |
 | `heterolog.fallback.slack.create` | 内部ログの通知に使うSlackロガーの構築です。 | |
+| `heterolog.internal_log.notify` | 1件の内部ログを、1つの通知先へ渡す処理です。 | `heterolog.destination`（`file`・`slack` など）、`heterolog.level` |
 
 操作のspanに足すevent：
 

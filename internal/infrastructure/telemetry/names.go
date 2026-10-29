@@ -36,6 +36,10 @@ const (
 	// CircuitBreakerTransitionsは、circuit breakerが開いた回数（state=open）と、
 	// 復旧を確認して閉じた回数（state=closed）です。
 	CircuitBreakerTransitions = "heterolog_circuit_breaker_transitions_total"
+
+	// InternalLogsは、loggerが自分の状態を知らせる内部ログのうち、通知先（OnErrorConfigなどで
+	// 選んだ出力先）へ渡したものの数を、level（error・warn・info・debug）ごとに数えます。
+	InternalLogs = "heterolog_internal_logs_total"
 )
 
 // metricsの属性の名前です。
@@ -45,6 +49,7 @@ const (
 	AttrReason  = "reason"
 	AttrState   = "state"
 	AttrAction  = "action"
+	AttrLevel   = "level"
 )
 
 // action属性の値です。
@@ -83,4 +88,7 @@ const (
 	SpanAttrRecords = "heterolog.records"
 	SpanAttrBytes   = "heterolog.bytes"
 	SpanAttrAttempt = "heterolog.attempt"
+	// SpanAttrDestinationとSpanAttrLevelは、内部ログの通知先の名前とlevelです。
+	SpanAttrDestination = "heterolog.destination"
+	SpanAttrLevel       = "heterolog.level"
 )

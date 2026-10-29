@@ -12,24 +12,26 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	filelogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
+	"github.com/go-jappe/heterolog/internal/infrastructure/logger/onerrorhandler"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerhandler "github.com/go-jappe/heterolog/pkg/logger/handler"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
-// selfNotificationWriteNestingLimitは、file書き込みのspanの入れ子の上限です。正しい配線では
-// 元の書き込みと通知先の書き込みの2段で、上限に達しません。
-const selfNotificationWriteNestingLimit = 6
+// selfNotificationNestingLimitは、内部ログの通知のspanの入れ子の上限です。正しい配線では
+// 元の書き込みが出した通知の1段で、上限に達しません。
+const selfNotificationNestingLimit = 6
 
 type selfNotificationDepthKey struct{}
 
-// selfNotificationTracerは、WithObserversで渡すtracerとして、file書き込みのspanの入れ子を
+// selfNotificationTracerは、WithObserversで渡すtracerとして、内部ログの通知のspanの入れ子を
 // 数えます。上限を超えた場合は記録してpanicし、内部ログの通知のfan-outが持つrecoverで再帰を
 // 打ち切ります。壊れた実装でもtest binaryを落とさず、試験の失敗として報告するための安全網です。
 type selfNotificationTracer struct {
 	exceeded atomic.Bool
+	// notificationsは、通知のspanを始めた回数です。安全網が通知を見ていることを確かめます。
+	notifications atomic.Int64
 }
 
 func (tr *selfNotificationTracer) StartSpan(
@@ -40,12 +42,13 @@ func (tr *selfNotificationTracer) StartSpan(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if name == filelogger.SpanFileWrite || name == filelogger.SpanFallbackFileWrite {
+	if name == onerrorhandler.SpanInternalLogNotify {
+		tr.notifications.Add(1)
 		depth, _ := ctx.Value(selfNotificationDepthKey{}).(int)
 		depth++
-		if depth > selfNotificationWriteNestingLimit {
+		if depth > selfNotificationNestingLimit {
 			tr.exceeded.Store(true)
-			panic(errors.New("file writes nested beyond the limit"))
+			panic(errors.New("internal log notifications nested beyond the limit"))
 		}
 		ctx = context.WithValue(ctx, selfNotificationDepthKey{}, depth)
 	}
@@ -112,8 +115,11 @@ func TestSelfSelectedFileNotificationsDoNotReenterTheLogger(t *testing.T) {
 			if got := handler.ReentryDetections() - detections; got != 0 {
 				t.Errorf("ReentryGuard detected %d re-entrant writes; the wiring must not re-enter the notifying logger", got)
 			}
+			if tracer.notifications.Load() == 0 {
+				t.Errorf("no internal log notification span was started; the nesting check did not observe the notifications")
+			}
 			if tracer.exceeded.Load() {
-				t.Errorf("file writes nested deeper than %d: the file notification target kept writing through the notifying path", selfNotificationWriteNestingLimit)
+				t.Errorf("internal log notifications nested deeper than %d: the file notification target kept writing through the notifying path", selfNotificationNestingLimit)
 			}
 
 			paths, err := filepath.Glob(filepath.Join(root, "self-notification", "logs", "*.log"))

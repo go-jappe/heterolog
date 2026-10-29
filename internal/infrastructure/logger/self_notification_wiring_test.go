@@ -21,6 +21,7 @@ import (
 	filelogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/file"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler/reentrytest"
+	"github.com/go-jappe/heterolog/internal/infrastructure/logger/onerrorhandler"
 	stdoutlogger "github.com/go-jappe/heterolog/internal/infrastructure/logger/stdout"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
@@ -43,24 +44,26 @@ import (
 // 標準出力・標準エラー・標準logger・再入の検出回数はprocess全体の状態なので、これらの試験は
 // t.Parallelを使いません（並行試験は逐次試験がすべて終わってから実行されます）。
 
-// selfNotificationWriteNestingLimitは、file書き込みのspanの入れ子の上限です。正しい配線では
-// 元の書き込みと通知先の書き込みの2段です。通知先が通常の書き込み経路を使う壊れた配線でも、
-// guardがあれば3段で止まります。guardもない壊れた実装が再帰した場合にだけ超えます。
-const selfNotificationWriteNestingLimit = 6
+// selfNotificationNestingLimitは、内部ログの通知のspanの入れ子の上限です。正しい配線では
+// 元の記録が出した通知の1段です。通知先が通常の書き込み経路を使う壊れた配線でも、guardが
+// あれば上限の手前で止まります。guardもない壊れた実装が再帰した場合にだけ超えます。
+const selfNotificationNestingLimit = 6
 
-// errSelfNotificationWriteNestingExceededは、file書き込みの入れ子が上限を超えた場合に
+// errSelfNotificationNestingExceededは、内部ログの通知の入れ子が上限を超えた場合に
 // selfNotificationTracerがpanicで通知の処理を打ち切る値です。
-var errSelfNotificationWriteNestingExceeded = errors.New("file writes nested beyond the limit: notification targets kept writing through the notifying path")
+var errSelfNotificationNestingExceeded = errors.New("internal log notifications nested beyond the limit: notification targets kept writing through the notifying path")
 
-type selfNotificationWriteDepthKey struct{}
+type selfNotificationDepthKey struct{}
 
-// selfNotificationTracerは、loggerへ渡すtracerとして、contextの連鎖の中のfile書き込みspan
-// （通常の書き込みと内部ログのfallback書き込み）の入れ子の深さを数えます。上限を超えた場合は
+// selfNotificationTracerは、loggerへ渡すtracerとして、contextの連鎖の中の内部ログの通知の
+// span（通知先ごとに1つ）の入れ子の深さを数えます。上限を超えた場合は
 // 記録してpanicし、内部ログの通知のfan-outが持つrecoverで再帰を打ち切ります。壊れた実装でも
 // stack overflowやgoroutineの増加でtest binaryを落とさず、試験の失敗として報告するための
 // 安全網です。正しい実装では上限に達しません。
 type selfNotificationTracer struct {
 	exceeded atomic.Bool
+	// notificationsは、通知のspanを始めた回数です。安全網が通知を見ていることを確かめます。
+	notifications atomic.Int64
 }
 
 func (tr *selfNotificationTracer) StartSpan(
@@ -71,14 +74,15 @@ func (tr *selfNotificationTracer) StartSpan(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if name == filelogger.SpanFileWrite || name == filelogger.SpanFallbackFileWrite {
-		depth, _ := ctx.Value(selfNotificationWriteDepthKey{}).(int)
+	if name == onerrorhandler.SpanInternalLogNotify {
+		tr.notifications.Add(1)
+		depth, _ := ctx.Value(selfNotificationDepthKey{}).(int)
 		depth++
-		if depth > selfNotificationWriteNestingLimit {
+		if depth > selfNotificationNestingLimit {
 			tr.exceeded.Store(true)
-			panic(errSelfNotificationWriteNestingExceeded)
+			panic(errSelfNotificationNestingExceeded)
 		}
-		ctx = context.WithValue(ctx, selfNotificationWriteDepthKey{}, depth)
+		ctx = context.WithValue(ctx, selfNotificationDepthKey{}, depth)
 	}
 	return observer.NopTracer{}.StartSpan(ctx, name, attrs...)
 }
@@ -207,7 +211,7 @@ type selfNotificationEnv struct {
 }
 
 // runSelfNotificationScenarioは、本番の配線で構築したloggerを使うscenarioを実行し、その間に
-// ReentryGuardが再入を一度も検出しなかったこと、file書き込みの入れ子が上限を超えなかった
+// ReentryGuardが再入を一度も検出しなかったこと、内部ログの通知の入れ子が上限を超えなかった
 // ことを確認します。scenarioはloggerをCloseしてから戻ります。scenarioの確認が先に失敗して
 // 試験を終えた場合も、この二つは必ず確認します。
 func runSelfNotificationScenario(t *testing.T, scenario func(t *testing.T, env *selfNotificationEnv)) {
@@ -222,8 +226,11 @@ func runSelfNotificationScenario(t *testing.T, scenario func(t *testing.T, env *
 		if got := handler.ReentryDetections() - detectionsBefore; got != 0 {
 			t.Errorf("ReentryGuard detected %d re-entrant writes in a production-wired configuration; production notification targets must never re-enter the notifying logger's write path", got)
 		}
+		if env.tracer.notifications.Load() == 0 {
+			t.Errorf("no internal log notification span was started; the nesting check did not observe the notifications")
+		}
 		if env.tracer.exceeded.Load() {
-			t.Errorf("file writes nested deeper than %d: a notification target kept writing through the notifying write path", selfNotificationWriteNestingLimit)
+			t.Errorf("internal log notifications nested deeper than %d: a notification target kept writing through the notifying write path", selfNotificationNestingLimit)
 		}
 	}()
 	scenario(t, env)

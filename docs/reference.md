@@ -414,6 +414,7 @@ Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and sp
 | `heterolog_circuit_breaker_transitions_total` | Counter | `backend`, `state` (`open`, `closed`) | Times the circuit breaker opened, and times it closed after a probe confirmed recovery. |
 | `heterolog_failure_records_total` | Counter | `backend`, `action` | Records that failed to send, by what happened to them: `spooled`, `archived` (to the failure archive), `degraded` (written to stdout), `dropped` (by the overload policy `drop`), or `failed` (could not be stored or written). When several durable types are configured, each one counts the record. |
 | `heterolog_file_dropped_entries_total` | Counter | none | Entries that the file logger discarded with the overload policy `drop`. |
+| `heterolog_internal_logs_total` | Counter | `level` (`error`, `warn`, `info`, `debug`) | Internal logs passed to the internal log notification targets (`OnErrorConfig` and the like), such as a failed write or a slow request, by level. See [Internal log notifications](#internal-log-notifications). |
 
 ### Spans
 
@@ -431,6 +432,7 @@ Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and sp
 | `heterolog.file.compress`, `heterolog.file.purge.age`, `heterolog.file.purge.generation`, `heterolog.file.purge.dirsize` | Compressing a rotated log file, and deleting log files by age, generation count, and directory size. | `heterolog.compress.format` |
 | `heterolog.failurearchive.write`, `heterolog.failurearchive.write.retryable`, `heterolog.failurearchive.write.permanent`, `heterolog.failurearchive.compress`, `heterolog.failurearchive.purge.age`, `heterolog.failurearchive.purge.generation`, `heterolog.failurearchive.purge.dirsize`, `heterolog.failurearchive.delegate`, `heterolog.failurearchive.create` | Saving failed records to the failure archive, maintaining its files, notifying its internal logs, and constructing it. | |
 | `heterolog.fallback.slack.create` | Constructing the Slack logger for internal log notifications. | |
+| `heterolog.internal_log.notify` | Passing one internal log to one notification target. | `heterolog.destination` (such as `file` or `slack`), `heterolog.level` |
 
 Events added to the span of the operation:
 
