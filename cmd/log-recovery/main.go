@@ -7,7 +7,7 @@ import (
 	"syscall"
 	_ "time/tzdata"
 
-	application "github.com/go-jappe/heterolog/internal/application/logrecovery"
+	"github.com/go-jappe/heterolog/internal/bootstrap"
 	"github.com/go-jappe/heterolog/internal/config"
 	cli "github.com/go-jappe/heterolog/internal/presentation/cli/logrecovery"
 )
@@ -18,7 +18,7 @@ func main() {
 	control := cli.NewSignalControl(context.Background(), signals)
 	exitCode := cli.Run(control.Context(), os.Args[1:], os.Stdout, os.Stderr, cli.Dependencies{
 		LoadConfig: loadConfig,
-		Recover:    application.Recover,
+		Recover:    bootstrap.RecoverLogs,
 		ForceStop:  control.ForceStop(),
 	})
 	signal.Stop(signals)

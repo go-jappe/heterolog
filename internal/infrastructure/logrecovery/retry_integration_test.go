@@ -22,7 +22,7 @@ func TestRecoverRetryModeReusesManualProcessingAfterCorruptPeerRemoval(t *testin
 	require.NoError(t, os.WriteFile(source, payload, 0o600))
 	require.NoError(t, os.WriteFile(source+".gz", []byte("corrupt old peer"), 0o600))
 	var retries atomic.Int64
-	report, err := Recover(context.Background(), cfg, Options{
+	report, err := Recover(context.Background(), testConfigs(cfg), Options{
 		Retry: true, RetryInterval: time.Millisecond,
 		OnProgress: func(progress Progress) {
 			if progress.Phase == ProgressRetryWaiting {

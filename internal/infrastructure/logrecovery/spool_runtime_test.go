@@ -101,11 +101,11 @@ func TestRecoverBuildsAndReleasesRequiredSpoolRuntimes(t *testing.T) {
 				values["HETEROLOG_"+uploadPrefix+"OBJECT_STORAGE_S3_BUCKET"] = "recovery-test"
 				cfg := loadRecoveryTestConfig(t, values)
 				opts := Options{LoggerContract: test.contract, Scope: scope, Retry: retry, RetryInterval: time.Millisecond}
-				specs, err := recoverySpecs(cfg, opts)
+				specs, err := recoverySpecs(testConfigs(cfg), opts)
 				require.NoError(t, err)
 				require.Len(t, specs, 1)
 				require.Len(t, specs[0].spoolConfigs, 1)
-				report, err := Recover(context.Background(), cfg, opts)
+				report, err := Recover(context.Background(), testConfigs(cfg), opts)
 				require.NoError(t, err)
 				require.NotEmpty(t, report.Directories)
 				// routeだけでなく、CLIが所有したrootも終了時に解放されています。
@@ -126,7 +126,7 @@ func TestRecoverReleasesSpoolRuntimeAfterLifecycleConstructionFailure(t *testing
 		"HETEROLOG_LOG_FILE_OBJECT_STORAGE_S3_BUCKET": "recovery-test",
 	})
 	opts := Options{LoggerContract: pkglogger.LoggerContractSync, Scope: RecoveryScopeFileLogger}
-	specs, err := recoverySpecs(cfg, opts)
+	specs, err := recoverySpecs(testConfigs(cfg), opts)
 	require.NoError(t, err)
 	require.Len(t, specs, 1)
 	require.Len(t, specs[0].spoolConfigs, 1)
@@ -134,7 +134,7 @@ func TestRecoverReleasesSpoolRuntimeAfterLifecycleConstructionFailure(t *testing
 	directory := filepath.Join(cfg.FsstoreConfig.LogPath, "service", "sync")
 	require.NoError(t, os.MkdirAll(filepath.Dir(directory), 0o750))
 	require.NoError(t, os.WriteFile(directory, []byte("blocked"), 0o600))
-	_, err = Recover(context.Background(), cfg, opts)
+	_, err = Recover(context.Background(), testConfigs(cfg), opts)
 	require.Error(t, err)
 	reopened, err := compressedlog.NewRootRuntimes(specs[0].spoolConfigs...)
 	require.NoError(t, err, "failed lifecycle construction must not retain the CLI's root ownership")

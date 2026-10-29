@@ -32,7 +32,7 @@ func TestRecoverySpecsUseInternalFileOwnerAndSkipBaseTemplate(t *testing.T) {
 				"HETEROLOG_" + contract.prefix + "STDOUT_LOGGER_ERROR_HANDLER":   "file",
 				"HETEROLOG_" + contract.prefix + "LOG_INTERNAL_LOG_FILE_LOG_DIR": "internal-only",
 			})
-			specs, err := recoverySpecs(cfg, Options{LoggerContract: contract.kind, Scope: RecoveryScopeAll})
+			specs, err := recoverySpecs(testConfigs(cfg), Options{LoggerContract: contract.kind, Scope: RecoveryScopeAll})
 			require.NoError(t, err)
 			require.Len(t, specs, 1)
 			require.Equal(t, "file-logger/internal", specs[0].name)
@@ -108,7 +108,7 @@ func TestRecoverySpecsPreserveMappedCheckpointIDsForAllContracts(t *testing.T) {
 				layout, mappedCheckpoint = mapped.FsstoreConfig.Layout, mapped.LifecycleRunnerSettings.ArchiveCheckpointConfig
 			}
 			require.Equal(t, contract.source, mappedCheckpoint.SourcePrefix)
-			specs, err := recoverySpecs(cfg, Options{LoggerContract: contract.kind, Scope: RecoveryScopeFileLogger})
+			specs, err := recoverySpecs(testConfigs(cfg), Options{LoggerContract: contract.kind, Scope: RecoveryScopeFileLogger})
 			require.NoError(t, err)
 			require.Len(t, specs, 1)
 			require.Equal(t, mappedCheckpoint.Directory, specs[0].checkpointDirectory)

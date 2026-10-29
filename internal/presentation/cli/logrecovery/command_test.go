@@ -16,9 +16,10 @@ import (
 	"testing"
 	"time"
 
-	application "github.com/go-jappe/heterolog/internal/application/logrecovery"
+	"github.com/go-jappe/heterolog/internal/bootstrap"
 	"github.com/go-jappe/heterolog/internal/config"
 	configruntime "github.com/go-jappe/heterolog/internal/config/runtime"
+	infralogrecovery "github.com/go-jappe/heterolog/internal/infrastructure/logrecovery"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -51,9 +52,9 @@ func unexpectedDependencies(t *testing.T) Dependencies {
 			t.Fatal("configuration must not be loaded")
 			return config.AppConfig{}, nil
 		},
-		Recover: func(context.Context, config.AppConfig, application.Options) (application.Report, error) {
+		Recover: func(context.Context, config.AppConfig, infralogrecovery.Options) (infralogrecovery.Report, error) {
 			t.Fatal("recovery must not run")
-			return application.Report{}, nil
+			return infralogrecovery.Report{}, nil
 		},
 	}
 }
@@ -129,11 +130,11 @@ func TestRunForwardsConfigurationAndSelectedOptionsOnce(t *testing.T) {
 	} {
 		for _, scope := range []struct {
 			input string
-			value application.RecoveryScope
+			value infralogrecovery.RecoveryScope
 		}{
-			{"file-logger", application.RecoveryScopeFileLogger},
-			{"log-backend-failure-archive", application.RecoveryScopeLogBackendFailureArchive},
-			{"all", application.RecoveryScopeAll},
+			{"file-logger", infralogrecovery.RecoveryScopeFileLogger},
+			{"log-backend-failure-archive", infralogrecovery.RecoveryScopeLogBackendFailureArchive},
+			{"all", infralogrecovery.RecoveryScopeAll},
 		} {
 			t.Run(logger.input+"/"+scope.input, func(t *testing.T) {
 				loadCalls, recoveryCalls := 0, 0
@@ -150,7 +151,7 @@ func TestRunForwardsConfigurationAndSelectedOptionsOnce(t *testing.T) {
 						cfg.MaxLogEntryBytes = 1234
 						return cfg, nil
 					},
-					Recover: func(gotCtx context.Context, cfg config.AppConfig, opts application.Options) (application.Report, error) {
+					Recover: func(gotCtx context.Context, cfg config.AppConfig, opts infralogrecovery.Options) (infralogrecovery.Report, error) {
 						recoveryCalls++
 						if gotCtx != ctx {
 							t.Error("recovery did not receive the caller's context")
@@ -161,7 +162,7 @@ func TestRunForwardsConfigurationAndSelectedOptionsOnce(t *testing.T) {
 						if opts.LoggerContract != logger.contract || opts.Scope != scope.value {
 							t.Errorf("recovery options = %+v", opts)
 						}
-						return application.Report{}, nil
+						return infralogrecovery.Report{}, nil
 					},
 				}
 				var stdout, stderr bytes.Buffer
@@ -181,7 +182,7 @@ func TestDefaultOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.recovery.LoggerContract != pkglogger.LoggerContractSync || opts.recovery.Scope != application.RecoveryScopeAll || opts.envFile != "" || opts.json || opts.recovery.Retry || opts.recovery.RetryInterval != application.DefaultRetryInterval {
+	if opts.recovery.LoggerContract != pkglogger.LoggerContractSync || opts.recovery.Scope != infralogrecovery.RecoveryScopeAll || opts.envFile != "" || opts.json || opts.recovery.Retry || opts.recovery.RetryInterval != infralogrecovery.DefaultRetryInterval {
 		t.Fatalf("defaults = %+v", opts)
 	}
 }
@@ -202,27 +203,27 @@ func TestRetryModeForwardsControlAndKeepsJSONSeparateFromProgress(t *testing.T) 
 	want := sampleReport()
 	deps := reportDependencies(want, nil)
 	deps.ForceStop = force
-	deps.Recover = func(_ context.Context, _ config.AppConfig, opts application.Options) (application.Report, error) {
+	deps.Recover = func(_ context.Context, _ config.AppConfig, opts infralogrecovery.Options) (infralogrecovery.Report, error) {
 		if !opts.Retry || opts.RetryInterval != 2*time.Second || opts.ForceStop != force || opts.OnProgress == nil {
 			t.Fatalf("retry options = %+v", opts)
 		}
-		opts.OnProgress(application.Progress{Phase: application.ProgressPreparing, Scope: "file-logger"})
+		opts.OnProgress(infralogrecovery.Progress{Phase: infralogrecovery.ProgressPreparing, Scope: "file-logger"})
 		directory := want.Directories[0]
-		directory.FailedFiles = []application.FileFailureReport{{Path: "pending.log.gz", Error: "destination unavailable"}}
-		opts.OnProgress(application.Progress{
-			Phase: application.ProgressRetryWaiting, Scope: "file-logger", Attempt: 2,
+		directory.FailedFiles = []infralogrecovery.FileFailureReport{{Path: "pending.log.gz", Error: "destination unavailable"}}
+		opts.OnProgress(infralogrecovery.Progress{
+			Phase: infralogrecovery.ProgressRetryWaiting, Scope: "file-logger", Attempt: 2,
 			Directory: directory, Err: errors.New("retry upload"), NextRetryAt: time.Now().Add(2 * time.Second),
 		})
-		opts.OnProgress(application.Progress{Phase: application.ProgressStopping})
-		opts.OnProgress(application.Progress{Phase: application.ProgressForced})
-		opts.OnProgress(application.Progress{Phase: application.ProgressComplete})
+		opts.OnProgress(infralogrecovery.Progress{Phase: infralogrecovery.ProgressStopping})
+		opts.OnProgress(infralogrecovery.Progress{Phase: infralogrecovery.ProgressForced})
+		opts.OnProgress(infralogrecovery.Progress{Phase: infralogrecovery.ProgressComplete})
 		return want, nil
 	}
 	var stdout, stderr bytes.Buffer
 	if exit := Run(context.Background(), validArgs("--retry", "--retry-interval", "2s", "--json"), &stdout, &stderr, deps); exit != 0 {
 		t.Fatalf("Run() = %d; stderr=%s", exit, &stderr)
 	}
-	var got application.Report
+	var got infralogrecovery.Report
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("stdout is not the final JSON report: got=%+v err=%v stdout=%s", got, err, &stdout)
 	}
@@ -245,7 +246,7 @@ func TestProgressOutputSerializesConcurrentNotifications(t *testing.T) {
 		go func() {
 			defer senders.Done()
 			for range 10 {
-				progress.report(application.Progress{Phase: application.ProgressRunning, Scope: "file-logger"})
+				progress.report(infralogrecovery.Progress{Phase: infralogrecovery.ProgressRunning, Scope: "file-logger"})
 			}
 		}()
 	}
@@ -260,16 +261,16 @@ func TestProgressOutputSerializesConcurrentNotifications(t *testing.T) {
 
 func TestProgressPhaseDescriptions(t *testing.T) {
 	tests := []struct {
-		phase application.ProgressPhase
+		phase infralogrecovery.ProgressPhase
 		want  string
 	}{
-		{application.ProgressPreparing, "Preparing configuration and storage directories"},
-		{application.ProgressRunning, "Processing"},
-		{application.ProgressRetryWaiting, "Waiting to retry failed operations"},
-		{application.ProgressStopping, "Shutdown requested. Waiting for accepted recovery operations and checkpoint saves to complete. Press Ctrl+C again to force shutdown."},
-		{application.ProgressForced, "Forced shutdown requested. Waiting for in-progress OS I/O to return, if any."},
-		{application.ProgressComplete, "Completed"},
-		{application.ProgressPhase("custom-phase"), "custom-phase"},
+		{infralogrecovery.ProgressPreparing, "Preparing configuration and storage directories"},
+		{infralogrecovery.ProgressRunning, "Processing"},
+		{infralogrecovery.ProgressRetryWaiting, "Waiting to retry failed operations"},
+		{infralogrecovery.ProgressStopping, "Shutdown requested. Waiting for accepted recovery operations and checkpoint saves to complete. Press Ctrl+C again to force shutdown."},
+		{infralogrecovery.ProgressForced, "Forced shutdown requested. Waiting for in-progress OS I/O to return, if any."},
+		{infralogrecovery.ProgressComplete, "Completed"},
+		{infralogrecovery.ProgressPhase("custom-phase"), "custom-phase"},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.phase), func(t *testing.T) {
@@ -282,15 +283,15 @@ func TestProgressPhaseDescriptions(t *testing.T) {
 
 func TestProgressOutputFailureReturnsFailure(t *testing.T) {
 	deps := reportDependencies(sampleReport(), nil)
-	deps.Recover = func(_ context.Context, _ config.AppConfig, opts application.Options) (application.Report, error) {
-		opts.OnProgress(application.Progress{Phase: application.ProgressRunning})
+	deps.Recover = func(_ context.Context, _ config.AppConfig, opts infralogrecovery.Options) (infralogrecovery.Report, error) {
+		opts.OnProgress(infralogrecovery.Progress{Phase: infralogrecovery.ProgressRunning})
 		return sampleReport(), nil
 	}
 	var stdout bytes.Buffer
 	if exit := Run(context.Background(), validArgs("--retry", "--json"), &stdout, failedWriter{}, deps); exit != 1 {
 		t.Fatalf("Run() = %d, want 1", exit)
 	}
-	var report application.Report
+	var report infralogrecovery.Report
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
@@ -299,18 +300,18 @@ func TestProgressOutputFailureReturnsFailure(t *testing.T) {
 	}
 }
 
-func reportDependencies(report application.Report, err error) Dependencies {
+func reportDependencies(report infralogrecovery.Report, err error) Dependencies {
 	return Dependencies{
 		LoadConfig: func(string) (config.AppConfig, error) { return consistentConfig(), nil },
-		Recover: func(context.Context, config.AppConfig, application.Options) (application.Report, error) {
+		Recover: func(context.Context, config.AppConfig, infralogrecovery.Options) (infralogrecovery.Report, error) {
 			return report, err
 		},
 	}
 }
 
-func sampleReport() application.Report {
-	return application.Report{
-		Directories: []application.DirectoryReport{{
+func sampleReport() infralogrecovery.Report {
+	return infralogrecovery.Report{
+		Directories: []infralogrecovery.DirectoryReport{{
 			Scope: "file-logger", DirectoryPath: "/archives with spaces", ScannedFiles: 5,
 			CompressedFiles: []string{"new.log.gz"}, AcceptedFiles: []string{"new.log.gz", "old.log.gz"},
 			RemovedFiles: []string{"old.log.gz"}, RecoveredDeletePendingFiles: []string{"pending.log.gz"},
@@ -325,7 +326,7 @@ func TestJSONReportRetainsDetailedResults(t *testing.T) {
 	if exit := Run(context.Background(), validArgs("--json"), &stdout, &stderr, reportDependencies(want, nil)); exit != 0 {
 		t.Fatalf("Run() = %d; stderr=%s", exit, &stderr)
 	}
-	var got application.Report
+	var got infralogrecovery.Report
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("invalid JSON: %v; stdout=%s", err, &stdout)
 	}
@@ -354,7 +355,7 @@ func TestHumanReportIncludesCountsAndWarnings(t *testing.T) {
 
 func TestHumanReportIncludesEachFailedPathAndExactError(t *testing.T) {
 	report := sampleReport()
-	report.Directories[0].FailedFiles = []application.FileFailureReport{
+	report.Directories[0].FailedFiles = []infralogrecovery.FileFailureReport{
 		{Path: "/archives with spaces/first.log.gz", Error: "upload failed: destination unavailable"},
 		{Path: "/archives with spaces/second.log.gz", Error: "checkpoint save failed: access denied\nretry after permission repair"},
 	}
@@ -381,7 +382,7 @@ func TestConfigurationFailureStopsBeforeRecovery(t *testing.T) {
 	if exit := Run(context.Background(), validArgs("--json"), &stdout, &stderr, deps); exit != 1 {
 		t.Fatalf("Run() = %d, want 1", exit)
 	}
-	var report application.Report
+	var report infralogrecovery.Report
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
@@ -395,14 +396,14 @@ func TestRecoveryFailurePreservesPartialReportAndExactError(t *testing.T) {
 	want := sampleReport()
 	recoveryErr := errors.New("upload old.log.gz: destination unavailable\nclose checkpoint: access denied")
 	want.Errors = []string{recoveryErr.Error()}
-	want.Directories[0].FailedFiles = []application.FileFailureReport{
+	want.Directories[0].FailedFiles = []infralogrecovery.FileFailureReport{
 		{Path: "/archives with spaces/old.log.gz", Error: "destination unavailable"},
 	}
 	var stdout, stderr bytes.Buffer
 	if exit := Run(context.Background(), validArgs("--json"), &stdout, &stderr, reportDependencies(want, recoveryErr)); exit != 1 {
 		t.Fatalf("Run() = %d, want 1", exit)
 	}
-	var got application.Report
+	var got infralogrecovery.Report
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
@@ -416,12 +417,12 @@ func TestRecoveryFailurePreservesPartialReportAndExactError(t *testing.T) {
 
 func TestReportErrorsReturnFailureEvenWithoutAggregateError(t *testing.T) {
 	for _, test := range []struct {
-		report application.Report
+		report infralogrecovery.Report
 		want   string
 	}{
-		{report: application.Report{Errors: []string{"checkpoint failed"}}, want: "Error: checkpoint failed\n"},
+		{report: infralogrecovery.Report{Errors: []string{"checkpoint failed"}}, want: "Error: checkpoint failed\n"},
 		{
-			report: application.Report{Directories: []application.DirectoryReport{{Scope: "file-logger", DirectoryPath: "/archive", Error: "compression failed"}}},
+			report: infralogrecovery.Report{Directories: []infralogrecovery.DirectoryReport{{Scope: "file-logger", DirectoryPath: "/archive", Error: "compression failed"}}},
 			want:   "  Error: compression failed\n",
 		},
 	} {
@@ -442,7 +443,7 @@ func TestRecoveryJoinedErrorsAreReportedOnce(t *testing.T) {
 	tests := []struct {
 		name   string
 		args   []string
-		report application.Report
+		report infralogrecovery.Report
 		err    error
 		stderr io.Writer
 		want   []string
@@ -450,33 +451,33 @@ func TestRecoveryJoinedErrorsAreReportedOnce(t *testing.T) {
 		{
 			// Recoverは個々のerrorを記録し、同じerrorをerrors.Joinで返します。
 			name: "recorded components", args: validArgs("--json"),
-			report: application.Report{Errors: []string{first.Error(), second.Error()}}, err: errors.Join(first, second),
+			report: infralogrecovery.Report{Errors: []string{first.Error(), second.Error()}}, err: errors.Join(first, second),
 			want: []string{first.Error(), second.Error()},
 		},
 		{
 			name: "unrecorded components", args: validArgs("--json"),
-			report: application.Report{}, err: errors.Join(first, second),
+			report: infralogrecovery.Report{}, err: errors.Join(first, second),
 			want: []string{first.Error(), second.Error()},
 		},
 		{
 			name: "recorded components with progress failure", args: validArgs("--retry", "--json"),
-			report: application.Report{Errors: []string{first.Error(), second.Error()}}, err: errors.Join(first, second),
+			report: infralogrecovery.Report{Errors: []string{first.Error(), second.Error()}}, err: errors.Join(first, second),
 			stderr: failedWriter{},
 			want:   []string{first.Error(), second.Error(), "write recovery progress: output closed"},
 		},
 		{
 			// 文脈を加えて包んだerrorは、構成要素が記録済みでも一つのerrorとして残します。
 			name: "wrapped components", args: validArgs("--json"),
-			report: application.Report{Errors: []string{first.Error()}}, err: fmt.Errorf("finish recovery: %w; %w", first, second),
+			report: infralogrecovery.Report{Errors: []string{first.Error()}}, err: fmt.Errorf("finish recovery: %w; %w", first, second),
 			want: []string{first.Error(), "finish recovery: " + first.Error() + "; " + second.Error()},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := reportDependencies(tt.report, tt.err)
-			deps.Recover = func(_ context.Context, _ config.AppConfig, opts application.Options) (application.Report, error) {
+			deps.Recover = func(_ context.Context, _ config.AppConfig, opts infralogrecovery.Options) (infralogrecovery.Report, error) {
 				if opts.OnProgress != nil {
-					opts.OnProgress(application.Progress{Phase: application.ProgressRunning, Scope: "file-logger"})
+					opts.OnProgress(infralogrecovery.Progress{Phase: infralogrecovery.ProgressRunning, Scope: "file-logger"})
 				}
 				report := tt.report
 				report.Errors = slices.Clone(tt.report.Errors)
@@ -490,7 +491,7 @@ func TestRecoveryJoinedErrorsAreReportedOnce(t *testing.T) {
 			if exit := Run(context.Background(), tt.args, &stdout, errorOutput, deps); exit != 1 {
 				t.Fatalf("Run() = %d, want 1; stderr=%s", exit, &stderr)
 			}
-			var got application.Report
+			var got infralogrecovery.Report
 			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 				t.Fatalf("invalid JSON: %v; stdout=%s", err, &stdout)
 			}
@@ -523,8 +524,8 @@ func TestRunWithEmptyEnvironmentReportsNoConfiguredFiles(t *testing.T) {
 					}
 					return config.LoadConfig()
 				},
-				Recover: func(ctx context.Context, cfg config.AppConfig, opts application.Options) (application.Report, error) {
-					report, err := application.Recover(ctx, cfg, opts)
+				Recover: func(ctx context.Context, cfg config.AppConfig, opts infralogrecovery.Options) (infralogrecovery.Report, error) {
+					report, err := bootstrap.RecoverLogs(ctx, cfg, opts)
 					recoverErr = err
 					return report, err
 				},
@@ -534,7 +535,7 @@ func TestRunWithEmptyEnvironmentReportsNoConfiguredFiles(t *testing.T) {
 				t.Fatalf("Run() = %d, want 1; stderr=%s", exit, &stderr)
 			}
 			// 設定を読み込めた場合だけ復旧処理まで進み、復旧対象がないことを返します。
-			if !errors.Is(recoverErr, application.ErrNoConfiguredLogFiles) {
+			if !errors.Is(recoverErr, infralogrecovery.ErrNoConfiguredLogFiles) {
 				t.Fatalf("Recover error = %v, want ErrNoConfiguredLogFiles; stderr=%s", recoverErr, &stderr)
 			}
 			if !strings.Contains(stdout.String(), "Error: "+recoverErr.Error()) {
@@ -591,7 +592,7 @@ func TestRunRejectsInconsistentConfigurationBeforeRecovery(t *testing.T) {
 	if !errors.As(validationErr, &collision) {
 		t.Fatalf("ValidateApplicationConfig() = %v, want a storage directory collision", validationErr)
 	}
-	var report application.Report
+	var report infralogrecovery.Report
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatalf("invalid JSON: %v; stdout=%s", err, &stdout)
 	}
@@ -615,16 +616,16 @@ func TestRunWithConsistentMinimalEnvironmentRecovers(t *testing.T) {
 	recoveries := 0
 	deps := Dependencies{
 		LoadConfig: loadRecoveryEnvFile,
-		Recover: func(ctx context.Context, cfg config.AppConfig, opts application.Options) (application.Report, error) {
+		Recover: func(ctx context.Context, cfg config.AppConfig, opts infralogrecovery.Options) (infralogrecovery.Report, error) {
 			recoveries++
-			return application.Recover(ctx, cfg, opts)
+			return bootstrap.RecoverLogs(ctx, cfg, opts)
 		},
 	}
 	var stdout, stderr bytes.Buffer
 	if exit := Run(context.Background(), validArgs("--env-file", envFile, "--json"), &stdout, &stderr, deps); exit != 0 {
 		t.Fatalf("Run() = %d, want 0; stdout=%s stderr=%s", exit, &stdout, &stderr)
 	}
-	var report application.Report
+	var report infralogrecovery.Report
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 		t.Fatalf("invalid JSON: %v; stdout=%s", err, &stdout)
 	}
@@ -632,7 +633,7 @@ func TestRunWithConsistentMinimalEnvironmentRecovers(t *testing.T) {
 		t.Fatalf("recoveries=%d report=%+v, want one recovery of the configured file logger", recoveries, report)
 	}
 	for _, directory := range report.Directories {
-		if directory.Scope != string(application.RecoveryScopeFileLogger) || directory.Error != "" {
+		if directory.Scope != string(infralogrecovery.RecoveryScopeFileLogger) || directory.Error != "" {
 			t.Errorf("directory report = %+v, want a successful file-logger directory", directory)
 		}
 	}
@@ -667,7 +668,7 @@ func TestRecoveryCancellationPreservesPartialReport(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	deps := reportDependencies(sampleReport(), nil)
-	deps.Recover = func(context.Context, config.AppConfig, application.Options) (application.Report, error) {
+	deps.Recover = func(context.Context, config.AppConfig, infralogrecovery.Options) (infralogrecovery.Report, error) {
 		cancel()
 		return sampleReport(), errors.Join(errors.New("upload interrupted"), context.Canceled)
 	}
@@ -675,7 +676,7 @@ func TestRecoveryCancellationPreservesPartialReport(t *testing.T) {
 	if exit := Run(ctx, validArgs("--json"), &stdout, &stderr, deps); exit != 130 {
 		t.Fatalf("Run() = %d, want 130", exit)
 	}
-	var got application.Report
+	var got infralogrecovery.Report
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}

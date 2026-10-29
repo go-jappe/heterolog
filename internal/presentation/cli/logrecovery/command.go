@@ -12,9 +12,9 @@ import (
 	"slices"
 	"strings"
 
-	application "github.com/go-jappe/heterolog/internal/application/logrecovery"
 	"github.com/go-jappe/heterolog/internal/config"
 	"github.com/go-jappe/heterolog/internal/domain/target"
+	infralogrecovery "github.com/go-jappe/heterolog/internal/infrastructure/logrecovery"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -22,7 +22,7 @@ import (
 // archive、object storageへアクセスしないようにします。
 type Dependencies struct {
 	LoadConfig func(envFile string) (config.AppConfig, error)
-	Recover    func(context.Context, config.AppConfig, application.Options) (application.Report, error)
+	Recover    func(context.Context, config.AppConfig, infralogrecovery.Options) (infralogrecovery.Report, error)
 	// ForceStopは、通常の終了待機を打ち切る明示的な要求です。
 	ForceStop <-chan struct{}
 }
@@ -30,7 +30,7 @@ type Dependencies struct {
 type options struct {
 	target             string
 	envFile            string
-	recovery           application.Options
+	recovery           infralogrecovery.Options
 	applicationStopped bool
 	json               bool
 }
@@ -43,12 +43,12 @@ func parseOptions(args []string, output io.Writer) (options, error) {
 	flags.StringVar(&opts.target, "target", "", "Application storage identifier (required; letters, digits, dots, hyphens, underscores)")
 	flags.StringVar(&opts.envFile, "env-file", "", "Environment file to load (default: HETEROLOG_ENV_PATH or .env)")
 	flags.StringVar(&loggerInput, "logger", "sync", "Logger configuration to use: sync, async, delivery")
-	flags.StringVar(&scopeInput, "scope", string(application.RecoveryScopeAll), fmt.Sprintf("File series to recover: %s, %s, %s",
-		application.RecoveryScopeFileLogger, application.RecoveryScopeLogBackendFailureArchive, application.RecoveryScopeAll))
+	flags.StringVar(&scopeInput, "scope", string(infralogrecovery.RecoveryScopeAll), fmt.Sprintf("File series to recover: %s, %s, %s",
+		infralogrecovery.RecoveryScopeFileLogger, infralogrecovery.RecoveryScopeLogBackendFailureArchive, infralogrecovery.RecoveryScopeAll))
 	flags.BoolVar(&opts.applicationStopped, "application-stopped", false, "Confirm that all applications sharing the selected directories are stopped")
 	flags.BoolVar(&opts.json, "json", false, "Print detailed recovery results as JSON")
 	flags.BoolVar(&opts.recovery.Retry, "retry", false, "Retry failed recovery operations; graceful shutdown waits for accepted work to complete")
-	flags.DurationVar(&opts.recovery.RetryInterval, "retry-interval", application.DefaultRetryInterval, "Delay between retries (requires --retry; must be greater than zero)")
+	flags.DurationVar(&opts.recovery.RetryInterval, "retry-interval", infralogrecovery.DefaultRetryInterval, "Delay between retries (requires --retry; must be greater than zero)")
 	flags.Usage = func() {
 		fmt.Fprintln(output, "Usage: log-recovery --target <application-id> --application-stopped [options]")
 		fmt.Fprintln(output, "\nLoad the application's environment configuration and run one recovery pass.")
@@ -81,10 +81,10 @@ func parseOptions(args []string, output io.Writer) (options, error) {
 		return opts, err
 	}
 	opts.recovery.LoggerContract = contract
-	opts.recovery.Scope = application.RecoveryScope(scopeInput)
+	opts.recovery.Scope = infralogrecovery.RecoveryScope(scopeInput)
 	if !opts.recovery.Scope.IsValid() {
 		return opts, fmt.Errorf("invalid --scope %q: choose %s, %s, or %s", scopeInput,
-			application.RecoveryScopeFileLogger, application.RecoveryScopeLogBackendFailureArchive, application.RecoveryScopeAll)
+			infralogrecovery.RecoveryScopeFileLogger, infralogrecovery.RecoveryScopeLogBackendFailureArchive, infralogrecovery.RecoveryScopeAll)
 	}
 	var emptyEnvFile, explicitRetryInterval bool
 	flags.Visit(func(f *flag.Flag) {
@@ -107,7 +107,7 @@ func parseOptions(args []string, output io.Writer) (options, error) {
 	return opts, nil
 }
 
-// parseLoggerContractはCLIの指定を、applicationで共有するlogger分類へ変換します。
+// parseLoggerContractはCLIの指定を、pkg/loggerのlogger分類へ変換します。
 func parseLoggerContract(input string) (pkglogger.LoggerContractKind, error) {
 	switch input {
 	case "sync":
@@ -138,7 +138,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, deps Depe
 		return 2
 	}
 
-	var report application.Report
+	var report infralogrecovery.Report
 	progress := &progressOutput{writer: stderr}
 	opts.recovery.ForceStop = deps.ForceStop
 	if opts.recovery.Retry {
@@ -235,7 +235,7 @@ func joinedErrors(err error) ([]error, bool) {
 	return parts, true
 }
 
-func writeReport(output io.Writer, report application.Report, asJSON bool) error {
+func writeReport(output io.Writer, report infralogrecovery.Report, asJSON bool) error {
 	if asJSON {
 		encoder := json.NewEncoder(output)
 		encoder.SetIndent("", "  ")

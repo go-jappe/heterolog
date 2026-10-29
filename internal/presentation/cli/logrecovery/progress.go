@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	application "github.com/go-jappe/heterolog/internal/application/logrecovery"
+	infralogrecovery "github.com/go-jappe/heterolog/internal/infrastructure/logrecovery"
 )
 
 // progressOutputは復旧処理と保存再試行から届く進捗を直列に表示します。
@@ -18,7 +18,7 @@ type progressOutput struct {
 	err    error
 }
 
-func (p *progressOutput) report(progress application.Progress) {
+func (p *progressOutput) report(progress infralogrecovery.Progress) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.err != nil {
@@ -61,19 +61,19 @@ func (p *progressOutput) result() error {
 	return p.err
 }
 
-func progressPhaseDescription(phase application.ProgressPhase) string {
+func progressPhaseDescription(phase infralogrecovery.ProgressPhase) string {
 	switch phase {
-	case application.ProgressPreparing:
+	case infralogrecovery.ProgressPreparing:
 		return "Preparing configuration and storage directories"
-	case application.ProgressRunning:
+	case infralogrecovery.ProgressRunning:
 		return "Processing"
-	case application.ProgressRetryWaiting:
+	case infralogrecovery.ProgressRetryWaiting:
 		return "Waiting to retry failed operations"
-	case application.ProgressStopping:
+	case infralogrecovery.ProgressStopping:
 		return "Shutdown requested. Waiting for accepted recovery operations and checkpoint saves to complete. Press Ctrl+C again to force shutdown."
-	case application.ProgressForced:
+	case infralogrecovery.ProgressForced:
 		return "Forced shutdown requested. Waiting for in-progress OS I/O to return, if any."
-	case application.ProgressComplete:
+	case infralogrecovery.ProgressComplete:
 		return "Completed"
 	default:
 		return string(phase)

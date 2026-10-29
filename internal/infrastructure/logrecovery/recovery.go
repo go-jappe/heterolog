@@ -9,7 +9,6 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/go-jappe/heterolog/internal/config"
 	"github.com/go-jappe/heterolog/internal/domain/target"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
@@ -85,8 +84,9 @@ func (n *notificationCollector) ReportRun(_ context.Context, report logfilelifec
 // 既存の再試行処理へ登録します。終了要求後も受理済みの復旧と保存の完了を待ちます。
 // 呼び出し元は同じ保存先を使うアプリケーションと他の復旧CLIを停止してください。
 // この前提はプロセス内のDirectoryGuardでは確認・強制できません。
-// アプリと同じ設定変換、checkpoint IDと宛先登録規則を使い、cursorをリセットしません。
-func Recover(ctx context.Context, cfg config.AppConfig, opts Options) (report Report, resultErr error) {
+// configsには、アプリと同じ設定変換で作った設定を渡してください。checkpoint IDと宛先登録規則も
+// アプリと同じものを使い、cursorをリセットしません。
+func Recover(ctx context.Context, configs Configs, opts Options) (report Report, resultErr error) {
 	report = Report{Directories: []DirectoryReport{}}
 	fail := func(err error) (Report, error) {
 		report.Errors = appendUnique(report.Errors, err.Error())
@@ -95,8 +95,8 @@ func Recover(ctx context.Context, cfg config.AppConfig, opts Options) (report Re
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
-	if !target.IsValidTarget(cfg.RuntimeConfig.Target) {
-		return fail(fmt.Errorf("%w %q", ErrInvalidRecoveryTarget, cfg.RuntimeConfig.Target))
+	if !target.IsValidTarget(configs.Target) {
+		return fail(fmt.Errorf("%w %q", ErrInvalidRecoveryTarget, configs.Target))
 	}
 	if opts.LoggerContract == "" {
 		opts.LoggerContract = pkglogger.LoggerContractSync
@@ -107,7 +107,7 @@ func Recover(ctx context.Context, cfg config.AppConfig, opts Options) (report Re
 	if !opts.Scope.IsValid() {
 		return fail(fmt.Errorf("invalid recovery scope %q", opts.Scope))
 	}
-	specs, err := recoverySpecs(cfg, opts)
+	specs, err := recoverySpecs(configs, opts)
 	if err != nil {
 		return fail(err)
 	}

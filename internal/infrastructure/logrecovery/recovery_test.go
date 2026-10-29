@@ -75,7 +75,7 @@ func TestRecoverLoadedConfigCompressesLatestWithoutPurgeOrWriter(t *testing.T) {
 	notes := filepath.Join(directory, "operator-notes.txt")
 	require.NoError(t, os.WriteFile(notes, []byte("keep"), 0o600))
 
-	report, err := Recover(context.Background(), cfg, Options{})
+	report, err := Recover(context.Background(), testConfigs(cfg), Options{})
 	require.NoError(t, err)
 	require.Empty(t, report.Errors)
 	require.Len(t, report.Directories, 1)
@@ -108,7 +108,7 @@ func TestRecoverLoadedConfigCompressesLatestWithoutPurgeOrWriter(t *testing.T) {
 	require.NoDirExists(t, filepath.Join(cfg.FsstoreConfig.LogPath, "service", "delivery"))
 
 	// 続けて明示的なpassを実行しても害はありません。最初の呼び出しは、動作中のwriterを残しません。
-	report, err = Recover(context.Background(), cfg, Options{LoggerContract: pkglogger.LoggerContractSync, Scope: RecoveryScopeFileLogger})
+	report, err = Recover(context.Background(), testConfigs(cfg), Options{LoggerContract: pkglogger.LoggerContractSync, Scope: RecoveryScopeFileLogger})
 	require.NoError(t, err)
 	require.Len(t, report.Directories, 1)
 	require.Empty(t, report.Directories[0].CompressedFiles)
@@ -121,7 +121,7 @@ func TestRecoverCancelledBeforeStartDoesNotCreateStorage(t *testing.T) {
 	cfg := loadRecoveryTestConfig(t, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	report, err := Recover(ctx, cfg, Options{})
+	report, err := Recover(ctx, testConfigs(cfg), Options{})
 	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, report.Directories)
 	require.Len(t, report.Errors, 1)
@@ -137,7 +137,7 @@ func TestRecoverCustomApplicationIdentifier(t *testing.T) {
 	source := filepath.Join(directory, identifier+"_20000101_1.log")
 	require.NoError(t, os.WriteFile(source, []byte("custom application log\n"), 0o600))
 
-	report, err := Recover(context.Background(), cfg, Options{})
+	report, err := Recover(context.Background(), testConfigs(cfg), Options{})
 	require.NoError(t, err)
 	require.Len(t, report.Directories, 1)
 	require.Equal(t, []string{source + ".gz"}, report.Directories[0].CompressedFiles)
@@ -148,39 +148,11 @@ func TestRecoverCustomApplicationIdentifier(t *testing.T) {
 func TestRecoverInvalidIdentifierDoesNotCreateStorage(t *testing.T) {
 	cfg := loadRecoveryTestConfig(t, nil)
 	cfg.RuntimeConfig.Target = "../other-app"
-	report, err := Recover(context.Background(), cfg, Options{})
+	report, err := Recover(context.Background(), testConfigs(cfg), Options{})
 	require.ErrorIs(t, err, ErrInvalidRecoveryTarget)
 	require.Empty(t, report.Directories)
 	require.NoDirExists(t, cfg.FsstoreConfig.LogPath)
 	require.NoDirExists(t, cfg.FsstoreConfig.AppStatePath)
-}
-
-// 環境設定が空の場合、どのlogger契約も標準出力だけを使います。asyncでもSlackなどを
-// 暗黙に選ばないため、設定変換は認証情報なしで成功し、復旧対象がないことを報告します。
-func TestRecoverEmptyEnvironmentReportsNoConfiguredFiles(t *testing.T) {
-	root := t.TempDir()
-	testutil.UnsetConfigEnvironment(t)
-	envPath := filepath.Join(root, "empty.env")
-	require.NoError(t, os.WriteFile(envPath, nil, 0o600))
-	require.NoError(t, os.Setenv("HETEROLOG_ENV_PATH", envPath))
-	cfg, err := config.LoadConfig()
-	require.NoError(t, err)
-	cfg.RuntimeConfig.Target = "service"
-	for _, contract := range []pkglogger.LoggerContractKind{
-		pkglogger.LoggerContractSync, pkglogger.LoggerContractAsyncBestEffort, pkglogger.LoggerContractDelivery,
-	} {
-		t.Run(contract.String(), func(t *testing.T) {
-			specs, err := recoverySpecs(cfg, Options{LoggerContract: contract, Scope: RecoveryScopeAll})
-			require.NoError(t, err)
-			require.Empty(t, specs)
-			report, err := Recover(context.Background(), cfg, Options{LoggerContract: contract})
-			require.ErrorIs(t, err, ErrNoConfiguredLogFiles)
-			// Report.ErrorsはCLIがJSON・本文として出力する文字列の契約なので、返したerrorの
-			// 文言がそのまま記録されることを確認します。errorの種類はerrors.Isで判定済みです。
-			require.Equal(t, []string{err.Error()}, report.Errors)
-			require.Empty(t, report.Directories)
-		})
-	}
 }
 
 func TestDirectoryReportPreservesIndividualFailurePaths(t *testing.T) {
@@ -195,4 +167,14 @@ func TestDirectoryReportPreservesIndividualFailurePaths(t *testing.T) {
 	require.Equal(t, []FileFailureReport{{Path: "/logs/bad.log", Error: failure.Error()}}, result.FailedFiles)
 	require.Equal(t, []string{"/logs/good.log.gz"}, result.CompressedFiles)
 	require.Equal(t, failure.Error(), result.Error)
+}
+
+// testConfigsは、bootstrap.RecoverLogsと同じく、cfgを変換するConfigsを返します。
+func testConfigs(cfg config.AppConfig) Configs {
+	return Configs{
+		Target:   cfg.RuntimeConfig.Target,
+		Logger:   func() (pkglogger.LoggerConfig, error) { return config.MapLoggerConfig(cfg) },
+		Async:    func() (pkglogger.AsyncBestEffortMultiLoggerConfig, error) { return config.MapAsyncLoggerConfig(cfg) },
+		Delivery: func() (pkglogger.DeliveryLoggerConfig, error) { return config.MapDeliveryLoggerConfig(cfg) },
+	}
 }

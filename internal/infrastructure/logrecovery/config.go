@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/go-jappe/heterolog/internal/config"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
@@ -14,6 +13,17 @@ import (
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 )
+
+// Configsは、手動復旧が系列を選ぶための、変換済みのlogger設定です。設定の変換は、選んだ
+// loggerの種類の分だけ行います。
+type Configs struct {
+	// Targetは、保存先の識別子に使う設定のtargetです。
+	Target string
+	// Logger・Async・Deliveryは、同期・非同期・Delivery loggerの設定を作ります。
+	Logger   func() (pkglogger.LoggerConfig, error)
+	Async    func() (pkglogger.AsyncBestEffortMultiLoggerConfig, error)
+	Delivery func() (pkglogger.DeliveryLoggerConfig, error)
+}
 
 type recoverySpec struct {
 	name                string
@@ -33,24 +43,24 @@ func (s recoverySpec) build(owner *compressedlog.RootRuntimeBuilder, reporter lo
 	return s.newLifecycles(runtimes, reporter, options...)
 }
 
-// recoverySpecsは通常の設定mapperを使い、実際に保存を所有する系列だけを選びます。
+// recoverySpecsは通常の設定mapperが作った設定から、実際に保存を所有する系列だけを選びます。
 // loggerを生成しないため、書き込みや通常backend送信、周期処理は開始しません。
-func recoverySpecs(cfg config.AppConfig, opts Options) ([]recoverySpec, error) {
+func recoverySpecs(configs Configs, opts Options) ([]recoverySpec, error) {
 	switch opts.LoggerContract {
 	case pkglogger.LoggerContractSync:
-		mapped, err := config.MapLoggerConfig(cfg)
+		mapped, err := configs.Logger()
 		if err != nil {
 			return nil, err
 		}
 		return logRecoverySpecs(mapped, opts.Scope), nil
 	case pkglogger.LoggerContractAsyncBestEffort:
-		mapped, err := config.MapAsyncLoggerConfig(cfg)
+		mapped, err := configs.Async()
 		if err != nil {
 			return nil, err
 		}
 		return logRecoverySpecs(mapped.ToLoggerConfig(), opts.Scope), nil
 	case pkglogger.LoggerContractDelivery:
-		mapped, err := config.MapDeliveryLoggerConfig(cfg)
+		mapped, err := configs.Delivery()
 		if err != nil {
 			return nil, err
 		}
