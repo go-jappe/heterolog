@@ -164,7 +164,7 @@ make_volume() {
 } >"$results/environment.txt" 2>&1
 
 file_case_tests="TestCompressedArchiveGroupsPathIdentityPreservesUploadPath TestFileLoggerCaseInsensitiveTargetCaseRestartPreservesGenerationsAndRetriesArchive TestLoggerSetPathIdentityRejectsCaseAliasedFilePrefixes"
-race_packages=". ./internal/application/logging ./internal/application/trace/tracer ./internal/infrastructure/logger/multi ./internal/infrastructure/logger/slack ./internal/infrastructure/logger/opensearch ./internal/infrastructure/fsstore/spool/... ./internal/infrastructure/spool/log/..."
+race_packages=". ./internal/application/logging ./internal/application/trace/tracer ./internal/infrastructure/logger ./internal/infrastructure/logger/multi ./internal/infrastructure/logger/slack ./internal/infrastructure/logger/opensearch ./internal/infrastructure/fsstore/spool/... ./internal/infrastructure/spool/log/..."
 
 # 1. 既定の一時directory。
 suite default-disk-all-packages true "" ./...

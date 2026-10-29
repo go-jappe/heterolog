@@ -35,7 +35,7 @@ jobs:
           go test -race . ./internal/application/logging ./internal/application/loggerruntime
           ./internal/application/outputsettings ./internal/application/trace/tracer
           ./internal/presentation/envconfig ./internal/presentation/http/admin ./internal/presentation/sloghandler
-          ./internal/infrastructure/logger/multi ./internal/infrastructure/logger/slack
+          ./internal/infrastructure/logger ./internal/infrastructure/logger/multi ./internal/infrastructure/logger/slack
           ./internal/infrastructure/logger/handler ./pkg/logger ./pkg/victoriametrics
           ./internal/infrastructure/logger/opensearch ./internal/infrastructure/fsstore/spool/...
           ./internal/infrastructure/spool/log/... ./internal/observer/memory/pressure

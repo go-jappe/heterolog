@@ -540,7 +540,7 @@ go build -o log-recovery ./cmd/log-recovery
 ```sh
 go test ./...
 go vet ./...
-go test -race . ./internal/application/logging ./internal/application/loggerruntime ./internal/presentation/sloghandler ./internal/infrastructure/logger/multi
+go test -race . ./internal/application/logging ./internal/application/loggerruntime ./internal/presentation/sloghandler ./internal/infrastructure/logger ./internal/infrastructure/logger/multi
 ```
 
 - 通常のテストは、公開設定例から作るダミー設定とローカルHTTPサーバーを使い、開発者の `.env` を必要としません。
