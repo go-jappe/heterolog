@@ -16,8 +16,9 @@ package heterolog
 // このpackageは公開の窓口です。methodを持つ公開の型はここで定義し、各methodは内部の
 // 実装へ処理を渡すだけにします。そのほかの公開の型は、pkg/の公開packageの型の別名として
 // 置きます（中身を見せない関数の型のOptionだけは、internalの型の別名です）。loggerの
-// 組み立て・終了・検証・既定値はinternal/application/loggerruntime、slogと環境設定の
-// 入力窓口はinternal/presentationにあります。公開APIの説明は英語で書きます。
+// 終了・検証・既定値はinternal/application/loggerruntime、出力先の実装を渡してloggerを
+// 組み立てるのはinternal/bootstrap、slogと環境設定の入力窓口はinternal/presentationに
+// あります。公開APIの説明は英語で書きます。
 
 // 最小構成のcontainerやWindowsでも、設定したIANAのtime zoneを使えるようにします。
 import _ "time/tzdata"

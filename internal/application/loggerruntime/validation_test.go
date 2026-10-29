@@ -35,15 +35,15 @@ func TestConstructorsRejectInvalidStdoutPresentation(t *testing.T) {
 					case "sync":
 						cfg := loggerruntime.DefaultConfig()
 						mutate(&cfg.Stdout.RuntimeConfig.LogLevel, &cfg.Stdout.LogBodyConfig)
-						created, err = loggerruntime.New(context.Background(), cfg)
+						created, err = loggerruntime.New(context.Background(), &recordingBuilder{}, cfg)
 					case "async":
 						cfg := loggerruntime.DefaultAsyncConfig()
 						mutate(&cfg.Stdout.RuntimeConfig.LogLevel, &cfg.Stdout.LogBodyConfig)
-						created, err = loggerruntime.NewAsync(context.Background(), cfg)
+						created, err = loggerruntime.NewAsync(context.Background(), &recordingBuilder{}, cfg)
 					case "delivery":
 						cfg := loggerruntime.DefaultDeliveryConfig()
 						mutate(nil, &cfg.Stdout.LogBodyConfig)
-						created, err = loggerruntime.NewDelivery(context.Background(), cfg)
+						created, err = loggerruntime.NewDelivery(context.Background(), &recordingBuilder{}, cfg)
 					}
 					if err == nil {
 						_ = created.Close()
@@ -88,7 +88,7 @@ func TestConstructorValidatesEverySelectedBackendLevel(t *testing.T) {
 			case pkglogger.LogOutputClickHouse:
 				cfg.ClickHouse = &pkglogger.ClickHouseConfig{ClickHouseLoggerBaseConfig: pkglogger.ClickHouseLoggerBaseConfig{RuntimeConfig: invalidRuntime}}
 			}
-			created, err := loggerruntime.New(context.Background(), cfg)
+			created, err := loggerruntime.New(context.Background(), &recordingBuilder{}, cfg)
 			if err == nil {
 				_ = created.Close()
 				t.Fatal("accepted invalid backend level")
@@ -106,7 +106,7 @@ func TestConstructorOnlyValidatesActiveBackendPresentation(t *testing.T) {
 		RuntimeConfig: pkglogger.RuntimeConfig{LogLevel: 999},
 		LogBodyConfig: pkglogger.LogBodyConfig{ErrorTraceDepth: -1},
 	}
-	created, err := loggerruntime.New(context.Background(), cfg)
+	created, err := loggerruntime.New(context.Background(), &recordingBuilder{}, cfg)
 	if err != nil {
 		t.Fatalf("unused backend rejected: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestConstructorOnlyValidatesActiveBackendPresentation(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.Stdout.HandlerConfig = handler.HandlerConfig{OnErrorConfig: []string{"file"}}
-	created, err = loggerruntime.New(context.Background(), cfg)
+	created, err = loggerruntime.New(context.Background(), &recordingBuilder{}, cfg)
 	if err == nil {
 		_ = created.Close()
 		t.Fatal("active fallback with invalid presentation accepted")

@@ -540,7 +540,7 @@ go build -o log-recovery ./cmd/log-recovery
 ```sh
 go test ./...
 go vet ./...
-go test -race . ./internal/application/logging ./internal/application/loggerruntime ./internal/presentation/sloghandler ./internal/infrastructure/logger ./internal/infrastructure/logger/multi
+go test -race . ./internal/application/logging ./internal/application/loggerruntime ./internal/bootstrap ./internal/presentation/sloghandler ./internal/infrastructure/logger ./internal/infrastructure/logger/multi
 ```
 
 - The regular tests use a dummy configuration generated from the public configuration example and local HTTP servers, and do not need a developer's `.env`.

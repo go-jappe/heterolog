@@ -1,10 +1,9 @@
 // Package envconfigは、HETEROLOG_の環境変数とenv fileから届く設定の入力窓口です。
-// 読み込んだ設定を検証し、application層のloggerの組み立てと、管理用APIのserverの設定へ
-// 渡します。
+// 読み込んだ設定を検証し、loggerのconstructorへ渡す設定とoptionと、管理用APIのserverの
+// 設定にします。loggerは、internal/bootstrapがこの設定から作ります。
 package envconfig
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -24,9 +23,8 @@ var ErrLoggerDisabled = errors.New("logger is disabled by the environment")
 // ため、監査用loggerの設定がないことを表します。
 var ErrAdminAuditNotEnabled = appconfig.ErrAdminAuditNotEnabled
 
-// EnvConfigは、LoadがHETEROLOG_の環境変数から読んだ設定を持ちます。New・NewAsync・
-// NewDeliveryはこの設定からloggerを作ります。Config・AsyncConfig・DeliveryConfigは、
-// 調整してからconstructorへ渡すための設定を返します。
+// EnvConfigは、LoadがHETEROLOG_の環境変数から読んだ設定を持ちます。Config・AsyncConfig・
+// DeliveryConfig・AdminAuditConfigは、loggerのconstructorへ渡す設定とoptionを返します。
 //
 // 環境設定では、tracingは設定しません。WithObserversをoptionとして渡します。
 // HETEROLOG_USE_MEMORY_PRESSURE_*で有効にしたspoolは、WithMemoryPressureMonitorで監視を
@@ -84,7 +82,7 @@ func Load(path string) (*EnvConfig, error) {
 }
 
 // Configは、同期loggerの設定と、環境設定から読んだspoolの再送設定とCloudWatch Logsの
-// stream分割のoptionを返します。どちらもNewへ渡します。呼び出しごとに新しい設定を
+// stream分割のoptionを返します。どちらも同期loggerのconstructorへ渡します。呼び出しごとに新しい設定を
 // 返しますが、LogOutputDestinationsなどのsliceはEnvConfigと配列を共有することがあるため、
 // 要素を書き換えずにsliceごと置き換えてください。HETEROLOG_ENABLE_LOGGINGがfalseの
 // 場合は、ErrLoggerDisabledを包んだerrorを返します。
@@ -102,7 +100,7 @@ func (c *EnvConfig) Config() (pkglogger.LoggerConfig, []loggerruntime.Option, er
 	}, nil
 }
 
-// AsyncConfigは、Configと同じく、非同期loggerの設定とNewAsyncのoptionを返します。
+// AsyncConfigは、Configと同じく、非同期loggerの設定とconstructorのoptionを返します。
 // HETEROLOG_ENABLE_ASYNC_BEST_EFFORT_LOGGINGがfalseの場合は、ErrLoggerDisabledを包んだ
 // errorを返します。
 func (c *EnvConfig) AsyncConfig() (pkglogger.AsyncBestEffortMultiLoggerConfig, []loggerruntime.Option, error) {
@@ -119,7 +117,7 @@ func (c *EnvConfig) AsyncConfig() (pkglogger.AsyncBestEffortMultiLoggerConfig, [
 	}, nil
 }
 
-// DeliveryConfigは、Delivery loggerの設定とNewDeliveryのoptionを返します。Delivery
+// DeliveryConfigは、Delivery loggerの設定とconstructorのoptionを返します。Delivery
 // loggerはspoolを再送しないため、optionはCloudWatch Logsのstream分割だけです。
 // HETEROLOG_ENABLE_DELIVERY_LOGGINGがfalseの場合は、ErrLoggerDisabledを包んだerrorを
 // 返します。
@@ -136,46 +134,15 @@ func (c *EnvConfig) DeliveryConfig() (pkglogger.DeliveryLoggerConfig, []loggerru
 	}, nil
 }
 
-// Newは、Configが返す設定とoptionから同期loggerを作ります。optsはそのoptionの後に
-// 適用するため、置き換えたり、WithObserversやWithMemoryPressureMonitorを加えたり
-// できます。
-func (c *EnvConfig) New(ctx context.Context, opts ...loggerruntime.Option) (*loggerruntime.Runtime, error) {
-	cfg, envOpts, err := c.Config()
-	if err != nil {
-		return nil, err
-	}
-	return loggerruntime.New(ctx, cfg, append(envOpts, opts...)...)
-}
-
-// NewAsyncは、AsyncConfigが返す設定とoptionに続けてoptsを適用し、非同期loggerを
-// 作ります。
-func (c *EnvConfig) NewAsync(ctx context.Context, opts ...loggerruntime.Option) (*loggerruntime.AsyncRuntime, error) {
-	cfg, envOpts, err := c.AsyncConfig()
-	if err != nil {
-		return nil, err
-	}
-	return loggerruntime.NewAsync(ctx, cfg, append(envOpts, opts...)...)
-}
-
-// NewDeliveryは、DeliveryConfigが返す設定とoptionに続けてoptsを適用し、送信結果を返す
-// loggerを作ります。
-func (c *EnvConfig) NewDelivery(ctx context.Context, opts ...loggerruntime.Option) (*loggerruntime.DeliveryRuntime, error) {
-	cfg, envOpts, err := c.DeliveryConfig()
-	if err != nil {
-		return nil, err
-	}
-	return loggerruntime.NewDelivery(ctx, cfg, append(envOpts, opts...)...)
-}
-
 // AdminServerConfigは、HETEROLOG_ADMIN_ADDR・HETEROLOG_ADMIN_TOKEN・
 // HETEROLOG_ADMIN_TLS_CERT_FILE・HETEROLOG_ADMIN_TLS_KEY_FILEから読んだ管理用serverの
 // 設定と、HETEROLOG_ADMIN_ADDRでserverを有効にしたかを返します。Loadで確認済みです。
-// 設定は、NewAdminAuditが作る監査用loggerとともに、管理用serverの起動へ渡します。
+// 設定は、AdminAuditConfigの設定から作る監査用loggerとともに、管理用serverの起動へ渡します。
 func (c *EnvConfig) AdminServerConfig() (pkgadmin.ServerConfig, bool) {
 	return newAdminServerConfig(c.app.AdminServer)
 }
 
-// AdminAuditConfigは、管理用APIの監査logを記録する送達確認loggerの設定と、NewAdminAuditの
+// AdminAuditConfigは、管理用APIの監査logを記録する送達確認loggerの設定と、constructorの
 // optionを返します。出力先はHETEROLOG_ADMIN_AUDIT_LOG_TYPE、出力先ごとの記録の場所は
 // HETEROLOG_ADMIN_AUDIT_*で、接続先・認証・timeoutなどはHETEROLOG_DELIVERY_*の設定を
 // 引き継ぎます。HETEROLOG_ADMIN_ADDRが空の場合は、ErrAdminAuditNotEnabledを返します。
@@ -187,16 +154,6 @@ func (c *EnvConfig) AdminAuditConfig() (pkglogger.DeliveryLoggerConfig, []logger
 	return cfg, []loggerruntime.Option{
 		loggerruntime.WithCloudWatchLogsStreamRouting(c.app.AdminAudit.DeliveryLogger.DeliveryCloudWatchLogsConfig.LogStreamRoutingGranularity),
 	}, nil
-}
-
-// NewAdminAuditは、AdminAuditConfigが返す設定とoptionに続けてoptsを適用し、管理用APIの
-// 監査logを記録する送達確認loggerを作ります。
-func (c *EnvConfig) NewAdminAudit(ctx context.Context, opts ...loggerruntime.Option) (*loggerruntime.DeliveryRuntime, error) {
-	cfg, envOpts, err := c.AdminAuditConfig()
-	if err != nil {
-		return nil, err
-	}
-	return loggerruntime.NewDelivery(ctx, cfg, append(envOpts, opts...)...)
 }
 
 func newAdminServerConfig(cfg appconfig.AdminServerConfig) (pkgadmin.ServerConfig, bool) {

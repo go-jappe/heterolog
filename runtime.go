@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
+	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -75,20 +76,20 @@ const (
 // environment or modify global providers. Use DefaultConfig as a starting point.
 // Close or Shutdown must be called to flush buffers and release resources.
 func New(ctx context.Context, cfg Config, opts ...Option) (*Runtime, error) {
-	return newRuntime(loggerruntime.New(ctx, cfg, opts...))
+	return newRuntime(bootstrap.New(ctx, cfg, opts...))
 }
 
 // NewAsync constructs an asynchronous best-effort logger. MaxParallel and the
 // normal timeout and entry-size limits must all be positive.
 func NewAsync(ctx context.Context, cfg AsyncConfig, opts ...Option) (*AsyncRuntime, error) {
-	return newAsyncRuntime(loggerruntime.NewAsync(ctx, cfg, opts...))
+	return newAsyncRuntime(bootstrap.NewAsync(ctx, cfg, opts...))
 }
 
 // NewDelivery constructs a logger that reports delivery per destination.
 // Delivery mode has no replay workers, so NewDelivery returns
 // ErrDeliverySpoolUnsupported when opts include WithSpool.
 func NewDelivery(ctx context.Context, cfg DeliveryConfig, opts ...Option) (*DeliveryRuntime, error) {
-	return newDeliveryRuntime(loggerruntime.NewDelivery(ctx, cfg, opts...))
+	return newDeliveryRuntime(bootstrap.NewDelivery(ctx, cfg, opts...))
 }
 
 // newRuntime・newAsyncRuntime・newDeliveryRuntimeは、内部のruntimeを公開の型で包みます。

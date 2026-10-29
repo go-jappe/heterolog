@@ -32,7 +32,7 @@ jobs:
       - name: Race tests for logging, tracing, spool persistence, and the admin API
         if: runner.os == 'Linux'
         run: >-
-          go test -race . ./internal/application/logging ./internal/application/loggerruntime
+          go test -race . ./internal/application/logging ./internal/application/loggerruntime ./internal/bootstrap
           ./internal/application/outputsettings ./internal/application/trace/tracer
           ./internal/presentation/envconfig ./internal/presentation/http/admin ./internal/presentation/sloghandler
           ./internal/infrastructure/logger ./internal/infrastructure/logger/multi ./internal/infrastructure/logger/slack

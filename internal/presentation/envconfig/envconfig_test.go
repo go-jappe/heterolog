@@ -1,7 +1,6 @@
 package envconfig_test
 
 import (
-	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -130,70 +129,14 @@ func TestEnvConfigRejectsDisabledLoggers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	ctx := context.Background()
-
 	if _, _, err := loaded.AsyncConfig(); !errors.Is(err, envconfig.ErrLoggerDisabled) {
 		t.Errorf("AsyncConfig error = %v, want ErrEnvLoggerDisabled", err)
-	}
-	if _, err := loaded.NewAsync(ctx); !errors.Is(err, envconfig.ErrLoggerDisabled) {
-		t.Errorf("NewAsync error = %v, want ErrEnvLoggerDisabled", err)
 	}
 	if _, _, err := loaded.DeliveryConfig(); !errors.Is(err, envconfig.ErrLoggerDisabled) {
 		t.Errorf("DeliveryConfig error = %v, want ErrEnvLoggerDisabled", err)
 	}
-	if _, err := loaded.NewDelivery(ctx); !errors.Is(err, envconfig.ErrLoggerDisabled) {
-		t.Errorf("NewDelivery error = %v, want ErrEnvLoggerDisabled", err)
-	}
 	if _, _, err := loaded.Config(); err != nil {
 		t.Errorf("Config of the enabled synchronous logger: %v", err)
-	}
-}
-
-// 設定項目が一つもない環境でも、3種類のloggerを既定値（標準出力）で作成して記録できます。
-func TestEnvConfigConstructsEveryLoggerFromAnEmptyEnvironment(t *testing.T) {
-	isolateEnvConfigForTest(t)
-	loaded, err := envconfig.Load("")
-	if err != nil {
-		t.Fatalf("Load with no settings: %v", err)
-	}
-	ctx := context.Background()
-
-	output := testutil.CaptureStdout(t, func() {
-		runtime, err := loaded.New(ctx)
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-		if err := runtime.Info(ctx, "env config sync entry"); err != nil {
-			t.Errorf("sync Info: %v", err)
-		}
-		if err := runtime.Close(); err != nil {
-			t.Errorf("sync Close: %v", err)
-		}
-
-		async, err := loaded.NewAsync(ctx)
-		if err != nil {
-			t.Fatalf("NewAsync: %v", err)
-		}
-		async.Info(ctx, "env config async entry")
-		if err := async.Close(); err != nil {
-			t.Errorf("async Close: %v", err)
-		}
-
-		delivery, err := loaded.NewDelivery(ctx)
-		if err != nil {
-			t.Fatalf("NewDelivery: %v", err)
-		}
-		if _, err := delivery.Info(ctx, "env config delivery entry"); err != nil {
-			t.Errorf("delivery Info: %v", err)
-		}
-		if err := delivery.Close(); err != nil {
-			t.Errorf("delivery Close: %v", err)
-		}
-	})
-	for _, message := range []string{"env config sync entry", "env config async entry", "env config delivery entry"} {
-		if !strings.Contains(output, message) {
-			t.Errorf("stdout does not contain %q:\n%s", message, output)
-		}
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
+	"github.com/go-jappe/heterolog/internal/bootstrap"
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/multi"
 	"github.com/go-jappe/heterolog/internal/presentation/sloghandler"
@@ -355,7 +356,7 @@ func TestHandlerRetainsEntrySizeLimit(t *testing.T) {
 func TestHandlerWritesStructuredFieldsThroughARuntime(t *testing.T) {
 	wantTime := time.Date(2020, 2, 3, 4, 5, 6, 789, time.UTC)
 	output := testutil.CaptureStdout(t, func() {
-		logger, err := loggerruntime.New(context.Background(), loggerruntime.DefaultConfig())
+		logger, err := bootstrap.New(context.Background(), loggerruntime.DefaultConfig())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -417,7 +418,7 @@ func TestHandlerMessageReplacementReachesBackendOutput(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			output := testutil.CaptureStdout(t, func() {
-				logger, err := loggerruntime.New(context.Background(), loggerruntime.DefaultConfig())
+				logger, err := bootstrap.New(context.Background(), loggerruntime.DefaultConfig())
 				if err != nil {
 					t.Fatal(err)
 				}

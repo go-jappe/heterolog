@@ -3,6 +3,7 @@ package heterolog
 import (
 	"context"
 
+	"github.com/go-jappe/heterolog/internal/bootstrap"
 	"github.com/go-jappe/heterolog/internal/presentation/envconfig"
 	pkgenv "github.com/go-jappe/heterolog/pkg/env"
 )
@@ -109,19 +110,19 @@ func (c *EnvConfig) DeliveryConfig() (DeliveryConfig, []Option, error) {
 // Config returns. opts are applied after those options, so they can replace
 // them or add WithObservers and WithMemoryPressureMonitor.
 func (c *EnvConfig) New(ctx context.Context, opts ...Option) (*Runtime, error) {
-	return newRuntime(c.impl().New(ctx, opts...))
+	return newRuntime(bootstrap.NewFromEnv(ctx, c.impl(), opts...))
 }
 
 // NewAsync constructs an asynchronous best-effort logger from the settings and
 // options that AsyncConfig returns, followed by opts.
 func (c *EnvConfig) NewAsync(ctx context.Context, opts ...Option) (*AsyncRuntime, error) {
-	return newAsyncRuntime(c.impl().NewAsync(ctx, opts...))
+	return newAsyncRuntime(bootstrap.NewAsyncFromEnv(ctx, c.impl(), opts...))
 }
 
 // NewDelivery constructs a delivery-reporting logger from the settings and
 // options that DeliveryConfig returns, followed by opts.
 func (c *EnvConfig) NewDelivery(ctx context.Context, opts ...Option) (*DeliveryRuntime, error) {
-	return newDeliveryRuntime(c.impl().NewDelivery(ctx, opts...))
+	return newDeliveryRuntime(bootstrap.NewDeliveryFromEnv(ctx, c.impl(), opts...))
 }
 
 // AdminServerConfig returns the admin server settings read from
@@ -152,5 +153,5 @@ func (c *EnvConfig) AdminAuditConfig() (DeliveryConfig, []Option, error) {
 // and options that AdminAuditConfig returns, followed by opts. Pass it to
 // StartAdminServer or NewAdminHandler, and close it after the admin API stops.
 func (c *EnvConfig) NewAdminAudit(ctx context.Context, opts ...Option) (*DeliveryRuntime, error) {
-	return newDeliveryRuntime(c.impl().NewAdminAudit(ctx, opts...))
+	return newDeliveryRuntime(bootstrap.NewAdminAuditFromEnv(ctx, c.impl(), opts...))
 }

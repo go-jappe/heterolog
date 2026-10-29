@@ -6,11 +6,12 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/application/observer"
+	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 )
 
 func TestResolveOptionsExposesCallerSpans(t *testing.T) {
 	o, err := loggerruntime.ResolveOptions([]loggerruntime.Option{
-		loggerruntime.WithObservers(&runtimeObserverTracer{}, nil),
+		loggerruntime.WithObservers(&observertest.Tracer{}, nil),
 	})
 	if err != nil {
 		t.Fatal(err)

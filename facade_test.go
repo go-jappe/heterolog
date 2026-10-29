@@ -16,7 +16,8 @@ import (
 
 // ルートの公開の型は、内部の実装へ処理を渡すだけです。ここでは、各methodが対応する処理へ
 // 渡ることを確かめます。処理そのものの振る舞いは、internal/application/loggerruntime・
-// internal/presentation/envconfig・internal/presentation/sloghandlerで試験します。
+// internal/bootstrap・internal/presentation/envconfig・internal/presentation/sloghandlerで
+// 試験します。
 
 func TestRuntimeForwardsToTheImplementation(t *testing.T) {
 	ctx := context.Background()
