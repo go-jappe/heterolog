@@ -990,7 +990,7 @@ func newAsyncLoggerCore(
 
 	// timeout/maxParallel は multi 側が cfg provider から読む。
 	multiCfg := NewAsyncBestEffortMultiLoggerAdapter(cfg)
-	asyncFanout, err := multi.NewAsyncBestEffortMultiLogger(multiCfg, loggers...)
+	asyncFanout, err := multi.NewAsyncBestEffortMultiLoggerWithMeter(multiCfg, meter, loggers...)
 	if err != nil {
 		err = errors.Join(err, appendLogMaintenanceRuntime.Close())
 		err = rollbackLoggerConstruction(err, ownedClosers)

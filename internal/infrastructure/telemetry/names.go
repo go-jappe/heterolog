@@ -45,6 +45,14 @@ const (
 	// ObjectStorageUploadDurationは、1つの宛先への1回のuploadにかかった秒数です。
 	ObjectStorageUploadDuration = "heterolog_object_storage_upload_duration_seconds"
 
+	// AsyncRejectedEntriesは、非同期APIが受け付けずに捨てたentryの数を、理由（reason）
+	// ごとに数えます。非同期APIは、この拒否を呼び出し元へ返しません。
+	AsyncRejectedEntries = "heterolog_async_rejected_entries_total"
+	// AsyncBackendFailuresは、非同期APIが出力先へ渡したentryのうち、出力先がerrorを返したり、
+	// 時間内に終わらなかったり、panicしたりしたものの数を、出力先と理由（reason）ごとに
+	// 数えます。非同期APIは、この失敗を呼び出し元へ返しません。
+	AsyncBackendFailures = "heterolog_async_backend_failures_total"
+
 	// SpoolReplayRecordsは、spoolから読み戻して送り直したrecordの数を、送り直した結果
 	// （outcome）ごとに数えます。retryableは、spoolへ戻して後でまた送り直すrecordです。
 	SpoolReplayRecords = "heterolog_spool_replay_records_total"
@@ -78,6 +86,20 @@ const (
 	ActionDropped = "dropped"
 	// ActionFailedは、保存も退避もできなかったrecordです。
 	ActionFailed = "failed"
+)
+
+// reason属性の値です。backendのretryの理由は、retryの分類の値を使います。
+const (
+	// ReasonInvalidは、検証に失敗した入力（一件の上限を超えたentryなど）です。
+	ReasonInvalid = "invalid"
+	// ReasonClosedは、Closeを始めた後の入力です。
+	ReasonClosed = "closed"
+	// ReasonErrorは、出力先が返したerrorです。
+	ReasonError = "error"
+	// ReasonTimeoutは、出力先が時間内に終わらなかったことです。
+	ReasonTimeout = "timeout"
+	// ReasonPanicは、出力先がpanicしたことです。
+	ReasonPanic = "panic"
 )
 
 // state属性の値です。

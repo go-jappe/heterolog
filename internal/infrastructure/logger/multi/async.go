@@ -9,10 +9,13 @@ import (
 	"time"
 
 	applogging "github.com/go-jappe/heterolog/internal/application/logging"
+	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
 	infralogging "github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // AsyncBestEffortMultiLoggerは、applicationの呼出しとは別のgoroutineで複数の
@@ -22,6 +25,10 @@ import (
 // best-effortは、childが返したerrorをapplicationの呼出元へ返さない契約を表します。
 type AsyncBestEffortMultiLogger struct {
 	loggers []infralogging.BackendLogEntryHandler
+	// backendsは、loggersと同じ順のmetricsのbackend属性の値です。
+	backends []string
+	// meterは、呼出し元へ返さない拒否と失敗を数えます。
+	meter pkgobserver.Meter
 
 	timeout time.Duration
 	// maxLogEntryBytesは、application入力をbackendへfan-outする前に適用する一件の上限です。
@@ -54,6 +61,16 @@ func NewAsyncBestEffortMultiLogger(
 	cfg AsyncBestEffortMultiLoggerConfigProvider,
 	loggers ...infralogging.BackendLogEntryHandler,
 ) (*AsyncBestEffortMultiLogger, error) {
+	return NewAsyncBestEffortMultiLoggerWithMeter(cfg, nil, loggers...)
+}
+
+// NewAsyncBestEffortMultiLoggerWithMeterは、呼出し元へ返さない拒否と、childの失敗・timeout・
+// panicをmeterで数えるAsyncBestEffortMultiLoggerを作ります。nilは記録しないものとして扱います。
+func NewAsyncBestEffortMultiLoggerWithMeter(
+	cfg AsyncBestEffortMultiLoggerConfigProvider,
+	meter pkgobserver.Meter,
+	loggers ...infralogging.BackendLogEntryHandler,
+) (*AsyncBestEffortMultiLogger, error) {
 	timeout, maxParallel, maxLogEntryBytes, err := validatedAsyncBestEffortMultiLoggerConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -61,6 +78,8 @@ func NewAsyncBestEffortMultiLogger(
 
 	return &AsyncBestEffortMultiLogger{
 		loggers:          append([]infralogging.BackendLogEntryHandler(nil), loggers...),
+		backends:         backendNames(loggers),
+		meter:            observer.EnsureMeter(meter),
 		timeout:          timeout,
 		maxLogEntryBytes: maxLogEntryBytes,
 		now:              time.Now,
@@ -119,6 +138,7 @@ func (m *AsyncBestEffortMultiLogger) log(
 	accepting := m.closeState == loggercommon.LoggerCloseStateOpen
 	m.mu.Unlock()
 	if !accepting {
+		telemetry.RecordAsyncRejected(ctx, m.meter, telemetry.ReasonClosed)
 		return
 	}
 
@@ -133,6 +153,7 @@ func (m *AsyncBestEffortMultiLogger) log(
 		fields,
 	)
 	if validationErr != nil {
+		telemetry.RecordAsyncRejected(ctx, m.meter, telemetry.ReasonInvalid)
 		return
 	}
 	m.runAll(ctx, entry)
@@ -199,6 +220,7 @@ func (m *AsyncBestEffortMultiLogger) runAll(
 	m.mu.Lock()
 	if m.closeState != loggercommon.LoggerCloseStateOpen {
 		m.mu.Unlock()
+		telemetry.RecordAsyncRejected(ctx, m.meter, telemetry.ReasonClosed)
 		return
 	}
 	// 全child分を先にAddするため、Closeがこの後に受付を停止してWaitを開始しても、
@@ -207,8 +229,9 @@ func (m *AsyncBestEffortMultiLogger) runAll(
 	sem := m.sem
 	m.mu.Unlock()
 
-	for _, l := range m.loggers {
+	for index, l := range m.loggers {
 		l := l
+		backend := m.backendName(index)
 		localEntry := infralogging.CloneLogEntry(entry)
 		// goroutine生成前に空きを待つため、並行数上限に達しても待機goroutineを
 		// 無制限に増やさず、childを破棄しません。
@@ -224,7 +247,7 @@ func (m *AsyncBestEffortMultiLogger) runAll(
 			if handler.InInternalLogDispatch(ctx) {
 				func() {
 					defer m.wg.Done()
-					m.runChild(baseCtx, l, localEntry)
+					m.runChild(baseCtx, l, backend, localEntry)
 				}()
 				continue
 			}
@@ -233,19 +256,22 @@ func (m *AsyncBestEffortMultiLogger) runAll(
 		go func() {
 			defer m.wg.Done()
 			defer func() { <-sem }()
-			m.runChild(baseCtx, l, localEntry)
+			m.runChild(baseCtx, l, backend, localEntry)
 		}()
 	}
 }
 
 // runChildは一つのchildへentryを渡します。childのpanicは回収して標準loggerへ記録します。
+// childのerror・timeout・panicは呼出し元へ返さず、backendの名前で数えます。
 func (m *AsyncBestEffortMultiLogger) runChild(
 	baseCtx context.Context,
 	l infralogging.BackendLogEntryHandler,
+	backend string,
 	entry *infralogging.LogEntry,
 ) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			telemetry.RecordAsyncBackendFailure(baseCtx, m.meter, backend, telemetry.ReasonPanic)
 			// application loggerへ戻すと同じfailure経路を再帰し得るため、
 			// process標準loggerへ直接記録してbest-effort処理を継続します。
 			log.Printf(
@@ -259,7 +285,22 @@ func (m *AsyncBestEffortMultiLogger) runChild(
 	logCtx, cancel := context.WithTimeout(baseCtx, m.timeout)
 	defer cancel()
 
-	_ = l.HandleLogEntry(logCtx, entry)
+	if err := l.HandleLogEntry(logCtx, entry); err != nil {
+		reason := telemetry.ReasonError
+		// baseCtxはcancelを伝えないため、期限切れはこのchildのtimeoutです。
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(logCtx.Err(), context.DeadlineExceeded) {
+			reason = telemetry.ReasonTimeout
+		}
+		telemetry.RecordAsyncBackendFailure(baseCtx, m.meter, backend, reason)
+	}
+}
+
+// backendNameは、index番目のchildのmetricsのbackend属性の値を返します。
+func (m *AsyncBestEffortMultiLogger) backendName(index int) string {
+	if index < len(m.backends) {
+		return m.backends[index]
+	}
+	return unknownBackendName
 }
 
 // StopAcceptingはresourceを閉じずに新しいlog要求の受付だけを停止します。

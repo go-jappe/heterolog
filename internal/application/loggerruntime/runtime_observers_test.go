@@ -205,6 +205,13 @@ func TestObserverMeterReceivesFileDropNotification(t *testing.T) {
 				if err := logger.Close(); err != nil {
 					t.Fatal(err)
 				}
+				// 非同期のAPIは、捨てたlogを呼出し元へ返さない代わりに、出力先の失敗として数えます。
+				meter.mu.Lock()
+				failures := meter.totals["heterolog_async_backend_failures_total"]
+				meter.mu.Unlock()
+				if failures != 1 {
+					t.Fatalf("async backend failure total = %d, want 1", failures)
+				}
 			}
 			meter.mu.Lock()
 			total := meter.totals["heterolog_file_dropped_entries_total"]

@@ -413,6 +413,8 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 | `heterolog_circuit_breaker_rejected_requests_total` | Counter | `backend` | circuit breakerが送らずに断ったリクエストの数です。 |
 | `heterolog_circuit_breaker_transitions_total` | Counter | `backend`・`state`（`open`・`closed`） | circuit breakerが開いた回数と、復旧確認（probe）で復旧を確かめて閉じた回数です。 |
 | `heterolog_failure_records_total` | Counter | `backend`・`action` | 送れなかったrecordを、その後の扱いごとに数えます。`spooled`（spoolへ保存）・`archived`（failure archiveへ保存）・`degraded`（stdoutへ退避）・`dropped`（過負荷時の方針 `drop` で破棄）・`failed`（保存も退避もできなかった）です。複数の保存方法を設定した場合は、それぞれが数えます。 |
+| `heterolog_async_backend_failures_total` | Counter | `backend`・`reason`（`error`・`timeout`・`panic`） | 非同期API（`NewAsync`）が出力先へ渡したentryのうち、出力先がエラーを返したもの、`Timeout` までに終わらなかったもの、panicしたものの数です。非同期APIは、この失敗を呼出し元へ返しません。出力先が過負荷時の方針で破棄したentryは `error` です。 |
+| `heterolog_async_rejected_entries_total` | Counter | `reason`（`invalid`・`closed`） | 非同期APIが、どの出力先にも渡さずに捨てたentryの数です。`invalid` は不正なentry（`MaxLogEntryBytes` を超えるものなど）、`closed` は `Close` を始めた後のentryです。 |
 | `heterolog_object_storage_uploads_total` | Counter | `target`（`s3` など）・`outcome` | 圧縮したログファイルやfailure archiveなどのファイルを、object storageの1つの宛先へuploadした回数を、結果ごとに数えます。結果は `success`・`retryable`（残しておき、後でまたuploadします）・`permanent` です。spoolからの再送も含みます。 |
 | `heterolog_object_storage_upload_duration_seconds` | Histogram | `target`・`outcome` | 1つの宛先への1回のuploadにかかった時間です。 |
 | `heterolog_spool_replay_records_total` | Counter | `backend`・`outcome` | spoolから読み戻して送り直したrecordの数を、結果ごとに数えます。結果は `success`・`retryable`（spoolへ戻し、後でまた送り直します）・`dead`・`quarantine` です。応答をrecordへ対応付けられない場合はfile全体を隔離し、そのrecordをすべて `quarantine` として数えます。 |
