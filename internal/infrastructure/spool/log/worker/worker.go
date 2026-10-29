@@ -99,6 +99,7 @@ type Worker struct {
 
 	// 処理結果とエラーはRunOnce系の戻り値で渡します。Loggerの内部通知先への
 	// 振り分けはrunnerのReporterが担当し、worker内から重複通知しません。
+	// TracerとMeterは、送り直しのspanと、送り直したrecordの数の記録に使います。
 	Tracer pkgobserver.Tracer
 	Meter  pkgobserver.Meter
 }
@@ -107,6 +108,15 @@ type Option func(*Worker)
 
 func WithTargetBackendService(backend string) Option {
 	return func(w *Worker) { w.TargetBackendService = backend }
+}
+
+// WithObserversは、送り直しを計装するTracerとMeterを設定します。nilは記録しないものとして
+// 扱います。
+func WithObservers(tracer pkgobserver.Tracer, meter pkgobserver.Meter) Option {
+	return func(w *Worker) {
+		w.Tracer = tracer
+		w.Meter = meter
+	}
 }
 
 // WithMaxRetryAfterは、backendがRetry-Afterで指定した待機と、保存済みの再送下限時刻に

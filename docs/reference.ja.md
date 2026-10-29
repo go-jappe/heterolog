@@ -400,7 +400,7 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 
 - 名前はPrometheusの慣習に従います。`heterolog_` で始まり、counterは `_total` で終わり、単位を名前に含めます。時間の単位は秒です。
 - `backend` 属性は、`pkg/logger.LogOutputDestination` の名前（`opensearch`・`slack` など）です。
-- spoolからの再送も、通常の送信と同じ種類のretry clientとcircuit breakerを通るため、そのリクエストはretryとcircuit breakerのメトリクスに含まれます。ほかのメトリクスは通常の送信だけを数えます。
+- spoolからの再送も、通常の送信と同じ種類のretry clientとcircuit breakerを通るため、そのリクエストはretryとcircuit breakerのメトリクスに含まれます。再送したrecordは `heterolog_spool_replay_records_total` が数えます。ほかの出力先のメトリクスは通常の送信だけを数えます。
 - 内部ログの通知は、`heterolog_backend_records_total` とflushのメトリクスに数えません。`heterolog_internal_logs_total` が数えます。
 
 | メトリクス | 種類 | 属性 | 意味 |
@@ -413,18 +413,20 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 | `heterolog_circuit_breaker_rejected_requests_total` | Counter | `backend` | circuit breakerが送らずに断ったリクエストの数です。 |
 | `heterolog_circuit_breaker_transitions_total` | Counter | `backend`・`state`（`open`・`closed`） | circuit breakerが開いた回数と、復旧確認（probe）で復旧を確かめて閉じた回数です。 |
 | `heterolog_failure_records_total` | Counter | `backend`・`action` | 送れなかったrecordを、その後の扱いごとに数えます。`spooled`（spoolへ保存）・`archived`（failure archiveへ保存）・`degraded`（stdoutへ退避）・`dropped`（過負荷時の方針 `drop` で破棄）・`failed`（保存も退避もできなかった）です。複数の保存方法を設定した場合は、それぞれが数えます。 |
+| `heterolog_spool_replay_records_total` | Counter | `backend`・`outcome` | spoolから読み戻して送り直したrecordの数を、結果ごとに数えます。結果は `success`・`retryable`（spoolへ戻し、後でまた送り直します）・`dead`・`quarantine` です。応答をrecordへ対応付けられない場合はfile全体を隔離し、そのrecordをすべて `quarantine` として数えます。 |
 | `heterolog_file_dropped_entries_total` | Counter | なし | fileロガーが過負荷時の方針 `drop` で破棄したentryの数です。 |
 | `heterolog_internal_logs_total` | Counter | `level`（`error`・`warn`・`info`・`debug`） | 内部ログの通知先（`OnErrorConfig` など）へ渡した内部ログ（書き込みの失敗や遅いリクエストなど）の数を、levelごとに数えます。[内部ログの通知](#内部ログの通知)を参照してください。 |
 
 ### span
 
-- span名は `heterolog.` で始まり、出力先と操作が続きます。spanの属性も `heterolog.` で始まります。
+- span名は `heterolog.` で始まり、出力先（または `spool`・`failurearchive` などのロガーの部品）と操作が続きます。spanの属性も `heterolog.` で始まります。
 - 操作が失敗した場合、spanはエラーを記録します。
 - spanは、操作のcontextにあるspanの子になります。ログ呼出しが始めた送信（bufferが閾値に達した場合など）は、呼出し元のtraceに含まれます。
 - fileロガーは、書き込みごとのspanを作りません。書き込みは `heterolog_backend_records_total` が数えます。
 
 | span | 操作 | 属性 |
 |---|---|---|
+| `heterolog.spool.replay` | spoolから読み戻したrecordを1回送り直す処理です。retry clientの試行は、このspanの子になります。 | `heterolog.backend`・`heterolog.records` |
 | `heterolog.<出力先>.create` | 出力先（`file`・`stdout`・`slack`・`opensearch`・`loki`・`cloudwatchlogs`・`clickhouse`）のロガーの構築です。 | |
 | `heterolog.opensearch.flush`・`heterolog.loki.flush`・`heterolog.cloudwatchlogs.flush`・`heterolog.clickhouse.flush`・`heterolog.slack.send` | bufferからまとめて送る1回分の送信です。 | `heterolog.records`・`heterolog.bytes`（Slackにはありません） |
 | `heterolog.opensearch.bulk`・`heterolog.opensearch.index`・`heterolog.loki.push`・`heterolog.cloudwatchlogs.put_log_events`・`heterolog.clickhouse.insert`・`heterolog.slack.post` | 1回のリクエストです。retry clientの再試行を含みます。 | `heterolog.records` |

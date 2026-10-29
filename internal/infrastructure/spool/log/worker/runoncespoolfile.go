@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-jappe/heterolog/internal/application/observer"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"github.com/go-jappe/heterolog/pkg/spool"
 )
 
@@ -244,7 +247,12 @@ func (w *Worker) runOnceSpoolFileProcess(ctx context.Context) (ProcessReport, er
 	// 読み込んだrecordをbackendへ送信する。
 	// Senderは各recordをsuccess / retryable / permanent（dead）/ invalid（quarantine）に
 	// 分類した結果を返す。errorがあっても、分類済みの部分結果は捨てない。
-	exportReport, sendErr := w.Sender.Send(ctx, records)
+	sendCtx, span := observer.EnsureTracer(w.Tracer).StartSpan(ctx, SpanSpoolReplay,
+		pkgobserver.Attr{Key: telemetry.SpanAttrBackend, Value: w.TargetBackendService},
+		pkgobserver.Attr{Key: telemetry.SpanAttrRecords, Value: len(records)},
+	)
+	exportReport, sendErr := w.Sender.Send(sendCtx, records)
+	telemetry.EndSpan(span, sendErr)
 
 	// Sender reportを信用してprocessing fileを分解・削除する前に、入力と同じ数の
 	// outcomeがあり、各indexがいずれか1つの結果categoryへ分類されたことを確認する。
@@ -256,6 +264,9 @@ func (w *Worker) runOnceSpoolFileProcess(ctx context.Context) (ProcessReport, er
 			fmt.Errorf("validate sender export report: %w", validationErr),
 		)
 		err = w.quarantineInvalidExportReport(ctx, path, &report, err)
+		telemetry.RecordSpoolReplay(ctx, w.Meter, w.TargetBackendService, telemetry.SpoolReplayCounts{
+			Quarantine: len(records),
+		})
 		return report, err
 	}
 
@@ -289,6 +300,14 @@ func (w *Worker) runOnceSpoolFileProcess(ctx context.Context) (ProcessReport, er
 	report.RetryRecordCount = len(redistribution.ToActiveRecords)
 	report.DeadRecordCount = len(redistribution.ToDeadRecords)
 	report.QuarantineRecordCount = len(redistribution.ToQuarantineRecords)
+	// 送り直した結果だけを数えます。再起動前に決まっていた保存先を照合して後処理だけを
+	// 行うfileは、送り直していないため数えません。
+	telemetry.RecordSpoolReplay(ctx, w.Meter, w.TargetBackendService, telemetry.SpoolReplayCounts{
+		Success:    report.SuccessRecordCount,
+		Retryable:  report.RetryRecordCount,
+		Dead:       report.DeadRecordCount,
+		Quarantine: report.QuarantineRecordCount,
+	})
 
 	// retryableは、backendが再送可能と判定したrecordだけでなく、
 	// context終了で処理を中断したrecord、未送信recordも含む。

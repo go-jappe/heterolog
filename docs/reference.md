@@ -400,7 +400,7 @@ Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and sp
 
 - Names follow the Prometheus conventions: they start with `heterolog_`, counters end with `_total`, and units are part of the name. Durations are in seconds.
 - The `backend` attribute is the name of a `pkg/logger.LogOutputDestination`, such as `opensearch` or `slack`.
-- Spool replay sends through the same kind of retry client and circuit breaker as regular sending, so the retry and circuit breaker metrics include its requests. The other metrics count only regular sending.
+- Spool replay sends through the same kind of retry client and circuit breaker as regular sending, so the retry and circuit breaker metrics include its requests. `heterolog_spool_replay_records_total` counts the replayed records. The other backend metrics count only regular sending.
 - Internal log notifications are not counted in `heterolog_backend_records_total` or in the flush metrics. `heterolog_internal_logs_total` counts them.
 
 | Metric | Type | Attributes | Meaning |
@@ -413,18 +413,20 @@ Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and sp
 | `heterolog_circuit_breaker_rejected_requests_total` | Counter | `backend` | Requests that the circuit breaker rejected without sending. |
 | `heterolog_circuit_breaker_transitions_total` | Counter | `backend`, `state` (`open`, `closed`) | Times the circuit breaker opened, and times it closed after a probe confirmed recovery. |
 | `heterolog_failure_records_total` | Counter | `backend`, `action` | Records that failed to send, by what happened to them: `spooled`, `archived` (to the failure archive), `degraded` (written to stdout), `dropped` (by the overload policy `drop`), or `failed` (could not be stored or written). When several durable types are configured, each one counts the record. |
+| `heterolog_spool_replay_records_total` | Counter | `backend`, `outcome` | Records read back from the spool and sent again, by result: `success`, `retryable` (returned to the spool to be sent again later), `dead`, or `quarantine`. A response that cannot be matched to the records quarantines the whole file, and all its records are counted as `quarantine`. |
 | `heterolog_file_dropped_entries_total` | Counter | none | Entries that the file logger discarded with the overload policy `drop`. |
 | `heterolog_internal_logs_total` | Counter | `level` (`error`, `warn`, `info`, `debug`) | Internal logs passed to the internal log notification targets (`OnErrorConfig` and the like), such as a failed write or a slow request, by level. See [Internal log notifications](#internal-log-notifications). |
 
 ### Spans
 
-- Span names start with `heterolog.`, followed by the destination and the operation. Span attributes start with `heterolog.`.
+- Span names start with `heterolog.`, followed by the destination (or a part of the logger, such as `spool` or `failurearchive`) and the operation. Span attributes start with `heterolog.`.
 - When the operation fails, the span records the error.
 - A span is a child of the span in the context of the operation. A send started by a logging call, for example when a buffer reaches its threshold, is part of the caller's trace.
 - The file logger does not create a span for each write. `heterolog_backend_records_total` counts its writes.
 
 | Span | Operation | Attributes |
 |---|---|---|
+| `heterolog.spool.replay` | Sending records read back from the spool once. The tries of the retry client are its children. | `heterolog.backend`, `heterolog.records` |
 | `heterolog.<destination>.create` | Constructing the logger of a destination (`file`, `stdout`, `slack`, `opensearch`, `loki`, `cloudwatchlogs`, `clickhouse`). | |
 | `heterolog.opensearch.flush`, `heterolog.loki.flush`, `heterolog.cloudwatchlogs.flush`, `heterolog.clickhouse.flush`, `heterolog.slack.send` | Sending one buffered batch. | `heterolog.records`, `heterolog.bytes` (not Slack) |
 | `heterolog.opensearch.bulk`, `heterolog.opensearch.index`, `heterolog.loki.push`, `heterolog.cloudwatchlogs.put_log_events`, `heterolog.clickhouse.insert`, `heterolog.slack.post` | One request, including the retries of the retry client. | `heterolog.records` |

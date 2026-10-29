@@ -38,6 +38,10 @@ const (
 	// 復旧を確認して閉じた回数（state=closed）です。
 	CircuitBreakerTransitions = "heterolog_circuit_breaker_transitions_total"
 
+	// SpoolReplayRecordsは、spoolから読み戻して送り直したrecordの数を、送り直した結果
+	// （outcome）ごとに数えます。retryableは、spoolへ戻して後でまた送り直すrecordです。
+	SpoolReplayRecords = "heterolog_spool_replay_records_total"
+
 	// InternalLogsは、loggerが自分の状態を知らせる内部ログのうち、通知先（OnErrorConfigなどで
 	// 選んだ出力先）へ渡したものの数を、level（error・warn・info・debug）ごとに数えます。
 	InternalLogs = "heterolog_internal_logs_total"
@@ -89,6 +93,8 @@ const (
 	SpanAttrRecords = "heterolog.records"
 	SpanAttrBytes   = "heterolog.bytes"
 	SpanAttrAttempt = "heterolog.attempt"
+	// SpanAttrBackendは、出力先の名前です。出力先ごとに名前を分けないspanに付けます。
+	SpanAttrBackend = "heterolog.backend"
 	// SpanAttrDestinationとSpanAttrLevelは、内部ログの通知先の名前とlevelです。
 	SpanAttrDestination = "heterolog.destination"
 	SpanAttrLevel       = "heterolog.level"

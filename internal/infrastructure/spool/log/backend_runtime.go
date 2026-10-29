@@ -90,6 +90,7 @@ func NewBackendRunnerSupervisor(
 		backendActiveSpoolWriter{store: activeStore},
 		opts.Sender,
 		worker.WithTargetBackendService(backend),
+		worker.WithObservers(tracer, meter),
 		worker.WithProcessingFileTransitionRetry(transitionRetry),
 		worker.WithMaxRetryAfter(opts.RunnerConfig.Worker.MaxRetryAfter),
 		worker.WithRetryAfterStore(logSpoolRetryAfterStore{store: retryAfterStore}),
