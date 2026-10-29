@@ -38,7 +38,6 @@ func (fs *FileStore) ensureWritable() error {
 // latencyHookには成功した書き込みの経過時間を渡し、通知の要否は判断しません。
 func (fs *FileStore) WriteStringWithRetry(
 	ctx context.Context,
-	spanName string,
 	msg string,
 	meta any, // requestID 等
 	logRetry logging.RetryLogFunc,
@@ -49,7 +48,6 @@ func (fs *FileStore) WriteStringWithRetry(
 ) (uint64, error) {
 	return fs.executeWriteStringWithRetry(
 		ctx,
-		spanName,
 		msg,
 		meta,
 		logRetry,
@@ -66,7 +64,6 @@ func (fs *FileStore) WriteStringWithRetry(
 // filesystemで再現しにくい部分書き込み結果を返すfake writerを渡します。
 func (fs *FileStore) executeWriteStringWithRetry(
 	ctx context.Context,
-	spanName string,
 	msg string,
 	meta any,
 	logRetry logging.RetryLogFunc,
@@ -76,9 +73,6 @@ func (fs *FileStore) executeWriteStringWithRetry(
 	retryCfg RetryConfigProvider,
 	writer io.StringWriter,
 ) (uint64, error) {
-	ctx, span := fs.Tracer.StartSpan(ctx, spanName)
-	defer span.End()
-
 	// O_APPENDへの部分書き込みはすでにfileへ反映されています。同じprefixを
 	// 再度appendしないよう、確定したbyte位置をattempt間で保持します。
 	line := msg + "\n"

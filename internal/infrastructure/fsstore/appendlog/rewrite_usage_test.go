@@ -156,7 +156,7 @@ func TestWriteStringWithRetryPreservesOneRecordAcrossPartialWrites(t *testing.T)
 			}
 			latencyCalls := 0
 			written, err := store.executeWriteStringWithRetry(
-				context.Background(), "test.appendlog.partial-write", test.message, "request-id",
+				context.Background(), test.message, "request-id",
 				nil, nil, "write failed",
 				func(_ context.Context, _ time.Duration, meta any) {
 					latencyCalls++
@@ -203,7 +203,7 @@ func TestWriteStringWithRetryAppendsOneRecordToExistingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	written, err := store.WriteStringWithRetry(
-		context.Background(), "test.appendlog.file-write", "日本", nil, nil, nil, "write failed", nil,
+		context.Background(), "日本", nil, nil, nil, "write failed", nil,
 		NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteRetries: 1}),
 	)
 	if err != nil {
@@ -233,7 +233,7 @@ func newPartialWriteTestStore(t *testing.T) *FileStore {
 func TestWriteStringWithRetryWithoutActiveFileKeepsEnsureWritableCause(t *testing.T) {
 	store := &FileStore{Tracer: observer.NopTracer{}}
 	_, err := store.WriteStringWithRetry(
-		context.Background(), "test.appendlog.closed-file", "message", nil, nil, nil, "write failed", nil,
+		context.Background(), "message", nil, nil, nil, "write failed", nil,
 		NewRetryConfigAdapter(pkgfsstore.RetryConfig{MaxWriteRetries: 1}),
 	)
 	var writableErr *EnsureWritableError

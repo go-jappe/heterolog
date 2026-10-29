@@ -11,7 +11,8 @@ const (
 	// BackendRecordsは、出力先へ送ったrecordの数を、送信の結果（outcome）ごとに数えます。
 	// 失敗の分類は、failure handlerへ渡すときの分類と同じです。Slackは、送れなかった
 	// recordを次のbatchで送り直すため、送るたびに数えます。bufferが一杯で捨てたrecordは
-	// droppedとして数えます。
+	// droppedとして数えます。file loggerは、1件の書き込みごとにsuccessかfailureとして
+	// 数えます。
 	BackendRecords = "heterolog_backend_records_total"
 	// BackendRequestDurationは、出力先への1回の送信にかかった秒数です。client wrapperの
 	// retryと、その間の待ち時間を含みます。

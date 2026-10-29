@@ -401,11 +401,11 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 - 名前はPrometheusの慣習に従います。`heterolog_` で始まり、counterは `_total` で終わり、単位を名前に含めます。時間の単位は秒です。
 - `backend` 属性は、`pkg/logger.LogOutputDestination` の名前（`opensearch`・`slack` など）です。
 - spoolからの再送も、通常の送信と同じ種類のretry clientとcircuit breakerを通るため、そのリクエストはretryとcircuit breakerのメトリクスに含まれます。ほかのメトリクスは通常の送信だけを数えます。
-- OpenSearch・Loki・ClickHouse・CloudWatch Logs・Slackへの内部ログの通知は、`heterolog_backend_records_total` とflushのメトリクスに数えません。
+- 内部ログの通知は、`heterolog_backend_records_total` とflushのメトリクスに数えません。`heterolog_internal_logs_total` が数えます。
 
 | メトリクス | 種類 | 属性 | 意味 |
 |---|---|---|---|
-| `heterolog_backend_records_total` | Counter | `backend`・`outcome` | OpenSearch・Loki・ClickHouse・CloudWatch Logs・Slackへ送ったrecordの数を、結果ごとに数えます。結果は `success` か、[失敗の分類](#失敗の分類) の `retryable`・`dead`・`quarantine` です。Slackは、送れなかったrecordを次のbatchへ残し、送るたびに `retryable` として数えます。bufferが一杯で捨てたrecordは `dropped` です。Slackへの送達（delivery）の失敗は `dead` です。 |
+| `heterolog_backend_records_total` | Counter | `backend`・`outcome` | OpenSearch・Loki・ClickHouse・CloudWatch Logs・Slackへ送ったrecordの数を、結果ごとに数えます。結果は `success` か、[失敗の分類](#失敗の分類) の `retryable`・`dead`・`quarantine` です。Slackは、送れなかったrecordを次のbatchへ残し、送るたびに `retryable` として数えます。bufferが一杯で捨てたrecordは `dropped` です。Slackへの送達（delivery）の失敗は `dead` です。fileロガーは、1件の書き込みごとに `success` か `failure` として数えます。過負荷時の方針 `drop` で破棄したentryは、代わりに `heterolog_file_dropped_entries_total` に数えます。 |
 | `heterolog_backend_request_duration_seconds` | Histogram | `backend`・`outcome`（`success`・`failure`） | 1回のリクエストにかかった時間です。retry clientの再試行と、その間の待ち時間を含みます。一部のrecordだけを拒否した応答は `success` で、そのrecordは `heterolog_backend_records_total` に数えます。 |
 | `heterolog_backend_flush_records` | Histogram | `backend` | bufferからまとめて送る1回分のrecordの数です。 |
 | `heterolog_backend_flush_bytes` | Histogram | `backend` | bufferからまとめて送る1回分のbyte数です。`BufferFlushBytes` と比べるために数えた値です。Slackは記録しません。 |
@@ -421,6 +421,7 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 - span名は `heterolog.` で始まり、出力先と操作が続きます。spanの属性も `heterolog.` で始まります。
 - 操作が失敗した場合、spanはエラーを記録します。
 - spanは、操作のcontextにあるspanの子になります。ログ呼出しが始めた送信（bufferが閾値に達した場合など）は、呼出し元のtraceに含まれます。
+- fileロガーは、書き込みごとのspanを作りません。書き込みは `heterolog_backend_records_total` が数えます。
 
 | span | 操作 | 属性 |
 |---|---|---|
@@ -428,7 +429,6 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 | `heterolog.opensearch.flush`・`heterolog.loki.flush`・`heterolog.cloudwatchlogs.flush`・`heterolog.clickhouse.flush`・`heterolog.slack.send` | bufferからまとめて送る1回分の送信です。 | `heterolog.records`・`heterolog.bytes`（Slackにはありません） |
 | `heterolog.opensearch.bulk`・`heterolog.opensearch.index`・`heterolog.loki.push`・`heterolog.cloudwatchlogs.put_log_events`・`heterolog.clickhouse.insert`・`heterolog.slack.post` | 1回のリクエストです。retry clientの再試行を含みます。 | `heterolog.records` |
 | リクエストの名前に `.attempt` を付けた名前（`heterolog.loki.push.attempt` など） | retry clientの1回の試行です。その前の待ち時間は含みません。 | `heterolog.attempt`（初回は1） |
-| `heterolog.file.write`・`heterolog.file.write.io`・`heterolog.fallback.file.write` | ログファイルへの1件の書き込みと、ログファイルへの1件の内部ログの通知です。 | |
 | `heterolog.file.compress`・`heterolog.file.purge.age`・`heterolog.file.purge.generation`・`heterolog.file.purge.dirsize` | ローテーションしたログファイルの圧縮と、期間・世代数・ディレクトリの容量によるログファイルの削除です。 | `heterolog.compress.format` |
 | `heterolog.failurearchive.write`・`heterolog.failurearchive.write.retryable`・`heterolog.failurearchive.write.permanent`・`heterolog.failurearchive.compress`・`heterolog.failurearchive.purge.age`・`heterolog.failurearchive.purge.generation`・`heterolog.failurearchive.purge.dirsize`・`heterolog.failurearchive.delegate`・`heterolog.failurearchive.create` | 送れなかったrecordのfailure archiveへの保存、そのファイルの保守、内部ログの通知、構築です。 | |
 | `heterolog.fallback.slack.create` | 内部ログの通知に使うSlackロガーの構築です。 | |

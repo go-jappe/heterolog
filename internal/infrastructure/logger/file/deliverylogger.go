@@ -177,10 +177,6 @@ func (l *DeliveryFileLogger) HandleLogEntry(
 		ctx = context.Background()
 	}
 
-	// 実際にログ処理という大きめな粒度に対して span を切る
-	ctx, span := l.Tracer.StartSpan(ctx, SpanFileWrite)
-	defer span.End()
-
 	result, err := l.logWithMeta(ctx, entry)
 	return logger.NewTargetDeliveryReport(result), err
 }
@@ -211,7 +207,9 @@ func (l *DeliveryFileLogger) logWithMeta(ctx context.Context, entry *logging.Log
 	if !l.shouldLog(entry.Level) {
 		return l.deliverySkippedResult(), nil
 	}
-	return l.writeEntry(ctx, entry, true)
+	result, err := l.writeEntry(ctx, entry, true)
+	recordWrite(ctx, l.Meter, err)
+	return result, err
 }
 
 // writeEntryはentryを同じ物理streamへ書き込みます。roleによる振り分けは呼び出し元
@@ -343,7 +341,6 @@ func (l *DeliveryFileLogger) writeLog(ctx context.Context, meta *logging.LogEntr
 
 	_, err := l.Fsstore.WriteStringWithRetry(
 		ctx,
-		SpanFileWriteIO,
 		l.LogFormatter.Format(meta),
 		meta.RequestID,
 		nil,

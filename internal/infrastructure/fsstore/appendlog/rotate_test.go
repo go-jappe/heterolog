@@ -92,7 +92,7 @@ func TestRotateWithRetryKeepsOldPathPendingWhenClosingActiveFileFails(t *testing
 	guard.WithProtectedPaths(func(protected map[string]struct{}) {
 		require.Equal(t, map[string]struct{}{pathidentity.AbsoluteOrCleanPath(newPath): {}}, protected)
 	})
-	_, err = store.WriteStringWithRetry(ctx, "rotate-test", "after", nil, nil, nil, "write", nil, retry)
+	_, err = store.WriteStringWithRetry(ctx, "after", nil, nil, nil, "write", nil, retry)
 	require.NoError(t, err, "writes must continue in the replacement after a close failure")
 	content, err = os.ReadFile(oldPath)
 	require.NoError(t, err)

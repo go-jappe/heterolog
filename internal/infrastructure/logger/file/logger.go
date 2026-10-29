@@ -151,11 +151,9 @@ func (l *FileLogger) HandleLogEntry(ctx context.Context, entry *logging.LogEntry
 		ctx = context.Background()
 	}
 
-	// 実際にログ処理という大きめな粒度に対して span を切る
-	ctx, span := l.Tracer.StartSpan(ctx, SpanFileWrite)
-	defer span.End()
-
-	if err := l.logWithMeta(ctx, entry); err != nil {
+	err := l.logWithMeta(ctx, entry)
+	recordWrite(ctx, l.Meter, err)
+	if err != nil {
 		// Close開始後の拒否はfile operation失敗ではなく、同期Logger契約上の
 		// pre-attempt refusalなので内部errorへ再委譲せず共通causeを維持します。
 		if errors.Is(err, pkglogger.ErrLoggerClosed) {
@@ -341,7 +339,6 @@ func (l *FileLogger) writeEntry(
 	// MaxWriteRetriesを0にすること
 	writtenBytes, err := l.Fsstore.WriteStringWithRetry(
 		ctx,
-		SpanFileWriteIO,
 		l.LogFormatter.Format(entry),
 		entry.RequestID,
 		retryLog,

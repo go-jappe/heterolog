@@ -384,14 +384,12 @@ func (s *LoggerSet) fallbackHandler(level pkglogger.LogLevel) logging.LoggerHand
 			return
 		}
 
-		ctx, span := logger.Tracer.StartSpan(ctx, SpanFallbackFileWrite)
-		defer span.End()
-
 		if err := logger.writeFallbackEntry(ctx, &localEntry); err != nil {
 			if errors.Is(err, pkglogger.ErrLoggerClosed) {
 				return
 			}
-			// overload policyによるdropは設定した処置で、metricとspan eventに記録済みです。
+			// overload policyによるdropは設定した処置で、metricと、contextのspanのeventに
+			// 記録済みです。
 			// 内部logの記録失敗として標準loggerへは出力しません。
 			if errors.Is(err, pkglogger.ErrLogDropped) {
 				return
