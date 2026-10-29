@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
@@ -43,7 +42,7 @@ func TestDeliveryRejectionsUseLogicalBackendNames(t *testing.T) {
 			layout.IsSeparateDebugLogsEnabled = true
 			layout.SeparateErrorLogsPrefix = "error_"
 			layout.SeparateDebugLogsPrefix = "debug_"
-			cfg := loggerruntime.DefaultDeliveryConfig()
+			cfg := bootstrap.DefaultDeliveryConfig()
 			cfg.MaxLogEntryBytes = tc.maxLogEntryBytes
 			cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputFile, pkglogger.LogOutputStdout}
 			cfg.File = &pkglogger.DeliveryFileLoggerConfig{

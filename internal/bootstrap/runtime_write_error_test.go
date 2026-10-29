@@ -6,7 +6,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -14,7 +13,7 @@ import (
 func TestRuntimeReturnsStdoutAndStderrWriteErrors(t *testing.T) {
 	for _, stream := range []string{"stdout", "stderr"} {
 		t.Run(stream, func(t *testing.T) {
-			logger, err := bootstrap.New(context.Background(), loggerruntime.DefaultConfig())
+			logger, err := bootstrap.New(context.Background(), bootstrap.DefaultConfig())
 			if err != nil {
 				t.Fatal(err)
 			}

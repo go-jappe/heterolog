@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -17,7 +16,7 @@ func TestConstructorRejectsUnrepresentableRequestSamplingRates(t *testing.T) {
 			if strconv.IntSize < 64 {
 				t.Skip("this boundary cannot be represented by a 32-bit int")
 			}
-			cfg := loggerruntime.DefaultConfig()
+			cfg := bootstrap.DefaultConfig()
 			cfg.Stdout.SamplingConfig = requestRateBoundaryConfig(int(rate))
 			logger, err := bootstrap.New(context.Background(), cfg)
 			if rate > 1<<32-1 {
@@ -44,7 +43,7 @@ func TestConstructorRejectsUnrepresentableRequestSamplingRates(t *testing.T) {
 func TestConstructorAcceptsRequestSamplingRateWithinNativeInt(t *testing.T) {
 	// 32bitと64bitのどちらのsystemでも、有効な大きい比率を試します。
 	rate := int(^uint32(0) >> 1)
-	cfg := loggerruntime.DefaultConfig()
+	cfg := bootstrap.DefaultConfig()
 	cfg.Stdout.SamplingConfig = requestRateBoundaryConfig(rate)
 	logger, err := bootstrap.New(context.Background(), cfg)
 	if err != nil {

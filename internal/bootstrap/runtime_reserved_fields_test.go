@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	"github.com/go-jappe/heterolog/internal/presentation/sloghandler"
@@ -102,7 +101,7 @@ func logReservedFieldsThroughRuntime(t *testing.T, mode string, ctx context.Cont
 	const message = "reserved ID attribute values"
 	switch mode {
 	case "sync", "slog":
-		logger, err := bootstrap.New(context.Background(), loggerruntime.DefaultConfig())
+		logger, err := bootstrap.New(context.Background(), bootstrap.DefaultConfig())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -123,7 +122,7 @@ func logReservedFieldsThroughRuntime(t *testing.T, mode string, ctx context.Cont
 			t.Fatal(err)
 		}
 	case "async":
-		logger, err := bootstrap.NewAsync(context.Background(), loggerruntime.DefaultAsyncConfig())
+		logger, err := bootstrap.NewAsync(context.Background(), bootstrap.DefaultAsyncConfig())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,7 +132,7 @@ func logReservedFieldsThroughRuntime(t *testing.T, mode string, ctx context.Cont
 			t.Fatal(err)
 		}
 	case "delivery":
-		logger, err := bootstrap.NewDelivery(context.Background(), loggerruntime.DefaultDeliveryConfig())
+		logger, err := bootstrap.NewDelivery(context.Background(), bootstrap.DefaultDeliveryConfig())
 		if err != nil {
 			t.Fatal(err)
 		}

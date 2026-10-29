@@ -69,7 +69,7 @@ func TestObserversReachBackendAndEndStartedSpans(t *testing.T) {
 				var closeLogger func() error
 				switch kind {
 				case "sync":
-					logger, err := bootstrap.New(ctx, loggerruntime.DefaultConfig(), option)
+					logger, err := bootstrap.New(ctx, bootstrap.DefaultConfig(), option)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -79,7 +79,7 @@ func TestObserversReachBackendAndEndStartedSpans(t *testing.T) {
 						t.Fatal(err)
 					}
 				case "async":
-					logger, err := bootstrap.NewAsync(ctx, loggerruntime.DefaultAsyncConfig(), option)
+					logger, err := bootstrap.NewAsync(ctx, bootstrap.DefaultAsyncConfig(), option)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -87,7 +87,7 @@ func TestObserversReachBackendAndEndStartedSpans(t *testing.T) {
 					defer closeLogger()
 					logger.Info(ctx, message)
 				case "delivery":
-					logger, err := bootstrap.NewDelivery(ctx, loggerruntime.DefaultDeliveryConfig(), option)
+					logger, err := bootstrap.NewDelivery(ctx, bootstrap.DefaultDeliveryConfig(), option)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -178,7 +178,7 @@ func TestObserverMeterReceivesFileDropNotification(t *testing.T) {
 			ctx := context.Background()
 			option := loggerruntime.WithObservers(nil, meter)
 			if kind == "sync" {
-				cfg := loggerruntime.DefaultConfig()
+				cfg := bootstrap.DefaultConfig()
 				cfg.Stdout, cfg.File = nil, fileConfig
 				cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputFile}
 				logger, err := bootstrap.New(ctx, cfg, option)
@@ -194,7 +194,7 @@ func TestObserverMeterReceivesFileDropNotification(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				cfg := loggerruntime.DefaultAsyncConfig()
+				cfg := bootstrap.DefaultAsyncConfig()
 				cfg.Stdout, cfg.File = nil, fileConfig
 				cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputFile}
 				logger, err := bootstrap.NewAsync(ctx, cfg, option)

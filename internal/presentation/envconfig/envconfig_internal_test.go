@@ -49,11 +49,7 @@ func TestEnvConfigOptionsCarryTheSpoolAndStreamRouting(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		o, err := loggerruntime.ResolveOptions(opts)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return o
+		return loggerruntime.ResolveOptions(opts)
 	}
 
 	_, syncOpts, err := loaded.Config()

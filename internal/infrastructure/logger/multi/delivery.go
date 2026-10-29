@@ -94,8 +94,8 @@ func validatedDeliveryMultiLoggerConfig(cfg DeliveryMultiLoggerConfigProvider) (
 		return 0, 0, fmt.Errorf("delivery multi logger %w", ErrConfigRequired)
 	}
 	timeout := cfg.Timeout()
-	if timeout <= 0 {
-		return 0, 0, fmt.Errorf("delivery multi logger %w: %s", ErrInvalidTimeout, timeout)
+	if err := logger.ValidateTimeout(logger.LoggerContractDelivery.DisplayName(), timeout); err != nil {
+		return 0, 0, err
 	}
 	maxLogEntryBytes := cfg.MaxLogEntryBytes()
 	if err := logger.ValidateMaxLogEntryBytes(maxLogEntryBytes); err != nil {

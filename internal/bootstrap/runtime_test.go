@@ -9,7 +9,6 @@ import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -19,11 +18,11 @@ func TestRuntimeRecordsAndClosesWithoutEnvironment(t *testing.T) {
 	t.Setenv("HETEROLOG_ENV_PATH", filepath.Join(t.TempDir(), "does-not-exist.env"))
 	t.Setenv("HETEROLOG_ENABLE_LOGGING", "false")
 	t.Setenv("HETEROLOG_STDOUT_LOG_LEVEL", "ERROR")
-	cfg := loggerruntime.DefaultConfig()
+	cfg := bootstrap.DefaultConfig()
 	cfg.Resource = nil // 任意のresourceのmetadataがなくてもpanicしてはいけません。
 	// 設定は値で渡すため、runtimeと共有するのはpointerの下位の設定だけです。
 	// DefaultConfigは、比較に使える独立した値を返します。
-	want := loggerruntime.DefaultConfig()
+	want := bootstrap.DefaultConfig()
 	want.Resource = nil
 	output := testutil.CaptureStdout(t, func() {
 		logger, err := bootstrap.New(context.Background(), cfg)
@@ -60,7 +59,7 @@ func TestRuntimeRecordsAndClosesWithoutEnvironment(t *testing.T) {
 }
 
 func TestAsyncRuntimeDrainsAcceptedEntries(t *testing.T) {
-	cfg, want := loggerruntime.DefaultAsyncConfig(), loggerruntime.DefaultAsyncConfig()
+	cfg, want := bootstrap.DefaultAsyncConfig(), bootstrap.DefaultAsyncConfig()
 	output := testutil.CaptureStdout(t, func() {
 		synctest.Test(t, func(t *testing.T) {
 			logger, err := bootstrap.NewAsync(context.Background(), cfg)
@@ -93,7 +92,7 @@ func TestAsyncRuntimeDrainsAcceptedEntries(t *testing.T) {
 }
 
 func TestDeliveryRuntimeReportsDestination(t *testing.T) {
-	cfg, want := loggerruntime.DefaultDeliveryConfig(), loggerruntime.DefaultDeliveryConfig()
+	cfg, want := bootstrap.DefaultDeliveryConfig(), bootstrap.DefaultDeliveryConfig()
 	output := testutil.CaptureStdout(t, func() {
 		logger, err := bootstrap.NewDelivery(context.Background(), cfg)
 		if err != nil {
@@ -125,7 +124,7 @@ func TestDeliveryRuntimeReportsDestination(t *testing.T) {
 }
 
 func TestEntryLimitAndImmutableFields(t *testing.T) {
-	cfg := loggerruntime.DefaultConfig()
+	cfg := bootstrap.DefaultConfig()
 	cfg.MaxLogEntryBytes = 64
 	logger, err := bootstrap.New(context.Background(), cfg)
 	if err != nil {

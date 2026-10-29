@@ -80,7 +80,7 @@ func TestMemoryPressureMonitorControlsFailureOverload(t *testing.T) {
 				monitor := &runtimeMemoryMonitor{critical: pressure.critical}
 				meter := observertest.NewMeter()
 				cfg := runtimeMemoryPressureConfig(root, transport)
-				spool := loggerruntime.DefaultSpoolConfig()
+				spool := bootstrap.DefaultSpoolConfig()
 				spool.RunnerConfig.LokiConfig.Runner.Interval = time.Hour
 				opts := []loggerruntime.Option{
 					loggerruntime.WithSpool(spool),
@@ -101,7 +101,7 @@ func TestMemoryPressureMonitorControlsFailureOverload(t *testing.T) {
 					}
 					requireMemoryOverloadCloseResult(t, logger.Close(), pressure.critical)
 				} else {
-					asyncCfg := loggerruntime.DefaultAsyncConfig()
+					asyncCfg := bootstrap.DefaultAsyncConfig()
 					asyncCfg.Stdout = nil
 					asyncCfg.LogOutputDestinations = cfg.LogOutputDestinations
 					asyncCfg.Loki, asyncCfg.LokiClient = cfg.Loki, cfg.LokiClient
@@ -186,7 +186,7 @@ func requireMemoryOverloadCloseResult(t *testing.T, err error, dropped bool) {
 }
 
 func runtimeMemoryPressureConfig(root string, transport http.RoundTripper) pkglogger.LoggerConfig {
-	cfg := loggerruntime.DefaultConfig()
+	cfg := bootstrap.DefaultConfig()
 	cfg.Stdout = nil
 	cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputLoki}
 	cfg.LokiClient = &loki.Config{

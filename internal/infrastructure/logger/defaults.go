@@ -1,4 +1,4 @@
-package loggerruntime
+package logger
 
 import (
 	"time"

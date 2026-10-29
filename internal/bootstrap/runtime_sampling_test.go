@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/sampling"
 	"github.com/go-jappe/heterolog/internal/testutil"
@@ -16,7 +15,7 @@ import (
 func TestRuntimeAppliesRequestSamplingAndMandatoryOutput(t *testing.T) {
 	for _, mode := range []string{"request sampling", "mandatory info", "sampling disabled"} {
 		t.Run(mode, func(t *testing.T) {
-			cfg := loggerruntime.DefaultConfig()
+			cfg := bootstrap.DefaultConfig()
 			cfg.Stdout.SamplingConfig = pkglogger.SamplingConfig{
 				IsSamplingEnabled: true, EnableLoggingByRequestID: true, LoggingByRequestIDRate: 3,
 				SamplingDebugRate: 5, SamplingInfoRate: 7, SamplingWarnRate: 11, SamplingErrorRate: 13,

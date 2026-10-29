@@ -41,7 +41,7 @@ func TestOpenSearchDefaultObservers(t *testing.T) {
 				var closeLogger func() error
 				switch kind {
 				case "sync":
-					cfg := loggerruntime.DefaultConfig()
+					cfg := bootstrap.DefaultConfig()
 					cfg.Stdout = nil
 					cfg.OpenSearch = backend
 					cfg.OpenSearchClient = client
@@ -52,7 +52,7 @@ func TestOpenSearchDefaultObservers(t *testing.T) {
 					}
 					closeLogger = logger.Close
 				case "async":
-					cfg := loggerruntime.DefaultAsyncConfig()
+					cfg := bootstrap.DefaultAsyncConfig()
 					cfg.Stdout = nil
 					cfg.OpenSearch = backend
 					cfg.OpenSearchClient = client
@@ -63,7 +63,7 @@ func TestOpenSearchDefaultObservers(t *testing.T) {
 					}
 					closeLogger = logger.Close
 				case "delivery":
-					cfg := loggerruntime.DefaultDeliveryConfig()
+					cfg := bootstrap.DefaultDeliveryConfig()
 					cfg.Stdout = nil
 					cfg.OpenSearchClient = client
 					cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputOpenSearch}

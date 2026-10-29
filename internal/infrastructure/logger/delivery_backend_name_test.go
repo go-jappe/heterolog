@@ -61,6 +61,7 @@ func deliveryBackendNameConfig(t *testing.T, output pkglogger.LogOutputDestinati
 	case pkglogger.LogOutputSlack:
 		cfg.Slack = &pkglogger.DeliverySlackLoggerConfig{
 			Token: "test-token", Channel: "test-channel", Timeout: time.Second, LogBodyConfig: body,
+			RuntimeConfig: pkglogger.RuntimeConfig{LogLevel: pkglogger.LogLevelDebug},
 		}
 	case pkglogger.LogOutputOpenSearch:
 		cfg.OpenSearchClient = &pkgopensearch.Config{

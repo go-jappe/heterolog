@@ -84,7 +84,7 @@ func TestCloseFinishesSiblingsAfterTransientObserverPanic(t *testing.T) {
 }
 
 func closePanicConfig(lokiTransport, cloudWatchTransport *closePanicTransport) pkglogger.LoggerConfig {
-	cfg := loggerruntime.DefaultConfig()
+	cfg := bootstrap.DefaultConfig()
 	cfg.Stdout = nil
 	cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputLoki, pkglogger.LogOutputCloudWatchLogs}
 	runtime := pkglogger.RuntimeConfig{AppName: "close-panic-test", LogLevel: pkglogger.LogLevelInfo}

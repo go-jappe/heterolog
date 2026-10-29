@@ -73,11 +73,11 @@ func TestConstructorsValidateOnlyEffectiveCloudWatchStreamNames(t *testing.T) {
 				var err error
 				switch mode {
 				case "sync":
-					cfg := loggerruntime.DefaultConfig()
+					cfg := bootstrap.DefaultConfig()
 					configure(&cfg)
 					created, err = bootstrap.New(context.Background(), cfg, loggerruntime.WithCloudWatchLogsStreamRouting(test.routing))
 				case "async":
-					cfg := loggerruntime.DefaultAsyncConfig()
+					cfg := bootstrap.DefaultAsyncConfig()
 					baseCfg := cfg.ToLoggerConfig()
 					configure(&baseCfg)
 					cfg.LogOutputDestinations = baseCfg.LogOutputDestinations
@@ -85,7 +85,7 @@ func TestConstructorsValidateOnlyEffectiveCloudWatchStreamNames(t *testing.T) {
 					cfg.InternalLogDestinations = baseCfg.InternalLogDestinations
 					created, err = bootstrap.NewAsync(context.Background(), cfg, loggerruntime.WithCloudWatchLogsStreamRouting(test.routing))
 				case "delivery":
-					cfg := loggerruntime.DefaultDeliveryConfig()
+					cfg := bootstrap.DefaultDeliveryConfig()
 					cfg.CloudWatchLogs, cfg.CloudWatchLogsClient = deliveryBase, client
 					if test.selected {
 						cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputCloudWatchLogs}

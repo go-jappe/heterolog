@@ -69,7 +69,7 @@ func TestAnyPreservesAcceptedNestedValuesInOutput(t *testing.T) {
 				t.Fatal(err)
 			}
 			output := testutil.CaptureStdout(t, func() {
-				logger, err := bootstrap.New(context.Background(), loggerruntime.DefaultConfig())
+				logger, err := bootstrap.New(context.Background(), bootstrap.DefaultConfig())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -140,7 +140,7 @@ func TestAnyMaximumNestingSurvivesSpoolRoundTrip(t *testing.T) {
 		cfg := runtimeMemoryPressureConfig(root, transport)
 		cfg.Loki.NoBulkFlushModeEnabled = true
 		cfg.Loki.FailureStoreConfig.DurableStoreConfig.SpoolConfig.OverloadPolicyConfig.UseMemoryPressureForOverload = false
-		spool := loggerruntime.DefaultSpoolConfig()
+		spool := bootstrap.DefaultSpoolConfig()
 		spool.RunnerConfig.LokiConfig.Runner.Interval = time.Second
 		logger, err := bootstrap.New(context.Background(), cfg, loggerruntime.WithSpool(spool))
 		if err != nil {

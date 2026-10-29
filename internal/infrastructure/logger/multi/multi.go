@@ -89,8 +89,8 @@ func validatedMultiLoggerConfig(cfg MultiLoggerConfigProvider) (time.Duration, i
 		return 0, 0, fmt.Errorf("multi logger %w", ErrConfigRequired)
 	}
 	timeout := cfg.Timeout()
-	if timeout <= 0 {
-		return 0, 0, fmt.Errorf("multi logger %w: %s", ErrInvalidTimeout, timeout)
+	if err := pkglogger.ValidateTimeout(pkglogger.LoggerContractSync.DisplayName(), timeout); err != nil {
+		return 0, 0, err
 	}
 	maxLogEntryBytes := cfg.MaxLogEntryBytes()
 	if err := pkglogger.ValidateMaxLogEntryBytes(maxLogEntryBytes); err != nil {

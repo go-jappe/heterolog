@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
@@ -34,7 +33,7 @@ func (r *runtimeRecordingTransport) RoundTrip(request *http.Request) (*http.Resp
 
 func TestShutdownFlushesBufferedLoki(t *testing.T) {
 	transport := &runtimeRecordingTransport{}
-	cfg := loggerruntime.DefaultConfig()
+	cfg := bootstrap.DefaultConfig()
 	cfg.Stdout = nil
 	cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputLoki}
 	cfg.LokiClient = &loki.Config{

@@ -20,7 +20,7 @@ func TestUpdateOutputSettingsChangesTheLevelOfARunningLogger(t *testing.T) {
 	ctx := context.Background()
 	var settings map[pkglogger.LogOutputDestination]pkglogger.OutputSettings
 	output := testutil.CaptureStdout(t, func() {
-		runtime, err := bootstrap.New(ctx, loggerruntime.DefaultConfig())
+		runtime, err := bootstrap.New(ctx, bootstrap.DefaultConfig())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +73,7 @@ func TestUpdateOutputSettingsChangesTheLevelOfARunningAsyncLogger(t *testing.T) 
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			output := testutil.CaptureStdout(t, func() {
-				runtime, err := bootstrap.NewAsync(ctx, loggerruntime.DefaultAsyncConfig())
+				runtime, err := bootstrap.NewAsync(ctx, bootstrap.DefaultAsyncConfig())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -127,7 +127,7 @@ func TestUpdateOutputSettingsChangesTheLevelOfAFileOutput(t *testing.T) {
 func TestUpdateOutputSettingsChangesSampling(t *testing.T) {
 	ctx := context.Background()
 	output := testutil.CaptureStdout(t, func() {
-		runtime, err := bootstrap.New(ctx, loggerruntime.DefaultConfig())
+		runtime, err := bootstrap.New(ctx, bootstrap.DefaultConfig())
 		if err != nil {
 			t.Fatal(err)
 		}

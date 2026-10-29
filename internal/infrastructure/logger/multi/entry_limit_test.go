@@ -70,13 +70,13 @@ func TestNewAsyncBestEffortMultiLoggerRejectsInvalidConfig(t *testing.T) {
 		_, err := NewAsyncBestEffortMultiLogger(entryLimitAsyncConfig{
 			timeout: timeout, maxParallel: 1, maxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes,
 		})
-		require.ErrorIs(t, err, ErrInvalidTimeout)
+		require.ErrorIs(t, err, pkglogger.ErrNonPositiveSetting)
 	}
 	for _, maxParallel := range []int{0, -1} {
 		_, err := NewAsyncBestEffortMultiLogger(entryLimitAsyncConfig{
 			timeout: time.Second, maxParallel: maxParallel, maxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes,
 		})
-		require.ErrorIs(t, err, ErrInvalidMaxParallel)
+		require.ErrorIs(t, err, pkglogger.ErrNonPositiveSetting)
 	}
 }
 

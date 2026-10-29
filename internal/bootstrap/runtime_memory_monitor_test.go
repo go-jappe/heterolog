@@ -95,7 +95,7 @@ func TestNewMemoryPressureMonitorDrivesFailureOverload(t *testing.T) {
 			overload := &cfg.Loki.FailureStoreConfig.DurableStoreConfig.SpoolConfig.OverloadPolicyConfig
 			overload.OverloadPolicy = durable.OverloadPolicyDegrade
 			overload.SpillDestination = durable.SpillDestinationStdout
-			spool := loggerruntime.DefaultSpoolConfig()
+			spool := bootstrap.DefaultSpoolConfig()
 			spool.RunnerConfig.LokiConfig.Runner.Interval = time.Hour
 			const message = "constructed memory monitor entry"
 			output := testutil.CaptureStdout(t, func() {

@@ -1,7 +1,7 @@
 package heterolog
 
 import (
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
+	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -28,13 +28,13 @@ const (
 
 // DefaultConfig returns independent configuration for INFO and higher logs on
 // stdout (WARN and ERROR on stderr). Timestamps use UTC and RFC3339Nano.
-func DefaultConfig() Config { return loggerruntime.DefaultConfig() }
+func DefaultConfig() Config { return bootstrap.DefaultConfig() }
 
 // DefaultAsyncConfig returns stdout configuration with at most 16 parallel
 // backend operations. Logging methods do not return delivery errors.
-func DefaultAsyncConfig() AsyncConfig { return loggerruntime.DefaultAsyncConfig() }
+func DefaultAsyncConfig() AsyncConfig { return bootstrap.DefaultAsyncConfig() }
 
 // DefaultDeliveryConfig returns stdout configuration for reporting delivery.
 // Delivery loggers do not sample entries, and only their Slack output filters
 // severity.
-func DefaultDeliveryConfig() DeliveryConfig { return loggerruntime.DefaultDeliveryConfig() }
+func DefaultDeliveryConfig() DeliveryConfig { return bootstrap.DefaultDeliveryConfig() }

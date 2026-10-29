@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
+	"github.com/go-jappe/heterolog/internal/bootstrap"
 	memorymonitor "github.com/go-jappe/heterolog/internal/observer/memory/pressure"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	"github.com/go-jappe/heterolog/pkg/memorypressure"
@@ -130,4 +131,4 @@ func NewMemoryPressureMonitor(
 
 // DefaultSpoolConfig returns replay settings for every supported backend.
 // Purging is disabled so retained records are not deleted implicitly.
-func DefaultSpoolConfig() SpoolConfig { return loggerruntime.DefaultSpoolConfig() }
+func DefaultSpoolConfig() SpoolConfig { return bootstrap.DefaultSpoolConfig() }

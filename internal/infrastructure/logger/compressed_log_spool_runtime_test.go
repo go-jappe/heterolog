@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logger/multi"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	"github.com/go-jappe/heterolog/pkg/failurestore"
@@ -232,7 +231,7 @@ func TestLoggerCompressedLogSpoolFanoutFailureClosesPreparedRunners(t *testing.T
 	cfg := pkglogger.LoggerConfig{File: base}
 	require.NoError(t, prepareLoggerArchiveCheckpointDirectory(cfg))
 	_, err := newLoggerCore(context.Background(), cfg, pkgcloudwatchlogs.StreamRoutingNone, nil, observer.NopTracer{}, observer.NopMeter{}, nil)
-	require.ErrorIs(t, err, multi.ErrInvalidTimeout)
+	require.ErrorIs(t, err, pkglogger.ErrNonPositiveSetting)
 	replacement, err := compressedlog.NewRootRuntime(compressedlog.NewConfigAdapter(base.ObjectStorageUploadConfig.CompressedLogFileUploadSpool, objectstorage.UploadTargetS3))
 	require.NoError(t, err, "fanout構築失敗でも先に作成したrunnerのrouteを回収する")
 	require.NoError(t, replacement.Close())

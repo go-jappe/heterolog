@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -82,7 +81,7 @@ func TestSlackDeliveryPreservesAcceptanceEvidence(t *testing.T) {
 				}, nil
 			})
 
-			cfg := loggerruntime.DefaultDeliveryConfig()
+			cfg := bootstrap.DefaultDeliveryConfig()
 			cfg.Stdout = nil
 			cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputSlack}
 			cfg.Slack = &pkglogger.DeliverySlackLoggerConfig{

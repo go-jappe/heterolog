@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/handler"
@@ -63,7 +62,7 @@ func slackBufferConstructors() []slackBufferConstructor {
 			name:   "New output",
 			source: "logger",
 			construct: func(intervals []time.Duration, rest time.Duration) (interface{ Close() error }, error) {
-				cfg := loggerruntime.DefaultConfig()
+				cfg := bootstrap.DefaultConfig()
 				cfg.LogOutputDestinations = slackDestinations
 				cfg.Slack = slackBufferTestConfig(intervals, rest)
 				return bootstrap.New(ctx, cfg)
@@ -73,7 +72,7 @@ func slackBufferConstructors() []slackBufferConstructor {
 			name:   "New internal log destination",
 			source: "logger internal log destination",
 			construct: func(intervals []time.Duration, rest time.Duration) (interface{ Close() error }, error) {
-				cfg := loggerruntime.DefaultConfig()
+				cfg := bootstrap.DefaultConfig()
 				cfg.Stdout.HandlerConfig = handler.HandlerConfig{OnErrorConfig: []string{"slack"}}
 				cfg.InternalLogDestinations = &pkglogger.InternalLogDestinationConfig{
 					Slack: slackBufferTestConfig(intervals, rest),
@@ -85,7 +84,7 @@ func slackBufferConstructors() []slackBufferConstructor {
 			name:   "NewAsync output",
 			source: "async logger",
 			construct: func(intervals []time.Duration, rest time.Duration) (interface{ Close() error }, error) {
-				cfg := loggerruntime.DefaultAsyncConfig()
+				cfg := bootstrap.DefaultAsyncConfig()
 				cfg.LogOutputDestinations = slackDestinations
 				cfg.Slack = slackBufferTestConfig(intervals, rest)
 				return bootstrap.NewAsync(ctx, cfg)
@@ -95,7 +94,7 @@ func slackBufferConstructors() []slackBufferConstructor {
 			name:   "NewDelivery internal log fallback",
 			source: "delivery logger internal log fallback",
 			construct: func(intervals []time.Duration, rest time.Duration) (interface{ Close() error }, error) {
-				cfg := loggerruntime.DefaultDeliveryConfig()
+				cfg := bootstrap.DefaultDeliveryConfig()
 				cfg.Stdout.HandlerConfig = handler.HandlerConfig{OnErrorConfig: []string{"slack"}}
 				cfg.Slack = &pkglogger.DeliverySlackLoggerConfig{
 					TimeConfig:    pkglogger.TimeConfig{TimeZone: "UTC"},

@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logger/multi"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -274,22 +273,22 @@ func TestLoggerConstructorsRejectInvalidScalarConfigBeforeIO(t *testing.T) {
 		want      error
 		construct func(t *testing.T, root string) (io.Closer, error)
 	}{
-		{"logger/timeout", multi.ErrInvalidTimeout, func(t *testing.T, root string) (io.Closer, error) {
+		{"logger/timeout", pkglogger.ErrNonPositiveSetting, func(t *testing.T, root string) (io.Closer, error) {
 			return NewLogger(context.Background(), syncConfig(t, root, 0, validBytes), pkgcloudwatchlogs.StreamRoutingNone, nil, nil, nil, nil)
 		}},
 		{"logger/max log entry bytes", pkglogger.ErrInvalidMaxLogEntryBytes, func(t *testing.T, root string) (io.Closer, error) {
 			return NewLogger(context.Background(), syncConfig(t, root, time.Second, 0), pkgcloudwatchlogs.StreamRoutingNone, nil, nil, nil, nil)
 		}},
-		{"async logger/timeout", multi.ErrInvalidTimeout, func(t *testing.T, root string) (io.Closer, error) {
+		{"async logger/timeout", pkglogger.ErrNonPositiveSetting, func(t *testing.T, root string) (io.Closer, error) {
 			return NewAsyncLogger(context.Background(), asyncConfig(t, root, 0, 1, validBytes), pkgcloudwatchlogs.StreamRoutingNone, nil, nil, nil, nil)
 		}},
-		{"async logger/max parallel", multi.ErrInvalidMaxParallel, func(t *testing.T, root string) (io.Closer, error) {
+		{"async logger/max parallel", pkglogger.ErrNonPositiveSetting, func(t *testing.T, root string) (io.Closer, error) {
 			return NewAsyncLogger(context.Background(), asyncConfig(t, root, time.Second, 0, validBytes), pkgcloudwatchlogs.StreamRoutingNone, nil, nil, nil, nil)
 		}},
 		{"async logger/max log entry bytes", pkglogger.ErrInvalidMaxLogEntryBytes, func(t *testing.T, root string) (io.Closer, error) {
 			return NewAsyncLogger(context.Background(), asyncConfig(t, root, time.Second, 1, 0), pkgcloudwatchlogs.StreamRoutingNone, nil, nil, nil, nil)
 		}},
-		{"delivery logger/timeout", multi.ErrInvalidTimeout, func(t *testing.T, root string) (io.Closer, error) {
+		{"delivery logger/timeout", pkglogger.ErrNonPositiveSetting, func(t *testing.T, root string) (io.Closer, error) {
 			return NewDeliveryLogger(context.Background(), deliveryConfig(root, 0, validBytes), pkgcloudwatchlogs.StreamRoutingNone, nil, nil)
 		}},
 		{"delivery logger/max log entry bytes", pkglogger.ErrInvalidMaxLogEntryBytes, func(t *testing.T, root string) (io.Closer, error) {

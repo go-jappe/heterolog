@@ -112,7 +112,7 @@ func TestOpenSearchPreservesStoppedRequests(t *testing.T) {
 				}
 				cfg.Loki = nil
 				cfg.LokiClient = nil
-				spool := loggerruntime.DefaultSpoolConfig()
+				spool := bootstrap.DefaultSpoolConfig()
 				spool.RunnerConfig.OpensearchConfig.Runner.Interval = time.Hour
 				logger, err := bootstrap.New(context.Background(), cfg, loggerruntime.WithSpool(spool))
 				if err != nil {

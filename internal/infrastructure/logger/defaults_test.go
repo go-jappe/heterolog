@@ -1,16 +1,16 @@
-package loggerruntime_test
+package logger_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
+	infralogger "github.com/go-jappe/heterolog/internal/infrastructure/logger"
 	pkgspoolrunner "github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
 )
 
 // 既定のspool設定は、全backendでRetry-Afterの待機上限を1時間にします。
 func TestDefaultSpoolConfigCapsRetryAfterAtOneHour(t *testing.T) {
-	cfg := loggerruntime.DefaultSpoolConfig()
+	cfg := infralogger.DefaultSpoolConfig()
 	for name, backend := range map[string]pkgspoolrunner.BackendSpoolRunnerConfig{
 		"opensearch":     cfg.RunnerConfig.OpensearchConfig,
 		"loki":           cfg.RunnerConfig.LokiConfig,

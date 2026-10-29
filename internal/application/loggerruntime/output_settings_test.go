@@ -18,7 +18,7 @@ func TestNewUsesTheLiveSettingsOfTheConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := loggerruntime.DefaultConfig()
+	cfg := stdoutConfig()
 	cfg.Stdout.RuntimeConfig.Live = live
 	runtime, err := loggerruntime.New(ctx, &recordingBuilder{}, cfg)
 	if err != nil {
@@ -47,7 +47,7 @@ func TestOutputLiveSettingsReturnsTheLiveSettingsInUse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := loggerruntime.DefaultConfig()
+	cfg := stdoutConfig()
 	cfg.Stdout.RuntimeConfig.Live = live
 	runtime, err := loggerruntime.New(ctx, &recordingBuilder{}, cfg)
 	if err != nil {
@@ -58,7 +58,7 @@ func TestOutputLiveSettingsReturnsTheLiveSettingsInUse(t *testing.T) {
 		t.Errorf("Runtime.OutputLiveSettings() = %v, want only the Live of the stdout configuration", got)
 	}
 
-	async, err := loggerruntime.NewAsync(ctx, &recordingBuilder{}, loggerruntime.DefaultAsyncConfig())
+	async, err := loggerruntime.NewAsync(ctx, &recordingBuilder{}, stdoutAsyncConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestRuntimesSharingLiveSettingsKeepConcurrentPartialUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := loggerruntime.DefaultConfig()
+	cfg := stdoutConfig()
 	cfg.Stdout.RuntimeConfig.Live = live
 	var runtimes [2]*loggerruntime.Runtime
 	for i := range runtimes {

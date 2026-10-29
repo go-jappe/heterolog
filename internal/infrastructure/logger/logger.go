@@ -583,7 +583,8 @@ func validateLoggerConstructionConfig(
 // 同じ保存先を共有するloggerの初回構築は、呼び出し元で順番に行ってください。
 // cloudWatchLogsStreamRoutingGranularityはpkg/loggerのbackend DTOとは分離された
 // application側のstream分割方針で、通常出力とinternal log出力の両方へ適用します。
-// TimeoutとMaxLogEntryBytesは、log rootやspoolなどのresourceを作る前に検証します。
+// Timeout、MaxLogEntryBytes、本文の表示の設定、stream分割は、log rootやspoolなどの
+// resourceを作る前に検証します。
 func NewLogger(
 	ctx context.Context,
 	cfg logger.LoggerConfig,
@@ -595,6 +596,13 @@ func NewLogger(
 ) (applogging.CloseableLogger, error) {
 	// fan-out構築時と同じ規則を、filesystem上のresourceを作る前に適用します。
 	if err := multi.ValidateMultiLoggerConfig(NewMultiLoggerAdapter(cfg)); err != nil {
+		return nil, err
+	}
+	if err := validateLoggerBodyConfigs(logger.LoggerContractSync.DisplayName(), cfg); err != nil {
+		return nil, err
+	}
+	// CloudWatch Logsを使わない設定でも、対応していないstream分割の指定は誤りとして拒否します。
+	if err := cloudWatchLogsStreamRoutingGranularity.Validate(); err != nil {
 		return nil, err
 	}
 	if err := validateLoggerConstructionConfig(
@@ -806,7 +814,8 @@ func newLoggerCore(
 // 完了してからrunnerを停止します。構築後のctx終了だけではrunnerを停止しません。
 // checkpoint保存先の準備と、共有するloggerの構築順序はNewLoggerと同じです。
 // CloudWatch Logsのstream分割方針もNewLoggerと同じ独立引数で受け取ります。
-// Timeout、MaxParallel、MaxLogEntryBytesは、resourceを作る前に検証します。
+// Timeout、MaxParallel、MaxLogEntryBytes、本文の表示の設定、stream分割は、resourceを
+// 作る前に検証します。
 func NewAsyncLogger(
 	ctx context.Context,
 	cfg logger.AsyncBestEffortMultiLoggerConfig,
@@ -823,6 +832,13 @@ func NewAsyncLogger(
 
 	// 子ロガー構築は従来どおり LoggerConfig を使う
 	lc := cfg.ToLoggerConfig()
+	if err := validateLoggerBodyConfigs(logger.LoggerContractAsyncBestEffort.DisplayName(), lc); err != nil {
+		return nil, err
+	}
+	// CloudWatch Logsを使わない設定でも、対応していないstream分割の指定は誤りとして拒否します。
+	if err := cloudWatchLogsStreamRoutingGranularity.Validate(); err != nil {
+		return nil, err
+	}
 	if err := validateLoggerConstructionConfig(
 		logger.LoggerContractAsyncBestEffort.DisplayName(),
 		lc,
@@ -1032,7 +1048,7 @@ func newAsyncLoggerCore(
 // NewDeliveryLoggerは送達確認loggerを構築します。CloudWatch Logsのstream分割方針は
 // backend DTOに含めず、同じDelivery契約の通常出力とinternal log出力へ適用します。
 // checkpoint保存先の準備と、共有するloggerの構築順序はNewLoggerと同じです。
-// TimeoutとMaxLogEntryBytesは、resourceを作る前に検証します。
+// Timeout、MaxLogEntryBytes、表示の設定、stream分割は、resourceを作る前に検証します。
 func NewDeliveryLogger(
 	ctx context.Context,
 	cfg logger.DeliveryLoggerConfig,
@@ -1042,6 +1058,13 @@ func NewDeliveryLogger(
 ) (_ applogging.DeliveryClosableLogger, resultErr error) {
 	// fan-out構築時と同じ規則を、filesystem上のresourceを作る前に適用します。
 	if err := multi.ValidateDeliveryMultiLoggerConfig(NewDeliveryMultiLoggerAdapter(cfg)); err != nil {
+		return nil, err
+	}
+	if err := validateDeliveryPresentation(logger.LoggerContractDelivery.DisplayName(), cfg); err != nil {
+		return nil, err
+	}
+	// CloudWatch Logsを使わない設定でも、対応していないstream分割の指定は誤りとして拒否します。
+	if err := cloudWatchLogsStreamRoutingGranularity.Validate(); err != nil {
 		return nil, err
 	}
 	if err := logger.ValidateDeliveryLoggerBackendConfigs(logger.LoggerContractDelivery.DisplayName(), cfg); err != nil {

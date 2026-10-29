@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -59,7 +58,7 @@ func TestErrorWithStackPreservesApplicationOriginAndDepth(t *testing.T) {
 				var site stackCallSite
 				output := captureRuntimeStderr(t, func() {
 					ctx := context.Background()
-					cfg := loggerruntime.DefaultConfig()
+					cfg := bootstrap.DefaultConfig()
 					cfg.Stdout.LogBodyConfig.ErrorTraceDepth = tc.depth
 					if tc.debug {
 						cfg.Stdout.RuntimeConfig.IsDebug = true
@@ -81,7 +80,7 @@ func TestErrorWithStackPreservesApplicationOriginAndDepth(t *testing.T) {
 							t.Fatal(err)
 						}
 					case "async":
-						asyncCfg := loggerruntime.DefaultAsyncConfig()
+						asyncCfg := bootstrap.DefaultAsyncConfig()
 						asyncCfg.Stdout = cfg.Stdout
 						logger, err := bootstrap.NewAsync(ctx, asyncCfg)
 						if err != nil {
@@ -93,7 +92,7 @@ func TestErrorWithStackPreservesApplicationOriginAndDepth(t *testing.T) {
 							t.Fatal(err)
 						}
 					case "delivery":
-						deliveryCfg := loggerruntime.DefaultDeliveryConfig()
+						deliveryCfg := bootstrap.DefaultDeliveryConfig()
 						deliveryCfg.Stdout.LogBodyConfig = cfg.Stdout.LogBodyConfig
 						logger, err := bootstrap.NewDelivery(ctx, deliveryCfg)
 						if err != nil {

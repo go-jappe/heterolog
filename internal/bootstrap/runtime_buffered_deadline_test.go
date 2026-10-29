@@ -85,7 +85,7 @@ func TestBufferedDeadlinePreservesAcceptedLogs(t *testing.T) {
 					cfg.Loki = nil
 					cfg.LokiClient = nil
 				}
-				spool := loggerruntime.DefaultSpoolConfig()
+				spool := bootstrap.DefaultSpoolConfig()
 				spool.RunnerConfig.LokiConfig.Runner.Interval = time.Hour
 				spool.RunnerConfig.ClickHouseConfig.Runner.Interval = time.Hour
 				logger, err := bootstrap.New(context.Background(), cfg, loggerruntime.WithSpool(spool))

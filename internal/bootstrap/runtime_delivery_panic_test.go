@@ -44,7 +44,7 @@ func TestDeliveryObserverPanicIsUnconfirmed(t *testing.T) {
 			})}
 			cfg := deliveryEvidenceConfig("cloudwatchlogs", "http://delivery-panic.invalid")
 			cfg.CloudWatchLogsClient.HTTPClient = client
-			cfg.Stdout = loggerruntime.DefaultDeliveryConfig().Stdout
+			cfg.Stdout = bootstrap.DefaultDeliveryConfig().Stdout
 			cfg.LogOutputDestinations = append(cfg.LogOutputDestinations, pkglogger.LogOutputStdout)
 
 			var report pkglogger.DeliveryReport

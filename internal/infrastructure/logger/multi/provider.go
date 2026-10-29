@@ -5,19 +5,14 @@ import (
 	"time"
 )
 
-// top-level loggerの設定検証で返すsentinel errorです。呼び出し側はerrors.Isで種類を判定
-// します。errorの文字列には、契約種別と受理できなかった値を含めます。
-var (
-	// ErrConfigRequiredは設定providerがnilであることを表します。
-	ErrConfigRequired = errors.New("config is nil")
-	// ErrInvalidTimeoutはtimeoutが正の値でないことを表します。
-	ErrInvalidTimeout = errors.New("timeout must be positive")
-	// ErrInvalidMaxParallelはasync loggerの同時実行数が正の値でないことを表します。
-	ErrInvalidMaxParallel = errors.New("max parallel must be positive")
-)
+// ErrConfigRequiredは、top-level loggerの設定providerがnilであることを表します。
+// 呼び出し側はerrors.Isで種類を判定します。
+var ErrConfigRequired = errors.New("config is nil")
 
-// 一件のlog entry上限が正の値でない場合は、pkg/loggerのValidateMaxLogEntryBytesが返す
-// pkglogger.ErrInvalidMaxLogEntryBytesをそのまま返します。
+// 正でないtimeoutと非同期loggerの同時実行数は、pkg/loggerのValidateTimeoutと
+// ValidateMaxParallelが返す、ErrNonPositiveSettingのConfigFieldErrorをそのまま返します。
+// sourceは契約種別の表示名です。一件のlog entry上限が正の値でない場合は、pkg/loggerの
+// ValidateMaxLogEntryBytesが返すpkglogger.ErrInvalidMaxLogEntryBytesをそのまま返します。
 
 type MultiLoggerConfigProvider interface {
 	Timeout() time.Duration

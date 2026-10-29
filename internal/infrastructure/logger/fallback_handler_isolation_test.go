@@ -782,7 +782,8 @@ func fallbackIsolationDeliverySlackConfig(
 			TimeZone: "UTC",
 		},
 		RuntimeConfig: pkglogger.RuntimeConfig{
-			AppName: "fallback-isolation-delivery-test",
+			AppName:  "fallback-isolation-delivery-test",
+			LogLevel: pkglogger.LogLevelDebug,
 		},
 		LogBodyConfig: pkglogger.LogBodyConfig{
 			LogLineDateFormat:        time.RFC3339Nano,

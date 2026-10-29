@@ -273,7 +273,7 @@ func TestMultiLoggerRecoversNonErrorHandlerPanic(t *testing.T) {
 func TestNewMultiLoggerRejectsTimeoutThatIsNotPositive(t *testing.T) {
 	for _, timeout := range []time.Duration{0, -time.Second} {
 		_, err := NewMultiLogger(testMultiLoggerConfigWithTimeout(timeout))
-		require.ErrorIs(t, err, ErrInvalidTimeout)
+		require.ErrorIs(t, err, pkglogger.ErrNonPositiveSetting)
 	}
 }
 

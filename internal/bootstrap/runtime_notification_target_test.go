@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -34,12 +33,12 @@ func TestConstructorsRejectInvalidHandlerOnlyStdoutNotificationSettings(t *testi
 			t.Run("logger", func(t *testing.T) {
 				cfg := directoryWhitespaceConfig(t.TempDir(), "notification-target", "logs")
 				cfg.File.HandlerConfig = notifyStdout
-				cfg.Stdout = loggerruntime.DefaultConfig().Stdout
+				cfg.Stdout = bootstrap.DefaultConfig().Stdout
 				setting.apply(&cfg.Stdout.TimeConfig, &cfg.Stdout.LogBodyConfig)
 				requireNotificationTargetError(t, closeConstructed(bootstrap.New(context.Background(), cfg)), "logger")
 			})
 			t.Run("async logger", func(t *testing.T) {
-				cfg := loggerruntime.DefaultAsyncConfig()
+				cfg := bootstrap.DefaultAsyncConfig()
 				cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputFile}
 				cfg.File = directoryWhitespaceConfig(t.TempDir(), "notification-target", "logs").File
 				cfg.File.HandlerConfig = notifyStdout
@@ -48,7 +47,7 @@ func TestConstructorsRejectInvalidHandlerOnlyStdoutNotificationSettings(t *testi
 			})
 			t.Run("delivery logger", func(t *testing.T) {
 				fileCfg := directoryWhitespaceConfig(t.TempDir(), "notification-target", "logs").File
-				cfg := loggerruntime.DefaultDeliveryConfig()
+				cfg := bootstrap.DefaultDeliveryConfig()
 				cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputFile}
 				cfg.File = &pkglogger.DeliveryFileLoggerConfig{
 					FsstoreConfig: pkgfsstore.DeliveryFileWriteConfig{

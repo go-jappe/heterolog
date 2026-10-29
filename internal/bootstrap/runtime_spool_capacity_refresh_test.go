@@ -28,7 +28,7 @@ func TestSpoolCapacityRefreshWithNonpositiveInterval(t *testing.T) {
 				overload.MaxDirSize = 1
 				overload.MaxCallsSinceScan = 0
 				overload.StatsScanInterval = interval
-				spool := loggerruntime.DefaultSpoolConfig()
+				spool := bootstrap.DefaultSpoolConfig()
 				spool.RunnerConfig.LokiConfig.Runner.Interval = time.Hour
 				meter := observertest.NewMeter()
 				logger, err := bootstrap.New(ctx, cfg, loggerruntime.WithSpool(spool), loggerruntime.WithObservers(nil, meter))

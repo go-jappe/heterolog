@@ -51,9 +51,9 @@ func WithMemoryPressureMonitor(monitor memorypressure.Monitor) Option {
 }
 
 // ResolveOptionsは、optsを順に適用した結果を返します。nilのOptionは無視します。
-// stream分割が対応していない値の場合は、pkg/cloudwatchlogsのInvalidStreamRoutingErrorを返します。
-func ResolveOptions(opts []Option) (Options, error) {
-	o := Options{Routing: pkgcloudwatchlogs.StreamRoutingNone}
+// 渡された値の検証と既定値は、Builderの実装が受け持ちます。
+func ResolveOptions(opts []Option) Options {
+	var o Options
 	for _, apply := range opts {
 		if apply != nil {
 			apply(&o)
@@ -61,5 +61,5 @@ func ResolveOptions(opts []Option) (Options, error) {
 	}
 	o.Tracer = observer.ExposeSpans(o.Tracer)
 	o.Meter = observer.EnsureMeter(o.Meter)
-	return o, o.Routing.Validate()
+	return o
 }

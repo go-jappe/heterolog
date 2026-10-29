@@ -1,14 +1,14 @@
 // Package loggerruntimeは、公開APIのNew・NewAsync・NewDeliveryの処理を受け持ちます。
-// 設定とoptionを検証し、出力先ごとの稼働中に変えられる設定を用意してから、
+// 出力先ごとの稼働中に変えられる設定（levelとsampling）を検証して用意してから、
 // 呼び出し元が渡したBuilderでloggerを組み立てます。組み立てたloggerの終了処理の調整と、
-// 稼働中の設定の読み取り・変更もここで行います。
+// 稼働中の設定の読み取り・変更もここで行います。出力先の設定値の検証と既定値は、
+// Builderの実装が受け持ちます。
 package loggerruntime
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/outputsettings"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -48,31 +48,17 @@ var (
 	ErrDeliverySpoolUnsupported = errors.New("delivery logging does not support WithSpool")
 )
 
-const (
-	// ConfigFieldTimeoutは、pkg/loggerのConfigFieldErrorで、Config・AsyncConfig・
-	// DeliveryConfigのTimeoutを表します。正でないTimeoutは、pkg/loggerの
-	// ErrNonPositiveSettingの種類で報告します。
-	ConfigFieldTimeout pkglogger.ConfigField = "Timeout"
-	// ConfigFieldMaxParallelは、pkg/loggerのConfigFieldErrorで、AsyncConfigの
-	// MaxParallelを表します。正でないMaxParallelは、pkg/loggerのErrNonPositiveSettingの
-	// 種類で報告します。
-	ConfigFieldMaxParallel pkglogger.ConfigField = "MaxParallel"
-)
-
 // Newは、明示した設定から、builderで同期loggerを作ります。環境変数は読まず、process全体の
 // providerも変更しません。bufferを書き出して資源を解放するため、CloseかShutdownを
 // 呼ぶ必要があります。
 func New(ctx context.Context, builder Builder, cfg pkglogger.LoggerConfig, opts ...Option) (*Runtime, error) {
-	if err := validateConstructor(ctx, builder, "logger", cfg.Timeout, cfg.MaxLogEntryBytes); err != nil {
+	if err := validateConstructor(ctx, builder); err != nil {
 		return nil, err
 	}
-	if err := validateLoggerPresentation("logger", cfg); err != nil {
+	if err := validateOutputSettings("logger", cfg); err != nil {
 		return nil, err
 	}
-	o, err := ResolveOptions(opts)
-	if err != nil {
-		return nil, err
-	}
+	o := ResolveOptions(opts)
 	if cfg.Resource == nil {
 		cfg.Resource = &otel.Resource{}
 	}
@@ -88,28 +74,15 @@ func New(ctx context.Context, builder Builder, cfg pkglogger.LoggerConfig, opts 
 	return &Runtime{Logger: logger, lifecycle: &lifecycle{closer: logger}, outputs: outputs}, nil
 }
 
-// NewAsyncは、builderで、非同期でbest effortに送るloggerを作ります。MaxParallelと、
-// 通常のtimeoutとlogの大きさの上限は、すべて正である必要があります。
+// NewAsyncは、builderで、非同期でbest effortに送るloggerを作ります。
 func NewAsync(ctx context.Context, builder Builder, cfg pkglogger.AsyncBestEffortMultiLoggerConfig, opts ...Option) (*AsyncRuntime, error) {
-	if err := validateConstructor(ctx, builder, "async logger", cfg.Timeout, cfg.MaxLogEntryBytes); err != nil {
+	if err := validateConstructor(ctx, builder); err != nil {
 		return nil, err
 	}
-	if cfg.MaxParallel <= 0 {
-		return nil, &pkglogger.ConfigFieldError{
-			Source: "async logger",
-			Field:  ConfigFieldMaxParallel,
-			Detail: fmt.Sprintf("max parallel must be positive: %d", cfg.MaxParallel),
-			Value:  cfg.MaxParallel,
-			Err:    pkglogger.ErrNonPositiveSetting,
-		}
-	}
-	if err := validateLoggerPresentation("async logger", cfg.ToLoggerConfig()); err != nil {
+	if err := validateOutputSettings("async logger", cfg.ToLoggerConfig()); err != nil {
 		return nil, err
 	}
-	o, err := ResolveOptions(opts)
-	if err != nil {
-		return nil, err
-	}
+	o := ResolveOptions(opts)
 	if cfg.Resource == nil {
 		cfg.Resource = &otel.Resource{}
 	}
@@ -128,16 +101,10 @@ func NewAsync(ctx context.Context, builder Builder, cfg pkglogger.AsyncBestEffor
 // NewDeliveryは、builderで、出力先ごとの送信結果を返すloggerを作ります。Delivery loggerには
 // 再送のworkerがないため、optsにWithSpoolがあるとErrDeliverySpoolUnsupportedを返します。
 func NewDelivery(ctx context.Context, builder Builder, cfg pkglogger.DeliveryLoggerConfig, opts ...Option) (*DeliveryRuntime, error) {
-	if err := validateConstructor(ctx, builder, "delivery logger", cfg.Timeout, cfg.MaxLogEntryBytes); err != nil {
+	if err := validateConstructor(ctx, builder); err != nil {
 		return nil, err
 	}
-	if err := validateDeliveryPresentation(cfg); err != nil {
-		return nil, err
-	}
-	o, err := ResolveOptions(opts)
-	if err != nil {
-		return nil, err
-	}
+	o := ResolveOptions(opts)
 	if o.Spool != nil {
 		return nil, ErrDeliverySpoolUnsupported
 	}
@@ -151,28 +118,15 @@ func NewDelivery(ctx context.Context, builder Builder, cfg pkglogger.DeliveryLog
 	return &DeliveryRuntime{DeliveryLogger: logger, lifecycle: &lifecycle{closer: logger}}, nil
 }
 
-// validateConstructorは、constructorに共通の引数を検証します。sourceは設定の出所
-// （"logger"・"async logger"・"delivery logger"）です。
-func validateConstructor(ctx context.Context, builder Builder, source string, timeout time.Duration, maxBytes int) error {
+// validateConstructorは、constructorに共通の引数を検証します。
+func validateConstructor(ctx context.Context, builder Builder) error {
 	if ctx == nil {
 		return ErrNilContext
 	}
 	if builder == nil {
 		return ErrNilBuilder
 	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if timeout <= 0 {
-		return &pkglogger.ConfigFieldError{
-			Source: source,
-			Field:  ConfigFieldTimeout,
-			Detail: fmt.Sprintf("timeout must be positive: %s", timeout),
-			Value:  timeout,
-			Err:    pkglogger.ErrNonPositiveSetting,
-		}
-	}
-	return pkglogger.ValidateMaxLogEntryBytes(maxBytes)
+	return ctx.Err()
 }
 
 // Logは、対応しているseverityのlogを記録します。processは終了しません。

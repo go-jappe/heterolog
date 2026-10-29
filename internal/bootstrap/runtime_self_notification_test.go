@@ -99,7 +99,7 @@ func TestSelfSelectedFileNotificationsDoNotReenterTheLogger(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "async":
-				asyncCfg := loggerruntime.DefaultAsyncConfig()
+				asyncCfg := bootstrap.DefaultAsyncConfig()
 				asyncCfg.LogOutputDestinations, asyncCfg.Stdout, asyncCfg.File = cfg.LogOutputDestinations, nil, cfg.File
 				asyncCfg.MaxLogEntryBytes, asyncCfg.MaxParallel = cfg.MaxLogEntryBytes, 1
 				logger, err := bootstrap.NewAsync(ctx, asyncCfg, observers)

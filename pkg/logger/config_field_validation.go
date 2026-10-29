@@ -3,6 +3,7 @@ package logger
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 // ConfigField is the name that identifies an invalid setting in a
@@ -34,6 +35,12 @@ const (
 	// ConfigFieldLogOutputDestinations identifies the list of regular output
 	// destinations.
 	ConfigFieldLogOutputDestinations ConfigField = "LogOutputDestinations"
+	// ConfigFieldTimeout identifies the Timeout of LoggerConfig,
+	// AsyncBestEffortMultiLoggerConfig and DeliveryLoggerConfig.
+	ConfigFieldTimeout ConfigField = "Timeout"
+	// ConfigFieldMaxParallel identifies
+	// AsyncBestEffortMultiLoggerConfig.MaxParallel.
+	ConfigFieldMaxParallel ConfigField = "MaxParallel"
 
 	ConfigFieldFlushInterval           ConfigField = "FlushInterval"
 	ConfigFieldMaxEntries              ConfigField = "MaxEntries"
@@ -260,6 +267,39 @@ func ConfigFieldErrors(err error) []*ConfigFieldError {
 	}
 	visit(err)
 	return found
+}
+
+// ValidateTimeout validates timeout, the Timeout of the logger configuration
+// in source. A timeout that is not positive is reported as a ConfigFieldError
+// for ConfigFieldTimeout with the kind ErrNonPositiveSetting.
+func ValidateTimeout(source string, timeout time.Duration) error {
+	if timeout > 0 {
+		return nil
+	}
+	return &ConfigFieldError{
+		Source: source,
+		Field:  ConfigFieldTimeout,
+		Detail: fmt.Sprintf("timeout must be positive: %s", timeout),
+		Value:  timeout,
+		Err:    ErrNonPositiveSetting,
+	}
+}
+
+// ValidateMaxParallel validates maxParallel, the MaxParallel of the async
+// logger configuration in source. A value that is not positive is reported as
+// a ConfigFieldError for ConfigFieldMaxParallel with the kind
+// ErrNonPositiveSetting.
+func ValidateMaxParallel(source string, maxParallel int) error {
+	if maxParallel > 0 {
+		return nil
+	}
+	return &ConfigFieldError{
+		Source: source,
+		Field:  ConfigFieldMaxParallel,
+		Detail: fmt.Sprintf("max parallel must be positive: %d", maxParallel),
+		Value:  maxParallel,
+		Err:    ErrNonPositiveSetting,
+	}
 }
 
 // ValidateLogLevel validates level, the log level set for backend in source.

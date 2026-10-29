@@ -65,11 +65,11 @@ const (
 	// ConfigFieldTimeout identifies the Timeout of Config, AsyncConfig and
 	// DeliveryConfig in a pkg/logger ConfigFieldError. A Timeout that is not
 	// positive is reported with the kind pkg/logger ErrNonPositiveSetting.
-	ConfigFieldTimeout = loggerruntime.ConfigFieldTimeout
+	ConfigFieldTimeout = pkglogger.ConfigFieldTimeout
 	// ConfigFieldMaxParallel identifies AsyncConfig.MaxParallel in a pkg/logger
 	// ConfigFieldError. A MaxParallel that is not positive is reported with the
 	// kind pkg/logger ErrNonPositiveSetting.
-	ConfigFieldMaxParallel = loggerruntime.ConfigFieldMaxParallel
+	ConfigFieldMaxParallel = pkglogger.ConfigFieldMaxParallel
 )
 
 // New constructs a logger from explicit configuration. It does not load the

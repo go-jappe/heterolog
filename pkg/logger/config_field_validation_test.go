@@ -132,6 +132,39 @@ func TestValidateMaxLogEntryBytesReturnsSentinel(t *testing.T) {
 	}
 }
 
+// 正でないTimeoutとMaxParallelは、sourceと項目を示すErrNonPositiveSettingの
+// ConfigFieldErrorです。
+func TestValidateTimeoutAndMaxParallelRejectNonPositiveValues(t *testing.T) {
+	if err := ValidateTimeout("logger", time.Nanosecond); err != nil {
+		t.Fatalf("ValidateTimeout(1ns) error = %v", err)
+	}
+	if err := ValidateMaxParallel("async logger", 1); err != nil {
+		t.Fatalf("ValidateMaxParallel(1) error = %v", err)
+	}
+	for _, tt := range []struct {
+		name  string
+		err   error
+		want  fieldErrorKey
+		value any
+	}{
+		{"zero timeout", ValidateTimeout("logger", 0), fieldErrorKey{"logger", "", ConfigFieldTimeout, ErrNonPositiveSetting}, time.Duration(0)},
+		{"negative timeout", ValidateTimeout("delivery logger", -time.Second), fieldErrorKey{"delivery logger", "", ConfigFieldTimeout, ErrNonPositiveSetting}, -time.Second},
+		{"zero max parallel", ValidateMaxParallel("async logger", 0), fieldErrorKey{"async logger", "", ConfigFieldMaxParallel, ErrNonPositiveSetting}, 0},
+		{"negative max parallel", ValidateMaxParallel("async logger", -1), fieldErrorKey{"async logger", "", ConfigFieldMaxParallel, ErrNonPositiveSetting}, -1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var fieldErr *ConfigFieldError
+			if !errors.As(tt.err, &fieldErr) || !errors.Is(tt.err, tt.want.kind) {
+				t.Fatalf("error = %v, want a ConfigFieldError of ErrNonPositiveSetting", tt.err)
+			}
+			got := fieldErrorKey{fieldErr.Source, fieldErr.Backend, fieldErr.Field, tt.want.kind}
+			if got != tt.want || fieldErr.Value != tt.value {
+				t.Fatalf("field error = %+v (value %v), want %+v (value %v)", got, fieldErr.Value, tt.want, tt.value)
+			}
+		})
+	}
+}
+
 // 解決できないselectorは、指定したsource、log level、前後の空白を除いたselectorを持つ
 // HandlerSelectorErrorです。
 func TestHandlerSelectorErrorIdentifiesSourceLevelAndSelector(t *testing.T) {

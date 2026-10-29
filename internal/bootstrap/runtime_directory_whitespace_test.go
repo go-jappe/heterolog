@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
@@ -96,7 +95,7 @@ func assertDirectoryMessage(t *testing.T, dir, want, unwanted string) {
 }
 
 func directoryWhitespaceConfig(root, target, dir string) pkglogger.LoggerConfig {
-	cfg := loggerruntime.DefaultConfig()
+	cfg := bootstrap.DefaultConfig()
 	cfg.Stdout = nil
 	cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputFile}
 	cfg.File = &pkglogger.FileLoggerConfig{

@@ -3,11 +3,14 @@ package loggerruntime_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/application/logging"
 	pkgcloudwatchlogs "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
+	pkgspoolsupervisor "github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 )
 
 // recordingBuilderは、試験用のloggerruntime.Builderです。組み立てに渡された設定とoptionを
@@ -54,17 +57,21 @@ func (closeOnlyDeliveryLogger) Close() error { return nil }
 // 組み立てるloggerは、管理用APIが変えるものと同じLiveSettingsを使います。
 func TestConstructorsPassResolvedOptionsAndLiveSettingsToBuilder(t *testing.T) {
 	ctx := context.Background()
-	spool := loggerruntime.DefaultSpoolConfig()
+	spool := pkgspool.SpoolConfig{SupervisorConfig: pkgspoolsupervisor.RunnerSupervisorConfig{RestartDelay: time.Second}}
 
 	builder := &recordingBuilder{}
-	runtime, err := loggerruntime.New(ctx, builder, loggerruntime.DefaultConfig(), loggerruntime.WithSpool(spool))
+	runtime, err := loggerruntime.New(ctx, builder, stdoutConfig(), loggerruntime.WithSpool(spool),
+		loggerruntime.WithCloudWatchLogsStreamRouting(pkgcloudwatchlogs.StreamRoutingDaily))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = runtime.Close() })
 	requireResolvedOptions(t, builder.options)
-	if builder.built != 1 || builder.options.Spool == nil {
+	if builder.built != 1 || builder.options.Spool == nil || *builder.options.Spool != spool {
 		t.Errorf("New built %d loggers with spool %v, want one with the spool", builder.built, builder.options.Spool)
+	}
+	if builder.options.Routing != pkgcloudwatchlogs.StreamRoutingDaily {
+		t.Errorf("New passed stream routing %q, want %q", builder.options.Routing, pkgcloudwatchlogs.StreamRoutingDaily)
 	}
 	if builder.logger.Resource == nil {
 		t.Error("New passed no resource to the builder")
@@ -74,7 +81,7 @@ func TestConstructorsPassResolvedOptionsAndLiveSettingsToBuilder(t *testing.T) {
 	}
 
 	builder = &recordingBuilder{}
-	async, err := loggerruntime.NewAsync(ctx, builder, loggerruntime.DefaultAsyncConfig(), loggerruntime.WithSpool(spool))
+	async, err := loggerruntime.NewAsync(ctx, builder, stdoutAsyncConfig(), loggerruntime.WithSpool(spool))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +95,7 @@ func TestConstructorsPassResolvedOptionsAndLiveSettingsToBuilder(t *testing.T) {
 	}
 
 	builder = &recordingBuilder{}
-	delivery, err := loggerruntime.NewDelivery(ctx, builder, loggerruntime.DefaultDeliveryConfig())
+	delivery, err := loggerruntime.NewDelivery(ctx, builder, stdoutDeliveryConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,13 +106,33 @@ func TestConstructorsPassResolvedOptionsAndLiveSettingsToBuilder(t *testing.T) {
 	}
 }
 
-// requireResolvedOptionsは、oがResolveOptionsで解決した既定の値を持つことを確かめます。
+// requireResolvedOptionsは、oがResolveOptionsで解決した計装を持つことを確かめます。
 func requireResolvedOptions(t *testing.T, o loggerruntime.Options) {
 	t.Helper()
 	if o.Tracer == nil || o.Meter == nil {
 		t.Errorf("builder received tracer %v and meter %v, want no-op defaults", o.Tracer, o.Meter)
 	}
-	if o.Routing != pkgcloudwatchlogs.StreamRoutingNone {
-		t.Errorf("builder received stream routing %q, want %q", o.Routing, pkgcloudwatchlogs.StreamRoutingNone)
+}
+
+// stdoutConfigは、stdoutへ書く同期loggerの、試験用の設定です。出力先の設定値はBuilderの
+// 実装が検証するため、稼働中に変えられるlevelだけを持たせます。
+func stdoutConfig() pkglogger.LoggerConfig {
+	return pkglogger.LoggerConfig{
+		LogOutputDestinations: pkglogger.LogOutputDestinations{pkglogger.LogOutputStdout},
+		Stdout:                &pkglogger.StdoutLoggerConfig{RuntimeConfig: pkglogger.RuntimeConfig{LogLevel: pkglogger.LogLevelInfo}},
+	}
+}
+
+// stdoutAsyncConfigは、stdoutConfigと同じ出力先の、非同期loggerの設定です。
+func stdoutAsyncConfig() pkglogger.AsyncBestEffortMultiLoggerConfig {
+	cfg := stdoutConfig()
+	return pkglogger.AsyncBestEffortMultiLoggerConfig{LogOutputDestinations: cfg.LogOutputDestinations, Stdout: cfg.Stdout}
+}
+
+// stdoutDeliveryConfigは、stdoutへ書くDelivery loggerの設定です。
+func stdoutDeliveryConfig() pkglogger.DeliveryLoggerConfig {
+	return pkglogger.DeliveryLoggerConfig{
+		LogOutputDestinations: pkglogger.LogOutputDestinations{pkglogger.LogOutputStdout},
+		Stdout:                &pkglogger.DeliveryStdoutLoggerConfig{},
 	}
 }

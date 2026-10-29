@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -21,7 +20,7 @@ func TestConstructorsRejectConfigWithoutActiveLogOutput(t *testing.T) {
 	syncConfigs := map[string]pkglogger.LoggerConfig{
 		"required values only": {Timeout: time.Second, MaxLogEntryBytes: pkglogger.DefaultMaxLogEntryBytes},
 		"default without stdout": func() pkglogger.LoggerConfig {
-			cfg := loggerruntime.DefaultConfig()
+			cfg := bootstrap.DefaultConfig()
 			cfg.LogOutputDestinations, cfg.Stdout = nil, nil
 			return cfg
 		}(),
@@ -39,7 +38,7 @@ func TestConstructorsRejectConfigWithoutActiveLogOutput(t *testing.T) {
 	}
 
 	t.Run("async/default without stdout", func(t *testing.T) {
-		cfg := loggerruntime.DefaultAsyncConfig()
+		cfg := bootstrap.DefaultAsyncConfig()
 		cfg.LogOutputDestinations, cfg.Stdout = nil, nil
 		runtime, err := bootstrap.NewAsync(ctx, cfg)
 		if runtime != nil {
@@ -51,7 +50,7 @@ func TestConstructorsRejectConfigWithoutActiveLogOutput(t *testing.T) {
 	})
 
 	t.Run("delivery/default without stdout", func(t *testing.T) {
-		cfg := loggerruntime.DefaultDeliveryConfig()
+		cfg := bootstrap.DefaultDeliveryConfig()
 		cfg.LogOutputDestinations, cfg.Stdout = nil, nil
 		runtime, err := bootstrap.NewDelivery(ctx, cfg)
 		if runtime != nil {
@@ -68,10 +67,10 @@ func TestConstructorsRejectConfigWithoutActiveLogOutput(t *testing.T) {
 func TestDefaultConfigsConstructWithActiveStdoutOutput(t *testing.T) {
 	ctx := context.Background()
 
-	implicit := loggerruntime.DefaultConfig()
+	implicit := bootstrap.DefaultConfig()
 	implicit.LogOutputDestinations = nil
 	for name, cfg := range map[string]pkglogger.LoggerConfig{
-		"explicit stdout": loggerruntime.DefaultConfig(),
+		"explicit stdout": bootstrap.DefaultConfig(),
 		"implicit stdout": implicit,
 	} {
 		t.Run("sync/"+name, func(t *testing.T) {
@@ -86,7 +85,7 @@ func TestDefaultConfigsConstructWithActiveStdoutOutput(t *testing.T) {
 	}
 
 	t.Run("async", func(t *testing.T) {
-		runtime, err := bootstrap.NewAsync(ctx, loggerruntime.DefaultAsyncConfig())
+		runtime, err := bootstrap.NewAsync(ctx, bootstrap.DefaultAsyncConfig())
 		if err != nil {
 			t.Fatalf("NewAsync() error = %v", err)
 		}
@@ -96,7 +95,7 @@ func TestDefaultConfigsConstructWithActiveStdoutOutput(t *testing.T) {
 	})
 
 	t.Run("delivery", func(t *testing.T) {
-		runtime, err := bootstrap.NewDelivery(ctx, loggerruntime.DefaultDeliveryConfig())
+		runtime, err := bootstrap.NewDelivery(ctx, bootstrap.DefaultDeliveryConfig())
 		if err != nil {
 			t.Fatalf("NewDelivery() error = %v", err)
 		}

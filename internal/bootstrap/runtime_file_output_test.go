@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
@@ -72,7 +71,7 @@ func TestFileRotationKeepsOutputInSelectedDestination(t *testing.T) {
 		t.Run(kind+"/stdout selected", func(t *testing.T) {
 			const message = "explicit stdout destination"
 			output := testutil.CaptureStdout(t, func() {
-				write, closeLogger := fileOutputWriter(t, kind, loggerruntime.DefaultConfig())
+				write, closeLogger := fileOutputWriter(t, kind, bootstrap.DefaultConfig())
 				t.Cleanup(func() { _ = closeLogger() })
 				if err := write(message); err != nil {
 					t.Fatal(err)
@@ -99,7 +98,7 @@ func fileOutputWriter(t *testing.T, kind string, cfg pkglogger.LoggerConfig) (fu
 		}
 		return func(message string) error { return logger.Info(ctx, message) }, logger.Close
 	case "async":
-		async := loggerruntime.DefaultAsyncConfig()
+		async := bootstrap.DefaultAsyncConfig()
 		async.LogOutputDestinations, async.Stdout, async.File = cfg.LogOutputDestinations, cfg.Stdout, cfg.File
 		async.MaxLogEntryBytes, async.MaxParallel = cfg.MaxLogEntryBytes, 1
 		logger, err := bootstrap.NewAsync(ctx, async)
@@ -108,7 +107,7 @@ func fileOutputWriter(t *testing.T, kind string, cfg pkglogger.LoggerConfig) (fu
 		}
 		return func(message string) error { logger.Info(ctx, message); return nil }, logger.Close
 	case "delivery":
-		delivery := loggerruntime.DefaultDeliveryConfig()
+		delivery := bootstrap.DefaultDeliveryConfig()
 		delivery.LogOutputDestinations, delivery.MaxLogEntryBytes = cfg.LogOutputDestinations, cfg.MaxLogEntryBytes
 		if cfg.Stdout == nil {
 			delivery.Stdout = nil

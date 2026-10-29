@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -118,7 +117,7 @@ func requireXZRecoveryPayload(t *testing.T, path string, payload []byte) []byte 
 }
 
 func xzRecoveryConfig(root, target, dir string) pkglogger.LoggerConfig {
-	cfg := loggerruntime.DefaultConfig()
+	cfg := bootstrap.DefaultConfig()
 	cfg.Stdout = nil
 	cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{pkglogger.LogOutputFile}
 	cfg.File = &pkglogger.FileLoggerConfig{

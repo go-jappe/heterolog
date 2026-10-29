@@ -104,13 +104,13 @@ func validatedAsyncBestEffortMultiLoggerConfig(
 	}
 
 	timeout := cfg.Timeout()
-	if timeout <= 0 {
-		return 0, 0, 0, fmt.Errorf("async best effort multi logger %w: %s", ErrInvalidTimeout, timeout)
+	if err := pkglogger.ValidateTimeout(pkglogger.LoggerContractAsyncBestEffort.DisplayName(), timeout); err != nil {
+		return 0, 0, 0, err
 	}
 
 	maxParallel := cfg.MaxParallel()
-	if maxParallel <= 0 {
-		return 0, 0, 0, fmt.Errorf("async best effort multi logger %w: %d", ErrInvalidMaxParallel, maxParallel)
+	if err := pkglogger.ValidateMaxParallel(pkglogger.LoggerContractAsyncBestEffort.DisplayName(), maxParallel); err != nil {
+		return 0, 0, 0, err
 	}
 	maxLogEntryBytes := cfg.MaxLogEntryBytes()
 	if err := pkglogger.ValidateMaxLogEntryBytes(maxLogEntryBytes); err != nil {

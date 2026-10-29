@@ -11,55 +11,33 @@ import (
 	"github.com/go-jappe/heterolog/pkg/logger/handler"
 )
 
-func TestConstructorsRejectInvalidStdoutPresentation(t *testing.T) {
-	for _, name := range []string{"sync", "async", "delivery"} {
+// 同期・非同期loggerのconstructorは、Builderを呼ぶ前に、稼働中に変えられる出力先の
+// levelを検証します。本文の表示の設定はBuilderの実装が検証します。
+func TestConstructorsRejectInvalidStdoutLevel(t *testing.T) {
+	for _, name := range []string{"sync", "async"} {
 		t.Run(name, func(t *testing.T) {
-			for _, invalid := range []string{"level", "trace depth", "debug trace depth"} {
-				if name == "delivery" && invalid == "level" {
-					continue
-				}
-				t.Run(invalid, func(t *testing.T) {
-					mutate := func(level *pkglogger.LogLevel, body *pkglogger.LogBodyConfig) {
-						switch invalid {
-						case "level":
-							*level = 999
-						case "trace depth":
-							body.ErrorTraceDepth = -1
-						case "debug trace depth":
-							body.ErrorTraceDepthDebugMode = -1
-						}
-					}
-					var created io.Closer
-					var err error
-					switch name {
-					case "sync":
-						cfg := loggerruntime.DefaultConfig()
-						mutate(&cfg.Stdout.RuntimeConfig.LogLevel, &cfg.Stdout.LogBodyConfig)
-						created, err = loggerruntime.New(context.Background(), &recordingBuilder{}, cfg)
-					case "async":
-						cfg := loggerruntime.DefaultAsyncConfig()
-						mutate(&cfg.Stdout.RuntimeConfig.LogLevel, &cfg.Stdout.LogBodyConfig)
-						created, err = loggerruntime.NewAsync(context.Background(), &recordingBuilder{}, cfg)
-					case "delivery":
-						cfg := loggerruntime.DefaultDeliveryConfig()
-						mutate(nil, &cfg.Stdout.LogBodyConfig)
-						created, err = loggerruntime.NewDelivery(context.Background(), &recordingBuilder{}, cfg)
-					}
-					if err == nil {
-						_ = created.Close()
-						t.Fatalf("constructor accepted invalid %s", invalid)
-					}
-					field, kind := pkglogger.ConfigFieldLogLevel, pkglogger.ErrInvalidLogLevel
-					switch invalid {
-					case "trace depth":
-						field, kind = pkglogger.ConfigFieldErrorTraceDepth, pkglogger.ErrNegativeErrorTraceDepth
-					case "debug trace depth":
-						field, kind = pkglogger.ConfigFieldErrorTraceDepthDebugMode, pkglogger.ErrNegativeErrorTraceDepth
-					}
-					if !hasConfigFieldError(err, pkglogger.LogOutputStdout, field, kind) {
-						t.Fatalf("constructor error does not identify bad stdout setting: %v", err)
-					}
-				})
+			builder := &recordingBuilder{}
+			var created io.Closer
+			var err error
+			switch name {
+			case "sync":
+				cfg := stdoutConfig()
+				cfg.Stdout.RuntimeConfig.LogLevel = 999
+				created, err = loggerruntime.New(context.Background(), builder, cfg)
+			case "async":
+				cfg := stdoutAsyncConfig()
+				cfg.Stdout.RuntimeConfig.LogLevel = 999
+				created, err = loggerruntime.NewAsync(context.Background(), builder, cfg)
+			}
+			if err == nil {
+				_ = created.Close()
+				t.Fatal("constructor accepted invalid level")
+			}
+			if !hasConfigFieldError(err, pkglogger.LogOutputStdout, pkglogger.ConfigFieldLogLevel, pkglogger.ErrInvalidLogLevel) {
+				t.Fatalf("constructor error does not identify bad stdout setting: %v", err)
+			}
+			if builder.built != 0 {
+				t.Errorf("builder built %d loggers from an invalid level", builder.built)
 			}
 		})
 	}
@@ -69,7 +47,7 @@ func TestConstructorValidatesEverySelectedBackendLevel(t *testing.T) {
 	invalidRuntime := pkglogger.RuntimeConfig{LogLevel: 999}
 	for _, destination := range pkglogger.AllLogOutputDestinations() {
 		t.Run(destination.String(), func(t *testing.T) {
-			cfg := loggerruntime.DefaultConfig()
+			cfg := stdoutConfig()
 			cfg.Stdout = nil
 			cfg.LogOutputDestinations = pkglogger.LogOutputDestinations{destination}
 			switch destination {
@@ -100,8 +78,8 @@ func TestConstructorValidatesEverySelectedBackendLevel(t *testing.T) {
 	}
 }
 
-func TestConstructorOnlyValidatesActiveBackendPresentation(t *testing.T) {
-	cfg := loggerruntime.DefaultConfig()
+func TestConstructorOnlyValidatesActiveBackendSettings(t *testing.T) {
+	cfg := stdoutConfig()
 	cfg.File = &pkglogger.FileLoggerConfig{
 		RuntimeConfig: pkglogger.RuntimeConfig{LogLevel: 999},
 		LogBodyConfig: pkglogger.LogBodyConfig{ErrorTraceDepth: -1},
@@ -117,7 +95,7 @@ func TestConstructorOnlyValidatesActiveBackendPresentation(t *testing.T) {
 	created, err = loggerruntime.New(context.Background(), &recordingBuilder{}, cfg)
 	if err == nil {
 		_ = created.Close()
-		t.Fatal("active fallback with invalid presentation accepted")
+		t.Fatal("active fallback with invalid level accepted")
 	}
 	if !hasConfigFieldError(err, pkglogger.LogOutputFile, pkglogger.ConfigFieldLogLevel, pkglogger.ErrInvalidLogLevel) {
 		t.Fatalf("active fallback error: %v", err)

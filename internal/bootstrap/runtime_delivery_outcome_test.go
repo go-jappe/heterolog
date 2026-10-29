@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/bootstrap"
 	cw "github.com/go-jappe/heterolog/pkg/cloudwatchlogs"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -138,7 +137,7 @@ func boolCount(value bool) int {
 }
 
 func deliveryEvidenceConfig(backend, endpoint string) pkglogger.DeliveryLoggerConfig {
-	cfg := loggerruntime.DefaultDeliveryConfig()
+	cfg := bootstrap.DefaultDeliveryConfig()
 	cfg.Stdout = nil
 	fs := durable.DeliveryFailureStoreConfig{DurableType: []durable.DurableType{durable.DurableTypeNone}}
 	presentation := pkglogger.LogBodyConfig{LogLineDateFormat: time.RFC3339Nano}

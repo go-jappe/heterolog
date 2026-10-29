@@ -10,12 +10,9 @@ import (
 )
 
 func TestResolveOptionsExposesCallerSpans(t *testing.T) {
-	o, err := loggerruntime.ResolveOptions([]loggerruntime.Option{
+	o := loggerruntime.ResolveOptions([]loggerruntime.Option{
 		loggerruntime.WithObservers(&observertest.Tracer{}, nil),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	ctx, span := o.Tracer.StartSpan(context.Background(), "heterolog.test")
 	defer span.End()
