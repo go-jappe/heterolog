@@ -413,6 +413,8 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 | `heterolog_circuit_breaker_rejected_requests_total` | Counter | `backend` | circuit breakerが送らずに断ったリクエストの数です。 |
 | `heterolog_circuit_breaker_transitions_total` | Counter | `backend`・`state`（`open`・`closed`） | circuit breakerが開いた回数と、復旧確認（probe）で復旧を確かめて閉じた回数です。 |
 | `heterolog_failure_records_total` | Counter | `backend`・`action` | 送れなかったrecordを、その後の扱いごとに数えます。`spooled`（spoolへ保存）・`archived`（failure archiveへ保存）・`degraded`（stdoutへ退避）・`dropped`（過負荷時の方針 `drop` で破棄）・`failed`（保存も退避もできなかった）です。複数の保存方法を設定した場合は、それぞれが数えます。 |
+| `heterolog_object_storage_uploads_total` | Counter | `target`（`s3` など）・`outcome` | 圧縮したログファイルやfailure archiveなどのファイルを、object storageの1つの宛先へuploadした回数を、結果ごとに数えます。結果は `success`・`retryable`（残しておき、後でまたuploadします）・`permanent` です。spoolからの再送も含みます。 |
+| `heterolog_object_storage_upload_duration_seconds` | Histogram | `target`・`outcome` | 1つの宛先への1回のuploadにかかった時間です。 |
 | `heterolog_spool_replay_records_total` | Counter | `backend`・`outcome` | spoolから読み戻して送り直したrecordの数を、結果ごとに数えます。結果は `success`・`retryable`（spoolへ戻し、後でまた送り直します）・`dead`・`quarantine` です。応答をrecordへ対応付けられない場合はfile全体を隔離し、そのrecordをすべて `quarantine` として数えます。 |
 | `heterolog_file_dropped_entries_total` | Counter | なし | fileロガーが過負荷時の方針 `drop` で破棄したentryの数です。 |
 | `heterolog_internal_logs_total` | Counter | `level`（`error`・`warn`・`info`・`debug`） | 内部ログの通知先（`OnErrorConfig` など）へ渡した内部ログ（書き込みの失敗や遅いリクエストなど）の数を、levelごとに数えます。[内部ログの通知](#内部ログの通知)を参照してください。 |
@@ -426,6 +428,7 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 
 | span | 操作 | 属性 |
 |---|---|---|
+| `heterolog.objectstorage.upload` | 1つのファイルを、object storageの1つの宛先へuploadする処理です。 | `heterolog.target`・`heterolog.destination`（`s3-<SHA-256>` などの宛先ID） |
 | `heterolog.spool.replay` | spoolから読み戻したrecordを1回送り直す処理です。retry clientの試行は、このspanの子になります。 | `heterolog.backend`・`heterolog.records` |
 | `heterolog.<出力先>.create` | 出力先（`file`・`stdout`・`slack`・`opensearch`・`loki`・`cloudwatchlogs`・`clickhouse`）のロガーの構築です。 | |
 | `heterolog.opensearch.flush`・`heterolog.loki.flush`・`heterolog.cloudwatchlogs.flush`・`heterolog.clickhouse.flush`・`heterolog.slack.send` | bufferからまとめて送る1回分の送信です。 | `heterolog.records`・`heterolog.bytes`（Slackにはありません） |

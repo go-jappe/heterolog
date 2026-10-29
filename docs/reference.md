@@ -413,6 +413,8 @@ Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and sp
 | `heterolog_circuit_breaker_rejected_requests_total` | Counter | `backend` | Requests that the circuit breaker rejected without sending. |
 | `heterolog_circuit_breaker_transitions_total` | Counter | `backend`, `state` (`open`, `closed`) | Times the circuit breaker opened, and times it closed after a probe confirmed recovery. |
 | `heterolog_failure_records_total` | Counter | `backend`, `action` | Records that failed to send, by what happened to them: `spooled`, `archived` (to the failure archive), `degraded` (written to stdout), `dropped` (by the overload policy `drop`), or `failed` (could not be stored or written). When several durable types are configured, each one counts the record. |
+| `heterolog_object_storage_uploads_total` | Counter | `target` (such as `s3`), `outcome` | Uploads of a file, such as a compressed log file or a failure archive, to one object storage destination, by result: `success`, `retryable` (kept to be uploaded again later), or `permanent`. Uploads replayed from the spool are included. |
+| `heterolog_object_storage_upload_duration_seconds` | Histogram | `target`, `outcome` | Duration of one upload to one destination. |
 | `heterolog_spool_replay_records_total` | Counter | `backend`, `outcome` | Records read back from the spool and sent again, by result: `success`, `retryable` (returned to the spool to be sent again later), `dead`, or `quarantine`. A response that cannot be matched to the records quarantines the whole file, and all its records are counted as `quarantine`. |
 | `heterolog_file_dropped_entries_total` | Counter | none | Entries that the file logger discarded with the overload policy `drop`. |
 | `heterolog_internal_logs_total` | Counter | `level` (`error`, `warn`, `info`, `debug`) | Internal logs passed to the internal log notification targets (`OnErrorConfig` and the like), such as a failed write or a slow request, by level. See [Internal log notifications](#internal-log-notifications). |
@@ -426,6 +428,7 @@ Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and sp
 
 | Span | Operation | Attributes |
 |---|---|---|
+| `heterolog.objectstorage.upload` | Uploading one file to one object storage destination. | `heterolog.target`, `heterolog.destination` (the destination ID, such as `s3-<SHA-256>`) |
 | `heterolog.spool.replay` | Sending records read back from the spool once. The tries of the retry client are its children. | `heterolog.backend`, `heterolog.records` |
 | `heterolog.<destination>.create` | Constructing the logger of a destination (`file`, `stdout`, `slack`, `opensearch`, `loki`, `cloudwatchlogs`, `clickhouse`). | |
 | `heterolog.opensearch.flush`, `heterolog.loki.flush`, `heterolog.cloudwatchlogs.flush`, `heterolog.clickhouse.flush`, `heterolog.slack.send` | Sending one buffered batch. | `heterolog.records`, `heterolog.bytes` (not Slack) |

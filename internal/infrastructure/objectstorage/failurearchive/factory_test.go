@@ -23,7 +23,7 @@ func TestNewScopesEveryS3DestinationWithoutMutatingOriginalList(t *testing.T) {
 	original := slices.Clone(cfg.S3Destinations)
 	var previous []objectstorage.DestinationID
 	for _, category := range []fsfailurearchive.FailureCategory{fsfailurearchive.FailureCategoryRetryable, fsfailurearchive.FailureCategoryPermanent} {
-		remote, err := New(cfg, category)
+		remote, err := New(cfg, category, nil, nil)
 		require.NoError(t, err)
 		configs := slices.Clone(original)
 		for index := range configs {
@@ -44,11 +44,11 @@ func TestNewBuildsFailureCategorySpecificDestinationWithoutChangingSourceConfig(
 	t.Parallel()
 
 	cfg := validUploadTargetConfig()
-	retryable, err := New(cfg, fsfailurearchive.FailureCategoryRetryable)
+	retryable, err := New(cfg, fsfailurearchive.FailureCategoryRetryable, nil, nil)
 	if err != nil {
 		t.Fatalf("New(retryable) error = %v", err)
 	}
-	permanent, err := New(cfg, fsfailurearchive.FailureCategoryPermanent)
+	permanent, err := New(cfg, fsfailurearchive.FailureCategoryPermanent, nil, nil)
 	if err != nil {
 		t.Fatalf("New(permanent) error = %v", err)
 	}
@@ -112,7 +112,7 @@ func TestNewPreservesTargetValidationErrors(t *testing.T) {
 			cfg := validUploadTargetConfig()
 			cfg.Targets = tt.targets
 
-			created, err := New(cfg, fsfailurearchive.FailureCategoryRetryable)
+			created, err := New(cfg, fsfailurearchive.FailureCategoryRetryable, nil, nil)
 			if created != nil {
 				t.Fatalf("New() = %T, want nil", created)
 			}
@@ -133,6 +133,8 @@ func TestNewReturnsNilWhenUploadIsDisabled(t *testing.T) {
 	created, err := New(
 		objectstorage.UploadTargetConfig{},
 		fsfailurearchive.FailureCategoryRetryable,
+		nil,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)

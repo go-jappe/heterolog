@@ -9,14 +9,18 @@ import (
 	s3uploaderbuilder "github.com/go-jappe/heterolog/internal/infrastructure/objectstorage/uploader/s3"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	pkguploader "github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // Newはretryable/permanentの同名fileが同じobject keyへ衝突しないよう、failure categoryを
 // providerのprefixへ反映してから設定済みtargetのuploaderを組み立てます。この変換は
 // destination identityの生成前に必要なため、inline writerとmaintenance runnerで共有します。
+// tracerとmeterは、宛先ごとのuploadの計装に使います。
 func New(
 	cfg objectstorage.UploadTargetConfig,
 	failureCategory fsfailurearchive.FailureCategory,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (pkguploader.Uploader, error) {
 	if !cfg.Enabled {
 		return nil, nil
@@ -25,6 +29,7 @@ func New(
 	return compose.FromTargets(
 		objectstorage.NewUploadTargetConfigAdapter(uploadTargetConfigForFailureCategory(cfg, failureCategory)),
 		s3uploaderbuilder.Builders(),
+		compose.WithObservers(tracer, meter),
 	)
 }
 

@@ -37,7 +37,7 @@ func TestNewLogFileUploader_MasterDisabledSkipsUpload(t *testing.T) {
 			Enabled: true,
 			Targets: []objectstorage.UploadTarget{objectstorage.UploadTargetS3},
 		},
-	}), DefaultLogger)
+	}), DefaultLogger, nil, nil)
 
 	require.NoError(t, err)
 	require.Nil(t, created)
@@ -54,7 +54,7 @@ func TestNewLogFileUploader_ClassificationDisabledSkipsUpload(t *testing.T) {
 			Enabled: true,
 			Targets: []objectstorage.UploadTarget{objectstorage.UploadTargetS3},
 		},
-	}), DefaultLogger)
+	}), DefaultLogger, nil, nil)
 
 	require.NoError(t, err)
 	require.Nil(t, created)

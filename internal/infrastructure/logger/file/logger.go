@@ -1074,6 +1074,8 @@ func newFileLoggerBase(
 		fl.ArchiveUploader, err = newLogFileUploader(
 			cfg.ObjectStorageUpload(),
 			loggerType,
+			tracer,
+			meter,
 		)
 		if err != nil {
 			return nil, fmt.Errorf(ErrorMsgCreateLogger, err)

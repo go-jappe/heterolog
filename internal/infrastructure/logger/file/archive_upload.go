@@ -20,6 +20,7 @@ import (
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // newLogFileUploaderは、通常・error・debugのログ種別に対応するobject storage送信処理を構築します。
@@ -28,6 +29,8 @@ import (
 func newLogFileUploader(
 	uploadCfg objectstorage.LogFileUploadConfigProvider,
 	loggerType loggerType,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
 ) (uploader.DestinationUploader, error) {
 	if !uploadCfg.Enabled() {
 		return nil, nil
@@ -36,7 +39,7 @@ func newLogFileUploader(
 	if !targetCfg.Enabled() {
 		return nil, nil
 	}
-	return uploadercompose.FromTargets(targetCfg, s3uploaderbuilder.Builders())
+	return uploadercompose.FromTargets(targetCfg, s3uploaderbuilder.Builders(), uploadercompose.WithObservers(tracer, meter))
 }
 
 // newLogFileUploaderWithFailureStorageは、通常の送信実装baseUploaderに、圧縮ログの送信失敗時の

@@ -185,6 +185,8 @@ func newDirectoryLifecycles(
 		rawUploader, err := objectStorageUploaderForFileClass(
 			opts.ObjectStorageUpload,
 			target.class,
+			opts.Tracer,
+			opts.Meter,
 		)
 		if err != nil {
 			return nil, err
@@ -460,7 +462,12 @@ func lifecycleTargetFor(logPath, target, logDir, prefix string, class fileClass)
 // objectStorageUploaderForFileClassは、指定file classのobject storage upload設定から
 // uploaderを作ります。upload全体または指定file classが無効な場合はnilを返し、
 // FileSeriesManagerはobject storage uploadを行いません。
-func objectStorageUploaderForFileClass(uploadCfg objectstorage.LogFileUploadConfig, class fileClass) (uploader.Uploader, error) {
+func objectStorageUploaderForFileClass(
+	uploadCfg objectstorage.LogFileUploadConfig,
+	class fileClass,
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
+) (uploader.Uploader, error) {
 	if !uploadCfg.Enabled {
 		return nil, nil
 	}
@@ -468,7 +475,11 @@ func objectStorageUploaderForFileClass(uploadCfg objectstorage.LogFileUploadConf
 	if !targetCfg.Enabled {
 		return nil, nil
 	}
-	return uploadercompose.FromTargets(objectstorage.NewUploadTargetConfigAdapter(targetCfg), s3uploaderbuilder.Builders())
+	return uploadercompose.FromTargets(
+		objectstorage.NewUploadTargetConfigAdapter(targetCfg),
+		s3uploaderbuilder.Builders(),
+		uploadercompose.WithObservers(tracer, meter),
+	)
 }
 
 type archiveCheckpointFactoryOptions struct {

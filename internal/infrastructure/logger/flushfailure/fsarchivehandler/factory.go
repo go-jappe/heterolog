@@ -180,6 +180,8 @@ func NewFailureArchivePipeline(
 		archiveHandler.retryableArchiveUploader, err = failurearchiveuploader.New(
 			uploadCfg,
 			failurearchive.FailureCategoryRetryable,
+			archiveHandler.Tracer,
+			archiveHandler.Meter,
 		)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -191,6 +193,8 @@ func NewFailureArchivePipeline(
 		archiveHandler.permanentArchiveUploader, err = failurearchiveuploader.New(
 			uploadCfg,
 			failurearchive.FailureCategoryPermanent,
+			archiveHandler.Tracer,
+			archiveHandler.Meter,
 		)
 		if err != nil {
 			return nil, fmt.Errorf(

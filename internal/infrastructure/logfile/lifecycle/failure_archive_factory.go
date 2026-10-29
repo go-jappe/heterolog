@@ -134,6 +134,8 @@ func newFailureArchiveLifecyclesWithMode(
 		rawUploader, err := failurearchiveuploader.New(
 			uploadConfig,
 			target.failureCategory,
+			opts.Tracer,
+			opts.Meter,
 		)
 		if err != nil {
 			return nil, &FailureArchiveUploaderError{FailureCategory: target.failureCategory, Err: err}

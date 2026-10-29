@@ -38,6 +38,13 @@ const (
 	// 復旧を確認して閉じた回数（state=closed）です。
 	CircuitBreakerTransitions = "heterolog_circuit_breaker_transitions_total"
 
+	// ObjectStorageUploadsは、圧縮したログファイルなどをobject storageの1つの宛先へ
+	// uploadした回数を、結果（outcome）ごとに数えます。失敗は、後で送り直すretryableと、
+	// 送り直さないpermanentに分けます。
+	ObjectStorageUploads = "heterolog_object_storage_uploads_total"
+	// ObjectStorageUploadDurationは、1つの宛先への1回のuploadにかかった秒数です。
+	ObjectStorageUploadDuration = "heterolog_object_storage_upload_duration_seconds"
+
 	// SpoolReplayRecordsは、spoolから読み戻して送り直したrecordの数を、送り直した結果
 	// （outcome）ごとに数えます。retryableは、spoolへ戻して後でまた送り直すrecordです。
 	SpoolReplayRecords = "heterolog_spool_replay_records_total"
@@ -55,6 +62,8 @@ const (
 	AttrState   = "state"
 	AttrAction  = "action"
 	AttrLevel   = "level"
+	// AttrTargetは、object storageの種類（s3など）です。
+	AttrTarget = "target"
 )
 
 // action属性の値です。
@@ -85,6 +94,7 @@ const (
 	OutcomeDead       = "dead"
 	OutcomeQuarantine = "quarantine"
 	OutcomeDropped    = "dropped"
+	OutcomePermanent  = "permanent"
 )
 
 // spanの属性の名前です。spanの属性は、利用者のapplicationの属性と混ざらないよう
@@ -95,6 +105,8 @@ const (
 	SpanAttrAttempt = "heterolog.attempt"
 	// SpanAttrBackendは、出力先の名前です。出力先ごとに名前を分けないspanに付けます。
 	SpanAttrBackend = "heterolog.backend"
+	// SpanAttrTargetは、object storageの種類（s3など）です。
+	SpanAttrTarget = "heterolog.target"
 	// SpanAttrDestinationとSpanAttrLevelは、内部ログの通知先の名前とlevelです。
 	SpanAttrDestination = "heterolog.destination"
 	SpanAttrLevel       = "heterolog.level"

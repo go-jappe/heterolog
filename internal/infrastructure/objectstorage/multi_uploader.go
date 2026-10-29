@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/go-jappe/heterolog/internal/application/observer"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 var _ uploader.DestinationUploader = (*MultiUploader)(nil)
@@ -19,9 +23,22 @@ var _ uploader.DestinationServiceProvider = (*MultiUploader)(nil)
 type MultiUploader struct {
 	destinations []uploader.Destination
 	byID         map[objectstorage.DestinationID]uploader.Destination
+	tracer       pkgobserver.Tracer
+	meter        pkgobserver.Meter
 }
 
+// NewMultiUploaderは、uploadを計装しないMultiUploaderを作ります。
 func NewMultiUploader(destinations ...uploader.Destination) (*MultiUploader, error) {
+	return NewMultiUploaderWithObservers(nil, nil, destinations...)
+}
+
+// NewMultiUploaderWithObserversは、宛先ごとのuploadをtracerのspanとmeterのmetricsで計装する
+// MultiUploaderを作ります。nilは記録しないものとして扱います。
+func NewMultiUploaderWithObservers(
+	tracer pkgobserver.Tracer,
+	meter pkgobserver.Meter,
+	destinations ...uploader.Destination,
+) (*MultiUploader, error) {
 	if len(destinations) == 0 {
 		return nil, ErrDestinationsRequired
 	}
@@ -50,7 +67,12 @@ func NewMultiUploader(destinations ...uploader.Destination) (*MultiUploader, err
 		byID[destination.ID] = destination
 	}
 
-	return &MultiUploader{destinations: ordered, byID: byID}, nil
+	return &MultiUploader{
+		destinations: ordered,
+		byID:         byID,
+		tracer:       observer.EnsureTracer(tracer),
+		meter:        observer.EnsureMeter(meter),
+	}, nil
 }
 
 // DestinationIDsはconstructorで確定した宛先identityを設定順で返します。
@@ -134,19 +156,37 @@ func (m *MultiUploader) UploadDestinations(
 		wg.Add(1)
 		go func(resultIndex int, destination uploader.Destination) {
 			defer wg.Done()
-			report.Results[resultIndex] = uploadToDestination(ctx, request, destination)
+			report.Results[resultIndex] = m.uploadToDestination(ctx, request, destination)
 		}(index, destination)
 	}
 	wg.Wait()
 	return report
 }
 
-func uploadToDestination(
+func (m *MultiUploader) uploadToDestination(
 	ctx context.Context,
 	request uploader.UploadRequest,
 	destination uploader.Destination,
 ) (result uploader.DestinationResult) {
 	result.DestinationID = destination.ID
+	ctx, span := observer.EnsureTracer(m.tracer).StartSpan(ctx, SpanObjectStorageUpload,
+		pkgobserver.Attr{Key: telemetry.SpanAttrTarget, Value: string(destination.Service)},
+		pkgobserver.Attr{Key: telemetry.SpanAttrDestination, Value: string(destination.ID)},
+	)
+	started := time.Now()
+	// panicをrecoverで結果へ変えた後に、確定した結果を記録します。
+	defer func() {
+		outcome := telemetry.OutcomeSuccess
+		switch {
+		case result.Err == nil:
+		case result.FailureCategory == uploader.FailureCategoryPermanent:
+			outcome = telemetry.OutcomePermanent
+		default:
+			outcome = telemetry.OutcomeRetryable
+		}
+		telemetry.RecordObjectStorageUpload(ctx, m.meter, string(destination.Service), outcome, time.Since(started))
+		telemetry.EndSpan(span, result.Err)
+	}()
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			result.Err = errors.Join(result.Err, &DestinationPanicError{

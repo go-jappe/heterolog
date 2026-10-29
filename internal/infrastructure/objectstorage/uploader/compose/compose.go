@@ -7,13 +7,38 @@ import (
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/objectstorage/uploader"
 	objectstoragevalidation "github.com/go-jappe/heterolog/pkg/objectstorage/validation"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // Builderは一つのproviderについて、設定された全宛先のuploaderを生成します。
 type Builder func(cfg objectstorage.UploadTargetConfigProvider) ([]uploader.Destination, error)
 
+// Optionは、FromTargetsが組み立てるuploaderの設定です。
+type Option func(*options)
+
+type options struct {
+	tracer pkgobserver.Tracer
+	meter  pkgobserver.Meter
+}
+
+// WithObserversは、宛先ごとのuploadをtracerのspanとmeterのmetricsで計装します。
+func WithObservers(tracer pkgobserver.Tracer, meter pkgobserver.Meter) Option {
+	return func(o *options) {
+		o.tracer = tracer
+		o.meter = meter
+	}
+}
+
 // FromTargets は設定された upload target に対応する uploader を組み立てます。
-func FromTargets(cfg objectstorage.UploadTargetConfigProvider, builders map[objectstorage.UploadTarget]Builder) (uploader.DestinationUploader, error) {
+func FromTargets(
+	cfg objectstorage.UploadTargetConfigProvider,
+	builders map[objectstorage.UploadTarget]Builder,
+	opts ...Option,
+) (uploader.DestinationUploader, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	if !cfg.Enabled() {
 		return nil, nil
 	}
@@ -55,7 +80,7 @@ func FromTargets(cfg objectstorage.UploadTargetConfigProvider, builders map[obje
 			destinations = append(destinations, destination)
 		}
 	}
-	multi, err := infraobjectstorage.NewMultiUploader(destinations...)
+	multi, err := infraobjectstorage.NewMultiUploaderWithObservers(o.tracer, o.meter, destinations...)
 	if err != nil {
 		return nil, err
 	}
