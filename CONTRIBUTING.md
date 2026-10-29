@@ -18,7 +18,12 @@ heterologのコードを書くときの決まりです。
 
 - root packageは公開の窓口だけにし、処理を置きません。
 - 入口（HTTP、CLI、slog、環境変数）は `internal/presentation` に置き、処理は `internal/application` に置きます。
+- ただし、ログファイルの手動復旧（`log-recovery`）のように、infrastructure層だけで完結する処理には、application層のpackageを作りません。入口は、`cmd/` から渡された `internal/bootstrap` の関数で処理を呼び、infrastructure層の型を使います。
 - 出力先ごとのloggerは `internal/infrastructure` にあり、環境変数から設定を組み立てる処理は `internal/config` にあります。
+- `internal/application` がimportするのは、`internal/application` のほかのpackage、`internal/domain`、`pkg/` だけです。`internal/infrastructure`・`internal/config`・`internal/presentation` はimportしません。テストも同じですが、`internal/testutil/observertest` のような試験用の部品は使えます。
+- application層は、infrastructure層の都合に関わりません。再試行、待つ間隔、既定値、設定の値の範囲、file・checkpoint・spoolの扱いは、infrastructure層が受け持ちます。application層が扱う設定は、稼働中に変えるlevelとsamplingのように、application層の処理が使うものだけです。
+- application層の処理にinfrastructure層の実装が要る場合は、application層が必要とする形のinterfaceをapplication層に置き、infrastructure層がそれを実装します。両方をimportして組み合わせるのは、`internal/bootstrap` と `cmd/` だけです。root packageは、loggerと既定の設定を `internal/bootstrap` から得ます。
+- 組み立てたloggerや実際のfileで動きを確かめるテストは、`internal/bootstrap` かinfrastructure層に置きます。
 - 実装が `internal` にある公開の型（`Runtime` など）は、root packageにstructとして定義します。中の実装はpointerで持ち、メソッドはそれを呼ぶだけにします。
 - ほかの公開の型は、`internal` でない `pkg/` のpackageに定義し、root packageでは別名（type alias）にします。root packageが `internal` の型を別名にするのは `Option` だけです。
 - 同じ規則（検証など）を2か所に書きません。1か所に置き、ほかからはそれを呼びます。
