@@ -417,6 +417,8 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 | `heterolog_async_rejected_entries_total` | Counter | `reason`（`invalid`・`closed`） | 非同期APIが、どの出力先にも渡さずに捨てたentryの数です。`invalid` は不正なentry（`MaxLogEntryBytes` を超えるものなど）、`closed` は `Close` を始めた後のentryです。 |
 | `heterolog_object_storage_uploads_total` | Counter | `target`（`s3` など）・`outcome` | 圧縮したログファイルやfailure archiveなどのファイルを、object storageの1つの宛先へuploadした回数を、結果ごとに数えます。結果は `success`・`retryable`（残しておき、後でまたuploadします）・`permanent` です。spoolからの再送も含みます。 |
 | `heterolog_object_storage_upload_duration_seconds` | Histogram | `target`・`outcome` | 1つの宛先への1回のuploadにかかった時間です。 |
+| `heterolog_memory_pressure_ratio` | Gauge | `backend` | `UseMemoryPressureForOverload` のために出力先のspoolが起動したmemory逼迫の監視が、最後に読んだmemoryの使用率（0から1）です。信頼できる値を読めた場合だけ記録します。`WithMemoryPressureMonitor` で渡した監視は呼出し元のものなので、記録しません。 |
+| `heterolog_memory_pressure_critical` | Gauge | `backend` | 同じ監視の最後の判定で、memoryが逼迫している（critical）なら1、そうでなければ0です。 |
 | `heterolog_spool_replay_records_total` | Counter | `backend`・`outcome` | spoolから読み戻して送り直したrecordの数を、結果ごとに数えます。結果は `success`・`retryable`（spoolへ戻し、後でまた送り直します）・`dead`・`quarantine` です。応答をrecordへ対応付けられない場合はfile全体を隔離し、そのrecordをすべて `quarantine` として数えます。 |
 | `heterolog_file_dropped_entries_total` | Counter | なし | fileロガーが過負荷時の方針 `drop` で破棄したentryの数です。 |
 | `heterolog_internal_logs_total` | Counter | `level`（`error`・`warn`・`info`・`debug`） | 内部ログの通知先（`OnErrorConfig` など）へ渡した内部ログ（書き込みの失敗や遅いリクエストなど）の数を、levelごとに数えます。[内部ログの通知](#内部ログの通知)を参照してください。 |

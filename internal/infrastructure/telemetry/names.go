@@ -53,6 +53,13 @@ const (
 	// 数えます。非同期APIは、この失敗を呼び出し元へ返しません。
 	AsyncBackendFailures = "heterolog_async_backend_failures_total"
 
+	// MemoryPressureRatioは、出力先（backend）のspoolが起動したmemory逼迫の監視が最後に
+	// 読んだmemoryの使用率（0から1）です。信頼できる値を読めた場合だけ記録します。
+	MemoryPressureRatio = "heterolog_memory_pressure_ratio"
+	// MemoryPressureCriticalは、同じ監視の最後の判定で、memoryが逼迫している（critical）
+	// なら1、そうでなければ0です。
+	MemoryPressureCritical = "heterolog_memory_pressure_critical"
+
 	// SpoolReplayRecordsは、spoolから読み戻して送り直したrecordの数を、送り直した結果
 	// （outcome）ごとに数えます。retryableは、spoolへ戻して後でまた送り直すrecordです。
 	SpoolReplayRecords = "heterolog_spool_replay_records_total"

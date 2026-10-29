@@ -30,6 +30,9 @@ type memoryPressureMonitor struct {
 	// 内部状態の排他制御
 	mu sync.RWMutex
 
+	// observeは、取得に成功するたびに、その回の観測と判定結果を受け取ります。nilなら呼びません。
+	observe PollObserver
+
 	// メモリ逼迫状態の取得元。OS・実行環境ごとの実装を pkg/memorypressure.Provider として受け取ります。
 	reader memorypressure.Provider
 
@@ -74,6 +77,21 @@ func New(
 	policy memorypressure.CriticalPolicy,
 	pollInterval time.Duration,
 ) (memorypressure.Monitor, error) {
+	return NewObserved(provider, policy, pollInterval, nil)
+}
+
+// PollObserverは、monitorが取得に成功した各回の観測と、その回のcritical判定の結果を受け取る
+// 関数です。monitorのlockを持たずに、取得したgoroutineから呼びます。
+type PollObserver func(ctx context.Context, pressure memorypressure.MemoryPressure, critical bool)
+
+// NewObservedは、Newと同じmonitorを、取得に成功するたびにobserveを呼ぶように生成します。
+// observeがnilなら、Newと同じです。
+func NewObserved(
+	provider memorypressure.Provider,
+	policy memorypressure.CriticalPolicy,
+	pollInterval time.Duration,
+	observe PollObserver,
+) (memorypressure.Monitor, error) {
 	if provider == nil {
 		return nil, fmt.Errorf("%w: provider is nil", ErrInvalidMonitorConfig)
 	}
@@ -85,6 +103,7 @@ func New(
 	}
 
 	return &memoryPressureMonitor{
+		observe:      observe,
 		reader:       provider,
 		policy:       policy,
 		pollInterval: pollInterval,
@@ -125,10 +144,9 @@ func (m *memoryPressureMonitor) pollOnce(ctx context.Context) error {
 	p, err := m.reader.ReadMemoryPressure(ctx)
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if err != nil {
 		m.lastReadErr = err
+		m.mu.Unlock()
 		//	if m.logger != nil {
 		//		m.logger.Log(
 		//			ctx,
@@ -143,8 +161,13 @@ func (m *memoryPressureMonitor) pollOnce(ctx context.Context) error {
 	m.lastPressure = p
 	m.lastReadAt = now
 	m.lastReadErr = nil
-	m.lastCritical = m.evaluateLocked(now, p)
+	critical := m.evaluateLocked(now, p)
+	m.lastCritical = critical
+	m.mu.Unlock()
 
+	if m.observe != nil {
+		m.observe(ctx, p, critical)
+	}
 	return nil
 }
 

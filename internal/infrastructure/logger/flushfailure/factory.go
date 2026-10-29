@@ -56,6 +56,9 @@ var newMemoryPressureProvider = memorypressure.New
 
 // FactoryOptionsはinternal log routingとspool handlerのShutdown責任の移譲先です。
 type FactoryOptions struct {
+	// Backendは、送れなかったrecordの出力先の名前です。spoolが起動したmemory逼迫の監視の
+	// metricsのbackend属性に使います。
+	Backend                   string
 	InternalLogHandlerFactory InternalLogHandlerFactory
 	SpoolHandlerRegistrar     SpoolHandlerRegistrar
 	// CompressedLogSpoolRuntimesは圧縮済み.jsonlの送信失敗時に使う共有spoolです。
@@ -147,6 +150,8 @@ func Build(
 				spoolMemoryMonitor, stopSpoolMemoryMonitor, err = spoolstorehandler.StartMemoryPressureMonitor(
 					spoolCfg,
 					newMemoryPressureProvider(),
+					meter,
+					opts.Backend,
 				)
 				if err != nil {
 					errs = append(errs, err)

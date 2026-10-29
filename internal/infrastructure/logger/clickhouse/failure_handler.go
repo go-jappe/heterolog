@@ -7,6 +7,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	"github.com/go-jappe/heterolog/pkg/clock"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/memorypressure"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
@@ -37,6 +38,7 @@ func BuildFailureHandler(
 		tracer,
 		meter,
 		flushfailure.FactoryOptions{
+			Backend:                    string(pkglogger.LogOutputClickHouse),
 			InternalLogHandlerFactory:  internalLogHandlerFactory,
 			SpoolHandlerRegistrar:      spoolHandlerRegistrar,
 			CompressedLogSpoolRuntimes: spoolRuntimes,
