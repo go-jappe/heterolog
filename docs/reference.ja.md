@@ -460,7 +460,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 - 送り直しを許す理由（429・502・503・504、応答を受け取れなかった失敗、開いたcircuit breaker）で失敗したspanは、activeのspoolへ入れ、spoolのworkerが再起動後も含めて送り直します。workerはrecordをspanに戻し、通常の送信と同じ要求、送り直し、分割、circuit breakerで送ります。`OTLP.RetryMaxDelay` より長い `Retry-After` は、ログの出力先と同じく、`Replay.Worker.MaxRetryAfter` までの範囲で、出力先全体の期限として守ります。
 - ログと異なり、接続が切れた場合など、結果の分からないspanは、quarantineへ移さずに送り直します。欠落より重複を優先するためです。そのため、送り直したspanが2回届くことがあります。そのspanは同じtrace IDとspan IDを持ちます。
 - 受信側がほかのステータスで拒否したspanはdeadに、部分的な成功を返した要求のspanは、どれが受け付けられたか分からないためquarantineに残します。どちらも送り直さず、error handlerへ知らせます。
-- `DurableTypeFileArchive` では、ログと同じローテーション、圧縮、保持期間で、spanをfailure archiveへ追記します。object storageへのuploadにはまだ対応しておらず、`Validate` が拒否します。`DurableTypeNone` で `EnableDegrade` なら、spanをstdoutへ書きます。
+- `DurableTypeFileArchive` では、ログと同じローテーション、圧縮、保持期間、object storageへのuploadで、spanをfailure archiveへ追記します。uploadできなかった圧縮fileを残すspoolとarchiveは、設定にかかわらず、loggerの契約の代わりに `telemetry` が所有するため、loggerのディレクトリと共有しません。`DurableTypeNone` で `EnableDegrade` なら、spanをstdoutへ書きます。
 - storeの過負荷の扱い（ディスクの空き容量、activeのspoolの大きさ、メモリの逼迫に対する `drop`・`degrade`）は、ログと同じです。
 - storeの内部ログの通知先（`HandlerConfig`）は使いません。storeのerrorと警告は、`WithTelemetryErrorHandler` で渡した関数へ渡します。
 - spoolとfailure archiveは、それぞれ専用のディレクトリです。同じprocessで、ログの出力先や別の `Telemetry` が、同じディレクトリを同時に使うことはできません。
@@ -485,7 +485,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 | `HETEROLOG_TRACES_OTLP_RETRIES` | `OTLP.Retries` | `3` |
 | `HETEROLOG_TRACES_OTLP_RETRY_BASE_DELAY_MILLISECOND`、`HETEROLOG_TRACES_OTLP_RETRY_MAX_DELAY_MILLISECOND` | `OTLP.RetryBaseDelay`、`OTLP.RetryMaxDelay` | `1000`、`5000` |
 | `HETEROLOG_ENABLE_TRACES_OTLP_CIRCUIT_BREAKER` | `OTLP.CircuitBreaker` | `false` |
-| `HETEROLOG_TRACES_OTLP_DURABLE_TYPES` と、出力先の名前の位置に `TRACES_OTLP` を入れたほかのfailure storeのキー（`HETEROLOG_TRACES_OTLP_FAILURE_SPOOL_DIR`、`HETEROLOG_TRACES_OTLP_SPOOL_RUNNER_INTERVAL_MILLISECOND` など） | `OTLP.FailureStore`。`HETEROLOG_LOKI_*` などログの出力先のキーと同じ意味と既定値です。ただし、`*_HANDLER` のキーと、failure archiveのuploadのキーはありません。ディレクトリは `traces_otlp`（spool）と `traces_otlp_failure_archives` で、ログの出力先と同じく解決します。spoolのworkerの再起動は、`HETEROLOG_MAX_RESTART_SPOOL_TIMES` に従います。 | `spool` |
+| `HETEROLOG_TRACES_OTLP_DURABLE_TYPES` と、出力先の名前の位置に `TRACES_OTLP` を入れたほかのfailure storeのキー（`HETEROLOG_TRACES_OTLP_FAILURE_SPOOL_DIR`、`HETEROLOG_TRACES_OTLP_SPOOL_RUNNER_INTERVAL_MILLISECOND` など） | `OTLP.FailureStore`。`HETEROLOG_LOKI_*` などログの出力先のキーと同じ意味と既定値です。ただし、`*_HANDLER` のキーはありません。failure archiveがuploadできなかった圧縮fileは、`HETEROLOG_OBJECT_STORAGE_COMPRESSED_LOG_FILE_UPLOAD_FAILURE_*` の保存先の、`telemetry` の下へ入れます。ディレクトリは `traces_otlp`（spool）と `traces_otlp_failure_archives` で、ログの出力先と同じく解決します。spoolのworkerの再起動は、`HETEROLOG_MAX_RESTART_SPOOL_TIMES` に従います。 | `spool` |
 | `HETEROLOG_TRACES_FILE_DIR` | `File.Path` のディレクトリ。`File.Path` はその中の `spans.jsonl` です。ログのディレクトリと同じく、`HETEROLOG_SYSTEM_LOG_DIR` と `HETEROLOG_TARGET` を基準に解決します。 | `/traces` |
 
 - resourceは、ロガーと同じキーから作ります。`HETEROLOG_APP_NAME`（`service.name`）、`HETEROLOG_APP_ENV`、`HETEROLOG_RUNTIME_TYPE`、`HETEROLOG_INSTANCE_ID`、`HETEROLOG_CLOUD_PROVIDER`、`HETEROLOG_CLOUD_PROVIDER_REGION` と、プロセスのホスト名とOSです。

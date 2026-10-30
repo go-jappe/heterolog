@@ -135,10 +135,6 @@ func TestValidateChecksTheFailureStore(t *testing.T) {
 		{"Traces.OTLP.FailureStore.Replay.Runner.Interval", telemetry.ErrNonPositiveSetting, func(c *telemetry.TraceFailureStoreConfig) {
 			c.Replay.Runner.Interval = 0
 		}},
-		{"Traces.OTLP.FailureStore.Store.DurableStoreConfig.FileArchiveConfig.ObjectStorageUploadConfig.Enabled", telemetry.ErrInvalidSetting, func(c *telemetry.TraceFailureStoreConfig) {
-			c.Store.DurableType = []durable.DurableType{durable.DurableTypeFileArchive}
-			c.Store.DurableStoreConfig.FileArchiveConfig.ObjectStorageUploadConfig.Enabled = true
-		}},
 	} {
 		err := withStore(tc.change).Validate()
 		var fieldErr *telemetry.FieldError

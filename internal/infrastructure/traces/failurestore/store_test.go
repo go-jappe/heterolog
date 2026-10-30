@@ -1,8 +1,13 @@
 package failurestore
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,9 +17,13 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/tracing"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
+	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
+	"github.com/go-jappe/heterolog/pkg/failurestore"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
+	"github.com/go-jappe/heterolog/pkg/objectstorage"
 )
 
 func archiveConfig(root string) Config {
@@ -124,4 +133,117 @@ func TestInternalLogsReachTheErrorHandler(t *testing.T) {
 	if len(reported) != 2 || reported[0] != want[0] || reported[1] != want[1] {
 		t.Errorf("reported = %q, want %q", reported, want)
 	}
+}
+
+// fakeObjectStorageは、受け取ったPUTのpathを記録するS3互換の受信側です。
+type fakeObjectStorage struct {
+	server *httptest.Server
+	mu     sync.Mutex
+	paths  []string
+}
+
+func newFakeObjectStorage(t *testing.T) *fakeObjectStorage {
+	t.Helper()
+	storage := &fakeObjectStorage{}
+	storage.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		storage.mu.Lock()
+		storage.paths = append(storage.paths, r.URL.Path)
+		storage.mu.Unlock()
+		w.Header().Set("ETag", `"test-etag"`)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(storage.server.Close)
+	return storage
+}
+
+func (s *fakeObjectStorage) uploaded(name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, path := range s.paths {
+		if strings.HasSuffix(path, "/"+name) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestStoreUploadsTheArchiveWithItsOwnUploadStorage(t *testing.T) {
+	root := t.TempDir()
+	spoolRoot := t.TempDir()
+	storage := newFakeObjectStorage(t)
+	cfg := archiveConfig(root)
+	archive := &cfg.Store.DurableStoreConfig.FileArchiveConfig
+	archive.UsageCacheTTL = time.Millisecond
+	archive.LifecycleMode = pkgfsstore.FileLifecycleModeInline
+	archive.ArchiveCheckpointConfig = pkgfsstore.ArchiveCheckpointConfig{
+		Directory: filepath.Join(root, "checkpoints"), SourcePrefix: "telemetry_otlp_traces_failure_archive", AutoRecoverMissingCheckpoint: true,
+	}
+	archive.ObjectStorageUploadConfig = objectstorage.UploadTargetConfig{
+		Enabled: true, Targets: []objectstorage.UploadTarget{objectstorage.UploadTargetS3},
+		S3: objectstorage.S3Config{
+			Region: "us-east-1", Bucket: "spans", Prefix: "traces", Endpoint: storage.server.URL,
+			ForcePathStyle: true, AccessKeyID: "test", SecretAccessKey: "test", Timeout: time.Second,
+		},
+		// 設定がloggerの契約を指していても、Telemetryの保存先を使います。
+		CompressedLogFileUploadFailureStore: objectstorage.CompressedLogFileUploadFailureStoreConfig{
+			DurableType: []failurestore.DurableType{failurestore.DurableTypeSpool},
+		},
+		CompressedLogFileUploadSpool: objectstorage.NewCompressedLogFileUploadSpoolConfigAdapter(objectstorage.CompressedLogFileUploadSpoolConfig{
+			SpoolPath: spoolRoot, Target: "checkout", LoggerContract: pkglogger.LoggerContractSync.String(),
+			RunnerInterval: time.Hour, LifecycleInterval: time.Hour, CircuitBreakerOpenCooldown: time.Second, MaxRetryAfter: time.Hour,
+		}),
+	}
+	store, err := New(context.Background(), cfg, Options{
+		Backend: "otlp_traces", Exporter: &recordingExporter{}, Resource: testResource, Report: func(err error) { t.Error(err) },
+	})
+	if err != nil {
+		t.Fatalf("New = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Shutdown(context.Background()) })
+	// 前の日に圧縮した世代を置き、最初の保存の後のcleanupで送らせます。
+	permanent := filepath.Join(root, "checkout", "traces_otlp_failure_archives", "permanent")
+	if err := os.MkdirAll(permanent, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	const previous = "checkout_20260902_1.jsonl.gz"
+	if err := os.WriteFile(filepath.Join(permanent, previous), gzipped(t, "{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dead := []traces.SpanFailure{{Start: 0, End: 1, Disposition: traces.DispositionDead, Err: errors.New("bad request")}}
+	batch := []tracing.SpanData{{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{1}, Name: "dead-span"}}
+	if err := store.Store(context.Background(), batch, dead); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !storage.uploaded(previous) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the compressed archive was not uploaded; uploads %v", storage.paths)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := store.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// uploadできなかった圧縮fileのspoolは、loggerではなくTelemetryの場所に作ります。
+	owners, err := filepath.Glob(filepath.Join(spoolRoot, "checkout", "spool", "*", "*", "*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(owners) != 1 || filepath.Base(owners[0]) != storageowner.Telemetry.String() {
+		t.Errorf("upload spool directories = %v, want one owned by the telemetry", owners)
+	}
+}
+
+func gzipped(t *testing.T, content string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write([]byte(content)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }

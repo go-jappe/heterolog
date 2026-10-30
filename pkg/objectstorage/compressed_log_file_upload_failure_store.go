@@ -28,7 +28,8 @@ type CompressedLogFileUploadFailureDurableStoreConfig struct {
 // category directory without changing its bytes or its original file name.
 // RootPath is the root already resolved down to the compressed log file upload
 // failure archive of the target application. LoggerContract separates the
-// areas owned by logger, async_logger and delivery_logger. The areas of the
+// areas owned by logger, async_logger and delivery_logger, and by telemetry for
+// the failure archive of the spans of heterolog.NewTelemetry. The areas of the
 // object storage service and of the destination are built from the metadata of
 // the destination.
 type CompressedLogFileUploadFailureArchiveConfig struct {
@@ -57,6 +58,8 @@ type CompressedLogFileUploadFailureArchivePurgeConfig struct {
 // provider with NewCompressedLogFileUploadSpoolConfigAdapter before it is
 // passed to the consuming side. The root for each object storage service is
 // determined by combining it with the metadata of the destination.
+// LoggerContract separates the spools owned by logger, async_logger and
+// delivery_logger, and by telemetry for heterolog.NewTelemetry.
 type CompressedLogFileUploadSpoolConfig struct {
 	SpoolPath      string
 	Target         string

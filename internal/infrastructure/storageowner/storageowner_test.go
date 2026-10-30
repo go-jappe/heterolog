@@ -7,9 +7,10 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
-func TestSupportedAcceptsTheLoggerContracts(t *testing.T) {
+func TestSupportedAcceptsTheLoggerContractsAndTheTelemetry(t *testing.T) {
 	for _, kind := range []pkglogger.LoggerContractKind{
 		pkglogger.LoggerContractSync, pkglogger.LoggerContractAsyncBestEffort, pkglogger.LoggerContractDelivery,
+		storageowner.Telemetry,
 	} {
 		if !storageowner.Supported(kind) {
 			t.Errorf("Supported(%q) = false, want true", kind)

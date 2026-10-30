@@ -1209,7 +1209,8 @@ func containsFailureStoreDurableType(
 func standardObjectStorageCompressedLogFileUploadFailureStoreRequired(appCfg AppConfig) bool {
 	required := objectStorageCompressedLogFileUploadFailureStoreRequirements(appCfg)
 	return required[pkglogger.LoggerContractSync] ||
-		required[pkglogger.LoggerContractAsyncBestEffort]
+		required[pkglogger.LoggerContractAsyncBestEffort] ||
+		tracesFailureArchiveUploadEnabled(appCfg)
 }
 
 func deliveryObjectStorageCompressedLogFileUploadFailureStoreRequired(appCfg AppConfig) bool {

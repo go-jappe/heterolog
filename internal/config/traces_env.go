@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 
 	"github.com/go-jappe/heterolog/internal/config/logconfig"
+	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
 	pkgenv "github.com/go-jappe/heterolog/pkg/env"
-	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
@@ -100,7 +100,7 @@ func MapTelemetryConfig(a AppConfig) pkgtelemetry.Config {
 	cfg.Traces.File.Path = filepath.Join(a.FsstoreConfig.LogPath, a.RuntimeConfig.Target, a.Traces.FileDir, tracesFileName)
 	cfg.Traces.OTLP.FailureStore = pkgtelemetry.TraceFailureStoreConfig{
 		Store: newFailureStoreConfig(
-			&a, checkpointSourceTracesOTLP, pkglogger.LoggerContractSync, a.Traces.FailureStore.FailureHandler, logconfig.LogBodyConfig{},
+			&a, checkpointSourceTracesOTLP, storageowner.Telemetry, a.Traces.FailureStore.FailureHandler, logconfig.LogBodyConfig{},
 		),
 		Replay:           a.Traces.FailureStore.Replay,
 		ReplaySupervisor: a.Traces.FailureStore.ReplaySupervisor,

@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/go-jappe/heterolog/internal/config/failure"
+	"github.com/go-jappe/heterolog/internal/config/filelifecycle"
 	"github.com/go-jappe/heterolog/internal/config/fsstoreconfig"
 	"github.com/go-jappe/heterolog/internal/config/internalerror"
 	"github.com/go-jappe/heterolog/internal/config/logconfig"
@@ -31,8 +32,8 @@ type TracesFailureStoreConfig struct {
 }
 
 // loadTracesFailureStoreConfigは、otlpの送り先のfailure storeの設定を、ログの出力先と同じ
-// keyの並び（ログの出力先の名前の位置にTRACES_OTLP）で読み込みます。traceでは、failure archiveのobject storageへのuploadと、
-// 内部ログの通知先（*_HANDLER）は使わないため、読みません。
+// keyの並び（ログの出力先の名前の位置にTRACES_OTLP）で読み込みます。traceでは、内部ログの
+// 通知先（*_HANDLER）は使わないため、読みません。
 func loadTracesFailureStoreConfig(env pkgenv.Lookup) (TracesFailureStoreConfig, error) {
 	cfg, selectionErr := loadFailureHandlerSelection(
 		env,
@@ -80,6 +81,14 @@ func loadTracesFailureArchiveConfig(env pkgenv.Lookup) (failure.FileArchiveConfi
 		compressFormatKey,
 		failure.DefaultFileArchiveCompressFormat,
 	)
+	upload, uploadErr := loadFailureArchiveObjectStorageUploadConfig(
+		env,
+		"HETEROLOG_ENABLE_TRACES_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_UPLOAD",
+		"HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_UPLOAD_TYPE",
+		"HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_BUCKET",
+		"HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_PREFIX",
+		"HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_DESTINATIONS",
+	)
 	return failure.FileArchiveConfig{
 		MaxFileSize:                maxFileSize,
 		LifecycleMode:              logconfig.ParseLogFileLifecycleMode(env.GetEnvString("HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_LIFECYCLE_MODE", string(failure.DefaultFileArchiveLifecycleMode)), failure.DefaultFileArchiveLifecycleMode),
@@ -96,12 +105,13 @@ func loadTracesFailureArchiveConfig(env pkgenv.Lookup) (failure.FileArchiveConfi
 		FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
 		MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
 		FileOperationRetryWaitTime: fsstoreconfig.FileOperationRetryWaitTime,
+		ObjectStorageUploadConfig:  upload,
 		OverloadPolicyConfig: failure.FileArchiveOverloadPolicyConfig{
 			OverloadPolicy:   failure.ParseOverloadPolicy(env.GetEnvString("HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_OVERLOAD_POLICY", string(failure.OverloadPolicyDrop)), failure.OverloadPolicyDrop),
 			SpillDestination: failure.ParseSpillDestination(env.GetEnvString("HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_SECONDARY_DESTINATION", string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),
 		},
 		HandlerConfig: internalerror.RoutingConfig{},
-	}, errors.Join(maxFileSizeErr, rotateErr, maxBackupsErr, maxAgeErr, maxDirSizeErr, compressErr, compressFormatErr)
+	}, errors.Join(maxFileSizeErr, rotateErr, maxBackupsErr, maxAgeErr, maxDirSizeErr, compressErr, compressFormatErr, uploadErr)
 }
 
 func loadTracesFailureSpoolConfig(env pkgenv.Lookup) (failure.SpoolConfig, error) {
@@ -170,4 +180,14 @@ func loadTracesSpoolRunnerConfig(env pkgenv.Lookup) (pkgspoolrunner.BackendSpool
 			purgeQuarantineErr, quarantineAgeErr, quarantineDirSizeErr, purgeIntervalErr, sizeEstimateCacheErr,
 			fullScanEveryNChecksErr, fullScanMaxIntervalErr, finalizeRetryDelayErr, finalizeEntriesErr, maxRetryAfterErr,
 		)
+}
+
+// tracesFailureArchiveUploadEnabledは、traceのfailure archiveがobject storageへ送るかを返します。
+// 送る場合は、loggerと同じ標準のcompressed log upload failure storeの設定を、Telemetryの保存先
+// として使います。
+func tracesFailureArchiveUploadEnabled(a AppConfig) bool {
+	fh := a.Traces.FailureStore.FailureHandler
+	archive := fh.Fsstore.FileArchiveConfig
+	return a.Traces.Enabled && containsDurableType(fh.DurableType, failure.DurableTypeFsstore) &&
+		filelifecycle.UsesObjectStorageUpload(archive.LifecycleMode) && archive.ObjectStorageUploadConfig.Enabled
 }

@@ -116,10 +116,13 @@ type TraceFailureStoreConfig struct {
 	// DurableTypeNone and EnableDegrade, they are written to stdout. An empty
 	// DurableType keeps nothing, and the spans are dropped.
 	//
-	// The upload of the failure archive to object storage is not supported
-	// yet, and the internal log notification targets (HandlerConfig) are not
-	// used: the errors and warnings of the stores go to the function passed
-	// with heterolog.WithTelemetryErrorHandler.
+	// The failure archive is uploaded to object storage as for a log
+	// destination. The spool and the archive that keep the compressed files
+	// that could not be uploaded are owned by "telemetry", whatever
+	// LoggerContract their settings have (see pkg/objectstorage), so they do
+	// not share the directories of the loggers. The internal log notification targets
+	// (HandlerConfig) are not used: the errors and warnings of the stores go to
+	// the function passed with heterolog.WithTelemetryErrorHandler.
 	Store durable.FailureStoreConfig
 	// Replay configures the worker that resends the spans in the spool, as
 	// for a log destination.

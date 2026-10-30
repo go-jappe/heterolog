@@ -129,3 +129,33 @@ func TestTelemetryConfigReadsTheTraceFailureStoreSettings(t *testing.T) {
 		t.Errorf("failure store = %+v, archive %+v; want a failure archive without upload", failureStore.Store, archive)
 	}
 }
+
+func TestTelemetryConfigReadsTheTraceFailureArchiveUpload(t *testing.T) {
+	isolateEnvConfigForTest(t)
+	libDir := t.TempDir()
+	loaded, err := envconfig.Load(writeEnvFileForTest(t,
+		"HETEROLOG_ENABLE_TRACES=true",
+		"HETEROLOG_SYSTEM_LIB_DIR="+libDir,
+		"HETEROLOG_TRACES_OTLP_DURABLE_TYPES=fileArchive",
+		"HETEROLOG_ENABLE_TRACES_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_UPLOAD=true",
+		"HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_BUCKET=spans",
+		"HETEROLOG_OBJECT_STORAGE_S3_REGION=us-east-1",
+		"HETEROLOG_OBJECT_STORAGE_COMPRESSED_LOG_FILE_UPLOAD_FAILURE_DURABLE_TYPES=fileArchive,spool",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := loaded.TelemetryConfig().Traces.OTLP.FailureStore.Store.DurableStoreConfig.FileArchiveConfig
+	upload := archive.ObjectStorageUploadConfig
+	if !upload.Enabled || upload.S3.Bucket != "spans" {
+		t.Fatalf("upload = %+v, want the bucket of the trace failure archive", upload)
+	}
+	// uploadできなかった圧縮fileの保存先は、loggerではなくTelemetryが所有します。
+	if upload.CompressedLogFileUploadSpool == nil || upload.CompressedLogFileUploadSpool.LoggerContract() != "telemetry" ||
+		upload.CompressedLogFileUploadFailureStore.DurableStoreConfig.FileArchiveConfig.LoggerContract != "telemetry" {
+		t.Errorf("upload failure stores = %+v, want them owned by the telemetry", upload.CompressedLogFileUploadFailureStore)
+	}
+	if archive.ArchiveCheckpointConfig.SourcePrefix != "telemetry_otlp_traces_failure_archive" || archive.ArchiveCheckpointConfig.Directory == "" {
+		t.Errorf("checkpoint = %+v, want the trace failure archive source", archive.ArchiveCheckpointConfig)
+	}
+}

@@ -4,27 +4,36 @@
 //
 // 配送の仕組みは自分の送信のspanを作らないため、使う部品にはspanを作らないTracerを
 // 渡します。失敗処理の内部ログは、Telemetryのerror handlerへ渡します。
+//
+// failure archiveをobject storageへ送る場合、送れなかった圧縮fileを保存するspoolと
+// archiveは、storageowner.Telemetryの名前で、loggerとは別の保存先を使います。
 package failurestore
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/application/tracing"
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	fsstorespool "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
 	loggerfailure "github.com/go-jappe/heterolog/internal/infrastructure/logger/failure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure/spoolstorehandler"
+	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	logspool "github.com/go-jappe/heterolog/internal/infrastructure/spool/log"
+	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
+	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	objectstoragevalidation "github.com/go-jappe/heterolog/pkg/objectstorage/validation"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgspoolrunner "github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
 	pkgspoolsupervisor "github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
@@ -68,6 +77,9 @@ type Store struct {
 	// compositeを止めた後にStoreが止めます。
 	writer *spoolstorehandler.SpoolStoreHandler
 	replay *replayRuntime
+	// uploadSpoolsは、failure archiveの圧縮fileを送れなかった場合に保存するspoolです。
+	// failure archiveが借りて使うため、compositeを止めた後にStoreが閉じます。
+	uploadSpools compressedlog.RootRuntimes
 }
 
 // Newは、cfgで選んだfailure storeを作ります。spoolを選んだ場合は、同じspoolから送り直す
@@ -80,6 +92,12 @@ func New(ctx context.Context, cfg Config, opts Options) (*Store, error) {
 	opts.Meter = observer.EnsureMeter(opts.Meter)
 	report := opts.Report
 	s := &Store{backend: opts.Backend, resource: opts.Resource, clock: opts.Clock}
+	cfg.Store = ownArchiveUploadStorage(cfg.Store)
+	uploadSpools, err := prepareArchiveUpload(cfg.Store)
+	if err != nil {
+		return nil, err
+	}
+	s.uploadSpools = uploadSpools
 	composite, err := flushfailure.Build(ctx, opts.Clock, loggerdurable.NewFailureStoreConfigAdapter(cfg.Store),
 		nil, observer.NopTracer{}, opts.Meter, flushfailure.FactoryOptions{
 			Backend:                   opts.Backend,
@@ -88,13 +106,14 @@ func New(ctx context.Context, cfg Config, opts Options) (*Store, error) {
 				s.writer = writer
 				return nil
 			},
+			CompressedLogSpoolRuntimes: uploadSpools,
 		})
 	s.composite = composite
 	if err != nil {
 		return nil, errors.Join(err, s.Shutdown(context.WithoutCancel(ctx)))
 	}
 	if composite == nil {
-		return nil, nil
+		return nil, s.uploadSpools.Close()
 	}
 	if s.writer != nil {
 		replay, err := startReplay(cfg, opts, s.writer)
@@ -161,7 +180,54 @@ func (s *Store) Shutdown(ctx context.Context) error {
 	if s.replay != nil {
 		errs = append(errs, s.replay.stop(ctx))
 	}
+	if s.uploadSpools != nil {
+		errs = append(errs, s.uploadSpools.Close())
+	}
 	return errors.Join(errs...)
+}
+
+// ownArchiveUploadStorageは、failure archiveの圧縮fileを送れなかった場合に保存するspoolと
+// archiveの所有者を、設定にかかわらずstorageowner.Telemetryにします。同じprocessのloggerの
+// 保存先とぶつからないようにするためです。
+func ownArchiveUploadStorage(cfg pkgdurable.FailureStoreConfig) pkgdurable.FailureStoreConfig {
+	upload := &cfg.DurableStoreConfig.FileArchiveConfig.ObjectStorageUploadConfig
+	upload.CompressedLogFileUploadFailureStore.DurableStoreConfig.FileArchiveConfig.LoggerContract = storageowner.Telemetry.String()
+	if upload.CompressedLogFileUploadSpool != nil {
+		upload.CompressedLogFileUploadSpool = telemetryOwnedSpool{upload.CompressedLogFileUploadSpool}
+	}
+	return cfg
+}
+
+// telemetryOwnedSpoolは、圧縮ログのspoolの設定のうち、所有者だけをTelemetryにします。
+type telemetryOwnedSpool struct {
+	objectstorage.CompressedLogFileUploadSpoolConfigProvider
+}
+
+func (telemetryOwnedSpool) LoggerContract() string { return storageowner.Telemetry.String() }
+
+// prepareArchiveUploadは、failure archiveをobject storageへ送る場合に、ログの出力先と同じく、
+// 送信の設定を確かめ、checkpointの保存先を用意し、送れなかった圧縮fileを保存するspoolを
+// 作ります。送らない場合は、何もせずにnilを返します。
+func prepareArchiveUpload(cfg pkgdurable.FailureStoreConfig) (compressedlog.RootRuntimes, error) {
+	if !slices.Contains(cfg.DurableType, pkgdurable.DurableTypeFileArchive) {
+		return nil, nil
+	}
+	archive := cfg.DurableStoreConfig.FileArchiveConfig
+	upload := compressedlog.FailureArchiveUpload(archive)
+	if !upload.Enabled {
+		return nil, nil
+	}
+	if err := objectstoragevalidation.ValidateUploadTargetConfig("trace failure archive", archive.ObjectStorageUploadConfig); err != nil {
+		return nil, err
+	}
+	if err := checkpoint.PrepareDirectory(archive.ArchiveCheckpointConfig.Directory); err != nil {
+		return nil, fmt.Errorf("prepare the checkpoint directory of the trace failure archive: %w", err)
+	}
+	configs, err := compressedlog.UploadConfigs(upload)
+	if err != nil || configs == nil {
+		return nil, err
+	}
+	return compressedlog.NewRootRuntimes(configs...)
 }
 
 // deliveryStatusは、受信側が受け付けたかについて分かっていることです。
