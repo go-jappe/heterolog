@@ -2,7 +2,6 @@ package logger
 
 import (
 	"errors"
-	"fmt"
 	"slices"
 
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
@@ -35,13 +34,13 @@ func newCompressedLogSpoolRuntimeBuilder(uploads ...objectstorage.LogFileUploadC
 // buildCompressedLogSpoolRuntimesは構築中の共有Builderから、この送信経路が使うruntimeを取得します。
 // 呼び出し元は返されたruntimeを利用先へ直接渡し、Builderはlogger構築後に保持しません。
 func buildCompressedLogSpoolRuntimes(upload objectstorage.LogFileUploadConfig, builders ...*compressedlog.RootRuntimeBuilder) (compressedlog.RootRuntimes, error) {
-	if len(builders) == 0 || builders[0] == nil || !upload.UsesCompressedLogFileUploadSpool(true, true) {
+	if len(builders) == 0 || builders[0] == nil {
 		return nil, nil
 	}
-	if upload.CompressedLogFileUploadSpool == nil {
-		return nil, fmt.Errorf("%w: spool config provider is nil", compressedlog.ErrInvalidCompressedLogFileUploadSpoolConfig)
+	configs, err := compressedlog.UploadConfigs(upload)
+	if err != nil || configs == nil {
+		return nil, err
 	}
-	configs := compressedlog.NewConfigAdapters(upload.CompressedLogFileUploadSpool, upload.CompressedLogFileUploadSpoolServices(true, true))
 	return builders[0].Build(configs...)
 }
 
@@ -75,7 +74,7 @@ func newLoggerCompressedLogSpoolRuntimeBuilder(cfg pkglogger.LoggerConfig) (*com
 		}
 		failure, exists := spoolFailureStoreConfig(backend, cfg)
 		if exists && slices.Contains(failure.DurableType, durable.DurableTypeFileArchive) {
-			uploads = append(uploads, failureArchiveCompressedLogSpoolUpload(failure.DurableStoreConfig.FileArchiveConfig))
+			uploads = append(uploads, compressedlog.FailureArchiveUpload(failure.DurableStoreConfig.FileArchiveConfig))
 		}
 	}
 	return newCompressedLogSpoolRuntimeBuilder(uploads...)
@@ -105,16 +104,6 @@ func newDeliveryCompressedLogSpoolRuntimeBuilder(cfg pkglogger.DeliveryLoggerCon
 		}
 	}
 	return newCompressedLogSpoolRuntimeBuilder(uploads...)
-}
-
-// failureArchiveCompressedLogSpoolUploadは、.jsonl系列の単一送信設定を共有rootの構築へ渡します。
-func failureArchiveCompressedLogSpoolUpload(cfg durable.FileArchiveConfig) objectstorage.LogFileUploadConfig {
-	upload := cfg.ObjectStorageUploadConfig
-	return objectstorage.LogFileUploadConfig{
-		Enabled:                      upload.Enabled && cfg.LifecycleMode != pkgfsstore.FileLifecycleModeDisable,
-		Default:                      upload,
-		CompressedLogFileUploadSpool: upload.CompressedLogFileUploadSpool,
-	}
 }
 
 // 通常ログとbackend送信失敗archiveは、同じ解決済みrootに対応するruntimeを借用します。

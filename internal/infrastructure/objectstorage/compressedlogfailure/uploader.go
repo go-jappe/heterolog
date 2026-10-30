@@ -20,6 +20,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	spooluploader "github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog/uploader"
+	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -546,14 +547,10 @@ func (u *ManagedUploader) notify(ctx context.Context, notification Notification)
 
 func parseLoggerContract(value string) (pkglogger.LoggerContractKind, error) {
 	contract := pkglogger.LoggerContractKind(strings.TrimSpace(value))
-	switch contract {
-	case pkglogger.LoggerContractSync,
-		pkglogger.LoggerContractAsyncBestEffort,
-		pkglogger.LoggerContractDelivery:
+	if storageowner.Supported(contract) {
 		return contract, nil
-	default:
-		return "", fmt.Errorf("%w: logger contract %q is unsupported", ErrInvalidConfig, value)
 	}
+	return "", fmt.Errorf("%w: logger contract %q is unsupported", ErrInvalidConfig, value)
 }
 
 func normalizeUploadResults(

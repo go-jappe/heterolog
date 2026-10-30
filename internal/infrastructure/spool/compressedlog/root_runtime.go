@@ -12,6 +12,7 @@ import (
 	objectstoragespool "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/objectstorage"
 	"github.com/go-jappe/heterolog/internal/infrastructure/shutdown"
 	compressedlogworker "github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog/worker"
+	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
@@ -401,18 +402,14 @@ func validateRootRuntimeConfig(config rootRuntimeConfigProvider) error {
 
 func parseLoggerContract(value string) (pkglogger.LoggerContractKind, error) {
 	contract := pkglogger.LoggerContractKind(strings.TrimSpace(value))
-	switch contract {
-	case pkglogger.LoggerContractSync,
-		pkglogger.LoggerContractAsyncBestEffort,
-		pkglogger.LoggerContractDelivery:
+	if storageowner.Supported(contract) {
 		return contract, nil
-	default:
-		return "", fmt.Errorf(
-			"%w: logger contract %q is unsupported",
-			ErrInvalidCompressedLogFileUploadSpoolConfig,
-			value,
-		)
 	}
+	return "", fmt.Errorf(
+		"%w: logger contract %q is unsupported",
+		ErrInvalidCompressedLogFileUploadSpoolConfig,
+		value,
+	)
 }
 
 // routeRegistrationは、一つのログ系列の再送対象・送信先・結果通知先をまとめた登録情報です。

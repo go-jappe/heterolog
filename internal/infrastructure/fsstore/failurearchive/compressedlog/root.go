@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
+	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
@@ -86,7 +87,7 @@ func NewRoot(
 	if err := validateObjectStorageService(service); err != nil {
 		return Root{}, fmt.Errorf("%w: %w", ErrInvalidRoot, err)
 	}
-	if !isSupportedLoggerContract(loggerContract) {
+	if !storageowner.Supported(loggerContract) {
 		return Root{}, fmt.Errorf(
 			"%w: unsupported logger contract %q",
 			ErrInvalidRoot,
@@ -150,7 +151,7 @@ func (r Root) archivedFilePath(
 func (r Root) validate() error {
 	if strings.TrimSpace(r.path) == "" ||
 		validateObjectStorageService(r.service) != nil ||
-		!isSupportedLoggerContract(r.loggerContract) {
+		!storageowner.Supported(r.loggerContract) {
 		return fmt.Errorf("%w: zero or unsupported root", ErrInvalidRoot)
 	}
 	return nil
@@ -186,17 +187,6 @@ func validateDestinationDirectoryName(name string) error {
 		}
 	}
 	return nil
-}
-
-func isSupportedLoggerContract(kind pkglogger.LoggerContractKind) bool {
-	switch kind {
-	case pkglogger.LoggerContractSync,
-		pkglogger.LoggerContractAsyncBestEffort,
-		pkglogger.LoggerContractDelivery:
-		return true
-	default:
-		return false
-	}
 }
 
 // validateArchivedFileNameは、directory配下に保存・走査する名前を、そのdirectoryの
