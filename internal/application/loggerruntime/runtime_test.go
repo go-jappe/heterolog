@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/go-jappe/heterolog/internal/application/configview"
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
 
@@ -71,4 +74,32 @@ func closeConstructed[R interface{ Close() error }](runtime R, err error) error 
 		_ = runtime.Close()
 	}
 	return err
+}
+
+// 各runtimeは、自分を作った設定を、管理用APIの文書の種類とともに返します。
+func TestRuntimesReturnTheirConfiguration(t *testing.T) {
+	ctx := context.Background()
+	builder := &recordingBuilder{}
+	cfg := pkglogger.LoggerConfig{Timeout: 7 * time.Second, Stdout: &pkglogger.StdoutLoggerConfig{RuntimeConfig: pkglogger.RuntimeConfig{LogLevel: pkglogger.LogLevelInfo}}}
+	runtime, err := loggerruntime.New(ctx, builder, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := runtime.Configuration(); got.Kind != configview.KindLogger || got.Value.(pkglogger.LoggerConfig).Timeout != 7*time.Second {
+		t.Errorf("Runtime.Configuration() = %+v, want kind logger with the given timeout", got)
+	}
+	async, err := loggerruntime.NewAsync(ctx, builder, pkglogger.AsyncBestEffortMultiLoggerConfig{MaxParallel: 3, Stdout: &pkglogger.StdoutLoggerConfig{RuntimeConfig: pkglogger.RuntimeConfig{LogLevel: pkglogger.LogLevelInfo}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := async.Configuration(); got.Kind != configview.KindAsyncLogger || got.Value.(pkglogger.AsyncBestEffortMultiLoggerConfig).MaxParallel != 3 {
+		t.Errorf("AsyncRuntime.Configuration() = %+v, want kind async_logger with max_parallel 3", got)
+	}
+	delivery, err := loggerruntime.NewDelivery(ctx, builder, pkglogger.DeliveryLoggerConfig{MaxLogEntryBytes: 99})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := delivery.Configuration(); got.Kind != configview.KindDeliveryLogger || got.Value.(pkglogger.DeliveryLoggerConfig).MaxLogEntryBytes != 99 {
+		t.Errorf("DeliveryRuntime.Configuration() = %+v, want kind delivery_logger with max_log_entry_bytes 99", got)
+	}
 }

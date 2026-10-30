@@ -22,6 +22,7 @@ type Runtime struct {
 	pkglogger.Logger
 	*lifecycle
 	outputs *outputsettings.Registry
+	config  pkglogger.LoggerConfig
 }
 
 // AsyncRuntimeは、非同期でbest effortに送るloggerを持ちます。Shutdownは、受け付けた処理と
@@ -30,12 +31,14 @@ type AsyncRuntime struct {
 	pkglogger.AsyncLogger
 	*lifecycle
 	outputs *outputsettings.Registry
+	config  pkglogger.AsyncBestEffortMultiLoggerConfig
 }
 
 // DeliveryRuntimeは、出力先ごとの送信結果を返すloggerを持ちます。NewDeliveryで作ります。
 type DeliveryRuntime struct {
 	pkglogger.DeliveryLogger
 	*lifecycle
+	config pkglogger.DeliveryLoggerConfig
 }
 
 var (
@@ -72,7 +75,7 @@ func New(ctx context.Context, builder Builder, cfg pkglogger.LoggerConfig, opts 
 	if err != nil {
 		return nil, err
 	}
-	return &Runtime{Logger: logger, lifecycle: &lifecycle{closer: logger}, outputs: outputs}, nil
+	return &Runtime{Logger: logger, lifecycle: &lifecycle{closer: logger}, outputs: outputs, config: cfg}, nil
 }
 
 // NewAsyncは、builderで、非同期でbest effortに送るloggerを作ります。
@@ -96,7 +99,7 @@ func NewAsync(ctx context.Context, builder Builder, cfg pkglogger.AsyncBestEffor
 	if err != nil {
 		return nil, err
 	}
-	return &AsyncRuntime{AsyncLogger: logger, lifecycle: &lifecycle{closer: logger}, outputs: outputs}, nil
+	return &AsyncRuntime{AsyncLogger: logger, lifecycle: &lifecycle{closer: logger}, outputs: outputs, config: cfg}, nil
 }
 
 // NewDeliveryは、builderで、出力先ごとの送信結果を返すloggerを作ります。Delivery loggerには
@@ -116,7 +119,7 @@ func NewDelivery(ctx context.Context, builder Builder, cfg pkglogger.DeliveryLog
 	if err != nil {
 		return nil, err
 	}
-	return &DeliveryRuntime{DeliveryLogger: logger, lifecycle: &lifecycle{closer: logger}}, nil
+	return &DeliveryRuntime{DeliveryLogger: logger, lifecycle: &lifecycle{closer: logger}, config: cfg}, nil
 }
 
 // validateConstructorは、constructorに共通の引数を検証します。

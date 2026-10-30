@@ -7,10 +7,12 @@ import (
 	"context"
 	"errors"
 
+	"github.com/go-jappe/heterolog/internal/application/configview"
 	"github.com/go-jappe/heterolog/internal/application/metrics"
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/application/tracing"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
 // Deliveryは、spanを受け取って送る配送の仕組みです。Shutdownは、受け付けを止め、
@@ -35,6 +37,8 @@ type MetricDelivery interface {
 
 // Partsは、Runtimeの部品です。送り先のない信号の部品は、nilにします。
 type Parts struct {
+	// Configは、telemetryを作った設定です。管理用APIが設定の文書を作るために返します。
+	Config pkgtelemetry.Config
 	Tracer pkgobserver.Tracer
 	Spans  Delivery
 	Meter  pkgobserver.Meter
@@ -51,6 +55,12 @@ type Runtime struct {
 // Newは、partsを持つRuntimeを返します。
 func New(parts Parts) *Runtime {
 	return &Runtime{parts: parts}
+}
+
+// Configurationは、このtelemetryを作った設定を返します。管理用APIが設定の文書を作るための
+// ものです。
+func (r *Runtime) Configuration() configview.Configuration {
+	return configview.Configuration{Kind: configview.KindTelemetry, Value: r.parts.Config}
 }
 
 // Tracerは、spanを記録するTracerを返します。traceの送り先がなければ、何もしないTracerです。

@@ -60,7 +60,7 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 	options := loggerruntime.ResolveOptions(opts)
 	report := delivery.NewErrorHandler(options.TelemetryErrorHandler)
 	resource := otlpcommon.NewResource(cfg.Resource)
-	var parts telemetryruntime.Parts
+	parts := telemetryruntime.Parts{Config: cfg}
 	if len(cfg.Traces.Exporters) > 0 {
 		destinations, err := newTraceDestinations(ctx, cfg, resource, options.Meter, report)
 		if err != nil {
