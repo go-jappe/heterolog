@@ -37,6 +37,25 @@ func TestTelemetryForwardsToTheImplementation(t *testing.T) {
 	}
 }
 
+func TestTelemetryMeterForwardsToTheImplementation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metrics.jsonl")
+	cfg := heterolog.DefaultTelemetryConfig()
+	cfg.Metrics.Exporters = []heterolog.MetricExporter{heterolog.MetricExporterFile}
+	cfg.Metrics.File.Path = path
+	tel, err := heterolog.NewTelemetry(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tel.Meter().Counter("facade_total").Add(context.Background(), 2)
+	if err := tel.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(content), `"name":"facade_total"`) {
+		t.Errorf("metrics file = %q, %v; want the counter", content, err)
+	}
+}
+
 func TestWithTelemetryErrorHandlerForwardsTheFunction(t *testing.T) {
 	var got error
 	options := loggerruntime.ResolveOptions([]heterolog.Option{

@@ -65,9 +65,9 @@ const (
 	SpoolReplayRecords = "heterolog_spool_replay_records_total"
 
 	// TraceSpansは、NewTelemetryのtraceの配送の仕組みが、送り先（exporter）ごとに扱った
-	// spanの数を、結果（outcome）ごとに数えます。successは送れたspan、failureは再試行しても
-	// 送れなかったspanと受信側が受け付けなかったspan、droppedは待ち行列が一杯の場合や終了の
-	// 後に捨てたspanです。配送の仕組みは、自分の送信のspanを作らず、このmetricsで様子を
+	// spanの数を、結果（outcome）ごとに数えます。successは送れたspan、retryable・dead・
+	// quarantineは送れずにfailure storeへ残したspan、failureは送れず残しもしなかったspan、
+	// droppedは待ち行列が一杯の場合や終了の後に捨てたspanです。配送の仕組みは、自分の送信のspanを作らず、このmetricsで様子を
 	// 知らせます。
 	TraceSpans = "heterolog_trace_spans_total"
 	// TraceExportDurationは、送り先が1つのbatchを送るのにかかった秒数です。再試行と、その
@@ -76,6 +76,15 @@ const (
 	// TraceExportRetriesは、OTLPの送り先が送信をやり直した回数を、やり直す理由（reason）
 	// ごとに数えます。
 	TraceExportRetries = "heterolog_trace_export_retries_total"
+	// MetricPointsは、NewTelemetryのmetricsの配送の仕組みが、送り先（exporter）ごとに扱った
+	// data pointの数を、結果（outcome）ごとに数えます。結果の値は、TraceSpansと同じです。
+	MetricPoints = "heterolog_metric_points_total"
+	// MetricExportDurationは、送り先が1つのbatchを送るのにかかった秒数です。再試行と、その
+	// 間の待ち時間を含みます。
+	MetricExportDuration = "heterolog_metric_export_duration_seconds"
+	// MetricExportRetriesは、送り先が送信をやり直した回数を、やり直す理由（reason）ごとに
+	// 数えます。
+	MetricExportRetries = "heterolog_metric_export_retries_total"
 
 	// InternalLogsは、loggerが自分の状態を知らせる内部ログのうち、通知先（OnErrorConfigなどで
 	// 選んだ出力先）へ渡したものの数を、level（error・warn・info・debug）ごとに数えます。
@@ -92,7 +101,7 @@ const (
 	AttrLevel   = "level"
 	// AttrTargetは、object storageの種類（s3など）です。
 	AttrTarget = "target"
-	// AttrExporterは、spanの送り先（otlp・file・stdout）です。
+	// AttrExporterは、spanとmetricsの送り先（otlp・file・stdoutなど）です。
 	AttrExporter = "exporter"
 )
 

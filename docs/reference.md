@@ -12,6 +12,7 @@ This document describes the behavior of heterolog in detail: what each API retur
 - [Log files](#log-files)
 - [Failure handling and replay](#failure-handling-and-replay)
 - [Sending traces](#sending-traces)
+- [Sending metrics](#sending-metrics)
 - [Metrics and traces](#metrics-and-traces)
 - [Destination notes](#destination-notes)
 - [Log recovery CLI](#log-recovery-cli)
@@ -491,9 +492,57 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 - The resource comes from the keys the loggers use: `HETEROLOG_APP_NAME` (`service.name`), `HETEROLOG_APP_ENV`, `HETEROLOG_RUNTIME_TYPE`, `HETEROLOG_INSTANCE_ID`, `HETEROLOG_CLOUD_PROVIDER`, and `HETEROLOG_CLOUD_PROVIDER_REGION`, with the host name and OS of the process.
 - `LoadEnvConfig` checks the trace settings when `HETEROLOG_ENABLE_TRACES` is `true` and reports the problems under `HETEROLOG_TRACES_*`, as `pkg/telemetry` `FieldError`s. The values of the endpoint and the headers, which can contain credentials, are not shown.
 
+## Sending metrics
+
+`NewTelemetry` records metrics with its `Meter` and sends them, together with metrics from the OpenTelemetry SDK, to the destinations in `TelemetryConfig.Metrics.Exporters`: an OTLP/HTTP receiver (`otlp`), such as the OpenTelemetry Collector, Prometheus, or VictoriaMetrics, a file (`file`), and stdout (`stdout`). Without destinations, its `Meter` records nothing. `DefaultTelemetryConfig()` fills every setting except the destinations, and `TelemetryConfig.Validate` checks the metric settings together with the trace settings.
+
+### The Meter
+
+- `Counter` adds to a sum for each attribute set. The sum is sent as a monotonic sum with cumulative temporality and integer values; negative values are ignored, because the sum never decreases.
+- `Gauge` keeps the last value recorded for each attribute set, with the time it was recorded.
+- `Histogram` counts the values of each attribute set in the buckets of `HistogramBounds`, whose upper bounds include the bound itself, and keeps their count, sum, minimum, and maximum, with cumulative temporality. NaN is ignored. The default bounds, from 5 milliseconds to 10 seconds, suit durations in seconds.
+- Attribute sets with the same keys and values are the same set, in any order. When a key appears more than once, the later value is kept. Values of different types, such as `200` and `"200"`, make different sets.
+- A metric keeps up to `CardinalityLimit` attribute sets. When it is reached, the values of new sets are added to one set with the attribute `otel.metric.overflow=true`, which counts toward the limit, as in the OpenTelemetry SDK.
+- Sums and histograms start when the `Telemetry` is constructed. The metrics of the `Meter` have the instrumentation scope `github.com/go-jappe/heterolog` and the same resource as the spans of the `Tracer`.
+
+### Delivery
+
+- Every `ExportInterval`, the values of the `Meter` are collected and queued for each destination, which keeps up to `QueueSize` collections and has its own goroutine. A collection that does not fit in the queue of a destination is dropped for that destination; because the values are cumulative, the next collection still has the totals.
+- `otlp` posts each collection like the spans of `Traces.OTLP`: in protobuf, by the retry rules of the OTLP specification, splitting a request rejected as too large by metric, and with the optional circuit breaker. A partial success counts the rejected data points as failed. The metrics of the circuit breaker have the `backend` `otlp_metrics`.
+- `file` and `stdout` write each collection as one line of OTLP JSON, with 64-bit integers, counts, and times as strings.
+- The errors of the delivery go to the function given with `WithTelemetryErrorHandler`, as for spans. Data points dropped because a queue was full are reported in one error per destination at most once per `ExportInterval`.
+- The delivery does not create spans for its own sending. The `heterolog_metric_*` metrics below report it, recorded with the `Meter` passed to `NewTelemetry` with `WithObservers`.
+- `Shutdown(ctx)` first stops the delivery of spans, then collects the values of the `Meter` one last time, sends the queued metrics, and closes the destinations. The last collection holds the latest totals, so it waits for room in a full queue instead of being dropped. Metrics from the OpenTelemetry SDK that arrive after `Shutdown` started are dropped.
+
+### Failed metrics
+
+`Metrics.OTLP.FailureStore` keeps the metrics that `otlp` could not send in the failure stores of the log destinations, with the same settings and behavior as [Failed spans](#failed-spans). Each record holds one metric with all its data points, as OTLP JSON with its resource and scope. The records, and the metrics of the spool and the failure archive, have the backend `otlp_metrics`.
+
+- Metrics whose outcome is unknown are resent instead of going to quarantine, because duplicates are preferred over losses. The same value can therefore arrive twice. The values are cumulative, so the second copy is the same value of the same series at the same time: a receiver that removes duplicate samples keeps one, and the totals that queries compute do not change. With delta temporality, which heterolog does not use, the increase would be counted twice.
+- A resent value is older than the values collected after it. Receivers that reject samples older than the newest one of a series, or older than a time window, such as Prometheus without out-of-order ingestion, reject it with a status, and it is kept as dead without a resend.
+
+### Environment variables
+
+`env.TelemetryConfig()` and `env.NewTelemetry(ctx)` read these keys, also listed in [.env.example](../.env.example):
+
+| Key | Setting | Default |
+|---|---|---|
+| `HETEROLOG_ENABLE_METRICS` | Whether to send metrics. When `false`, the other keys are not read. | `false` |
+| `HETEROLOG_METRICS_TYPE` | `Exporters`, separated by commas. | `otlp` |
+| `HETEROLOG_METRICS_EXPORT_INTERVAL_MILLISECOND` | `ExportInterval` | `60000` |
+| `HETEROLOG_METRICS_QUEUE_SIZE` | `QueueSize` | `16` |
+| `HETEROLOG_METRICS_HISTOGRAM_BOUNDS` | `HistogramBounds`, separated by commas | `0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2.5,5,10` |
+| `HETEROLOG_METRICS_CARDINALITY_LIMIT` | `CardinalityLimit` | `2000` |
+| `HETEROLOG_METRICS_OTLP_*` and `HETEROLOG_ENABLE_METRICS_OTLP_CIRCUIT_BREAKER` | `OTLP`, with the same keys and defaults as `HETEROLOG_TRACES_OTLP_*`, except that the endpoint is `http://localhost:4318/v1/metrics`. | |
+| `HETEROLOG_METRICS_OTLP_DURABLE_TYPES` and the other failure store keys with `METRICS_OTLP` in place of the destination name | `OTLP.FailureStore`, as for traces. The directories are `metrics_otlp` (spool) and `metrics_otlp_failure_archives`. | `spool` |
+| `HETEROLOG_METRICS_FILE_DIR` | The directory of `File.Path`, which is `metrics.jsonl` in it, resolved like the trace directory. | `/metrics` |
+
+- The resource comes from the same keys as for traces.
+- `LoadEnvConfig` checks the metric settings when `HETEROLOG_ENABLE_METRICS` is `true` and reports the problems under `HETEROLOG_METRICS_*`.
+
 ## Metrics and traces
 
-Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and spans below. Without them, nothing is recorded. The `heterolog_trace_*` metrics are those of [Sending traces](#sending-traces), recorded with the `Meter` passed to `NewTelemetry`.
+Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and spans below. Without them, nothing is recorded. The `heterolog_trace_*` and `heterolog_metric_*` metrics are those of [Sending traces](#sending-traces) and [Sending metrics](#sending-metrics), recorded with the `Meter` passed to `NewTelemetry`.
 
 ### Metrics
 
@@ -523,6 +572,9 @@ Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and sp
 | `heterolog_trace_spans_total` | Counter | `exporter` (`otlp`, `file`, `stdout`), `outcome` | Spans that a destination of `NewTelemetry` handled, by result: `success`; `retryable`, `dead`, or `quarantine` (not sent, and kept in the failure store to be resent, or without a resend); `failure` (not sent and not kept); or `dropped` (did not fit in the queue, or ended after `Shutdown` started). For a partial success, only the rejected spans are counted as `quarantine`, although the whole request is kept. |
 | `heterolog_trace_export_duration_seconds` | Histogram | `exporter`, `outcome` (`success`, `failure`) | Duration of sending one batch of spans, including the retries and the waits between them. A batch is a `failure` when none of its spans was sent. |
 | `heterolog_trace_export_retries_total` | Counter | `exporter`, `reason` | Retries of the `otlp` destination, by the reason, such as `http_status` or `net_timeout`. Splitting a request that was too large counts as `request_too_large`. |
+| `heterolog_metric_points_total` | Counter | `exporter` (`otlp`, `file`, `stdout`), `outcome` | Data points that a metric destination of `NewTelemetry` handled, by the same results as `heterolog_trace_spans_total`. |
+| `heterolog_metric_export_duration_seconds` | Histogram | `exporter`, `outcome` (`success`, `failure`) | Duration of sending one collection of metrics, including the retries and the waits between them. |
+| `heterolog_metric_export_retries_total` | Counter | `exporter`, `reason` | Retries of the `otlp` metric destination, by the reason, as for spans. |
 | `heterolog_internal_logs_total` | Counter | `level` (`error`, `warn`, `info`, `debug`) | Internal logs passed to the internal log notification targets (`OnErrorConfig` and the like), such as a failed write or a slow request, by level. See [Internal log notifications](#internal-log-notifications). |
 
 ### Spans

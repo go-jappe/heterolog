@@ -143,3 +143,48 @@ func TestValidateChecksTheFailureStore(t *testing.T) {
 		}
 	}
 }
+
+func validMetricsConfig() telemetry.Config {
+	return telemetry.Config{Metrics: telemetry.MetricsConfig{
+		Exporters:        []telemetry.MetricExporter{telemetry.MetricExporterOTLP, telemetry.MetricExporterFile},
+		ExportInterval:   time.Minute,
+		QueueSize:        4,
+		HistogramBounds:  []float64{0.1, 1},
+		CardinalityLimit: 10,
+		OTLP: telemetry.OTLPConfig{
+			Endpoint: "http://localhost:4318/v1/metrics", Compression: "gzip", Timeout: time.Second,
+		},
+		File: telemetry.FileConfig{Path: "metrics.jsonl"},
+	}}
+}
+
+func TestValidateReportsEachInvalidMetricSetting(t *testing.T) {
+	if err := validMetricsConfig().Validate(); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
+	for _, tc := range []struct {
+		field  string
+		kind   error
+		change func(*telemetry.MetricsConfig)
+	}{
+		{"Metrics.Exporters", telemetry.ErrInvalidSetting, func(c *telemetry.MetricsConfig) { c.Exporters = []telemetry.MetricExporter{"prometheus"} }},
+		{"Metrics.Exporters", telemetry.ErrInvalidSetting, func(c *telemetry.MetricsConfig) {
+			c.Exporters = []telemetry.MetricExporter{telemetry.MetricExporterFile, telemetry.MetricExporterFile}
+		}},
+		{"Metrics.ExportInterval", telemetry.ErrNonPositiveSetting, func(c *telemetry.MetricsConfig) { c.ExportInterval = 0 }},
+		{"Metrics.QueueSize", telemetry.ErrNonPositiveSetting, func(c *telemetry.MetricsConfig) { c.QueueSize = 0 }},
+		{"Metrics.CardinalityLimit", telemetry.ErrNonPositiveSetting, func(c *telemetry.MetricsConfig) { c.CardinalityLimit = 0 }},
+		{"Metrics.HistogramBounds", telemetry.ErrInvalidSetting, func(c *telemetry.MetricsConfig) { c.HistogramBounds = []float64{1, 1} }},
+		{"Metrics.HistogramBounds", telemetry.ErrInvalidSetting, func(c *telemetry.MetricsConfig) { c.HistogramBounds = []float64{math.Inf(1)} }},
+		{"Metrics.OTLP.Endpoint", telemetry.ErrInvalidSetting, func(c *telemetry.MetricsConfig) { c.OTLP.Endpoint = "collector:4318" }},
+		{"Metrics.File.Path", telemetry.ErrInvalidSetting, func(c *telemetry.MetricsConfig) { c.File.Path = "" }},
+	} {
+		cfg := validMetricsConfig()
+		tc.change(&cfg.Metrics)
+		err := cfg.Validate()
+		var fieldErr *telemetry.FieldError
+		if !errors.As(err, &fieldErr) || fieldErr.Field != tc.field || !errors.Is(err, tc.kind) {
+			t.Errorf("%s: Validate() = %v, want a FieldError of the field with %v", tc.field, err, tc.kind)
+		}
+	}
+}

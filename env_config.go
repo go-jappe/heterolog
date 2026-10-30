@@ -40,9 +40,10 @@ type RenamedEnvironmentKeyError = pkgenv.RenamedEnvironmentKeyError
 // them; Config, AsyncConfig and DeliveryConfig return the settings to adjust
 // before calling the package-level constructors.
 //
-// Loggers constructed from the environment do not trace by themselves: pass
-// the Tracer of the Telemetry that NewTelemetry constructs from the
-// HETEROLOG_TRACES_* settings with WithObservers as an option.
+// Loggers constructed from the environment do not trace or measure by
+// themselves: pass the Tracer and the Meter of the Telemetry that NewTelemetry
+// constructs from the HETEROLOG_TRACES_* and HETEROLOG_METRICS_* settings with
+// WithObservers as an option.
 // A spool that a HETEROLOG_USE_MEMORY_PRESSURE_* setting enables judges memory
 // pressure with HETEROLOG_MEMORY_CRITICAL_RATIO,
 // HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB and
@@ -159,11 +160,11 @@ func (c *EnvConfig) NewAdminAudit(ctx context.Context, opts ...Option) (*Deliver
 }
 
 // TelemetryConfig returns the settings for NewTelemetry. The trace settings
-// are read from HETEROLOG_ENABLE_TRACES and HETEROLOG_TRACES_*, and Resource
+// are read from HETEROLOG_ENABLE_TRACES and HETEROLOG_TRACES_*, the metric
+// settings from HETEROLOG_ENABLE_METRICS and HETEROLOG_METRICS_*, and Resource
 // from the settings that loggers also use, such as HETEROLOG_APP_NAME and
-// HETEROLOG_APP_ENV. When HETEROLOG_ENABLE_TRACES is false, the settings have
-// no destinations, and a Telemetry constructed from them records nothing.
-// LoadEnvConfig has already checked them.
+// HETEROLOG_APP_ENV. A signal that is not enabled has no destinations, and a
+// Telemetry records nothing for it. LoadEnvConfig has already checked them.
 func (c *EnvConfig) TelemetryConfig() TelemetryConfig { return c.impl().TelemetryConfig() }
 
 // NewTelemetry constructs a Telemetry from the settings that TelemetryConfig

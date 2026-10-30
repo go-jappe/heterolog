@@ -159,3 +159,51 @@ func TestTelemetryConfigReadsTheTraceFailureArchiveUpload(t *testing.T) {
 		t.Errorf("checkpoint = %+v, want the trace failure archive source", archive.ArchiveCheckpointConfig)
 	}
 }
+
+func TestTelemetryConfigReadsTheMetricSettings(t *testing.T) {
+	isolateEnvConfigForTest(t)
+	logDir := t.TempDir()
+	loaded, err := envconfig.Load(writeEnvFileForTest(t,
+		"HETEROLOG_ENABLE_METRICS=true",
+		"HETEROLOG_METRICS_TYPE=otlp,file",
+		"HETEROLOG_METRICS_EXPORT_INTERVAL_MILLISECOND=15000",
+		"HETEROLOG_METRICS_HISTOGRAM_BOUNDS=0.5, 1, 2",
+		"HETEROLOG_METRICS_OTLP_ENDPOINT=https://collector.example/v1/metrics",
+		"HETEROLOG_SYSTEM_LOG_DIR="+logDir,
+		"HETEROLOG_TARGET=api",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loaded.TelemetryConfig()
+	metrics := cfg.Metrics
+	if len(metrics.Exporters) != 2 || metrics.ExportInterval != 15*time.Second || metrics.QueueSize != 16 ||
+		len(metrics.HistogramBounds) != 3 || metrics.HistogramBounds[2] != 2 || metrics.CardinalityLimit != 2000 {
+		t.Errorf("metrics = %+v", metrics)
+	}
+	if metrics.OTLP.Endpoint != "https://collector.example/v1/metrics" || metrics.OTLP.Timeout != 10*time.Second {
+		t.Errorf("OTLP = %+v", metrics.OTLP)
+	}
+	if want := filepath.Join(logDir, "api", "metrics", "metrics.jsonl"); metrics.File.Path != want {
+		t.Errorf("file path = %q, want %q", metrics.File.Path, want)
+	}
+	// 既定では、traceと同じくspoolを選び、metrics_otlpに保存します。
+	if spool := metrics.OTLP.FailureStore.Store.DurableStoreConfig.SpoolConfig; !metrics.OTLP.FailureStore.Enabled() || spool.Dir != "metrics_otlp" {
+		t.Errorf("failure store = %+v", metrics.OTLP.FailureStore.Store)
+	}
+	// traceを有効にしていなければ、traceの送り先はありません。
+	if len(cfg.Traces.Exporters) != 0 {
+		t.Errorf("trace exporters = %v, want none", cfg.Traces.Exporters)
+	}
+}
+
+func TestLoadReportsInvalidMetricSettingsUnderTheirPrefix(t *testing.T) {
+	isolateEnvConfigForTest(t)
+	_, err := envconfig.Load(writeEnvFileForTest(t,
+		"HETEROLOG_ENABLE_METRICS=true",
+		"HETEROLOG_METRICS_HISTOGRAM_BOUNDS=2,1",
+	))
+	if err == nil || !strings.Contains(err.Error(), "HETEROLOG_METRICS_*") || strings.Contains(err.Error(), "HETEROLOG_TRACES_*") {
+		t.Errorf("Load = %v, want the error under HETEROLOG_METRICS_*", err)
+	}
+}

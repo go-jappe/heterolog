@@ -20,9 +20,18 @@ const (
 	TraceExporterStdout = pkgtelemetry.TraceExporterStdout
 )
 
-// Telemetry records spans with its Tracer and delivers them, together with
-// spans from the OpenTelemetry SDK passed through package otelexport, to the
-// destinations of its TelemetryConfig. Obtain one with NewTelemetry; the zero
+// MetricExporter names a destination of metrics in TelemetryConfig.
+type MetricExporter = pkgtelemetry.MetricExporter
+
+const (
+	MetricExporterOTLP   = pkgtelemetry.MetricExporterOTLP
+	MetricExporterFile   = pkgtelemetry.MetricExporterFile
+	MetricExporterStdout = pkgtelemetry.MetricExporterStdout
+)
+
+// Telemetry records spans and metrics with its Tracer and Meter and delivers
+// them, together with those from the OpenTelemetry SDK passed through package
+// otelexport, to the destinations of its TelemetryConfig. Obtain one with NewTelemetry; the zero
 // value records nothing. Do not copy a Telemetry.
 type Telemetry struct {
 	// telemetryは処理を受け持つ内部のruntimeです。zero値のTelemetryではnilです。
@@ -31,21 +40,22 @@ type Telemetry struct {
 
 // DefaultTelemetryConfig returns settings with no destinations, which record
 // nothing, and the host name and OS in Resource. Choose the destinations in
-// Traces.Exporters and set Resource.ServiceName.
+// Traces.Exporters and Metrics.Exporters, and set Resource.ServiceName.
 func DefaultTelemetryConfig() TelemetryConfig { return bootstrap.DefaultTelemetryConfig() }
 
-// NewTelemetry starts delivering spans to the destinations of cfg. It returns
-// the errors of cfg.Validate, and ErrNilContext for a nil ctx. ctx applies
-// only to construction. Call Shutdown when the application exits to send the
-// spans that are still queued.
+// NewTelemetry starts delivering spans and metrics to the destinations of cfg.
+// It returns the errors of cfg.Validate, and ErrNilContext for a nil ctx. ctx
+// applies only to construction. Call Shutdown when the application exits to
+// send the spans and metrics that are still queued.
 //
 // Of opts, only the Meter of WithObservers and WithTelemetryErrorHandler are
-// used: the Meter records the heterolog_trace_* metrics of the delivery, and
-// the error handler receives its errors. The delivery does not create spans
-// for its own sending, so the Tracer of WithObservers is not used.
+// used: the Meter records the heterolog_trace_* and heterolog_metric_* metrics
+// of the delivery, and the error handler receives its errors. The delivery
+// does not create spans for its own sending, so the Tracer of WithObservers is
+// not used.
 //
-// To trace the work of loggers, pass the Tracer of the Telemetry to the
-// loggers with WithObservers.
+// To trace and measure the work of loggers, pass the Tracer and the Meter of
+// the Telemetry to the loggers with WithObservers.
 func NewTelemetry(ctx context.Context, cfg TelemetryConfig, opts ...Option) (*Telemetry, error) {
 	return newTelemetry(bootstrap.NewTelemetry(ctx, cfg, opts...))
 }
@@ -85,9 +95,16 @@ func (t *Telemetry) impl() *telemetryruntime.Runtime {
 // record or not. Without destinations, the Tracer records nothing.
 func (t *Telemetry) Tracer() Tracer { return t.impl().Tracer() }
 
-// Shutdown stops accepting spans and waits until the queued spans are sent
-// and the destinations are closed, or until ctx ends. If ctx ends first, it
-// returns ctx.Err() and the sending continues in the background. Spans ended
-// after Shutdown started are dropped. A later Shutdown waits for the same
-// cleanup.
+// Meter returns the Meter that records metrics. Counters are sent as
+// cumulative sums, gauges as their last value, and histograms with the
+// buckets of MetricsConfig.HistogramBounds, every MetricsConfig.ExportInterval.
+// Without metric destinations, the Meter records nothing.
+func (t *Telemetry) Meter() Meter { return t.impl().Meter() }
+
+// Shutdown stops accepting spans and waits until the queued spans are sent,
+// then collects the values of the Meter one last time, sends the queued
+// metrics, and closes the destinations, or until ctx ends. If ctx ends first,
+// it returns ctx.Err() and the sending continues in the background. Spans and
+// metrics recorded after Shutdown started are dropped. A later Shutdown waits
+// for the same cleanup.
 func (t *Telemetry) Shutdown(ctx context.Context) error { return t.impl().Shutdown(ctx) }

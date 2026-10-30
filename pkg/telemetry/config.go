@@ -1,6 +1,6 @@
 // Package telemetry defines the configuration of heterolog.NewTelemetry, which
-// delivers spans from the Tracer of heterolog and from the OpenTelemetry SDK to
-// OTLP/HTTP receivers, files and stdout.
+// delivers spans and metrics, from the Tracer and the Meter of heterolog and
+// from the OpenTelemetry SDK, to OTLP/HTTP receivers, files and stdout.
 package telemetry
 
 import (
@@ -16,11 +16,12 @@ import (
 // heterolog.DefaultTelemetryConfig, which fills every setting except the
 // destinations.
 type Config struct {
-	// Resource identifies the process in the spans that the Tracer of the
-	// Telemetry creates. Spans from the OpenTelemetry SDK keep the resource of
-	// their TracerProvider.
+	// Resource identifies the process in the spans and metrics that the Tracer
+	// and the Meter of the Telemetry record. Data from the OpenTelemetry SDK
+	// keeps the resource of its provider.
 	Resource logger.Resource
 	Traces   TracesConfig
+	Metrics  MetricsConfig
 }
 
 // TraceExporter names a destination of spans.
@@ -154,4 +155,47 @@ type FileConfig struct {
 	// Path is the file that each batch is appended to as one line of OTLP
 	// JSON. Missing directories are created. The file is not rotated.
 	Path string
+}
+
+// MetricExporter names a destination of metrics.
+type MetricExporter string
+
+const (
+	// MetricExporterOTLP posts metrics to an OTLP/HTTP receiver, such as an
+	// OpenTelemetry Collector, Prometheus or VictoriaMetrics, in protobuf.
+	MetricExporterOTLP MetricExporter = "otlp"
+	// MetricExporterFile appends metrics to a file as OTLP JSON.
+	MetricExporterFile MetricExporter = "file"
+	// MetricExporterStdout writes metrics to the standard output as OTLP JSON.
+	MetricExporterStdout MetricExporter = "stdout"
+)
+
+// MetricsConfig configures the recording and delivery of metrics.
+type MetricsConfig struct {
+	// Exporters lists the destinations of metrics. Each destination receives
+	// every collection and has its own queue, so a slow destination does not
+	// delay the others. Without destinations, the Meter of the Telemetry
+	// records nothing.
+	Exporters []MetricExporter
+	// ExportInterval is the interval at which the values of the Meter are
+	// collected and sent.
+	ExportInterval time.Duration
+	// QueueSize is the number of collections that each destination keeps
+	// while they wait to be sent. When the queue is full, further collections
+	// are dropped for that destination. The values of the Meter are
+	// cumulative, so a later collection still has the totals.
+	QueueSize int
+	// HistogramBounds are the upper bounds of the buckets of the histograms
+	// of the Meter, in ascending order; a value equal to a bound is counted in
+	// its bucket. The defaults suit durations in seconds.
+	HistogramBounds []float64
+	// CardinalityLimit is the largest number of attribute sets that one metric
+	// of the Meter keeps. When it is reached, the values of further attribute
+	// sets are added to one set with the attribute otel.metric.overflow=true,
+	// which counts toward the limit, as in the OpenTelemetry SDK.
+	CardinalityLimit int
+	// OTLP configures MetricExporterOTLP.
+	OTLP OTLPConfig
+	// File configures MetricExporterFile.
+	File FileConfig
 }

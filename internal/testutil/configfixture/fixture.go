@@ -14,7 +14,7 @@ import (
 )
 
 var safeNumber = regexp.MustCompile(`^-?[0-9]+(?:\.[0-9]+)?$`)
-var safeNumberList = regexp.MustCompile(`^[0-9]+(?:,[0-9]+)+$`)
+var safeNumberList = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?(?:,[0-9]+(?:\.[0-9]+)?)+$`)
 var safeDirectory = regexp.MustCompile(`^(?:(?:async|delivery)_)?(?:opensearch|loki|cloudwatchlogs|clickhouse)_failure_(?:archives|spools)$`)
 var fixtureStoragePaths = map[string]string{
 	"HETEROLOG_SYSTEM_LOG_DIR": "fixture-storage/logs",
@@ -23,7 +23,7 @@ var fixtureStoragePaths = map[string]string{
 }
 var safeValues = func() map[string]bool {
 	values := make(map[string]bool)
-	for _, value := range strings.Fields("true false DEV dev INFO DEBUG WARN ERROR info debug warn error daily weekly monthly gzip gz zstd zst lz4 xz inline runner disable strict unbounded bounded must_fit drop block stdout stderr file slack opensearch loki cloudwatchlogs clickhouse spool fileArchive none retryPolicy retry_policy s3 basic otel OTLP http grpc retryable permanent logs log error debug default file_logger async_file_logger delivery_file_logger /logs /error_logs /async_logs /async_logs_error /delivery_logs /delivery_logs_error /audit_logs /traces otlp traces_otlp traces_otlp_failure_archives opensearch_async loki_async clickhouse_async cloudwatchlogs_async compressed_log_file_upload_failures") {
+	for _, value := range strings.Fields("true false DEV dev INFO DEBUG WARN ERROR info debug warn error daily weekly monthly gzip gz zstd zst lz4 xz inline runner disable strict unbounded bounded must_fit drop block stdout stderr file slack opensearch loki cloudwatchlogs clickhouse spool fileArchive none retryPolicy retry_policy s3 basic otel OTLP http grpc retryable permanent logs log error debug default file_logger async_file_logger delivery_file_logger /logs /error_logs /async_logs /async_logs_error /delivery_logs /delivery_logs_error /audit_logs /traces /metrics otlp traces_otlp traces_otlp_failure_archives metrics_otlp metrics_otlp_failure_archives opensearch_async loki_async clickhouse_async cloudwatchlogs_async compressed_log_file_upload_failures") {
 		values[value] = true
 	}
 	return values

@@ -46,6 +46,7 @@ const (
 	checkpointSourceDeliveryLoggerOpenSearch     archiveCheckpointSourcePrefix = "delivery_logger_opensearch_failure_archive"
 	checkpointSourceLoggerLoki                   archiveCheckpointSourcePrefix = "logger_loki_failure_archive"
 	checkpointSourceTracesOTLP                   archiveCheckpointSourcePrefix = "telemetry_otlp_traces_failure_archive"
+	checkpointSourceMetricsOTLP                  archiveCheckpointSourcePrefix = "telemetry_otlp_metrics_failure_archive"
 	checkpointSourceAsyncLoggerLoki              archiveCheckpointSourcePrefix = "async_logger_loki_failure_archive"
 	checkpointSourceDeliveryLoggerLoki           archiveCheckpointSourcePrefix = "delivery_logger_loki_failure_archive"
 	checkpointSourceLoggerCloudWatchLogs         archiveCheckpointSourcePrefix = "logger_cloudwatchlogs_failure_archive"

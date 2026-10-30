@@ -22,6 +22,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - [稼働中にログレベルとサンプリングを変える](#稼働中にログレベルとサンプリングを変える)
 - [ログファイル](#ログファイル)
 - [トレース](#トレース)
+- [メトリクス](#メトリクス)
 - [終了処理](#終了処理)
 - [停止したアプリケーションのログの復旧](#停止したアプリケーションのログの復旧)
 - [テスト](#テスト)
@@ -53,6 +54,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - コードでの設定、または `HETEROLOG_` 環境変数と環境設定ファイルからの設定。
 - 稼働中のログレベルとサンプリングの変更。コードまたはトークンで保護したHTTP APIから行います。
 - トレース: spanを、OTLP/HTTPの受信先、file、stdoutへ、まとめて再試行付きで送る `Tracer` と、OpenTelemetry SDK用のexporter。送れなかったspanは、ログと同じspoolとfailure archiveへ渡します。ロガーも自分の処理をspanとして記録できます。
+- メトリクス: counter、gauge、histogramを、OTLP/HTTPの受信先、file、stdoutへ、同じ再試行、spool、failure archive付きで送る `Meter`。
 - 停止中のアプリケーションのログファイルを復旧するCLI。
 - Linux・Windows・macOSで、大文字小文字を区別しないファイルシステムも含めて試験しています。
 
@@ -330,9 +332,27 @@ defer span.End()
 
 詳しくは[トレースの送信](docs/reference.ja.md#トレースの送信)を参照してください。
 
+## メトリクス
+
+同じ `Telemetry` が、メトリクスを、OTLP/HTTPの受信先（OpenTelemetry Collector、Prometheus、VictoriaMetricsなど）、file、stdoutへ送ります。その `Meter` は、counter、gauge、histogramを記録し、`WithObservers` でロガーへ渡せば、ロガーの `heterolog_*` のメトリクスも記録します。
+
+```go
+cfg.Metrics.Exporters = []heterolog.MetricExporter{heterolog.MetricExporterOTLP}
+cfg.Metrics.OTLP.Endpoint = "http://localhost:4318/v1/metrics"
+tel, err := heterolog.NewTelemetry(ctx, cfg)
+
+tel.Meter().Counter("orders_total").Add(ctx, 1, heterolog.ObserverAttr{Key: "region", Value: "eu"})
+```
+
+- 環境変数からは、`HETEROLOG_ENABLE_METRICS=true` と `HETEROLOG_METRICS_OTLP_ENDPOINT` を設定します。
+- 値は `ExportInterval`（既定は1分）ごとに集め、累積値（cumulative）として送ります。そのため、捨てたり失ったりした回があっても、次の回に合計が残ります。
+- 送れなかったメトリクスは、ログやspanと同じspoolとfailure archiveへ渡します。結果の分からない送信は、失うより送り直すため、同じ値が2回届くことがあります。累積値なので、2回目は同じ時刻の同じ値です。
+
+詳しくは[メトリクスの送信](docs/reference.ja.md#メトリクスの送信)を参照してください。
+
 ## 終了処理
 
-- アプリケーションの終了前に `Close` または `Shutdown(ctx)` を呼びます。受け付けた処理を終え、bufferを書き出し、資源を解放します。`Telemetry` は、`Shutdown(ctx)` で待ち行列のspanを送ります。その `Tracer` を使うロガーを先に閉じてください。
+- アプリケーションの終了前に `Close` または `Shutdown(ctx)` を呼びます。受け付けた処理を終え、bufferを書き出し、資源を解放します。`Telemetry` は、`Shutdown(ctx)` で待ち行列のspanを送り、メトリクスを最後にもう一度集めて送ります。その `Tracer` と `Meter` を使うロガーを先に閉じてください。
 - `Shutdown` のcontextが終わると、待つのをやめるのはその呼出しだけで、後始末は続きます。`ForceClose` は後始末を止めるよう求め、待たずに戻ります。
 - spoolに残ったログは、次の起動の後に送ります。
 

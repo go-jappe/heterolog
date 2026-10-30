@@ -11,7 +11,9 @@
 package failurestore
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -55,6 +57,18 @@ type Codec[T any] struct {
 	Encode func(item T) (map[string]any, error)
 	// Decodeは、recordのpayloadをitemへ戻します。戻せないrecordにはerrorを返します。
 	Decode func(payload []byte) (T, error)
+}
+
+// JSONObjectは、JSONのobjectを、Codec.Encodeが返すmapにします。数値は、json.Numberの
+// まま書き戻せるよう、そのまま残します。
+func JSONObject(data []byte) (map[string]any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var object map[string]any
+	if err := decoder.Decode(&object); err != nil {
+		return nil, fmt.Errorf("encode the record for the failure store: %w", err)
+	}
+	return object, nil
 }
 
 // Optionsは、Newに渡す依存です。

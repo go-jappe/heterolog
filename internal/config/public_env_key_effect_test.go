@@ -285,8 +285,9 @@ var publicEnvKeyEffectBaseActivation = map[string]string{
 	"HETEROLOG_LOG_TYPE":                         publicEnvKeyEffectAllDestinations,
 	"HETEROLOG_ASYNC_LOG_TYPE":                   publicEnvKeyEffectAllDestinations,
 	"HETEROLOG_DELIVERY_LOG_TYPE":                publicEnvKeyEffectAllDestinations,
-	// traceの設定は、traceを有効にした場合だけ読みます。
-	"HETEROLOG_ENABLE_TRACES": "true",
+	// traceとmetricsの設定は、それぞれを有効にした場合だけ読みます。
+	"HETEROLOG_ENABLE_TRACES":  "true",
+	"HETEROLOG_ENABLE_METRICS": "true",
 	// 公開例のOpenSearchはspoolだけを選ぶため、failure archiveの設定も読み込ませます。
 	"HETEROLOG_OPENSEARCH_DURABLE_TYPES":       "spool,fileArchive",
 	"HETEROLOG_ASYNC_OPENSEARCH_DURABLE_TYPES": "spool,fileArchive",
@@ -499,6 +500,10 @@ var publicEnvKeyEffectCandidateOverrides = map[string][]string{
 	"HETEROLOG_TRACES_TYPE":             {"file,stdout", "stdout"},
 	"HETEROLOG_TRACES_SAMPLING_RATIO":   {"0.5", "0.25"},
 	"HETEROLOG_TRACES_OTLP_COMPRESSION": {"none"},
+	// metricsの送り先の既定値はotlpなので、それ以外を候補にします。
+	"HETEROLOG_METRICS_TYPE":             {"file,stdout", "stdout"},
+	"HETEROLOG_METRICS_OTLP_COMPRESSION": {"none"},
+	"HETEROLOG_METRICS_HISTOGRAM_BOUNDS": {"0.1,1,10", "1,2"},
 }
 
 // publicEnvKeyEffectIntegerSuffixesは、公開例の値が空でも整数を受け付けるkeyの語尾です。

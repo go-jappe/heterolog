@@ -6,6 +6,7 @@ package envconfig
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	appconfig "github.com/go-jappe/heterolog/internal/config"
@@ -77,10 +78,8 @@ func Load(path string) (*EnvConfig, error) {
 		_, err := appconfig.MapAdminAuditLoggerConfig(app)
 		errs = append(errs, err)
 	}
-	if app.Traces.Enabled {
-		if err := appconfig.MapTelemetryConfig(app).Validate(); err != nil {
-			errs = append(errs, fmt.Errorf("HETEROLOG_TRACES_*: %w", err))
-		}
+	if app.Traces.Enabled || app.Metrics.Enabled {
+		errs = append(errs, telemetryEnvErrors(appconfig.MapTelemetryConfig(app).Validate())...)
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
@@ -163,10 +162,41 @@ func (c *EnvConfig) AdminAuditConfig() (pkglogger.DeliveryLoggerConfig, []logger
 	}, nil
 }
 
+// telemetryEnvErrorsは、telemetryの設定のerrorを、traceの設定はHETEROLOG_TRACES_*、metricsの
+// 設定はHETEROLOG_METRICS_*と分かるように包みます。
+func telemetryEnvErrors(err error) []error {
+	if err == nil {
+		return nil
+	}
+	var causes []error
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		causes = joined.Unwrap()
+	} else {
+		causes = []error{err}
+	}
+	var traceErrs, metricErrs []error
+	for _, cause := range causes {
+		var fieldErr *pkgtelemetry.FieldError
+		if errors.As(cause, &fieldErr) && strings.HasPrefix(fieldErr.Field, "Metrics.") {
+			metricErrs = append(metricErrs, cause)
+		} else {
+			traceErrs = append(traceErrs, cause)
+		}
+	}
+	var out []error
+	if len(traceErrs) > 0 {
+		out = append(out, fmt.Errorf("HETEROLOG_TRACES_*: %w", errors.Join(traceErrs...)))
+	}
+	if len(metricErrs) > 0 {
+		out = append(out, fmt.Errorf("HETEROLOG_METRICS_*: %w", errors.Join(metricErrs...)))
+	}
+	return out
+}
+
 // TelemetryConfigは、NewTelemetryへ渡すtelemetryの設定を返します。traceの設定は
-// HETEROLOG_ENABLE_TRACESとHETEROLOG_TRACES_*から、Resourceはloggerと同じ項目
-// （HETEROLOG_APP_NAMEなど）から読みます。HETEROLOG_ENABLE_TRACESがfalseなら、送り先の
-// ない設定を返します。Loadで確認済みです。
+// HETEROLOG_ENABLE_TRACESとHETEROLOG_TRACES_*から、metricsの設定はHETEROLOG_ENABLE_METRICSと
+// HETEROLOG_METRICS_*から、Resourceはloggerと同じ項目（HETEROLOG_APP_NAMEなど）から読みます。
+// 有効にしていない信号は、送り先のない設定です。Loadで確認済みです。
 func (c *EnvConfig) TelemetryConfig() pkgtelemetry.Config {
 	return appconfig.MapTelemetryConfig(c.app)
 }

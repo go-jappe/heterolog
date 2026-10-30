@@ -1,8 +1,6 @@
 package traces
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 
 	"github.com/go-jappe/heterolog/internal/application/tracing"
@@ -49,7 +47,7 @@ func NewCodec(defaultResource *tracing.Resource) failurestore.Codec[tracing.Span
 			if err != nil {
 				return nil, fmt.Errorf("encode the span for the failure store: %w", err)
 			}
-			return decodeObject(data)
+			return failurestore.JSONObject(data)
 		},
 		Decode: func(payload []byte) (tracing.SpanData, error) {
 			spans, err := otlp.UnmarshalJSON(payload)
@@ -62,16 +60,4 @@ func NewCodec(defaultResource *tracing.Resource) failurestore.Codec[tracing.Span
 			return spans[0], nil
 		},
 	}
-}
-
-// decodeObjectは、JSONのobjectをmapにします。failure storeのrecordはJSONのobjectを
-// 受け取るためです。数値は、json.Numberのまま書き戻せるよう、そのまま残します。
-func decodeObject(data []byte) (map[string]any, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	var object map[string]any
-	if err := decoder.Decode(&object); err != nil {
-		return nil, fmt.Errorf("encode the record for the failure store: %w", err)
-	}
-	return object, nil
 }

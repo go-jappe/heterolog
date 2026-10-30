@@ -94,6 +94,8 @@ type AppConfig struct {
 	// Tracesは、NewTelemetryのtraceの設定です。HETEROLOG_ENABLE_TRACESで有効にした
 	// 場合だけ読み込みます。
 	Traces TracesConfig
+	// Metricsは、HETEROLOG_ENABLE_METRICSとHETEROLOG_METRICS_*から読んだmetricsの設定です。
+	Metrics MetricsConfig
 }
 
 // envSourceは、設定値の参照先です。process environmentの値を優先し、process environmentに
@@ -1210,7 +1212,7 @@ func standardObjectStorageCompressedLogFileUploadFailureStoreRequired(appCfg App
 	required := objectStorageCompressedLogFileUploadFailureStoreRequirements(appCfg)
 	return required[pkglogger.LoggerContractSync] ||
 		required[pkglogger.LoggerContractAsyncBestEffort] ||
-		tracesFailureArchiveUploadEnabled(appCfg)
+		telemetryFailureArchiveUploadEnabled(appCfg)
 }
 
 func deliveryObjectStorageCompressedLogFileUploadFailureStoreRequired(appCfg AppConfig) bool {
@@ -6089,6 +6091,9 @@ func loadConfig(source envSource) (AppConfig, error) {
 	var tracesErr error
 	appCfg.Traces, tracesErr = loadTracesConfig(env)
 	errs = append(errs, tracesErr)
+	var metricsErr error
+	appCfg.Metrics, metricsErr = loadMetricsConfig(env)
+	errs = append(errs, metricsErr)
 
 	var objectStorageCompressedLogFileUploadFailureStoreErr error
 	appCfg.CompressedLogFileUploadFailureStore, objectStorageCompressedLogFileUploadFailureStoreErr =

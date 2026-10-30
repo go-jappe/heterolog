@@ -12,6 +12,7 @@
 - [ログファイル](#ログファイル)
 - [失敗時の扱いと再送](#失敗時の扱いと再送)
 - [トレースの送信](#トレースの送信)
+- [メトリクスの送信](#メトリクスの送信)
 - [メトリクスとトレース](#メトリクスとトレース)
 - [出力先ごとの注意](#出力先ごとの注意)
 - [ログ復旧CLI](#ログ復旧cli)
@@ -491,9 +492,57 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 - resourceは、ロガーと同じキーから作ります。`HETEROLOG_APP_NAME`（`service.name`）、`HETEROLOG_APP_ENV`、`HETEROLOG_RUNTIME_TYPE`、`HETEROLOG_INSTANCE_ID`、`HETEROLOG_CLOUD_PROVIDER`、`HETEROLOG_CLOUD_PROVIDER_REGION` と、プロセスのホスト名とOSです。
 - `LoadEnvConfig` は、`HETEROLOG_ENABLE_TRACES` が `true` ならトレースの設定を確かめ、問題を `HETEROLOG_TRACES_*` の下に `pkg/telemetry` の `FieldError` として返します。認証情報を含み得るエンドポイントとheaderの値は表示しません。
 
+## メトリクスの送信
+
+`NewTelemetry` は、`Meter` でメトリクスを記録し、OpenTelemetry SDKのメトリクスとともに、`TelemetryConfig.Metrics.Exporters` の出力先へ送ります。出力先は、OTLP/HTTPの受信先（`otlp`。OpenTelemetry Collector、Prometheus、VictoriaMetricsなど）、file（`file`）、stdout（`stdout`）です。出力先がなければ、`Meter` は何も記録しません。`DefaultTelemetryConfig()` は出力先のほかのすべての設定を埋め、`TelemetryConfig.Validate` は、トレースの設定とともにメトリクスの設定を確かめます。
+
+### Meter
+
+- `Counter` は、属性の組ごとに合計へ足します。合計は、累積値（cumulative）の、減らない整数のsumとして送ります。合計は減らないため、負の値は無視します。
+- `Gauge` は、属性の組ごとに、最後に記録した値と、記録した時刻を持ちます。
+- `Histogram` は、属性の組ごとに、`HistogramBounds` のbucket（上限の値を含みます）へ値を数え、数、合計、最小値、最大値を、累積値で持ちます。NaNは無視します。既定の上限（5ミリ秒から10秒）は、秒の長さに向いた値です。
+- 鍵と値が同じ属性の組は、順によらず同じ組です。同じ鍵が2回以上あれば、後の値を残します。`200` と `"200"` のように型の違う値は、別の組です。
+- 1つのメトリクスは、属性の組を `CardinalityLimit` 個まで持ちます。上限に達した後に現れた組の値は、OpenTelemetry SDKと同じく、`otel.metric.overflow=true` の属性を持つ1つの組へまとめます。まとめる組も上限に数えます。
+- sumとhistogramは、`Telemetry` を作った時刻から集計します。`Meter` のメトリクスのinstrumentation scopeは `github.com/go-jappe/heterolog` で、resourceは `Tracer` のspanと同じです。
+
+### 配送
+
+- `ExportInterval` ごとに `Meter` の値を集め、出力先ごとの待ち行列へ入れます。待ち行列は `QueueSize` 回分までで、出力先ごとにgoroutineを持ちます。待ち行列に入らない回は、その出力先では捨てます。値は累積値のため、次の回に合計が残ります。
+- `otlp` は、`Traces.OTLP` のspanと同じく、protobufで、OTLPの仕様の送り直しの規則に従い、大きすぎると拒否された要求をメトリクスごとに分け、選べばcircuit breakerも使って送ります。部分的な成功では、受け付けられなかったdata pointを失敗として数えます。circuit breakerのメトリクスの `backend` は `otlp_metrics` です。
+- `file` と `stdout` は、集めた回ごとに、OTLP JSONの1行として書きます。64-bitの整数、数、時刻は文字列です。
+- 配送のerrorは、spanと同じく、`WithTelemetryErrorHandler` で渡した関数へ渡します。待ち行列が一杯で捨てたdata pointは、出力先ごとに1つのerrorにまとめ、`ExportInterval` に1回までしか知らせません。
+- 配送の仕組みは、自分の送信のspanを作りません。以下の `heterolog_metric_*` のメトリクスで様子を知らせ、`NewTelemetry` へ `WithObservers` で渡した `Meter` で記録します。
+- `Shutdown(ctx)` は、まずspanの配送を止め、`Meter` の値を最後にもう一度集め、待ち行列のメトリクスを送り、出力先を閉じます。最後に集めた回は最新の合計を持つため、待ち行列が一杯でも捨てず、空くのを待ちます。`Shutdown` を始めた後に届いたOpenTelemetry SDKのメトリクスは捨てます。
+
+### 送れなかったメトリクス
+
+`Metrics.OTLP.FailureStore` は、`otlp` が送れなかったメトリクスを、[送れなかったspan](#送れなかったspan)と同じ設定と動きで、ログの出力先と同じfailure storeに残します。各recordは、1つのメトリクスと、そのすべてのdata pointを、resourceとscopeを含むOTLP JSONで持ちます。recordと、spoolとfailure archiveのメトリクスのbackendは `otlp_metrics` です。
+
+- 結果の分からないメトリクスは、quarantineへ移さずに送り直します。欠落より重複を優先するためです。そのため、同じ値が2回届くことがあります。値は累積値のため、2回目は同じ系列の同じ時刻の同じ値です。重複したsampleを除く受信先は1つだけを残し、問い合わせで計算する合計は変わりません。heterologは使いませんが、差分（delta）の値なら、増えた分が2回足されます。
+- 送り直した値は、その後に集めた値より古くなります。系列の最新より古いsampleや、一定の時間より古いsampleを拒否する受信先（out-of-orderの取り込みを有効にしていないPrometheusなど）は、ステータスで拒否するため、送り直さずにdeadとして残します。
+
+### 環境変数
+
+`env.TelemetryConfig()` と `env.NewTelemetry(ctx)` は、次のキーも読みます。いずれも [.env.example](../.env.example) にあります。
+
+| キー | 設定 | 既定値 |
+|---|---|---|
+| `HETEROLOG_ENABLE_METRICS` | メトリクスを送るか。`false` なら、ほかのキーは読みません。 | `false` |
+| `HETEROLOG_METRICS_TYPE` | `Exporters`（カンマ区切り） | `otlp` |
+| `HETEROLOG_METRICS_EXPORT_INTERVAL_MILLISECOND` | `ExportInterval` | `60000` |
+| `HETEROLOG_METRICS_QUEUE_SIZE` | `QueueSize` | `16` |
+| `HETEROLOG_METRICS_HISTOGRAM_BOUNDS` | `HistogramBounds`（カンマ区切り） | `0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2.5,5,10` |
+| `HETEROLOG_METRICS_CARDINALITY_LIMIT` | `CardinalityLimit` | `2000` |
+| `HETEROLOG_METRICS_OTLP_*` と `HETEROLOG_ENABLE_METRICS_OTLP_CIRCUIT_BREAKER` | `OTLP`。`HETEROLOG_TRACES_OTLP_*` と同じキーと既定値です。ただし、endpointは `http://localhost:4318/v1/metrics` です。 | |
+| `HETEROLOG_METRICS_OTLP_DURABLE_TYPES` と、出力先の名前の位置に `METRICS_OTLP` を入れたほかのfailure storeのキー | `OTLP.FailureStore`。トレースと同じです。ディレクトリは `metrics_otlp`（spool）と `metrics_otlp_failure_archives` です。 | `spool` |
+| `HETEROLOG_METRICS_FILE_DIR` | `File.Path` のディレクトリ（その中の `metrics.jsonl`）。トレースのディレクトリと同じく解決します。 | `/metrics` |
+
+- resourceは、トレースと同じキーから作ります。
+- `LoadEnvConfig` は、`HETEROLOG_ENABLE_METRICS` が `true` のときにメトリクスの設定を確かめ、問題を `HETEROLOG_METRICS_*` の下で返します。
+
 ## メトリクスとトレース
 
-`WithObservers` で `Tracer` と `Meter` を渡すと、以下のメトリクスとspanを受け取れます。渡さなければ何も記録しません。`heterolog_trace_*` のメトリクスは[トレースの送信](#トレースの送信)のもので、`NewTelemetry` へ渡した `Meter` で記録します。
+`WithObservers` で `Tracer` と `Meter` を渡すと、以下のメトリクスとspanを受け取れます。渡さなければ何も記録しません。`heterolog_trace_*` と `heterolog_metric_*` のメトリクスは[トレースの送信](#トレースの送信)と[メトリクスの送信](#メトリクスの送信)のもので、`NewTelemetry` へ渡した `Meter` で記録します。
 
 ### メトリクス
 
@@ -523,6 +572,9 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 | `heterolog_trace_spans_total` | Counter | `exporter`（`otlp`・`file`・`stdout`）、`outcome` | `NewTelemetry` の出力先が扱ったspanの数を、結果ごとに数えます。結果は、`success`、`retryable`・`dead`・`quarantine`（送れず、failure storeに残したspan。送り直すものと、送り直さないもの）、`failure`（送れず、残さなかったspan）、`dropped`（待ち行列に入らなかったspanと、`Shutdown` を始めた後に終わったspan）です。部分的な成功では、要求全体を残しますが、`quarantine` には受け付けられなかったspanだけを数えます。 |
 | `heterolog_trace_export_duration_seconds` | Histogram | `exporter`、`outcome`（`success`・`failure`） | spanの1つのbatchを送るのにかかった秒数です。送り直しとその間の待ち時間を含みます。batchのspanが1件も届かなかった場合は `failure` です。 |
 | `heterolog_trace_export_retries_total` | Counter | `exporter`、`reason` | `otlp` の出力先が送り直した回数を、`http_status` や `net_timeout` などの理由ごとに数えます。大きすぎた要求を分けた回数は `request_too_large` です。 |
+| `heterolog_metric_points_total` | Counter | `exporter`（`otlp`・`file`・`stdout`）、`outcome` | `NewTelemetry` のメトリクスの出力先が扱ったdata pointの数を、`heterolog_trace_spans_total` と同じ結果ごとに数えます。 |
+| `heterolog_metric_export_duration_seconds` | Histogram | `exporter`、`outcome`（`success`・`failure`） | メトリクスの1回分を送るのにかかった秒数です。送り直しとその間の待ち時間を含みます。 |
+| `heterolog_metric_export_retries_total` | Counter | `exporter`、`reason` | `otlp` のメトリクスの出力先が送り直した回数を、spanと同じく理由ごとに数えます。 |
 | `heterolog_internal_logs_total` | Counter | `level`（`error`・`warn`・`info`・`debug`） | 内部ログの通知先（`OnErrorConfig` など）へ渡した内部ログ（書き込みの失敗や遅いリクエストなど）の数を、levelごとに数えます。[内部ログの通知](#内部ログの通知)を参照してください。 |
 
 ### span

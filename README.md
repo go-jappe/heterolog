@@ -22,6 +22,7 @@ This README is an overview. The [reference](docs/reference.md) describes the beh
 - [Changing the level and sampling while running](#changing-the-level-and-sampling-while-running)
 - [Log files](#log-files)
 - [Traces](#traces)
+- [Metrics](#metrics)
 - [Shutting down](#shutting-down)
 - [Recovering logs of a stopped application](#recovering-logs-of-a-stopped-application)
 - [Testing](#testing)
@@ -53,6 +54,7 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 - Configuration in code, or from `HETEROLOG_` environment variables and an env file.
 - Level and sampling changes while running, in code or through a token-protected HTTP API.
 - Traces: a `Tracer`, and an exporter for the OpenTelemetry SDK, that send spans to an OTLP/HTTP receiver, a file, or stdout in batches with retries. Spans that could not be sent go to the same spool and failure archive as logs. The loggers can record their own work as spans.
+- Metrics: a `Meter` that sends counters, gauges, and histograms to an OTLP/HTTP receiver, a file, or stdout, with the same retries, spool, and failure archive.
 - A CLI that recovers the log files of a stopped application.
 - Tested on Linux, Windows, and macOS, including case-insensitive file systems.
 
@@ -330,9 +332,27 @@ defer span.End()
 
 See [Sending traces](docs/reference.md#sending-traces) for details.
 
+## Metrics
+
+The same `Telemetry` sends metrics to an OTLP/HTTP receiver, such as the OpenTelemetry Collector, Prometheus, or VictoriaMetrics, to a file, or to stdout. Its `Meter` records counters, gauges, and histograms, and passed to a logger with `WithObservers`, also the `heterolog_*` metrics of the logger:
+
+```go
+cfg.Metrics.Exporters = []heterolog.MetricExporter{heterolog.MetricExporterOTLP}
+cfg.Metrics.OTLP.Endpoint = "http://localhost:4318/v1/metrics"
+tel, err := heterolog.NewTelemetry(ctx, cfg)
+
+tel.Meter().Counter("orders_total").Add(ctx, 1, heterolog.ObserverAttr{Key: "region", Value: "eu"})
+```
+
+- From the environment, set `HETEROLOG_ENABLE_METRICS=true` and `HETEROLOG_METRICS_OTLP_ENDPOINT`.
+- The values are collected every `ExportInterval` (one minute by default) and sent as cumulative values, so a collection that is dropped or lost still leaves the totals in the next one.
+- Metrics that could not be sent go to the same spool and failure archive as logs and spans. Because an uncertain send is resent rather than lost, the same value can arrive twice; with cumulative values, the second one is the same value at the same time.
+
+See [Sending metrics](docs/reference.md#sending-metrics) for details.
+
 ## Shutting down
 
-- Call `Close` or `Shutdown(ctx)` before the application exits. They finish accepted work, flush buffers, and release resources. A `Telemetry` sends its queued spans in `Shutdown(ctx)`; close the loggers that use its `Tracer` first.
+- Call `Close` or `Shutdown(ctx)` before the application exits. They finish accepted work, flush buffers, and release resources. A `Telemetry` sends its queued spans, and collects and sends its metrics one last time, in `Shutdown(ctx)`; close the loggers that use its `Tracer` and `Meter` first.
 - When the context of `Shutdown` ends, only that call stops waiting; the cleanup continues. `ForceClose` asks the cleanup to stop and returns without waiting.
 - Logs left in the spool are sent after the next start.
 

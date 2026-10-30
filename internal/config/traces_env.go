@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/go-jappe/heterolog/internal/config/logconfig"
+	metricsdelivery "github.com/go-jappe/heterolog/internal/infrastructure/metrics"
 	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
 	pkgenv "github.com/go-jappe/heterolog/pkg/env"
@@ -31,7 +32,7 @@ type TracesConfig struct {
 	FileDir string
 	// FailureStoreは、otlpの送り先のfailure storeの設定です。保存先のpathなど、ログと共通の
 	// 項目は、MapTelemetryConfigが組み立てます。
-	FailureStore TracesFailureStoreConfig
+	FailureStore TelemetryFailureStoreConfig
 }
 
 // loadTracesConfigは、traceの設定を読み込みます。HETEROLOG_ENABLE_TRACESがfalseなら、
@@ -57,53 +58,82 @@ func loadTracesConfig(env pkgenv.Lookup) (TracesConfig, error) {
 	cfg.Traces.BatchSize = batchSize
 	cfg.Traces.ExportInterval = exportInterval
 
-	headers, headersErr := loadHeaderEnv(env, "HETEROLOG_TRACES_OTLP_HEADERS", nil)
-	timeout, timeoutErr := env.GetEnvDuration("HETEROLOG_TRACES_OTLP_TIMEOUT_SECOND", defaults.OTLP.Timeout)
-	retries, retriesErr := env.GetEnvInt("HETEROLOG_TRACES_OTLP_RETRIES", defaults.OTLP.Retries)
-	retryBaseDelay, retryBaseDelayErr := env.GetEnvDurationMillisecond(
-		"HETEROLOG_TRACES_OTLP_RETRY_BASE_DELAY_MILLISECOND", defaults.OTLP.RetryBaseDelay,
-	)
-	retryMaxDelay, retryMaxDelayErr := env.GetEnvDurationMillisecond(
-		"HETEROLOG_TRACES_OTLP_RETRY_MAX_DELAY_MILLISECOND", defaults.OTLP.RetryMaxDelay,
-	)
-	circuitBreaker, circuitBreakerErr := env.GetEnvBool("HETEROLOG_ENABLE_TRACES_OTLP_CIRCUIT_BREAKER", defaults.OTLP.CircuitBreaker)
-	cfg.Traces.OTLP = pkgtelemetry.OTLPConfig{
-		Endpoint:       env.GetEnvString("HETEROLOG_TRACES_OTLP_ENDPOINT", defaults.OTLP.Endpoint),
-		Headers:        headers,
-		Compression:    env.GetEnvString("HETEROLOG_TRACES_OTLP_COMPRESSION", defaults.OTLP.Compression),
-		Timeout:        timeout,
-		Retries:        retries,
-		RetryBaseDelay: retryBaseDelay,
-		RetryMaxDelay:  retryMaxDelay,
-		CircuitBreaker: circuitBreaker,
-	}
+	otlpCfg, otlpErr := loadOTLPEnv(env, otlpKeys{
+		Endpoint:       "HETEROLOG_TRACES_OTLP_ENDPOINT",
+		Headers:        "HETEROLOG_TRACES_OTLP_HEADERS",
+		Compression:    "HETEROLOG_TRACES_OTLP_COMPRESSION",
+		Timeout:        "HETEROLOG_TRACES_OTLP_TIMEOUT_SECOND",
+		Retries:        "HETEROLOG_TRACES_OTLP_RETRIES",
+		RetryBaseDelay: "HETEROLOG_TRACES_OTLP_RETRY_BASE_DELAY_MILLISECOND",
+		RetryMaxDelay:  "HETEROLOG_TRACES_OTLP_RETRY_MAX_DELAY_MILLISECOND",
+		CircuitBreaker: "HETEROLOG_ENABLE_TRACES_OTLP_CIRCUIT_BREAKER",
+	}, defaults.OTLP)
+	cfg.Traces.OTLP = otlpCfg
 
 	cfg.FileDir = env.GetEnvString("HETEROLOG_TRACES_FILE_DIR", defaultTracesFileDir)
-	failureStore, failureStoreErr := loadTracesFailureStoreConfig(env)
+	failureStore, failureStoreErr := loadTelemetryFailureStoreConfig(env, tracesOTLPFailureStoreKeys)
 	cfg.FailureStore = failureStore
 	return cfg, errors.Join(
 		samplingRatioErr, queueSizeErr, batchSizeErr, exportIntervalErr,
-		headersErr, timeoutErr, retriesErr, retryBaseDelayErr, retryMaxDelayErr, circuitBreakerErr, failureStoreErr,
+		otlpErr, failureStoreErr,
 	)
 }
 
 // MapTelemetryConfigは、読み込んだ設定を、NewTelemetryへ渡す設定にします。Resourceは、
-// ログと同じ項目（HETEROLOG_APP_NAME・HETEROLOG_APP_ENVなど）から作ります。traceを
-// 有効にしていなければ、送り先のない設定を返します。
+// ログと同じ項目（HETEROLOG_APP_NAME・HETEROLOG_APP_ENVなど）から作ります。traceや
+// metricsを有効にしていなければ、その送り先のない設定にします。
 func MapTelemetryConfig(a AppConfig) pkgtelemetry.Config {
-	cfg := pkgtelemetry.Config{Resource: newLoggerResource(&a)}
-	if !a.Traces.Enabled {
-		cfg.Traces = traces.DefaultConfig()
-		return cfg
+	cfg := pkgtelemetry.Config{
+		Resource: newLoggerResource(&a),
+		Traces:   traces.DefaultConfig(),
+		Metrics:  metricsdelivery.DefaultConfig(),
 	}
-	cfg.Traces = a.Traces.Traces
-	cfg.Traces.File.Path = filepath.Join(a.FsstoreConfig.LogPath, a.RuntimeConfig.Target, a.Traces.FileDir, tracesFileName)
-	cfg.Traces.OTLP.FailureStore = pkgtelemetry.FailureStoreConfig{
-		Store: newFailureStoreConfig(
-			&a, checkpointSourceTracesOTLP, storageowner.Telemetry, a.Traces.FailureStore.FailureHandler, logconfig.LogBodyConfig{},
-		),
-		Replay:           a.Traces.FailureStore.Replay,
-		ReplaySupervisor: a.Traces.FailureStore.ReplaySupervisor,
+	if a.Traces.Enabled {
+		cfg.Traces = a.Traces.Traces
+		cfg.Traces.File.Path = filepath.Join(a.FsstoreConfig.LogPath, a.RuntimeConfig.Target, a.Traces.FileDir, tracesFileName)
+		cfg.Traces.OTLP.FailureStore = mapTelemetryFailureStoreConfig(&a, checkpointSourceTracesOTLP, a.Traces.FailureStore)
+	}
+	if a.Metrics.Enabled {
+		cfg.Metrics = a.Metrics.Metrics
+		cfg.Metrics.File.Path = filepath.Join(a.FsstoreConfig.LogPath, a.RuntimeConfig.Target, a.Metrics.FileDir, metricsFileName)
+		cfg.Metrics.OTLP.FailureStore = mapTelemetryFailureStoreConfig(&a, checkpointSourceMetricsOTLP, a.Metrics.FailureStore)
 	}
 	return cfg
+}
+
+// mapTelemetryFailureStoreConfigは、送り先のfailure storeの設定に、ログの出力先と同じく、
+// 保存先のpathなどの共通の項目を足します。object storageへ送れなかった圧縮fileの保存先は、
+// Telemetryが所有します。
+func mapTelemetryFailureStoreConfig(a *AppConfig, checkpointSource archiveCheckpointSourcePrefix, fs TelemetryFailureStoreConfig) pkgtelemetry.FailureStoreConfig {
+	return pkgtelemetry.FailureStoreConfig{
+		Store:            newFailureStoreConfig(a, checkpointSource, storageowner.Telemetry, fs.FailureHandler, logconfig.LogBodyConfig{}),
+		Replay:           fs.Replay,
+		ReplaySupervisor: fs.ReplaySupervisor,
+	}
+}
+
+// otlpKeysは、OTLP/HTTPの送り先の環境変数のkeyです。
+type otlpKeys struct {
+	Endpoint, Headers, Compression, Timeout, Retries, RetryBaseDelay, RetryMaxDelay, CircuitBreaker string
+}
+
+// loadOTLPEnvは、OTLP/HTTPの送り先の設定を、keysのkeyから読みます。keyがなければ、
+// defaultsの値を使います。failure storeの設定は、defaultsのままです。
+func loadOTLPEnv(env pkgenv.Lookup, keys otlpKeys, defaults pkgtelemetry.OTLPConfig) (pkgtelemetry.OTLPConfig, error) {
+	headers, headersErr := loadHeaderEnv(env, keys.Headers, nil)
+	timeout, timeoutErr := env.GetEnvDuration(keys.Timeout, defaults.Timeout)
+	retries, retriesErr := env.GetEnvInt(keys.Retries, defaults.Retries)
+	retryBaseDelay, retryBaseDelayErr := env.GetEnvDurationMillisecond(keys.RetryBaseDelay, defaults.RetryBaseDelay)
+	retryMaxDelay, retryMaxDelayErr := env.GetEnvDurationMillisecond(keys.RetryMaxDelay, defaults.RetryMaxDelay)
+	circuitBreaker, circuitBreakerErr := env.GetEnvBool(keys.CircuitBreaker, defaults.CircuitBreaker)
+	cfg := defaults
+	cfg.Endpoint = env.GetEnvString(keys.Endpoint, defaults.Endpoint)
+	cfg.Headers = headers
+	cfg.Compression = env.GetEnvString(keys.Compression, defaults.Compression)
+	cfg.Timeout = timeout
+	cfg.Retries = retries
+	cfg.RetryBaseDelay = retryBaseDelay
+	cfg.RetryMaxDelay = retryMaxDelay
+	cfg.CircuitBreaker = circuitBreaker
+	return cfg, errors.Join(headersErr, timeoutErr, retriesErr, retryBaseDelayErr, retryMaxDelayErr, circuitBreakerErr)
 }

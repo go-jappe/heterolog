@@ -55,9 +55,10 @@ func (e *FieldError) Unwrap() error {
 
 // Validate checks the settings that heterolog.NewTelemetry uses and returns
 // a FieldError for each invalid one, joined with errors.Join. Settings of
-// destinations that Traces.Exporters does not list are not checked.
+// destinations that Traces.Exporters and Metrics.Exporters do not list are not
+// checked.
 func (c Config) Validate() error {
-	return c.Traces.validate()
+	return errors.Join(c.Traces.validate(), c.Metrics.validate())
 }
 
 func (c TracesConfig) validate() error {
@@ -180,6 +181,56 @@ func (c FailureStoreConfig) validate(field string) error {
 	}
 	if c.usesSpool() {
 		errs = append(errs, positive(field+".Replay.Runner.Interval", c.Replay.Runner.Interval))
+	}
+	return errors.Join(errs...)
+}
+
+func (c MetricsConfig) validate() error {
+	if len(c.Exporters) == 0 {
+		return nil
+	}
+	var errs []error
+	seen := make(map[MetricExporter]bool, len(c.Exporters))
+	for _, exporter := range c.Exporters {
+		switch exporter {
+		case MetricExporterOTLP, MetricExporterFile, MetricExporterStdout:
+		default:
+			errs = append(errs, &FieldError{
+				Field: "Metrics.Exporters", Value: exporter, Err: ErrInvalidSetting,
+				Detail: fmt.Sprintf("unsupported exporter %q; use otlp, file or stdout", exporter),
+			})
+			continue
+		}
+		if seen[exporter] {
+			errs = append(errs, &FieldError{
+				Field: "Metrics.Exporters", Value: exporter, Err: ErrInvalidSetting,
+				Detail: fmt.Sprintf("exporter %q is listed more than once", exporter),
+			})
+		}
+		seen[exporter] = true
+	}
+	errs = append(errs,
+		positive("Metrics.ExportInterval", c.ExportInterval),
+		positive("Metrics.QueueSize", c.QueueSize),
+		positive("Metrics.CardinalityLimit", c.CardinalityLimit),
+	)
+	for i, bound := range c.HistogramBounds {
+		if math.IsNaN(bound) || math.IsInf(bound, 0) || (i > 0 && bound <= c.HistogramBounds[i-1]) {
+			errs = append(errs, &FieldError{
+				Field: "Metrics.HistogramBounds", Value: c.HistogramBounds, Err: ErrInvalidSetting,
+				Detail: "must be finite and strictly increasing",
+			})
+			break
+		}
+	}
+	if seen[MetricExporterOTLP] {
+		errs = append(errs, c.OTLP.validate("Metrics.OTLP"))
+	}
+	if seen[MetricExporterFile] && strings.TrimSpace(c.File.Path) == "" {
+		errs = append(errs, &FieldError{
+			Field: "Metrics.File.Path", Value: c.File.Path, Err: ErrInvalidSetting,
+			Detail: "must not be empty when the file exporter is used",
+		})
 	}
 	return errors.Join(errs...)
 }
