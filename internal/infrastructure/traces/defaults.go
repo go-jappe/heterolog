@@ -44,14 +44,14 @@ func DefaultConfig() pkgtelemetry.TracesConfig {
 		QueueSize:      DefaultQueueSize,
 		BatchSize:      DefaultBatchSize,
 		ExportInterval: DefaultExportInterval,
-		OTLP: pkgtelemetry.OTLPTracesConfig{
+		OTLP: pkgtelemetry.OTLPConfig{
 			Endpoint:       DefaultOTLPEndpoint,
 			Compression:    DefaultOTLPCompression,
 			Timeout:        DefaultOTLPTimeout,
 			Retries:        DefaultOTLPRetries,
 			RetryBaseDelay: DefaultOTLPRetryBaseDelay,
 			RetryMaxDelay:  DefaultOTLPRetryMaxDelay,
-			FailureStore: pkgtelemetry.TraceFailureStoreConfig{
+			FailureStore: pkgtelemetry.FailureStoreConfig{
 				Store: pkgdurable.FailureStoreConfig{
 					MaxConcurrent: DefaultFailureStoreMaxConcurrent,
 					SpillType:     []pkgdurable.SpillType{pkgdurable.SpillType(pkgdurable.SpillDestinationStdout)},

@@ -18,7 +18,7 @@ func validConfig() telemetry.Config {
 		QueueSize:      10,
 		BatchSize:      5,
 		ExportInterval: time.Second,
-		OTLP: telemetry.OTLPTracesConfig{
+		OTLP: telemetry.OTLPConfig{
 			Endpoint:       "https://collector.example:4318/v1/traces",
 			Headers:        map[string]string{"Authorization": "Bearer secret"},
 			Compression:    "gzip",
@@ -27,7 +27,7 @@ func validConfig() telemetry.Config {
 			RetryBaseDelay: time.Second,
 			RetryMaxDelay:  2 * time.Second,
 		},
-		File: telemetry.FileTracesConfig{Path: "spans.jsonl"},
+		File: telemetry.FileConfig{Path: "spans.jsonl"},
 	}}
 }
 
@@ -90,8 +90,8 @@ func TestValidateDoesNotShowCredentials(t *testing.T) {
 func TestValidateSkipsTheSettingsOfUnusedExporters(t *testing.T) {
 	cfg := validConfig()
 	cfg.Traces.Exporters = []telemetry.TraceExporter{telemetry.TraceExporterStdout}
-	cfg.Traces.OTLP = telemetry.OTLPTracesConfig{}
-	cfg.Traces.File = telemetry.FileTracesConfig{}
+	cfg.Traces.OTLP = telemetry.OTLPConfig{}
+	cfg.Traces.File = telemetry.FileConfig{}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want no error for the settings of unused exporters", err)
 	}
@@ -105,34 +105,34 @@ func TestValidateSkipsTheSettingsOfUnusedExporters(t *testing.T) {
 }
 
 func TestValidateChecksTheFailureStore(t *testing.T) {
-	withStore := func(change func(*telemetry.TraceFailureStoreConfig)) telemetry.Config {
+	withStore := func(change func(*telemetry.FailureStoreConfig)) telemetry.Config {
 		cfg := validConfig()
-		cfg.Traces.OTLP.FailureStore = telemetry.TraceFailureStoreConfig{
+		cfg.Traces.OTLP.FailureStore = telemetry.FailureStoreConfig{
 			Store: durable.FailureStoreConfig{MaxConcurrent: 1, DurableType: []durable.DurableType{durable.DurableTypeSpool}},
 		}
 		cfg.Traces.OTLP.FailureStore.Replay.Runner.Interval = time.Second
 		change(&cfg.Traces.OTLP.FailureStore)
 		return cfg
 	}
-	if err := withStore(func(*telemetry.TraceFailureStoreConfig) {}).Validate(); err != nil {
+	if err := withStore(func(*telemetry.FailureStoreConfig) {}).Validate(); err != nil {
 		t.Errorf("Validate() of a spool = %v", err)
 	}
 	// 何も選ばなければ、failure storeの設定は確かめません。
-	if err := withStore(func(c *telemetry.TraceFailureStoreConfig) { *c = telemetry.TraceFailureStoreConfig{} }).Validate(); err != nil {
+	if err := withStore(func(c *telemetry.FailureStoreConfig) { *c = telemetry.FailureStoreConfig{} }).Validate(); err != nil {
 		t.Errorf("Validate() without a store = %v", err)
 	}
 	for _, tc := range []struct {
 		field  string
 		kind   error
-		change func(*telemetry.TraceFailureStoreConfig)
+		change func(*telemetry.FailureStoreConfig)
 	}{
-		{"Traces.OTLP.FailureStore.Store.DurableType", telemetry.ErrInvalidSetting, func(c *telemetry.TraceFailureStoreConfig) {
+		{"Traces.OTLP.FailureStore.Store.DurableType", telemetry.ErrInvalidSetting, func(c *telemetry.FailureStoreConfig) {
 			c.Store.DurableType = []durable.DurableType{durable.DurableTypeSpool, durable.DurableTypeSpool}
 		}},
-		{"Traces.OTLP.FailureStore.Store.MaxConcurrent", telemetry.ErrNonPositiveSetting, func(c *telemetry.TraceFailureStoreConfig) {
+		{"Traces.OTLP.FailureStore.Store.MaxConcurrent", telemetry.ErrNonPositiveSetting, func(c *telemetry.FailureStoreConfig) {
 			c.Store.MaxConcurrent = 0
 		}},
-		{"Traces.OTLP.FailureStore.Replay.Runner.Interval", telemetry.ErrNonPositiveSetting, func(c *telemetry.TraceFailureStoreConfig) {
+		{"Traces.OTLP.FailureStore.Replay.Runner.Interval", telemetry.ErrNonPositiveSetting, func(c *telemetry.FailureStoreConfig) {
 			c.Replay.Runner.Interval = 0
 		}},
 	} {

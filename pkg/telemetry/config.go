@@ -59,16 +59,16 @@ type TracesConfig struct {
 	// busy sending an earlier batch.
 	ExportInterval time.Duration
 	// OTLP configures TraceExporterOTLP.
-	OTLP OTLPTracesConfig
+	OTLP OTLPConfig
 	// File configures TraceExporterFile.
-	File FileTracesConfig
+	File FileConfig
 }
 
-// OTLPTracesConfig configures the OTLP/HTTP destination of spans.
-type OTLPTracesConfig struct {
-	// Endpoint is the URL that spans are posted to, such as
-	// "http://localhost:4318/v1/traces". The path is used as given; /v1/traces
-	// is not added. Redirects are not followed.
+// OTLPConfig configures an OTLP/HTTP destination of spans or metrics.
+type OTLPConfig struct {
+	// Endpoint is the URL that the data is posted to, such as
+	// "http://localhost:4318/v1/traces" for spans. The path is used as given;
+	// /v1/traces or /v1/metrics is not added. Redirects are not followed.
 	Endpoint string
 	// Headers are added to each request, such as an Authorization header.
 	Headers map[string]string
@@ -95,51 +95,52 @@ type OTLPTracesConfig struct {
 	// receiver has recovered. The same breaker as that of the log
 	// destinations is used.
 	CircuitBreaker bool
-	// FailureStore keeps the spans that could not be sent, so that they are
+	// FailureStore keeps the data that could not be sent, so that it is
 	// resent later or kept for inspection.
-	FailureStore TraceFailureStoreConfig
+	FailureStore FailureStoreConfig
 }
 
-// TraceFailureStoreConfig configures where the otlp destination keeps the
-// spans that it could not send. It uses the failure stores of the log
-// destinations, and each span is kept as one record of OTLP JSON with its
-// resource and instrumentation scope.
+// FailureStoreConfig configures where a destination keeps the spans or
+// metrics that it could not send. It uses the failure stores of the log
+// destinations, and each span, or each metric with all its data points, is
+// kept as one record of OTLP JSON with its resource and instrumentation
+// scope.
 //
-// Spans that failed for a reason that allows a resend, including failures
-// whose outcome is unknown, are resent from the spool. Spans that the
-// receiver rejected are kept as dead, and spans of a partial success as
-// quarantine, without a resend.
-type TraceFailureStoreConfig struct {
+// Data that failed for a reason that allows a resend, including failures
+// whose outcome is unknown, is resent from the spool. Data that the receiver
+// rejected is kept as dead, and the data of a partial success as quarantine,
+// without a resend.
+type FailureStoreConfig struct {
 	// Store selects and configures the stores as for a log destination: with
-	// DurableTypeSpool, the spans are kept in a spool and resent; with
-	// DurableTypeFileArchive, they are appended to a failure archive; with
-	// DurableTypeNone and EnableDegrade, they are written to stdout. An empty
-	// DurableType keeps nothing, and the spans are dropped.
+	// DurableTypeSpool, the data is kept in a spool and resent; with
+	// DurableTypeFileArchive, it is appended to a failure archive; with
+	// DurableTypeNone and EnableDegrade, it is written to stdout. An empty
+	// DurableType keeps nothing, and the data is dropped.
 	//
 	// The failure archive is uploaded to object storage as for a log
 	// destination. The spool and the archive that keep the compressed files
 	// that could not be uploaded are owned by "telemetry", whatever
 	// LoggerContract their settings have (see pkg/objectstorage), so they do
-	// not share the directories of the loggers. The internal log notification targets
-	// (HandlerConfig) are not used: the errors and warnings of the stores go to
-	// the function passed with heterolog.WithTelemetryErrorHandler.
+	// not share the directories of the loggers. The internal log notification
+	// targets (HandlerConfig) are not used: the errors and warnings of the
+	// stores go to the function passed with heterolog.WithTelemetryErrorHandler.
 	Store durable.FailureStoreConfig
-	// Replay configures the worker that resends the spans in the spool, as
-	// for a log destination.
+	// Replay configures the worker that resends the data in the spool, as for
+	// a log destination.
 	Replay spoolrunner.BackendSpoolRunnerConfig
 	// ReplaySupervisor configures the restarts of that worker.
 	ReplaySupervisor spoolsupervisor.RunnerSupervisorConfig
 }
 
-// Enabled reports whether Store keeps or writes the spans that could not be
+// Enabled reports whether Store keeps or writes the data that could not be
 // sent.
-func (c TraceFailureStoreConfig) Enabled() bool {
+func (c FailureStoreConfig) Enabled() bool {
 	types := c.Store.DurableType
 	return len(types) > 0 && (types[0] != durable.DurableTypeNone || c.Store.EnableDegrade)
 }
 
 // usesSpool reports whether Store selects the spool.
-func (c TraceFailureStoreConfig) usesSpool() bool {
+func (c FailureStoreConfig) usesSpool() bool {
 	for _, durableType := range c.Store.DurableType {
 		if durableType == durable.DurableTypeSpool {
 			return true
@@ -148,9 +149,9 @@ func (c TraceFailureStoreConfig) usesSpool() bool {
 	return false
 }
 
-// FileTracesConfig configures the file destination of spans.
-type FileTracesConfig struct {
-	// Path is the file that each batch of spans is appended to as one line of
-	// OTLP JSON. Missing directories are created. The file is not rotated.
+// FileConfig configures the file destination of spans or metrics.
+type FileConfig struct {
+	// Path is the file that each batch is appended to as one line of OTLP
+	// JSON. Missing directories are created. The file is not rotated.
 	Path string
 }

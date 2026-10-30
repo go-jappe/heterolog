@@ -103,7 +103,7 @@ func (c TracesConfig) validate() error {
 		})
 	}
 	if seen[TraceExporterOTLP] {
-		errs = append(errs, c.OTLP.validate())
+		errs = append(errs, c.OTLP.validate("Traces.OTLP"))
 	}
 	if seen[TraceExporterFile] && strings.TrimSpace(c.File.Path) == "" {
 		errs = append(errs, &FieldError{
@@ -114,19 +114,20 @@ func (c TracesConfig) validate() error {
 	return errors.Join(errs...)
 }
 
-func (c OTLPTracesConfig) validate() error {
+// validateは、prefix（Traces.OTLPなど）から始まるfieldの名前で、設定を確かめます。
+func (c OTLPConfig) validate(prefix string) error {
 	var errs []error
 	// endpointはuserinfoなどに認証情報を含み得るため、errorに値を入れません。
 	if u, err := url.Parse(c.Endpoint); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		errs = append(errs, &FieldError{
-			Field: "Traces.OTLP.Endpoint", Err: ErrInvalidSetting,
+			Field: prefix + ".Endpoint", Err: ErrInvalidSetting,
 			Detail: "must be an absolute http or https URL; the value is not shown because it can contain credentials",
 		})
 	}
 	for name, value := range c.Headers {
 		if !isHeaderToken(name) || strings.ContainsAny(value, "\r\n\x00") {
 			errs = append(errs, &FieldError{
-				Field: "Traces.OTLP.Headers", Err: ErrInvalidSetting,
+				Field: prefix + ".Headers", Err: ErrInvalidSetting,
 				Detail: "must have header names made of token characters and values without line breaks; the value is not shown because it can contain credentials",
 			})
 			break
@@ -134,37 +135,36 @@ func (c OTLPTracesConfig) validate() error {
 	}
 	if c.Compression != "gzip" && c.Compression != "none" {
 		errs = append(errs, &FieldError{
-			Field: "Traces.OTLP.Compression", Value: c.Compression, Err: ErrInvalidSetting,
+			Field: prefix + ".Compression", Value: c.Compression, Err: ErrInvalidSetting,
 			Detail: fmt.Sprintf("must be gzip or none, got %q", c.Compression),
 		})
 	}
-	errs = append(errs, positive("Traces.OTLP.Timeout", c.Timeout))
+	errs = append(errs, positive(prefix+".Timeout", c.Timeout))
 	if c.Retries < 0 {
 		errs = append(errs, &FieldError{
-			Field: "Traces.OTLP.Retries", Value: c.Retries, Err: ErrNegativeSetting,
+			Field: prefix + ".Retries", Value: c.Retries, Err: ErrNegativeSetting,
 			Detail: fmt.Sprintf("must not be negative, got %d", c.Retries),
 		})
 	}
 	if c.Retries > 0 {
 		errs = append(errs,
-			positive("Traces.OTLP.RetryBaseDelay", c.RetryBaseDelay),
-			positive("Traces.OTLP.RetryMaxDelay", c.RetryMaxDelay),
+			positive(prefix+".RetryBaseDelay", c.RetryBaseDelay),
+			positive(prefix+".RetryMaxDelay", c.RetryMaxDelay),
 		)
 		if c.RetryBaseDelay > 0 && c.RetryMaxDelay > 0 && c.RetryMaxDelay < c.RetryBaseDelay {
 			errs = append(errs, &FieldError{
-				Field: "Traces.OTLP.RetryMaxDelay", Value: c.RetryMaxDelay, Err: ErrInvalidSetting,
-				Detail: fmt.Sprintf("must not be shorter than Traces.OTLP.RetryBaseDelay %v, got %v", c.RetryBaseDelay, c.RetryMaxDelay),
+				Field: prefix + ".RetryMaxDelay", Value: c.RetryMaxDelay, Err: ErrInvalidSetting,
+				Detail: fmt.Sprintf("must not be shorter than %s.RetryBaseDelay %v, got %v", prefix, c.RetryBaseDelay, c.RetryMaxDelay),
 			})
 		}
 	}
-	errs = append(errs, c.FailureStore.validate())
+	errs = append(errs, c.FailureStore.validate(prefix+".FailureStore"))
 	return errors.Join(errs...)
 }
 
 // validateは、failure storeの選び方を確かめます。store自体の設定は、ログの出力先と
 // 同じく、NewTelemetryがstoreを作るときに確かめます。
-func (c TraceFailureStoreConfig) validate() error {
-	const field = "Traces.OTLP.FailureStore"
+func (c FailureStoreConfig) validate(field string) error {
 	if len(c.Store.DurableType) == 0 {
 		return nil
 	}

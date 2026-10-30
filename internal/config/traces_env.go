@@ -67,7 +67,7 @@ func loadTracesConfig(env pkgenv.Lookup) (TracesConfig, error) {
 		"HETEROLOG_TRACES_OTLP_RETRY_MAX_DELAY_MILLISECOND", defaults.OTLP.RetryMaxDelay,
 	)
 	circuitBreaker, circuitBreakerErr := env.GetEnvBool("HETEROLOG_ENABLE_TRACES_OTLP_CIRCUIT_BREAKER", defaults.OTLP.CircuitBreaker)
-	cfg.Traces.OTLP = pkgtelemetry.OTLPTracesConfig{
+	cfg.Traces.OTLP = pkgtelemetry.OTLPConfig{
 		Endpoint:       env.GetEnvString("HETEROLOG_TRACES_OTLP_ENDPOINT", defaults.OTLP.Endpoint),
 		Headers:        headers,
 		Compression:    env.GetEnvString("HETEROLOG_TRACES_OTLP_COMPRESSION", defaults.OTLP.Compression),
@@ -98,7 +98,7 @@ func MapTelemetryConfig(a AppConfig) pkgtelemetry.Config {
 	}
 	cfg.Traces = a.Traces.Traces
 	cfg.Traces.File.Path = filepath.Join(a.FsstoreConfig.LogPath, a.RuntimeConfig.Target, a.Traces.FileDir, tracesFileName)
-	cfg.Traces.OTLP.FailureStore = pkgtelemetry.TraceFailureStoreConfig{
+	cfg.Traces.OTLP.FailureStore = pkgtelemetry.FailureStoreConfig{
 		Store: newFailureStoreConfig(
 			&a, checkpointSourceTracesOTLP, storageowner.Telemetry, a.Traces.FailureStore.FailureHandler, logconfig.LogBodyConfig{},
 		),
