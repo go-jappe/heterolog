@@ -674,11 +674,6 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
   HETEROLOG_LOG_FILE_OBJECT_STORAGE_S3_BUCKET=<bucket>
   ```
 
-### VictoriaMetrics
-
-- `pkg/victoriametrics` の `SendAsync` は、受理するメトリクスとラベルを複製します。呼び出しから戻った後は入力を再利用できます。
-- `WithHTTPClient` に渡したクライアントの設定は変更せず、同期・非同期とも各HTTP要求に `WithTimeout` を適用します。再送にも毎回同じ期限を使い、0は期限なしを表します。
-
 ## ログ復旧CLI
 
 ライブラリに加えて、停止中のアプリケーションのログファイルを復旧するCLIを同梱しています。

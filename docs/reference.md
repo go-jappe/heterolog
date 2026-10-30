@@ -674,11 +674,6 @@ Events added to the span of the operation:
   HETEROLOG_LOG_FILE_OBJECT_STORAGE_S3_BUCKET=<bucket>
   ```
 
-### VictoriaMetrics
-
-- `SendAsync` of `pkg/victoriametrics` copies the metrics and labels it accepts, so the inputs can be reused after it returns.
-- The settings of the client passed to `WithHTTPClient` are not changed. `WithTimeout` applies to each HTTP request, for both synchronous and asynchronous sending, and each resend uses the same deadline again. 0 means no deadline.
-
 ## Log recovery CLI
 
 In addition to the library, a CLI that recovers the log files of a stopped application is included.

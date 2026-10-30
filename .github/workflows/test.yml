@@ -36,7 +36,7 @@ jobs:
           ./internal/application/outputsettings
           ./internal/presentation/envconfig ./internal/presentation/http/admin ./internal/presentation/sloghandler
           ./internal/infrastructure/logger ./internal/infrastructure/logger/multi ./internal/infrastructure/logger/slack
-          ./internal/infrastructure/logger/handler ./pkg/logger ./pkg/victoriametrics
+          ./internal/infrastructure/logger/handler ./pkg/logger
           ./internal/infrastructure/logger/opensearch ./internal/infrastructure/fsstore/spool/...
           ./internal/infrastructure/spool/log/... ./internal/observer/memory/pressure
           ./internal/application/tracing ./internal/application/metrics ./internal/infrastructure/traces/... ./internal/infrastructure/metrics/... ./internal/infrastructure/delivery/... ./internal/infrastructure/storageowner ./internal/presentation/otelexport ./otelexport
