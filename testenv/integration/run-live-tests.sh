@@ -61,10 +61,12 @@ select_group() {
 		;;
 	clickhouse)
 		opt_in=(CLICKHOUSE_INTEGRATION_TEST)
-		packages=(./internal/infrastructure/logger)
+		packages=(./internal/infrastructure/logger ./internal/bootstrap)
 		tests=(
 			TestClickHouseLoggerUsesActualDotEnvConfigAndStoresRow
 			TestClickHouseSpoolUsesActualDotEnvConfigActiveAndResendsToBackend
+			TestTelemetryInsertsSpansIntoClickHouse
+			TestTelemetryResendsSpooledSpansToClickHouse
 		)
 		;;
 	tracing)

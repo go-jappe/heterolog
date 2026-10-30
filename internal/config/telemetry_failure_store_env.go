@@ -214,6 +214,7 @@ func telemetryFailureArchiveUploadEnabled(a AppConfig) bool {
 	}
 	return uploads(a.Traces.Enabled, a.Traces.FailureStore.FailureHandler) ||
 		uploads(a.Traces.Enabled, a.Traces.OpenSearchFailureStore.FailureHandler) ||
+		uploads(a.Traces.Enabled, a.Traces.ClickHouseFailureStore.FailureHandler) ||
 		uploads(a.Metrics.Enabled, a.Metrics.FailureStore.FailureHandler) ||
 		uploads(a.Metrics.Enabled, a.Metrics.VictoriaMetricsFailureStore.FailureHandler)
 }
@@ -324,6 +325,60 @@ var tracesOpenSearchFailureStoreKeys = telemetryFailureStoreKeys{
 	MaxResendAge:                "HETEROLOG_TRACES_OPENSEARCH_SPOOL_MAX_RESEND_AGE_SECOND",
 	DefaultSpoolDir:             "traces_opensearch",
 	DefaultArchiveDir:           "traces_opensearch_failure_archives",
+}
+
+// tracesClickHouseFailureStoreKeysは、traceのclickhouseの送り先のfailure storeのkeyです。
+var tracesClickHouseFailureStoreKeys = telemetryFailureStoreKeys{
+	EnableDegrade:               "HETEROLOG_ENABLE_TRACES_CLICKHOUSE_DEGRADE",
+	MaxConcurrent:               "HETEROLOG_MAX_TRACES_CLICKHOUSE_FAILURE_HANDLER_CONCURRENT",
+	DurableTypes:                "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_TYPES",
+	DegradeTypes:                "HETEROLOG_TRACES_CLICKHOUSE_DEGRADE_TYPES",
+	ArchiveMaxFileSize:          "HETEROLOG_MAX_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_SIZE_MB",
+	ArchiveRotate:               "HETEROLOG_TRACES_CLICKHOUSE_ENABLE_DURABLE_FILE_ARCHIVE_ROTATE",
+	ArchiveMaxBackups:           "HETEROLOG_MAX_TRACES_CLICKHOUSE_ENABLE_DURABLE_FILE_ARCHIVE_BACKUPS",
+	ArchiveMaxAge:               "HETEROLOG_MAX_TRACES_CLICKHOUSE_ENABLE_DURABLE_FILE_ARCHIVE_AGE",
+	ArchiveMaxDirSize:           "HETEROLOG_MAX_TRACES_CLICKHOUSE_ENABLE_DURABLE_FILE_ARCHIVE_DIR_SIZE_MB",
+	ArchiveCompress:             "HETEROLOG_ENABLE_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_COMPRESS",
+	ArchiveCompressFormat:       "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
+	ArchiveLifecycleMode:        "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_LIFECYCLE_MODE",
+	ArchiveDir:                  "HETEROLOG_TRACES_CLICKHOUSE_FAILURE_ARCHIVE_DIR",
+	ArchiveRotation:             "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ROTATION",
+	ArchiveOverloadPolicy:       "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_OVERLOAD_POLICY",
+	ArchiveSecondaryDestination: "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_SECONDARY_DESTINATION",
+	UploadEnabled:               "HETEROLOG_ENABLE_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_UPLOAD",
+	UploadType:                  "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_UPLOAD_TYPE",
+	UploadS3Bucket:              "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_BUCKET",
+	UploadS3Prefix:              "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_PREFIX",
+	UploadS3Destinations:        "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_DESTINATIONS",
+	SpoolDir:                    "HETEROLOG_TRACES_CLICKHOUSE_FAILURE_SPOOL_DIR",
+	SpoolOverloadPolicy:         "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_OVERLOAD_POLICY",
+	SpoolSecondaryDestination:   "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_SECONDARY_DESTINATION",
+	SpoolMaxActiveDirSize:       "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_FILE_ACTIVE_DIR_SIZE_MB",
+	SpoolBacklogWarnAfterDays:   "HETEROLOG_TRACES_CLICKHOUSE_ACTIVE_SPOOL_BACKLOG_WARN_AFTER_DAYS",
+	SpoolMaxScannedCacheUsage:   "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_SCANNED_CACHE_USAGE_COUNT",
+	SpoolCacheLifetime:          "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_CACHE_LIFETIME_SECOND",
+	SpoolUseMemoryPressure:      "HETEROLOG_USE_MEMORY_PRESSURE_TRACES_CLICKHOUSE_SPOOL_OVERLOAD",
+	RunnerInterval:              "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_RUNNER_INTERVAL_MILLISECOND",
+	RunnerStopOnError:           "HETEROLOG_ENABLE_TRACES_CLICKHOUSE_SPOOL_RUNNER_STOP_ON_ERROR",
+	PurgeDone:                   "HETEROLOG_ENABLE_PURGE_TRACES_CLICKHOUSE_SPOOL_DONE",
+	DoneAge:                     "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_DONE_AGE",
+	DoneDirSize:                 "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_DONE_DIR_SIZE_MB",
+	PurgeDead:                   "HETEROLOG_ENABLE_PURGE_TRACES_CLICKHOUSE_SPOOL_DEAD",
+	DeadAge:                     "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_DEAD_AGE",
+	DeadDirSize:                 "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_DEAD_DIR_SIZE_MB",
+	PurgeQuarantine:             "HETEROLOG_ENABLE_PURGE_TRACES_CLICKHOUSE_SPOOL_QUARANTINE",
+	QuarantineAge:               "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_QUARANTINE_AGE",
+	QuarantineDirSize:           "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_QUARANTINE_DIR_SIZE_MB",
+	PurgeInterval:               "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_RUNNER_PURGE_INTERVAL_SECOND",
+	SizeEstimateCache:           "HETEROLOG_ENABLE_TRACES_CLICKHOUSE_SPOOL_SIZE_ESTIMATE_CACHE",
+	FullScanEveryNChecks:        "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_DIR_FULL_SCAN_EVERY_N_CHECKS",
+	FullScanMaxInterval:         "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_FULL_SCAN_INTERVAL_SECOND",
+	FinalizeRetryDelay:          "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_RUNNER_RETRY_FINALIZE_DELAY_MILLISECOND",
+	FinalizeEntries:             "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_FINALIZE_FAILURE_ENTRIES",
+	MaxRetryAfter:               "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_RUNNER_MAX_RETRY_AFTER_SECOND",
+	MaxResendAge:                "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_MAX_RESEND_AGE_SECOND",
+	DefaultSpoolDir:             "traces_clickhouse",
+	DefaultArchiveDir:           "traces_clickhouse_failure_archives",
 }
 
 // metricsOTLPFailureStoreKeysは、metricsのotlpの送り先のfailure storeのkeyです。

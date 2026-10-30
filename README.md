@@ -53,7 +53,7 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 - Overload protection with a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
 - Configuration in code, or from `HETEROLOG_` environment variables and an env file.
 - Level and sampling changes while running, in code or through a token-protected HTTP API.
-- Traces: a `Tracer`, and an exporter for the OpenTelemetry SDK, that send spans to an OTLP/HTTP receiver, OpenSearch (for its Trace Analytics), a file, or stdout in batches with retries. Spans that could not be sent go to the same spool and failure archive as logs. The loggers can record their own work as spans.
+- Traces: a `Tracer`, and an exporter for the OpenTelemetry SDK, that send spans to an OTLP/HTTP receiver, OpenSearch (for its Trace Analytics), ClickHouse (in the table of the OpenTelemetry Collector), a file, or stdout in batches with retries. Spans that could not be sent go to the same spool and failure archive as logs. The loggers can record their own work as spans.
 - Metrics: a `Meter` that sends counters, gauges, and histograms to an OTLP/HTTP receiver, VictoriaMetrics, a file, or stdout, with the same retries, spool, and failure archive.
 - A CLI that recovers the log files of a stopped application.
 - Tested on Linux, Windows, and macOS, including case-insensitive file systems.
@@ -301,7 +301,7 @@ The [reference](docs/reference.md#log-files) describes rotation, retention, comp
 
 ## Traces
 
-`NewTelemetry` sends spans to an OTLP/HTTP receiver, such as the OpenTelemetry Collector or Grafana Tempo, to OpenSearch, to a file, or to stdout. Its `Tracer` records the spans of your application, and passed to a logger with `WithObservers`, also the work of the logger as child spans:
+`NewTelemetry` sends spans to an OTLP/HTTP receiver, such as the OpenTelemetry Collector or Grafana Tempo, to OpenSearch, to ClickHouse, to a file, or to stdout. Its `Tracer` records the spans of your application, and passed to a logger with `WithObservers`, also the work of the logger as child spans:
 
 ```go
 cfg := heterolog.DefaultTelemetryConfig()
@@ -328,6 +328,7 @@ defer span.End()
 - From the environment, set `HETEROLOG_ENABLE_TRACES=true` and `HETEROLOG_TRACES_OTLP_ENDPOINT`, and call `env.NewTelemetry(ctx)`. The service name comes from `HETEROLOG_APP_NAME`.
 - Spans are sent in batches from a queue for each destination, so ending a span never waits for the network. Failed requests are retried. Spans that the receiver still did not accept can be kept in the same spool and failure archive as logs, and the spool resends them when the receiver recovers, also after a restart. Spans that are not kept, or that do not fit in the queue, are dropped, counted in metrics, and reported to the function passed with `WithTelemetryErrorHandler`, or to the standard logger without it.
 - `TraceExporterOpenSearch` writes each span as a document in the format of OpenSearch Data Prepper, so the Trace Analytics of OpenSearch Dashboards can show the spans. Install the [index template](docs/opensearch/otel-v1-apm-span-index-template.json) first.
+- `TraceExporterClickHouse` inserts each span into a table with the columns of the `otel_traces` table of the OpenTelemetry Collector, which the ClickHouse data source of Grafana reads. Create it with [otel_traces.sql](docs/clickhouse/otel_traces.sql) first.
 - `pkg/observer` reads and writes the W3C `traceparent` header, so a trace can continue across services.
 - Spans from the OpenTelemetry SDK are sent the same way through `otelexport.NewSpanExporter(tel)`, a separate package so that programs without the SDK do not link it.
 

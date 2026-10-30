@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	goruntime "runtime"
 	"time"
@@ -22,7 +23,9 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/metrics/victoriametrics"
 	"github.com/go-jappe/heterolog/internal/infrastructure/otlpcommon"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
+	tracesclickhouse "github.com/go-jappe/heterolog/internal/infrastructure/traces/clickhouse"
 	tracesopensearch "github.com/go-jappe/heterolog/internal/infrastructure/traces/opensearch"
+	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
@@ -125,6 +128,12 @@ func newTraceDestinations(
 				return nil, errors.Join(err, closeAll())
 			}
 			destinations = append(destinations, destination)
+		case pkgtelemetry.TraceExporterClickHouse:
+			destination, err := newClickHouseTraceDestination(ctx, cfg.Traces.ClickHouse, resource, meter, report)
+			if err != nil {
+				return nil, errors.Join(err, closeAll())
+			}
+			destinations = append(destinations, destination)
 		case pkgtelemetry.TraceExporterStdout:
 			destinations = append(destinations, traces.Destination{Exporter: jsonlines.NewStdout(traces.MarshalJSON(resource))})
 		case pkgtelemetry.TraceExporterFile:
@@ -164,6 +173,53 @@ func newOpenSearchTraceDestination(
 	})
 	if err != nil {
 		return traces.Destination{}, errors.Join(fmt.Errorf("create the failure store of the opensearch trace exporter: %w", err), exporter.Close())
+	}
+	return traces.Destination{Exporter: exporter, Store: store}, nil
+}
+
+// newClickHouseTraceDestinationは、spanをClickHouseの表へ書く送り先と、そのfailure storeを
+// 作ります。HTTPClientを指定しなければ、利用者のprogramのほかの通信に影響しないよう、
+// 専用のtransportで接続を持ち、送り先を閉じるときに手放します。
+func newClickHouseTraceDestination(
+	ctx context.Context,
+	cfg pkgtelemetry.ClickHouseConfig,
+	resource *telemetrydata.Resource,
+	meter pkgobserver.Meter,
+	report delivery.ErrorHandler,
+) (traces.Destination, error) {
+	clientCfg := cfg.Client
+	var closeClient func() error
+	if clientCfg.HTTPClient == nil {
+		// pkg/clickhouseと同じく、0のTimeoutは既定の10秒にします。
+		timeout := clientCfg.Timeout
+		if timeout == 0 {
+			timeout = delivery.DefaultOTLPTimeout
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		clientCfg.HTTPClient = &http.Client{Transport: transport, Timeout: timeout}
+		closeClient = func() error {
+			transport.CloseIdleConnections()
+			return nil
+		}
+	}
+	client, err := pkgclickhouse.New(clientCfg)
+	if err != nil {
+		return traces.Destination{}, fmt.Errorf("create the clickhouse trace exporter: %w", err)
+	}
+	exporter := tracesclickhouse.NewExporter(client, tracesclickhouse.Config{
+		Retry: retryConfig(cfg.Retries, cfg.RetryBaseDelay, cfg.RetryMaxDelay, cfg.CircuitBreaker),
+		Close: closeClient,
+	}, resource, meter)
+	store, err := newFailureStore(ctx, cfg.FailureStore, failurestore.Options[tracing.SpanData]{
+		Backend:   tracesclickhouse.BackendName,
+		Operation: traces.FailureOperation,
+		Exporter:  exporter,
+		Codec:     traces.NewCodec(resource),
+		Meter:     meter,
+		Report:    report,
+	})
+	if err != nil {
+		return traces.Destination{}, errors.Join(fmt.Errorf("create the failure store of the clickhouse trace exporter: %w", err), exporter.Close())
 	}
 	return traces.Destination{Exporter: exporter, Store: store}, nil
 }

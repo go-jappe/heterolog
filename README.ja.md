@@ -53,7 +53,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - 空き容量の閾値、任意のメモリ逼迫の監視器、`drop`・`degrade` の方針による過負荷の保護。
 - コードでの設定、または `HETEROLOG_` 環境変数と環境設定ファイルからの設定。
 - 稼働中のログレベルとサンプリングの変更。コードまたはトークンで保護したHTTP APIから行います。
-- トレース: spanを、OTLP/HTTPの受信先、OpenSearch（Trace Analytics用）、file、stdoutへ、まとめて再試行付きで送る `Tracer` と、OpenTelemetry SDK用のexporter。送れなかったspanは、ログと同じspoolとfailure archiveへ渡します。ロガーも自分の処理をspanとして記録できます。
+- トレース: spanを、OTLP/HTTPの受信先、OpenSearch（Trace Analytics用）、ClickHouse（OpenTelemetry Collectorと同じ表）、file、stdoutへ、まとめて再試行付きで送る `Tracer` と、OpenTelemetry SDK用のexporter。送れなかったspanは、ログと同じspoolとfailure archiveへ渡します。ロガーも自分の処理をspanとして記録できます。
 - メトリクス: counter、gauge、histogramを、OTLP/HTTPの受信先、VictoriaMetrics、file、stdoutへ、同じ再試行、spool、failure archive付きで送る `Meter`。
 - 停止中のアプリケーションのログファイルを復旧するCLI。
 - Linux・Windows・macOSで、大文字小文字を区別しないファイルシステムも含めて試験しています。
@@ -301,7 +301,7 @@ curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
 
 ## トレース
 
-`NewTelemetry` は、spanを、OpenTelemetry CollectorやGrafana TempoなどのOTLP/HTTPの受信先、OpenSearch、file、stdoutへ送ります。その `Tracer` はアプリケーションのspanを記録し、`WithObservers` でロガーへ渡すと、ロガーの処理も子のspanとして記録します。
+`NewTelemetry` は、spanを、OpenTelemetry CollectorやGrafana TempoなどのOTLP/HTTPの受信先、OpenSearch、ClickHouse、file、stdoutへ送ります。その `Tracer` はアプリケーションのspanを記録し、`WithObservers` でロガーへ渡すと、ロガーの処理も子のspanとして記録します。
 
 ```go
 cfg := heterolog.DefaultTelemetryConfig()
@@ -328,6 +328,7 @@ defer span.End()
 - 環境変数からは、`HETEROLOG_ENABLE_TRACES=true` と `HETEROLOG_TRACES_OTLP_ENDPOINT` を設定し、`env.NewTelemetry(ctx)` を呼びます。サービス名は `HETEROLOG_APP_NAME` から取ります。
 - spanは、出力先ごとの待ち行列からまとめて送るため、spanを終えるときにネットワークを待ちません。失敗した要求は送り直します。それでも受信先が受け付けなかったspanは、ログと同じspoolとfailure archiveに残せます。spoolのspanは、受信先が回復したら、再起動後も含めて送り直します。残さないspanと、待ち行列に入らなかったspanは捨て、メトリクスで数え、`WithTelemetryErrorHandler` で渡した関数（渡さなければ標準のlogger）に知らせます。
 - `TraceExporterOpenSearch` は、spanを1件ずつ、OpenSearch Data Prepperと同じ形の文書として書くため、OpenSearch DashboardsのTrace Analyticsでspanを見られます。先に[index template](docs/opensearch/otel-v1-apm-span-index-template.json)を登録してください。
+- `TraceExporterClickHouse` は、spanを1件ずつ、OpenTelemetry Collectorの `otel_traces` と同じ列の表へ入れるため、GrafanaのClickHouseのdata sourceで見られます。先に[otel_traces.sql](docs/clickhouse/otel_traces.sql)で表を作ってください。
 - `pkg/observer` はW3Cの `traceparent` headerを読み書きするため、traceをサービスをまたいで続けられます。
 - OpenTelemetry SDKのspanも、`otelexport.NewSpanExporter(tel)` で同じように送れます。SDKを使わないプログラムがSDKをリンクしないよう、別のパッケージにしています。
 

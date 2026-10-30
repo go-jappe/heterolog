@@ -1,12 +1,13 @@
 // Package telemetry defines the configuration of heterolog.NewTelemetry, which
 // delivers spans and metrics, from the Tracer and the Meter of heterolog and
-// from the OpenTelemetry SDK, to OTLP/HTTP receivers, OpenSearch,
+// from the OpenTelemetry SDK, to OTLP/HTTP receivers, OpenSearch, ClickHouse,
 // VictoriaMetrics, files and stdout.
 package telemetry
 
 import (
 	"time"
 
+	"github.com/go-jappe/heterolog/pkg/clickhouse"
 	"github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/opensearch"
@@ -41,6 +42,10 @@ const (
 	// the format of the trace analytics of OpenSearch Data Prepper, which the
 	// Trace Analytics of OpenSearch Dashboards shows.
 	TraceExporterOpenSearch TraceExporter = "opensearch"
+	// TraceExporterClickHouse inserts each span into a ClickHouse table with the
+	// columns of the otel_traces table of the OpenTelemetry Collector, which
+	// the ClickHouse data source of Grafana reads.
+	TraceExporterClickHouse TraceExporter = "clickhouse"
 )
 
 // TracesConfig configures the recording and delivery of spans.
@@ -71,6 +76,8 @@ type TracesConfig struct {
 	File FileConfig
 	// OpenSearch configures TraceExporterOpenSearch.
 	OpenSearch OpenSearchConfig
+	// ClickHouse configures TraceExporterClickHouse.
+	ClickHouse ClickHouseConfig
 }
 
 // HTTPConfig configures a destination that posts spans or metrics over HTTP:
@@ -148,6 +155,39 @@ type OpenSearchConfig struct {
 	// A document that OpenSearch rejected for its content, such as a field
 	// that does not match the mapping, is kept as quarantine, and one that it
 	// rejected for another reason, such as a missing index, as dead.
+	FailureStore FailureStoreConfig
+}
+
+// ClickHouseConfig configures TraceExporterClickHouse.
+//
+// Each span is inserted as one row, with the JSONEachRow format of the HTTP
+// interface, into a table with the columns of the otel_traces table that the
+// ClickHouse exporter of the OpenTelemetry Collector writes, so tools that read
+// that table, such as the ClickHouse data source of Grafana, can show the
+// spans. Create the table before sending, such as with
+// docs/clickhouse/otel_traces.sql in the repository.
+type ClickHouseConfig struct {
+	// Client configures the connection as for the log destination of
+	// ClickHouse: the endpoint, the database and table, the credentials, the
+	// headers, the timeout of each request, and the compression.
+	Client clickhouse.Config
+	// Retries is the number of times that a request that failed temporarily
+	// is sent again. As for the log destination of ClickHouse, the statuses
+	// 408, 429, 500, 502, 503, and 504 and failures without a response are
+	// temporary, and errors that do not depend on the rows, such as a missing
+	// table, are not. 0 does not resend.
+	Retries int
+	// RetryBaseDelay and RetryMaxDelay set the wait before each resend, as in
+	// HTTPConfig.
+	RetryBaseDelay time.Duration
+	RetryMaxDelay  time.Duration
+	// CircuitBreaker stops sending for a while after requests keep failing
+	// temporarily, as in HTTPConfig.
+	CircuitBreaker bool
+	// FailureStore keeps the spans that could not be sent, as in HTTPConfig.
+	// A row that ClickHouse could not read is kept as quarantine, and the
+	// spans of a request that it rejected for another reason, such as a
+	// missing table, as dead.
 	FailureStore FailureStoreConfig
 }
 

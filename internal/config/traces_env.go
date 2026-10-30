@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 
+	clickhousecfg "github.com/go-jappe/heterolog/internal/config/clickhouse"
 	"github.com/go-jappe/heterolog/internal/config/logconfig"
 	"github.com/go-jappe/heterolog/internal/config/opensearch"
 	metricsdelivery "github.com/go-jappe/heterolog/internal/infrastructure/metrics"
@@ -31,10 +32,12 @@ type TracesConfig struct {
 	Traces pkgtelemetry.TracesConfig
 	// FileDirは、spanのfileを置くdirectoryです。
 	FileDir string
-	// FailureStoreとOpenSearchFailureStoreは、otlpとopensearchの送り先のfailure storeの設定
-	// です。保存先のpathなど、ログと共通の項目は、MapTelemetryConfigが組み立てます。
+	// FailureStore、OpenSearchFailureStore、ClickHouseFailureStoreは、otlp、opensearch、
+	// clickhouseの送り先のfailure storeの設定です。保存先のpathなど、ログと共通の項目は、
+	// MapTelemetryConfigが組み立てます。
 	FailureStore           TelemetryFailureStoreConfig
 	OpenSearchFailureStore TelemetryFailureStoreConfig
+	ClickHouseFailureStore TelemetryFailureStoreConfig
 }
 
 // tracesOpenSearchClientEnvKeysは、spanを書くOpenSearchへの接続のkeyです。ログの出力先の
@@ -58,6 +61,19 @@ var tracesOpenSearchClientEnvKeys = openSearchClientKeys{
 	CertFile:           "HETEROLOG_TRACES_OPENSEARCH_CERT_FILE",
 	KeyFile:            "HETEROLOG_TRACES_OPENSEARCH_KEY_FILE",
 	CAFile:             "HETEROLOG_TRACES_OPENSEARCH_CA_FILE",
+}
+
+// tracesClickHouseClientEnvKeysは、spanを書くClickHouseへの接続のkeyです。ログの出力先の
+// ClickHouse（HETEROLOG_CLICKHOUSE_*）とは別に設定します。
+var tracesClickHouseClientEnvKeys = clickHouseClientKeys{
+	Endpoint:        "HETEROLOG_TRACES_CLICKHOUSE_ENDPOINT",
+	Database:        "HETEROLOG_TRACES_CLICKHOUSE_DATABASE",
+	Table:           "HETEROLOG_TRACES_CLICKHOUSE_TABLE",
+	Timeout:         "HETEROLOG_TRACES_CLICKHOUSE_TIMEOUT_SECOND",
+	Username:        "HETEROLOG_TRACES_CLICKHOUSE_USERNAME",
+	Password:        "HETEROLOG_TRACES_CLICKHOUSE_PASSWORD",
+	Headers:         "HETEROLOG_TRACES_CLICKHOUSE_HEADERS",
+	CompressRequest: "HETEROLOG_ENABLE_TRACES_CLICKHOUSE_COMPRESS_REQUEST",
 }
 
 // loadTracesConfigは、traceの設定を読み込みます。HETEROLOG_ENABLE_TRACESがfalseなら、
@@ -97,16 +113,47 @@ func loadTracesConfig(env pkgenv.Lookup) (TracesConfig, error) {
 
 	openSearchCfg, openSearchErr := loadTracesOpenSearchEnv(env, defaults.OpenSearch)
 	cfg.Traces.OpenSearch = openSearchCfg
+	clickHouseCfg, clickHouseErr := loadTracesClickHouseEnv(env, defaults.ClickHouse)
+	cfg.Traces.ClickHouse = clickHouseCfg
 
 	cfg.FileDir = env.GetEnvString("HETEROLOG_TRACES_FILE_DIR", defaultTracesFileDir)
 	failureStore, failureStoreErr := loadTelemetryFailureStoreConfig(env, tracesOTLPFailureStoreKeys)
 	cfg.FailureStore = failureStore
 	openSearchFailureStore, openSearchFailureStoreErr := loadTelemetryFailureStoreConfig(env, tracesOpenSearchFailureStoreKeys)
 	cfg.OpenSearchFailureStore = openSearchFailureStore
+	clickHouseFailureStore, clickHouseFailureStoreErr := loadTelemetryFailureStoreConfig(env, tracesClickHouseFailureStoreKeys)
+	cfg.ClickHouseFailureStore = clickHouseFailureStore
 	return cfg, errors.Join(
 		samplingRatioErr, queueSizeErr, batchSizeErr, exportIntervalErr,
-		otlpErr, openSearchErr, failureStoreErr, openSearchFailureStoreErr,
+		otlpErr, openSearchErr, clickHouseErr, failureStoreErr, openSearchFailureStoreErr, clickHouseFailureStoreErr,
 	)
+}
+
+// loadTracesClickHouseEnvは、spanを書くClickHouseの送り先の設定を読みます。接続は、ログの
+// 出力先と同じ読み方で、HETEROLOG_TRACES_CLICKHOUSE_*から読みます。failure storeの設定は、
+// defaultsのままです。
+func loadTracesClickHouseEnv(env pkgenv.Lookup, defaults pkgtelemetry.ClickHouseConfig) (pkgtelemetry.ClickHouseConfig, error) {
+	client, clientErr := loadClickHouseClientEnv(env, tracesClickHouseClientEnvKeys, clickhousecfg.ClientConfig{
+		Endpoint:        defaults.Client.Endpoint,
+		Database:        defaults.Client.Database,
+		Table:           defaults.Client.Table,
+		Timeout:         defaults.Client.Timeout,
+		Username:        defaults.Client.Username,
+		Password:        defaults.Client.Password,
+		Headers:         defaults.Client.Headers,
+		CompressRequest: defaults.Client.CompressRequest,
+	})
+	retries, retriesErr := env.GetEnvInt("HETEROLOG_TRACES_CLICKHOUSE_RETRIES", defaults.Retries)
+	retryBaseDelay, retryBaseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_TRACES_CLICKHOUSE_RETRY_BASE_DELAY_MILLISECOND", defaults.RetryBaseDelay)
+	retryMaxDelay, retryMaxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_TRACES_CLICKHOUSE_RETRY_MAX_DELAY_MILLISECOND", defaults.RetryMaxDelay)
+	circuitBreaker, circuitBreakerErr := env.GetEnvBool("HETEROLOG_ENABLE_TRACES_CLICKHOUSE_CIRCUIT_BREAKER", defaults.CircuitBreaker)
+	cfg := defaults
+	cfg.Client = *newClickHouseClientConfig(client)
+	cfg.Retries = retries
+	cfg.RetryBaseDelay = retryBaseDelay
+	cfg.RetryMaxDelay = retryMaxDelay
+	cfg.CircuitBreaker = circuitBreaker
+	return cfg, errors.Join(clientErr, retriesErr, retryBaseDelayErr, retryMaxDelayErr, circuitBreakerErr)
 }
 
 // loadTracesOpenSearchEnvは、spanを書くOpenSearchの送り先の設定を読みます。接続は、ログの
@@ -149,6 +196,9 @@ func MapTelemetryConfig(a AppConfig) pkgtelemetry.Config {
 		cfg.Traces.OTLP.FailureStore = mapTelemetryFailureStoreConfig(&a, checkpointSourceTracesOTLP, a.Traces.FailureStore)
 		cfg.Traces.OpenSearch.FailureStore = mapTelemetryFailureStoreConfig(
 			&a, checkpointSourceTracesOpenSearch, a.Traces.OpenSearchFailureStore,
+		)
+		cfg.Traces.ClickHouse.FailureStore = mapTelemetryFailureStoreConfig(
+			&a, checkpointSourceTracesClickHouse, a.Traces.ClickHouseFailureStore,
 		)
 	}
 	if a.Metrics.Enabled {

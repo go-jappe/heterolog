@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
+	pkgclickhouse "github.com/go-jappe/heterolog/pkg/clickhouse"
 	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
@@ -25,6 +26,15 @@ const (
 	// DefaultOpenSearchIndexは、spanを書く既定のindexです。OpenSearch Dashboardsの
 	// Trace Analyticsが読むindex pattern（otel-v1-apm-span-*）に合わせます。
 	DefaultOpenSearchIndex = "otel-v1-apm-span-heterolog"
+
+	// DefaultClickHouseEndpoint、DefaultClickHouseDatabase、DefaultClickHouseTableは、spanを
+	// 書くClickHouseの既定の接続先と表です。OpenTelemetry CollectorのClickHouse exporterの
+	// 既定の表（default.otel_traces）に合わせます。DefaultClickHouseUsernameは、ログの出力先と
+	// 同じ既定の利用者です。
+	DefaultClickHouseEndpoint = "http://localhost:8123"
+	DefaultClickHouseDatabase = "default"
+	DefaultClickHouseTable    = "otel_traces"
+	DefaultClickHouseUsername = "default"
 )
 
 // DefaultConfigは、送り先を選んでいないtraceの既定の設定を返します。
@@ -36,6 +46,27 @@ func DefaultConfig() pkgtelemetry.TracesConfig {
 		ExportInterval: DefaultExportInterval,
 		OTLP:           delivery.DefaultHTTPConfig(DefaultOTLPEndpoint),
 		OpenSearch:     DefaultOpenSearchConfig(),
+		ClickHouse:     DefaultClickHouseConfig(),
+	}
+}
+
+// DefaultClickHouseConfigは、ClickHouseの送り先の既定の設定を返します。送り直しと
+// failure storeは、OTLP/HTTPの送り先と同じ既定値です。
+func DefaultClickHouseConfig() pkgtelemetry.ClickHouseConfig {
+	http := delivery.DefaultHTTPConfig("")
+	return pkgtelemetry.ClickHouseConfig{
+		Client: pkgclickhouse.Config{
+			Endpoint:        DefaultClickHouseEndpoint,
+			Database:        DefaultClickHouseDatabase,
+			Table:           DefaultClickHouseTable,
+			Timeout:         http.Timeout,
+			Username:        DefaultClickHouseUsername,
+			CompressRequest: http.Compression == "gzip",
+		},
+		Retries:        http.Retries,
+		RetryBaseDelay: http.RetryBaseDelay,
+		RetryMaxDelay:  http.RetryMaxDelay,
+		FailureStore:   http.FailureStore,
 	}
 }
 

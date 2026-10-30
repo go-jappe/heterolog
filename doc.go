@@ -10,10 +10,10 @@
 //
 // NewTelemetry records spans with its Tracer and metrics with its Meter, and
 // sends them, together with those from the OpenTelemetry SDK passed through
-// package otelexport: spans to OTLP/HTTP receivers, OpenSearch, files, and
-// stdout, and metrics to OTLP/HTTP receivers, VictoriaMetrics, files, and
-// stdout. Pass its Tracer and Meter to loggers with WithObservers to trace and
-// measure their work.
+// package otelexport: spans to OTLP/HTTP receivers, OpenSearch, ClickHouse,
+// files, and stdout, and metrics to OTLP/HTTP receivers, VictoriaMetrics,
+// files, and stdout. Pass its Tracer and Meter to loggers with WithObservers
+// to trace and measure their work.
 //
 // Advanced backend and durability settings are available in pkg/logger and
 // its related public packages. A configuration must not be modified while a

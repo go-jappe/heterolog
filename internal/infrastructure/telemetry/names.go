@@ -73,8 +73,8 @@ const (
 	// TraceExportDurationは、送り先が1つのbatchを送るのにかかった秒数です。再試行と、その
 	// 間の待ち時間を含みます。
 	TraceExportDuration = "heterolog_trace_export_duration_seconds"
-	// TraceExportRetriesは、otlpとopensearchの送り先が送信をやり直した回数を、やり直す
-	// 理由（reason）ごとに数えます。
+	// TraceExportRetriesは、otlp・opensearch・clickhouseの送り先が送信をやり直した回数を、
+	// やり直す理由（reason）ごとに数えます。
 	TraceExportRetries = "heterolog_trace_export_retries_total"
 	// MetricPointsは、NewTelemetryのmetricsの配送の仕組みが、送り先（exporter）ごとに扱った
 	// data pointの数を、結果（outcome）ごとに数えます。結果の値は、TraceSpansと同じです。

@@ -20,6 +20,7 @@ const (
 	TraceExporterStdout = pkgtelemetry.TraceExporterStdout
 
 	TraceExporterOpenSearch = pkgtelemetry.TraceExporterOpenSearch
+	TraceExporterClickHouse = pkgtelemetry.TraceExporterClickHouse
 )
 
 // MetricExporter names a destination of metrics in TelemetryConfig.
