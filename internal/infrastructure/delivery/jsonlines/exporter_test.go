@@ -9,7 +9,13 @@ import (
 	"testing"
 
 	"github.com/go-jappe/heterolog/internal/application/tracing"
+	"github.com/go-jappe/heterolog/internal/infrastructure/traces/otlp"
 )
+
+// marshalSpansは、spanをOTLP/JSONにします。
+func marshalSpans(spans []tracing.SpanData) ([]byte, error) {
+	return otlp.MarshalJSON(spans, &tracing.Resource{})
+}
 
 func TestOpenFileAppendsOneJSONLinePerBatch(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "spans.jsonl")
@@ -20,7 +26,7 @@ func TestOpenFileAppendsOneJSONLinePerBatch(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{}\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
-	exporter, err := OpenFile(path, &tracing.Resource{})
+	exporter, err := OpenFile(path, marshalSpans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +74,7 @@ func TestOpenFileReportsAnUnusablePath(t *testing.T) {
 	if err := os.WriteFile(blocker, nil, 0o640); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := OpenFile(filepath.Join(blocker, "spans.jsonl"), nil); err == nil {
+	if _, err := OpenFile(filepath.Join(blocker, "spans.jsonl"), marshalSpans); err == nil {
 		t.Error("OpenFile under a regular file succeeded")
 	}
 }

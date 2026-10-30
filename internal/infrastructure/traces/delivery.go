@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/tracing"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/failurestore"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/jsonlines"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/otlphttp"
 	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces/otlp"
@@ -30,6 +31,12 @@ func NewOTLPExporter(cfg otlphttp.Config, resource *tracing.Resource, meter pkgo
 		BackendName:   OTLPBackendName,
 		Unit:          "spans",
 	}, meter)
+}
+
+// MarshalJSONは、Resourceを持たないspanにdefaultResourceを付けて、spanのbatchを
+// OTLP/JSONの1行にする関数を返します。fileとstdoutの送り先に使います。
+func MarshalJSON(defaultResource *tracing.Resource) jsonlines.Marshal[tracing.SpanData] {
+	return func(spans []tracing.SpanData) ([]byte, error) { return otlp.MarshalJSON(spans, defaultResource) }
 }
 
 // NewCodecは、spanを1件ずつ、そのResourceとinstrumentation scopeを含むOTLP/JSONの

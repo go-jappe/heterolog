@@ -12,10 +12,10 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/tracing"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/failurestore"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/jsonlines"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/otlphttp"
 	"github.com/go-jappe/heterolog/internal/infrastructure/otlpcommon"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
-	"github.com/go-jappe/heterolog/internal/infrastructure/traces/jsonlines"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
@@ -110,9 +110,9 @@ func newTraceDestinations(
 			}
 			destinations = append(destinations, destination)
 		case pkgtelemetry.TraceExporterStdout:
-			destinations = append(destinations, traces.Destination{Exporter: jsonlines.NewStdout(resource)})
+			destinations = append(destinations, traces.Destination{Exporter: jsonlines.NewStdout(traces.MarshalJSON(resource))})
 		case pkgtelemetry.TraceExporterFile:
-			exporter, err := jsonlines.OpenFile(cfg.Traces.File.Path, resource)
+			exporter, err := jsonlines.OpenFile(cfg.Traces.File.Path, traces.MarshalJSON(resource))
 			if err != nil {
 				return nil, errors.Join(fmt.Errorf("create the file trace exporter: %w", err), closeTraceDestinations(destinations))
 			}
