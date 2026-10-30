@@ -11,6 +11,7 @@
 - [設定](#設定)
 - [ログファイル](#ログファイル)
 - [失敗時の扱いと再送](#失敗時の扱いと再送)
+- [トレースの送信](#トレースの送信)
 - [メトリクスとトレース](#メトリクスとトレース)
 - [出力先ごとの注意](#出力先ごとの注意)
 - [ログ復旧CLI](#ログ復旧cli)
@@ -164,7 +165,7 @@ reportの宛先ごとの結果は、次のいずれかです。
 - 有効にしたロガーの設定と、ロガー間の整合性（保存先の重複など）を読み込み時に検証し、見つかった問題をまとめて返します。`errors.As` で `EnvFileError`・`InvalidEnvironmentValueError`・`RenamedEnvironmentKeyError`・`pkg/env` の `VariableError` を取り出すと、問題のキーを特定できます。
 - 設定を変えてからロガーを作る場合は、`cfg, opts, err := env.Config()`（`AsyncConfig`・`DeliveryConfig` も同様）で取り出し、`heterolog.New(ctx, cfg, opts...)` に渡します。`opts` には、環境設定から読んだspoolの再送設定とCloudWatch Logsのstream分割が入ります。
 - `HETEROLOG_ENABLE_LOGGING=false` などで無効にしたロガーは作れず、`ErrEnvLoggerDisabled` を返します。
-- トレース（`WithObservers`）は環境設定から作りません。`env.New(ctx, opts...)` のように追加のoptionとして渡します。`HETEROLOG_USE_MEMORY_PRESSURE_*` で有効にしたspoolは、`WithMemoryPressureMonitor` を渡さなければ、`HETEROLOG_MEMORY_CRITICAL_RATIO`・`HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB`・`HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITS` でメモリ逼迫を判定します。
+- 環境設定から作ったロガーは、それだけではトレースを記録しません。`HETEROLOG_ENABLE_TRACES` と `HETEROLOG_TRACES_*` を読む `env.NewTelemetry(ctx)` で `Telemetry` を作り（[トレースの送信](#トレースの送信)を参照）、その `Tracer` を `env.New(ctx, heterolog.WithObservers(tel.Tracer(), nil))` のように追加のoptionとして渡します。`HETEROLOG_USE_MEMORY_PRESSURE_*` で有効にしたspoolは、`WithMemoryPressureMonitor` を渡さなければ、`HETEROLOG_MEMORY_CRITICAL_RATIO`・`HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB`・`HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITS` でメモリ逼迫を判定します。
 
 ### 稼働中の設定変更
 
@@ -392,9 +393,86 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 - 環境設定でloggerやclientのtimeout・retry設定を省略した場合の既定値は `.env.example` の値と同じで、既定の `must_fit` を満たします（通常・非同期loggerは18秒、Deliveryは12秒、OpenSearchのclientは1秒、Loki・ClickHouse・CloudWatch Logsのclientは2秒）。
 - 環境設定から読み込む復旧CLIは、復旧を始める前にこの予算を含む設定全体を検証し、満たさない設定は設定エラーで終了します。
 
+## トレースの送信
+
+`NewTelemetry` は、その `Tracer` でspanを記録し、OpenTelemetry SDKのspanとともに、`TelemetryConfig.Traces.Exporters` の出力先へ送ります。出力先は、OpenTelemetry CollectorやGrafana TempoなどのOTLP/HTTPの受信先（`otlp`）、file（`file`）、stdout（`stdout`）です。出力先がなければ、`Tracer` は何も記録しません。出力先以外のすべての設定を埋めた `DefaultTelemetryConfig()` から始めます。`TelemetryConfig.Validate` は不正な設定を列挙し、`NewTelemetry` も同じerrorを返します。
+
+### span
+
+- spanは、`StartSpan` に渡したcontextのspan context（`Tracer` が始めたspanのもの、または `pkg/observer.ContextWithSpanContext` で入れたもの）の子になり、親のサンプリングの判定に従います。親のないspanは新しいtraceを始め、`SamplingRatio` で記録するかを決めます。判定はOpenTelemetry SDKの `TraceIDRatioBased` と同じくtrace IDから決めるため、同じ割合のサービスどうしで判定がそろいます。
+- 記録しないspanも、`Sampled` をfalseにしたspan contextを返すcontextに入れるため、子のspanとほかのサービスが同じ判定に従います。
+- `RecordError` は、`exception.type` と `exception.message` を持つ `exception` のeventを足し、statusを `StatusError` にします。`SetStatus(StatusOK, ...)` は確定した結果で、後の呼出しでは変わりません。
+- `pkg/observer.StartSpanWithOptions` で、spanの種類（`SpanKindServer` など）と、ほかのspanへのlinkを渡せます。`StartSpan` で始めたspanは `SpanKindInternal` です。
+- 1つのspanが持つ属性・event・linkはそれぞれ128個まで、各eventとlinkの属性も128個までです。超えた分は捨て、その数をOTLPのdropped countとして送ります。同じkeyの属性は、後の値で置き換えます。
+- `End` の後の呼出しは何もしません。spanのメソッドは並行に呼べます。
+- `Tracer` のspanのinstrumentation scopeは `github.com/go-jappe/heterolog` で、resourceは `TelemetryConfig.Resource` から、ログのOTel形式と同じ属性名で作ります。属性は `service.name`（空なら `unknown_service:` と実行ファイルの名前）、`service.version`、`host.name`、`os.type`、`deployment.environment`、`heterolog.runtime.type`、`service.instance.id`、`cloud.provider`、`cloud.region` です。空の値は送りません。
+
+### サービスをまたいでtraceを続ける
+
+`pkg/observer` は、W3Cの `traceparent` headerを読み書きします。
+
+```go
+// 受けた要求: 呼び出し元のtraceを続けます。
+if sc, err := observer.ParseTraceParent(r.Header.Get("traceparent")); err == nil {
+    ctx = observer.ContextWithSpanContext(ctx, sc)
+}
+ctx, span := observer.StartSpanWithOptions(ctx, tel.Tracer(), "GET /items",
+    observer.StartOptions{Kind: observer.SpanKindServer})
+defer span.End()
+
+// 送る要求: 今のspanを伝えます。
+req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent())
+```
+
+- `ParseTraceParent` は、後の版からもversion `00` の項目を読み、大文字の数字とすべて0のIDを拒否します。errorにheaderの値は含めません。
+- `tracestate` headerは読み書きしません。
+
+### OpenTelemetry SDKのspan
+
+`otelexport.NewSpanExporter(tel)` は、SDKのspanを `Telemetry` の待ち行列へ入れる `sdktrace.SpanExporter` を返します。`Telemetry` は、それを自分のspanとともに送ります。SDKを使わないプログラムがSDKをリンクしないよう、別のパッケージ `github.com/go-jappe/heterolog/otelexport` にしています。
+
+- サンプリングはSDKが行います。`SamplingRatio` は `Telemetry` の `Tracer` にだけ働きます。
+- spanは、SDKのresourceとinstrumentation scopeを保ちます。resourceが空のspanは、`Telemetry` のresourceで送ります。
+- `ExportSpans` は、ネットワークを待たずに戻ります。exporterの `Shutdown` は、spanの受け付けを止めるだけです。SDKが持っているspanを `Telemetry` が最後のbatchとして送れるよう、`TracerProvider` を `Telemetry` より先に止めてください。
+
+### 配送
+
+- 出力先ごとに `QueueSize` 個のspanの待ち行列とgoroutineを持つため、遅い出力先はほかの出力先を待たせません。`Span.End` と `ExportSpans` は待ちません。出力先の待ち行列に入らないspanは、その出力先では捨てます。
+- 出力先は、`BatchSize` 個のspanがたまるか、前に送ってから `ExportInterval` が過ぎるとbatchを送ります。送っている間、spanは待ち行列で待ちます。
+- `otlp` は、batchをprotobuf（`Content-Type: application/x-protobuf`）で、`Compression` が `none` でなければgzipで圧縮し、`OTLP.Headers` を付けて、`OTLP.Endpoint` へそのままPOSTします（`/v1/traces` は足しません）。`OTLP.Timeout` は1回の要求の上限です。ログの出力先と同じく、リダイレクトは追わず、送り直しません。
+- 失敗した要求は、ログの出力先とは異なり、[OTLPの仕様](https://opentelemetry.io/docs/specs/otlp/)の規則で `OTLP.Retries` 回まで送り直します。送り直すのは、ステータス429・502・503・504と、応答を受け取れなかった失敗（接続の拒否、切断、タイムアウトなど）だけです。仕様は、400・408・500など、ほかのステータスの送り直しを禁じています。
+- 送り直す前に待つ時間は、`OTLP.RetryBaseDelay` から1回ごとに2倍にして `OTLP.RetryMaxDelay` までに抑え、その半分から全部までの間で無作為に選びます。多くのprocessが同時に送り直さないようにするためです。応答に `Retry-After` があれば、`OTLP.RetryMaxDelay` までの範囲でそれを使います。
+- 部分的な成功（partial success）の応答は、受け付けられなかったspanを失敗として数え、送り直しません。
+- `file` と `stdout` は、batchをOTLP JSONの1行として書きます。trace IDとspan IDは16進数、列挙は数値、64-bitの整数と時刻は文字列です。`file` は、ないディレクトリを作って `File.Path` へ追記します。ファイルはローテーションも削除もしません。
+- 送り直しても送れなかったspanは捨てます。ディスクには残しません。
+- 配送の仕組みは、自分の送信のspanを作りません。作ると、そのspanもまた送ることになるためです。代わりに、以下のメトリクスで様子を知らせます。メトリクスは、`NewTelemetry` へ `WithObservers` で渡した `Meter` で記録し、そのoptionの `Tracer` は使いません。
+- `Shutdown(ctx)` は、spanの受け付けを止め、待ち行列のspanを送り、出力先を閉じます。先に `ctx` が終わると `ctx.Err()` を返し、送信は裏で続きます。後の `Shutdown` は同じ後始末を待ちます。`Shutdown` を始めた後に終わったspanは捨てます。最後のspanも送れるよう、`Tracer` を使うロガーは `Telemetry` より先に閉じてください。
+
+### 環境変数
+
+`env.TelemetryConfig()` と `env.NewTelemetry(ctx)` は、次のキーを使います。すべて [.env.example](../.env.example) に載っています。
+
+| キー | 設定 | 既定値 |
+|---|---|---|
+| `HETEROLOG_ENABLE_TRACES` | トレースを送るか。`false` なら、ほかのキーは読みません。 | `false` |
+| `HETEROLOG_TRACES_TYPE` | `Exporters`（カンマ区切り） | `otlp` |
+| `HETEROLOG_TRACES_SAMPLING_RATIO` | `SamplingRatio` | `1` |
+| `HETEROLOG_TRACES_QUEUE_SIZE`、`HETEROLOG_TRACES_BATCH_SIZE` | `QueueSize`、`BatchSize` | `2048`、`512` |
+| `HETEROLOG_TRACES_EXPORT_INTERVAL_MILLISECOND` | `ExportInterval` | `5000` |
+| `HETEROLOG_TRACES_OTLP_ENDPOINT` | `OTLP.Endpoint` | `http://localhost:4318/v1/traces` |
+| `HETEROLOG_TRACES_OTLP_HEADERS` | `OTLP.Headers`（JSONのobject） | なし |
+| `HETEROLOG_TRACES_OTLP_COMPRESSION` | `OTLP.Compression` | `gzip` |
+| `HETEROLOG_TRACES_OTLP_TIMEOUT_SECOND` | `OTLP.Timeout` | `10` |
+| `HETEROLOG_TRACES_OTLP_RETRIES` | `OTLP.Retries` | `3` |
+| `HETEROLOG_TRACES_OTLP_RETRY_BASE_DELAY_MILLISECOND`、`HETEROLOG_TRACES_OTLP_RETRY_MAX_DELAY_MILLISECOND` | `OTLP.RetryBaseDelay`、`OTLP.RetryMaxDelay` | `1000`、`5000` |
+| `HETEROLOG_TRACES_FILE_DIR` | `File.Path` のディレクトリ。`File.Path` はその中の `spans.jsonl` です。ログのディレクトリと同じく、`HETEROLOG_SYSTEM_LOG_DIR` と `HETEROLOG_TARGET` を基準に解決します。 | `/traces` |
+
+- resourceは、ロガーと同じキーから作ります。`HETEROLOG_APP_NAME`（`service.name`）、`HETEROLOG_APP_ENV`、`HETEROLOG_RUNTIME_TYPE`、`HETEROLOG_INSTANCE_ID`、`HETEROLOG_CLOUD_PROVIDER`、`HETEROLOG_CLOUD_PROVIDER_REGION` と、プロセスのホスト名とOSです。
+- `LoadEnvConfig` は、`HETEROLOG_ENABLE_TRACES` が `true` ならトレースの設定を確かめ、問題を `HETEROLOG_TRACES_*` の下に `pkg/telemetry` の `FieldError` として返します。認証情報を含み得るエンドポイントとheaderの値は表示しません。
+
 ## メトリクスとトレース
 
-`WithObservers` で `Tracer` と `Meter` を渡すと、以下のメトリクスとspanを受け取れます。渡さなければ何も記録しません。
+`WithObservers` で `Tracer` と `Meter` を渡すと、以下のメトリクスとspanを受け取れます。渡さなければ何も記録しません。`heterolog_trace_*` のメトリクスは[トレースの送信](#トレースの送信)のもので、`NewTelemetry` へ渡した `Meter` で記録します。
 
 ### メトリクス
 
@@ -421,6 +499,9 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 | `heterolog_memory_pressure_critical` | Gauge | `backend` | 同じ監視の最後の判定で、memoryが逼迫している（critical）なら1、そうでなければ0です。 |
 | `heterolog_spool_replay_records_total` | Counter | `backend`・`outcome` | spoolから読み戻して送り直したrecordの数を、結果ごとに数えます。結果は `success`・`retryable`（spoolへ戻し、後でまた送り直します）・`dead`・`quarantine` です。応答をrecordへ対応付けられない場合はfile全体を隔離し、そのrecordをすべて `quarantine` として数えます。 |
 | `heterolog_file_dropped_entries_total` | Counter | なし | fileロガーが過負荷時の方針 `drop` で破棄したentryの数です。 |
+| `heterolog_trace_spans_total` | Counter | `exporter`（`otlp`・`file`・`stdout`）、`outcome` | `NewTelemetry` の出力先が扱ったspanの数を、結果ごとに数えます。結果は、`success`、`failure`（送り直しても送れなかったspanと、部分的な成功で受け付けられなかったspan）、`dropped`（待ち行列に入らなかったspanと、`Shutdown` を始めた後に終わったspan）です。 |
+| `heterolog_trace_export_duration_seconds` | Histogram | `exporter`、`outcome`（`success`・`failure`） | spanの1つのbatchを送るのにかかった秒数です。送り直しとその間の待ち時間を含みます。部分的な成功は `success` です。 |
+| `heterolog_trace_export_retries_total` | Counter | `exporter`、`reason` | `otlp` の出力先が送り直した回数を、`http_status` や `net_timeout` などの理由ごとに数えます。 |
 | `heterolog_internal_logs_total` | Counter | `level`（`error`・`warn`・`info`・`debug`） | 内部ログの通知先（`OnErrorConfig` など）へ渡した内部ログ（書き込みの失敗や遅いリクエストなど）の数を、levelごとに数えます。[内部ログの通知](#内部ログの通知)を参照してください。 |
 
 ### span

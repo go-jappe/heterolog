@@ -39,6 +39,7 @@ jobs:
           ./internal/infrastructure/logger/handler ./pkg/logger ./pkg/victoriametrics
           ./internal/infrastructure/logger/opensearch ./internal/infrastructure/fsstore/spool/...
           ./internal/infrastructure/spool/log/... ./internal/observer/memory/pressure
+          ./internal/application/tracing ./internal/infrastructure/traces/... ./internal/presentation/otelexport ./otelexport
 
   # macOSの一時directoryは/var → /private/varのsymlinkを経由します。同じ条件をLinuxで再現し、
   # 入力pathと実体のpathが異なる場合の比較・識別を試験します。

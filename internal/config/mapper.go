@@ -1465,7 +1465,14 @@ func newDeliveryFailureStoreConfig(
 	}
 }
 
+// newLoggerResourceは、実行環境の設定からResourceを作ります。LoadRuntimeEnvは常にCloudを
+// 設定しますが、zero値のEnvConfigのTelemetryConfigからも呼ばれるため、nilのCloudも扱います。
 func newLoggerResource(a *AppConfig) logger.Resource {
+	cloud := &logger.CloudResourceInfo{RuntimeInstanceID: a.RuntimeEnv.CoreInfo.RuntimeInstanceID}
+	if a.RuntimeEnv.Cloud != nil {
+		cloud.Provider = a.RuntimeEnv.Cloud.Provider
+		cloud.Region = a.RuntimeEnv.Cloud.Region
+	}
 	return logger.Resource{
 		ServiceName:    a.AppConfig.AppName,
 		ServiceVersion: a.AppConfig.AppVersion,
@@ -1473,11 +1480,7 @@ func newLoggerResource(a *AppConfig) logger.Resource {
 		OSType:         a.RuntimeEnv.CoreInfo.OSType,
 		Environment:    a.RuntimeEnv.CoreInfo.Environment,
 		RuntimeType:    a.RuntimeEnv.CoreInfo.RuntimeType,
-		Cloud: &logger.CloudResourceInfo{
-			RuntimeInstanceID: a.RuntimeEnv.CoreInfo.RuntimeInstanceID,
-			Provider:          a.RuntimeEnv.Cloud.Provider,
-			Region:            a.RuntimeEnv.Cloud.Region,
-		},
+		Cloud:          cloud,
 	}
 }
 

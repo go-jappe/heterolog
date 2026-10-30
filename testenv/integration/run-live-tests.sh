@@ -67,10 +67,11 @@ select_group() {
 		;;
 	tracing)
 		opt_in=(TEMPO_INTEGRATION_TEST OTEL_COLLECTOR_INTEGRATION_TEST)
-		packages=(./internal/infrastructure/logger/file)
+		packages=(./internal/infrastructure/logger/file ./internal/bootstrap)
 		tests=(
 			TestFileLogger_Log_WritesToFile_ForTempo
 			TestFileLogger_Log_WritesToFile_ForTempo_Via_Collector
+			TestTelemetrySendsSpansToTempoOverOTLPHTTP
 		)
 		;;
 	*)

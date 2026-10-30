@@ -42,7 +42,8 @@ type DeliveryRuntime struct {
 }
 
 var (
-	// ErrNilContext reports that New, NewAsync or NewDelivery received a nil context.
+	// ErrNilContext reports that New, NewAsync, NewDelivery or NewTelemetry
+	// received a nil context.
 	ErrNilContext = loggerruntime.ErrNilContext
 	// ErrDeliverySpoolUnsupported reports that NewDelivery received WithSpool. A
 	// Delivery logger reports each delivery to the caller and has no replay workers.

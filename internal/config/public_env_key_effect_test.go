@@ -285,6 +285,8 @@ var publicEnvKeyEffectBaseActivation = map[string]string{
 	"HETEROLOG_LOG_TYPE":                         publicEnvKeyEffectAllDestinations,
 	"HETEROLOG_ASYNC_LOG_TYPE":                   publicEnvKeyEffectAllDestinations,
 	"HETEROLOG_DELIVERY_LOG_TYPE":                publicEnvKeyEffectAllDestinations,
+	// traceの設定は、traceを有効にした場合だけ読みます。
+	"HETEROLOG_ENABLE_TRACES": "true",
 	// 公開例のOpenSearchはspoolだけを選ぶため、failure archiveの設定も読み込ませます。
 	"HETEROLOG_OPENSEARCH_DURABLE_TYPES":       "spool,fileArchive",
 	"HETEROLOG_ASYNC_OPENSEARCH_DURABLE_TYPES": "spool,fileArchive",
@@ -315,9 +317,10 @@ type publicEnvKeyEffectSpec struct {
 
 // publicEnvKeyEffectExemptionsは、値の変更をLoadConfigの結果で確認できないkeyと理由です。
 var publicEnvKeyEffectExemptions = map[string]string{
-	"HETEROLOG_ENV_PATH":            "selects the environment file; this test sets it to an empty file",
-	"HETEROLOG_OTEL_COLLECTOR_ADDR": "test-only variable for the opt-in OpenTelemetry Collector integration test",
-	"HETEROLOG_OTEL_TEMPO_ADDR":     "test-only variable for the opt-in Grafana Tempo integration test",
+	"HETEROLOG_ENV_PATH":              "selects the environment file; this test sets it to an empty file",
+	"HETEROLOG_OTEL_COLLECTOR_ADDR":   "test-only variable for the opt-in OpenTelemetry Collector integration test",
+	"HETEROLOG_OTEL_TEMPO_ADDR":       "test-only variable for the opt-in Grafana Tempo integration test",
+	"HETEROLOG_OTEL_TEMPO_QUERY_ADDR": "test-only variable for the opt-in Grafana Tempo integration test",
 }
 
 // publicEnvKeyMapperExemptionsは、LoadConfigが読みますがmapperの変換結果へ届かないkeyと理由です。
@@ -492,6 +495,10 @@ var publicEnvKeyEffectCandidateOverrides = map[string][]string{
 	"HETEROLOG_APP_ENV":               {"prod", "stg", "dev"},
 	"HETEROLOG_RUNTIME_TYPE":          {"k8s", "ecs", "local"},
 	"HETEROLOG_TIMEZONE_LOG":          {"America/New_York", "Asia/Tokyo"},
+	// traceの送り先の既定値はotlpなので、それ以外を候補にします。
+	"HETEROLOG_TRACES_TYPE":             {"file,stdout", "stdout"},
+	"HETEROLOG_TRACES_SAMPLING_RATIO":   {"0.5", "0.25"},
+	"HETEROLOG_TRACES_OTLP_COMPRESSION": {"none"},
 }
 
 // publicEnvKeyEffectIntegerSuffixesは、公開例の値が空でも整数を受け付けるkeyの語尾です。

@@ -29,8 +29,8 @@ IT_CONTAINERS=(
 	"$IT_OTEL_COLLECTOR_CONTAINER"
 )
 
-# 環境設定fileにはなく、準備完了の確認と診断だけに使うportです。
-IT_TEMPO_HTTP_PORT=23200
+# 環境設定fileにはなく、準備完了の確認と診断だけに使うportです。TempoのHTTPのportは、
+# 試験も使うため、環境設定fileのHETEROLOG_OTEL_TEMPO_QUERY_ADDRから読みます。
 IT_OTEL_COLLECTOR_HEALTH_PORT=23133
 
 # 宛先のportと認証情報を読む環境設定fileです。試験と同じくHETEROLOG_INTEGRATION_ENV_PATHを優先します。

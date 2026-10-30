@@ -12,6 +12,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/presentation/http/admin"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
 // ErrLoggerDisabledは、環境設定がHETEROLOG_ENABLE_LOGGING、
@@ -26,7 +27,8 @@ var ErrAdminAuditNotEnabled = appconfig.ErrAdminAuditNotEnabled
 // EnvConfigは、LoadがHETEROLOG_の環境変数から読んだ設定を持ちます。Config・AsyncConfig・
 // DeliveryConfig・AdminAuditConfigは、loggerのconstructorへ渡す設定とoptionを返します。
 //
-// 環境設定では、tracingは設定しません。WithObserversをoptionとして渡します。
+// 環境設定から作ったloggerは、計装を持ちません。TelemetryConfigの設定から作ったtelemetryの
+// Tracerなどを、WithObserversでoptionとして渡します。
 // HETEROLOG_USE_MEMORY_PRESSURE_*で有効にしたspoolは、WithMemoryPressureMonitorで監視を
 // 渡さなければ、HETEROLOG_MEMORY_CRITICAL_RATIO・HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB・
 // HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITSでmemory逼迫を判定します。
@@ -74,6 +76,11 @@ func Load(path string) (*EnvConfig, error) {
 	if app.AdminAudit.Enabled {
 		_, err := appconfig.MapAdminAuditLoggerConfig(app)
 		errs = append(errs, err)
+	}
+	if app.Traces.Enabled {
+		if err := appconfig.MapTelemetryConfig(app).Validate(); err != nil {
+			errs = append(errs, fmt.Errorf("HETEROLOG_TRACES_*: %w", err))
+		}
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
@@ -154,6 +161,14 @@ func (c *EnvConfig) AdminAuditConfig() (pkglogger.DeliveryLoggerConfig, []logger
 	return cfg, []loggerruntime.Option{
 		loggerruntime.WithCloudWatchLogsStreamRouting(c.app.AdminAudit.DeliveryLogger.DeliveryCloudWatchLogsConfig.LogStreamRoutingGranularity),
 	}, nil
+}
+
+// TelemetryConfigは、NewTelemetryへ渡すtelemetryの設定を返します。traceの設定は
+// HETEROLOG_ENABLE_TRACESとHETEROLOG_TRACES_*から、Resourceはloggerと同じ項目
+// （HETEROLOG_APP_NAMEなど）から読みます。HETEROLOG_ENABLE_TRACESがfalseなら、送り先の
+// ない設定を返します。Loadで確認済みです。
+func (c *EnvConfig) TelemetryConfig() pkgtelemetry.Config {
+	return appconfig.MapTelemetryConfig(c.app)
 }
 
 func newAdminServerConfig(cfg appconfig.AdminServerConfig) (pkgadmin.ServerConfig, bool) {

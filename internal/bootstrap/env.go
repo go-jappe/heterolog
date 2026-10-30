@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
+	"github.com/go-jappe/heterolog/internal/application/telemetryruntime"
 	"github.com/go-jappe/heterolog/internal/presentation/envconfig"
 )
 
@@ -46,4 +47,9 @@ func NewAdminAuditFromEnv(ctx context.Context, env *envconfig.EnvConfig, opts ..
 		return nil, err
 	}
 	return NewDelivery(ctx, cfg, append(envOpts, opts...)...)
+}
+
+// NewTelemetryFromEnvは、envのTelemetryConfigが返す設定とoptsから、telemetryを作ります。
+func NewTelemetryFromEnv(ctx context.Context, env *envconfig.EnvConfig, opts ...loggerruntime.Option) (*telemetryruntime.Runtime, error) {
+	return NewTelemetry(ctx, env.TelemetryConfig(), opts...)
 }

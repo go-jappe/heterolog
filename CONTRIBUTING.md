@@ -4,7 +4,7 @@ heterologのコードを書くときの決まりです。
 
 ## コメントと文書の言語
 
-- 公開APIの説明は英語で書きます。対象は、root packageと、`internal` でない `pkg/` のpackageにある、公開された名前（型、関数、メソッド、変数、定数、structのfield）のdoc commentです。package docと、Example関数と `examples/` の説明も英語にします。
+- 公開APIの説明は英語で書きます。対象は、root package、`otelexport`、`internal` でない `pkg/` のpackageにある、公開された名前（型、関数、メソッド、変数、定数、structのfield）のdoc commentです。package docと、Example関数と `examples/` の説明も英語にします。
 - ほかのコメントは日本語で書きます。対象は次のコメントです。
   - `internal` のpackage（公開された名前も含みます）
   - 公開されていない名前と、公開されていない型のメソッド
@@ -17,6 +17,7 @@ heterologのコードを書くときの決まりです。
 ## packageの分け方
 
 - root packageは公開の窓口だけにし、処理を置きません。
+- OpenTelemetry SDKの入口は、SDKを使わないprogramにSDKをlinkさせないよう、root packageの隣の公開package `otelexport` に置きます。これも窓口だけにし、処理は `internal/presentation/otelexport` に置きます。root packageとほかの公開packageは、OpenTelemetry SDKをimportしません。
 - 入口（HTTP、CLI、slog、環境変数）は `internal/presentation` に置き、処理は `internal/application` に置きます。
 - ただし、ログファイルの手動復旧（`log-recovery`）のように、infrastructure層だけで完結する処理には、application層のpackageを作りません。入口は、`cmd/` から渡された `internal/bootstrap` の関数で処理を呼び、infrastructure層の型を使います。
 - 出力先ごとのloggerは `internal/infrastructure` にあり、環境変数から設定を組み立てる処理は `internal/config` にあります。

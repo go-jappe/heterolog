@@ -53,6 +53,8 @@ fi
 if it_loopback_port HETEROLOG_CLICKHOUSE_ENDPOINT; then
 	probe ClickHouse "http://127.0.0.1:$IT_PORT/ping"
 fi
-probe Tempo "http://127.0.0.1:$IT_TEMPO_HTTP_PORT/ready"
+if it_loopback_port HETEROLOG_OTEL_TEMPO_QUERY_ADDR; then
+	probe Tempo "http://127.0.0.1:$IT_PORT/ready"
+fi
 probe "OpenTelemetry Collector" "http://127.0.0.1:$IT_OTEL_COLLECTOR_HEALTH_PORT/"
 it_endgroup

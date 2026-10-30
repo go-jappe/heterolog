@@ -39,7 +39,8 @@ type DeliveryRuntime struct {
 }
 
 var (
-	// ErrNilContextは、New・NewAsync・NewDeliveryがnilのcontextを受け取ったことを表します。
+	// ErrNilContextは、New・NewAsync・NewDeliveryと、internal/bootstrapのNewTelemetryが
+	// nilのcontextを受け取ったことを表します。
 	ErrNilContext = errors.New("logger context must not be nil")
 	// ErrNilBuilderは、New・NewAsync・NewDeliveryがnilのBuilderを受け取ったことを表します。
 	ErrNilBuilder = errors.New("logger builder must not be nil")

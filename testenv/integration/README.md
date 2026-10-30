@@ -27,7 +27,7 @@ containerと一緒に破棄します。
 | `opensearch-client` | `OPENSEARCH_INTEGRATION_TEST` | `pkg/opensearch` | `TestIndexDocument(s)ToLocalOpenSearch`、`TestIndexDocument(s)CompressedToLocalOpenSearch`（4件） |
 | `loki` | `LOKI_INTEGRATION_TEST` | `internal/infrastructure/logger`、`internal/infrastructure/logger/loki` | `TestLokiLoggerUsesActualDotEnvConfigAndStoresEntry`、`TestLokiSpoolUsesActualDotEnvConfigActiveAndResendsToBackend`、`TestLokiLoggerWithIntegrationEnvironmentPushesToLocalLoki` |
 | `clickhouse` | `CLICKHOUSE_INTEGRATION_TEST` | `internal/infrastructure/logger` | `TestClickHouseLoggerUsesActualDotEnvConfigAndStoresRow`、`TestClickHouseSpoolUsesActualDotEnvConfigActiveAndResendsToBackend` |
-| `tracing` | `TEMPO_INTEGRATION_TEST`、`OTEL_COLLECTOR_INTEGRATION_TEST` | `internal/infrastructure/logger/file` | `TestFileLogger_Log_WritesToFile_ForTempo`、`TestFileLogger_Log_WritesToFile_ForTempo_Via_Collector` |
+| `tracing` | `TEMPO_INTEGRATION_TEST`、`OTEL_COLLECTOR_INTEGRATION_TEST` | `internal/infrastructure/logger/file`、`internal/bootstrap` | `TestFileLogger_Log_WritesToFile_ForTempo`、`TestFileLogger_Log_WritesToFile_ForTempo_Via_Collector`、`TestTelemetrySendsSpansToTempoOverOTLPHTTP` |
 
 `run-live-tests.sh` は、選んだ試験のうちPASSしなかったもの（失敗のほか、skipや試験名の変更で
 実行されなかったもの）があれば失敗します。試験を追加・改名した場合は、scriptの一覧も更新してください。
@@ -43,7 +43,7 @@ containerと一緒に破棄します。
 | OpenSearch | `opensearchproject/opensearch:2.19.1` | 29200 | `/_cluster/health` がyellow以上 |
 | Loki | `grafana/loki:3.4.2` | 23100 | `/ready` |
 | ClickHouse | `clickhouse/clickhouse-server:24.8.4.13` | 28123 | 認証付きの `SELECT 1` |
-| Tempo | `grafana/tempo:2.7.2` | 24317（OTLP gRPC）、23200（HTTP） | `/ready` |
+| Tempo | `grafana/tempo:2.7.2` | 24317（OTLP gRPC）、24318（OTLP HTTP）、23200（HTTP） | `/ready` |
 | OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.120.0` | 25317（OTLP gRPC）、23133（health check） | health check extension |
 
 - 開発者がローカルで既定port（9200・3100・8123・4317など）のserviceを動かしていても書き込まない
@@ -98,9 +98,11 @@ LOKI_INTEGRATION_TEST=true HETEROLOG_INTEGRATION_ENV_PATH="$PWD/testenv/integrat
   containerに合わせてOpenSearchのclient timeoutを2sにするため、その予算（26s）を上回る
   30sを指定しています。
 - Tempo試験の送信先は `HETEROLOG_OTEL_TEMPO_ADDR`、Collector試験の送信先は `HETEROLOG_OTEL_COLLECTOR_ADDR` です。
-  どちらの試験も、専用の設定fileに送信先のkeyがない場合は既定の送信先へ送らずに失敗します。
+  `NewTelemetry` の試験は、`HETEROLOG_TRACES_OTLP_ENDPOINT` へOTLP/HTTPでspanを送り、`HETEROLOG_OTEL_TEMPO_QUERY_ADDR`
+  （TempoのHTTP API）でtraceを読み戻して、届いたことを確かめます。
+  どの試験も、専用の設定fileに送信先のkeyがない場合は既定の送信先へ送らずに失敗します。
 - portを変える場合は `ci.env` の宛先を変更します。`start-services.sh` は `ci.env` の宛先から
-  公開するportを決めます（TempoのHTTPとCollectorのhealth checkのportは `common.sh` で定義）。
+  公開するportを決めます（Collectorのhealth checkのportは `common.sh` で定義）。
   別の環境設定fileを使う場合も `HETEROLOG_INTEGRATION_ENV_PATH` で指定できますが、宛先は
   127.0.0.1にしてください。`start-services.sh` は127.0.0.1以外の宛先を拒否しますが、
   `run-live-tests.sh` は宛先を確かめずにfileの値へ送信します。

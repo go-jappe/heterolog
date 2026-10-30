@@ -79,7 +79,7 @@ func contractEnvSections(cfg AppConfig) map[contractEnvSection]any {
 		contractEnvMappedAsync:      ToAsyncBestEffortMultiLoggerConfig(cfg),
 		contractEnvMappedDelivery:   ToDeliveryLoggerConfig(cfg),
 		contractEnvMappedAdminAudit: ToAdminAuditLoggerConfig(cfg),
-		contractEnvMappedOther:      []any{NewSpoolConfig(&cfg), NewOtelResourceConfig(&cfg)},
+		contractEnvMappedOther:      []any{NewSpoolConfig(&cfg), NewOtelResourceConfig(&cfg), MapTelemetryConfig(cfg)},
 	}
 }
 

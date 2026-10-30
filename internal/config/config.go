@@ -91,6 +91,9 @@ type AppConfig struct {
 	// AdminAuditは、管理用APIの監査logを記録する送達確認loggerの設定です。管理用
 	// サーバーを有効にした場合だけ読み込みます。
 	AdminAudit AdminAuditConfig
+	// Tracesは、NewTelemetryのtraceの設定です。HETEROLOG_ENABLE_TRACESで有効にした
+	// 場合だけ読み込みます。
+	Traces TracesConfig
 }
 
 // envSourceは、設定値の参照先です。process environmentの値を優先し、process environmentに
@@ -6081,6 +6084,10 @@ func loadConfig(source envSource) (AppConfig, error) {
 		appCfg.AdminAudit, err = loadAdminAuditConfig(env)
 		errs = append(errs, err)
 	}
+
+	var tracesErr error
+	appCfg.Traces, tracesErr = loadTracesConfig(env)
+	errs = append(errs, tracesErr)
 
 	var objectStorageCompressedLogFileUploadFailureStoreErr error
 	appCfg.CompressedLogFileUploadFailureStore, objectStorageCompressedLogFileUploadFailureStoreErr =

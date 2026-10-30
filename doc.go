@@ -8,6 +8,11 @@
 // process-wide slog logger or OpenTelemetry providers. To configure loggers
 // from HETEROLOG_ environment variables and an env file, call LoadEnvConfig.
 //
+// NewTelemetry records spans with its Tracer and sends them, together with
+// spans from the OpenTelemetry SDK passed through package otelexport, to
+// OTLP/HTTP receivers, files, and stdout. Pass its Tracer to loggers with
+// WithObservers to trace their work.
+//
 // Advanced backend and durability settings are available in pkg/logger and
 // its related public packages. A configuration must not be modified while a
 // logger constructed from it is in use.
@@ -18,7 +23,9 @@ package heterolog
 // 置きます（中身を見せない関数の型のOptionだけは、internalの型の別名です）。loggerの
 // 終了・検証・既定値はinternal/application/loggerruntime、出力先の実装を渡してloggerを
 // 組み立てるのはinternal/bootstrap、slogと環境設定の入力窓口はinternal/presentationに
-// あります。公開APIの説明は英語で書きます。
+// あります。NewTelemetryのTracerはinternal/application/tracing、spanの配送は
+// internal/infrastructure/tracesにあり、internal/bootstrapが組み立てます。公開APIの説明は
+// 英語で書きます。
 
 // 最小構成のcontainerやWindowsでも、設定したIANAのtime zoneを使えるようにします。
 import _ "time/tzdata"

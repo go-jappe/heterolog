@@ -1,0 +1,188 @@
+package telemetry
+
+import (
+	"errors"
+	"fmt"
+	"math"
+	"net/url"
+	"strings"
+)
+
+var (
+	// ErrNonPositiveSetting reports that a count or duration that must be
+	// positive is 0 or less.
+	ErrNonPositiveSetting = errors.New("telemetry setting must be positive")
+	// ErrNegativeSetting reports that a count for which 0 is valid, such as
+	// Retries, is negative.
+	ErrNegativeSetting = errors.New("telemetry setting must not be negative")
+	// ErrInvalidSetting reports that a setting is outside its accepted values,
+	// such as a SamplingRatio above 1 or an endpoint that is not an http or
+	// https URL.
+	ErrInvalidSetting = errors.New("telemetry setting is invalid")
+)
+
+// FieldError reports one invalid setting of a Config. Retrieved with
+// errors.As, it names the setting by its path in Field, such as
+// "Traces.OTLP.Timeout", and errors.Is matches Err.
+type FieldError struct {
+	Field string
+	// Detail describes what is invalid.
+	Detail string
+	// Value is the invalid value. It is nil for settings that can contain
+	// credentials, such as Traces.OTLP.Endpoint and Traces.OTLP.Headers.
+	Value any
+	// Err is ErrNonPositiveSetting, ErrNegativeSetting or ErrInvalidSetting.
+	Err error
+}
+
+// Error returns the setting and what is invalid.
+func (e *FieldError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+	return "telemetry " + e.Field + ": " + e.Detail
+}
+
+// Unwrap returns Err.
+func (e *FieldError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// Validate checks the settings that heterolog.NewTelemetry uses and returns
+// a FieldError for each invalid one, joined with errors.Join. Settings of
+// destinations that Traces.Exporters does not list are not checked.
+func (c Config) Validate() error {
+	return c.Traces.validate()
+}
+
+func (c TracesConfig) validate() error {
+	var errs []error
+	if math.IsNaN(c.SamplingRatio) || c.SamplingRatio < 0 || c.SamplingRatio > 1 {
+		errs = append(errs, &FieldError{
+			Field: "Traces.SamplingRatio", Value: c.SamplingRatio, Err: ErrInvalidSetting,
+			Detail: fmt.Sprintf("must be from 0 to 1, got %v", c.SamplingRatio),
+		})
+	}
+	if len(c.Exporters) == 0 {
+		return errors.Join(errs...)
+	}
+
+	seen := make(map[TraceExporter]bool, len(c.Exporters))
+	for _, exporter := range c.Exporters {
+		switch exporter {
+		case TraceExporterOTLP, TraceExporterFile, TraceExporterStdout:
+		default:
+			errs = append(errs, &FieldError{
+				Field: "Traces.Exporters", Value: exporter, Err: ErrInvalidSetting,
+				Detail: fmt.Sprintf("unsupported exporter %q; use otlp, file or stdout", exporter),
+			})
+			continue
+		}
+		if seen[exporter] {
+			errs = append(errs, &FieldError{
+				Field: "Traces.Exporters", Value: exporter, Err: ErrInvalidSetting,
+				Detail: fmt.Sprintf("exporter %q is listed more than once", exporter),
+			})
+		}
+		seen[exporter] = true
+	}
+	errs = append(errs,
+		positive("Traces.QueueSize", c.QueueSize),
+		positive("Traces.BatchSize", c.BatchSize),
+		positive("Traces.ExportInterval", c.ExportInterval),
+	)
+	if c.QueueSize > 0 && c.BatchSize > c.QueueSize {
+		errs = append(errs, &FieldError{
+			Field: "Traces.BatchSize", Value: c.BatchSize, Err: ErrInvalidSetting,
+			Detail: fmt.Sprintf("must not exceed Traces.QueueSize %d, got %d", c.QueueSize, c.BatchSize),
+		})
+	}
+	if seen[TraceExporterOTLP] {
+		errs = append(errs, c.OTLP.validate())
+	}
+	if seen[TraceExporterFile] && strings.TrimSpace(c.File.Path) == "" {
+		errs = append(errs, &FieldError{
+			Field: "Traces.File.Path", Value: c.File.Path, Err: ErrInvalidSetting,
+			Detail: "must not be empty when the file exporter is used",
+		})
+	}
+	return errors.Join(errs...)
+}
+
+func (c OTLPTracesConfig) validate() error {
+	var errs []error
+	// endpointはuserinfoなどに認証情報を含み得るため、errorに値を入れません。
+	if u, err := url.Parse(c.Endpoint); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		errs = append(errs, &FieldError{
+			Field: "Traces.OTLP.Endpoint", Err: ErrInvalidSetting,
+			Detail: "must be an absolute http or https URL; the value is not shown because it can contain credentials",
+		})
+	}
+	for name, value := range c.Headers {
+		if !isHeaderToken(name) || strings.ContainsAny(value, "\r\n\x00") {
+			errs = append(errs, &FieldError{
+				Field: "Traces.OTLP.Headers", Err: ErrInvalidSetting,
+				Detail: "must have header names made of token characters and values without line breaks; the value is not shown because it can contain credentials",
+			})
+			break
+		}
+	}
+	if c.Compression != "gzip" && c.Compression != "none" {
+		errs = append(errs, &FieldError{
+			Field: "Traces.OTLP.Compression", Value: c.Compression, Err: ErrInvalidSetting,
+			Detail: fmt.Sprintf("must be gzip or none, got %q", c.Compression),
+		})
+	}
+	errs = append(errs, positive("Traces.OTLP.Timeout", c.Timeout))
+	if c.Retries < 0 {
+		errs = append(errs, &FieldError{
+			Field: "Traces.OTLP.Retries", Value: c.Retries, Err: ErrNegativeSetting,
+			Detail: fmt.Sprintf("must not be negative, got %d", c.Retries),
+		})
+	}
+	if c.Retries > 0 {
+		errs = append(errs,
+			positive("Traces.OTLP.RetryBaseDelay", c.RetryBaseDelay),
+			positive("Traces.OTLP.RetryMaxDelay", c.RetryMaxDelay),
+		)
+		if c.RetryBaseDelay > 0 && c.RetryMaxDelay > 0 && c.RetryMaxDelay < c.RetryBaseDelay {
+			errs = append(errs, &FieldError{
+				Field: "Traces.OTLP.RetryMaxDelay", Value: c.RetryMaxDelay, Err: ErrInvalidSetting,
+				Detail: fmt.Sprintf("must not be shorter than Traces.OTLP.RetryBaseDelay %v, got %v", c.RetryBaseDelay, c.RetryMaxDelay),
+			})
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// positiveは、valueが正でなければFieldErrorを返します。
+func positive[T ~int | ~int64](field string, value T) error {
+	if value > 0 {
+		return nil
+	}
+	return &FieldError{
+		Field: field, Value: value, Err: ErrNonPositiveSetting,
+		Detail: fmt.Sprintf("must be positive, got %v", value),
+	}
+}
+
+// isHeaderTokenは、nameがHTTPのheader名に使える文字（RFC 9110のtoken）だけでできているかを
+// 返します。
+func isHeaderToken(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9':
+		case strings.IndexByte("!#$%&'*+-.^_`|~", c) >= 0:
+		default:
+			return false
+		}
+	}
+	return true
+}

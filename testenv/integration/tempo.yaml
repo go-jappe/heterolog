@@ -1,5 +1,6 @@
 # 結合テスト専用のGrafana Tempo設定です（start-services.shがcontainerへ複製します）。
-# OTLP gRPCだけを受信し、traceはcontainer内の一時領域に保存してcontainerと一緒に破棄します。
+# OTLPをgRPCとHTTPで受信し、traceはcontainer内の一時領域に保存してcontainerと一緒に破棄します。
+# HTTPは、heterologのNewTelemetryのOTLP/HTTPの送信を試験します。
 server:
   http_listen_port: 3200
   log_level: info
@@ -15,6 +16,8 @@ distributor:
         grpc:
           # container外へportを公開するため、全interfaceで待ち受けます。
           endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
 
 storage:
   trace:

@@ -21,6 +21,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - [出力先で失敗したとき](#出力先で失敗したとき)
 - [稼働中にログレベルとサンプリングを変える](#稼働中にログレベルとサンプリングを変える)
 - [ログファイル](#ログファイル)
+- [トレース](#トレース)
 - [終了処理](#終了処理)
 - [停止したアプリケーションのログの復旧](#停止したアプリケーションのログの復旧)
 - [テスト](#テスト)
@@ -51,6 +52,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - 空き容量の閾値、任意のメモリ逼迫の監視器、`drop`・`degrade` の方針による過負荷の保護。
 - コードでの設定、または `HETEROLOG_` 環境変数と環境設定ファイルからの設定。
 - 稼働中のログレベルとサンプリングの変更。コードまたはトークンで保護したHTTP APIから行います。
+- トレース: spanを、OTLP/HTTPの受信先、file、stdoutへ、まとめて再試行付きで送る `Tracer` と、OpenTelemetry SDK用のexporter。ロガーも自分の処理をspanとして記録できます。
 - 停止中のアプリケーションのログファイルを復旧するCLI。
 - Linux・Windows・macOSで、大文字小文字を区別しないファイルシステムも含めて試験しています。
 
@@ -295,9 +297,42 @@ curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
 
 ローテーション・保持・圧縮・アップロードの詳細は[詳細の文書](docs/reference.ja.md#ログファイル)にあります。
 
+## トレース
+
+`NewTelemetry` は、spanを、OpenTelemetry CollectorやGrafana TempoなどのOTLP/HTTPの受信先、file、stdoutへ送ります。その `Tracer` はアプリケーションのspanを記録し、`WithObservers` でロガーへ渡すと、ロガーの処理も子のspanとして記録します。
+
+```go
+cfg := heterolog.DefaultTelemetryConfig()
+cfg.Resource.ServiceName = "checkout"
+cfg.Traces.Exporters = []heterolog.TraceExporter{heterolog.TraceExporterOTLP}
+cfg.Traces.OTLP.Endpoint = "http://localhost:4318/v1/traces"
+tel, err := heterolog.NewTelemetry(ctx, cfg)
+if err != nil {
+    log.Fatal(err)
+}
+defer tel.Shutdown(context.Background())
+
+runtime, err := heterolog.New(ctx, heterolog.DefaultConfig(),
+    heterolog.WithObservers(tel.Tracer(), nil))
+if err != nil {
+    log.Fatal(err)
+}
+defer runtime.Close()
+
+ctx, span := tel.Tracer().StartSpan(ctx, "checkout")
+defer span.End()
+```
+
+- 環境変数からは、`HETEROLOG_ENABLE_TRACES=true` と `HETEROLOG_TRACES_OTLP_ENDPOINT` を設定し、`env.NewTelemetry(ctx)` を呼びます。サービス名は `HETEROLOG_APP_NAME` から取ります。
+- spanは、出力先ごとの待ち行列からまとめて送るため、spanを終えるときにネットワークを待ちません。失敗した要求は送り直します。それでも送れなかったspanと、待ち行列に入らなかったspanは捨て、メトリクスで数えます。
+- `pkg/observer` はW3Cの `traceparent` headerを読み書きするため、traceをサービスをまたいで続けられます。
+- OpenTelemetry SDKのspanも、`otelexport.NewSpanExporter(tel)` で同じように送れます。SDKを使わないプログラムがSDKをリンクしないよう、別のパッケージにしています。
+
+詳しくは[トレースの送信](docs/reference.ja.md#トレースの送信)を参照してください。
+
 ## 終了処理
 
-- アプリケーションの終了前に `Close` または `Shutdown(ctx)` を呼びます。受け付けた処理を終え、bufferを書き出し、資源を解放します。
+- アプリケーションの終了前に `Close` または `Shutdown(ctx)` を呼びます。受け付けた処理を終え、bufferを書き出し、資源を解放します。`Telemetry` は、`Shutdown(ctx)` で待ち行列のspanを送ります。その `Tracer` を使うロガーを先に閉じてください。
 - `Shutdown` のcontextが終わると、待つのをやめるのはその呼出しだけで、後始末は続きます。`ForceClose` は後始末を止めるよう求め、待たずに戻ります。
 - spoolに残ったログは、次の起動の後に送ります。
 

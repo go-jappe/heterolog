@@ -11,6 +11,7 @@ This document describes the behavior of heterolog in detail: what each API retur
 - [Configuration](#configuration)
 - [Log files](#log-files)
 - [Failure handling and replay](#failure-handling-and-replay)
+- [Sending traces](#sending-traces)
 - [Metrics and traces](#metrics-and-traces)
 - [Destination notes](#destination-notes)
 - [Log recovery CLI](#log-recovery-cli)
@@ -164,7 +165,7 @@ An example is in [Sending logs to several destinations](../README.md#sending-log
 - The settings of the enabled loggers and their consistency with each other (such as shared storage directories) are checked when loading, and all problems found are returned together. Use `errors.As` with `EnvFileError`, `InvalidEnvironmentValueError`, `RenamedEnvironmentKeyError`, or `VariableError` of `pkg/env` to identify the key.
 - To adjust the settings before constructing a logger, get them with `cfg, opts, err := env.Config()` (or `AsyncConfig` and `DeliveryConfig`) and pass them to `heterolog.New(ctx, cfg, opts...)`. `opts` carries the spool replay settings and CloudWatch Logs stream routing read from the environment.
 - A logger disabled with `HETEROLOG_ENABLE_LOGGING=false` or the like cannot be constructed, and `ErrEnvLoggerDisabled` is returned.
-- Tracing (`WithObservers`) is not created from the environment. Pass it as an additional option, as in `env.New(ctx, opts...)`. A spool enabled with `HETEROLOG_USE_MEMORY_PRESSURE_*` judges memory pressure with `HETEROLOG_MEMORY_CRITICAL_RATIO`, `HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB` and `HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITS` unless `WithMemoryPressureMonitor` is passed.
+- Loggers constructed from the environment do not trace by themselves. Construct a `Telemetry` with `env.NewTelemetry(ctx)`, which reads `HETEROLOG_ENABLE_TRACES` and `HETEROLOG_TRACES_*` (see [Sending traces](#sending-traces)), and pass its `Tracer` as an additional option, as in `env.New(ctx, heterolog.WithObservers(tel.Tracer(), nil))`. A spool enabled with `HETEROLOG_USE_MEMORY_PRESSURE_*` judges memory pressure with `HETEROLOG_MEMORY_CRITICAL_RATIO`, `HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB` and `HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITS` unless `WithMemoryPressureMonitor` is passed.
 
 ### Changing settings while running
 
@@ -392,9 +393,86 @@ How the deadline survives restarts:
 - When timeout and retry settings of loggers and clients are omitted in the environment configuration, the defaults are the same as the values in `.env.example` and satisfy the default `must_fit` (18 seconds for the regular and asynchronous loggers, 12 seconds for the delivery logger, 1 second for the OpenSearch client, and 2 seconds for the Loki, ClickHouse, and CloudWatch Logs clients).
 - The recovery CLI, which reads the environment configuration, checks the whole configuration including this budget before starting recovery, and exits with a configuration error if it is not satisfied.
 
+## Sending traces
+
+`NewTelemetry` records spans with its `Tracer` and sends them, together with spans from the OpenTelemetry SDK, to the destinations in `TelemetryConfig.Traces.Exporters`: an OTLP/HTTP receiver (`otlp`), such as the OpenTelemetry Collector or Grafana Tempo, a file (`file`), and stdout (`stdout`). Without destinations, its `Tracer` records nothing. Start from `DefaultTelemetryConfig()`, which fills every setting except the destinations; `TelemetryConfig.Validate` lists the invalid settings, and `NewTelemetry` returns the same errors.
+
+### Spans
+
+- A span becomes a child of the span context in the context passed to `StartSpan`: that of a span the `Tracer` started, or one stored with `pkg/observer.ContextWithSpanContext`. It follows the sampling decision of its parent. A span without a parent starts a new trace, which `SamplingRatio` decides to record or not from the trace ID, as the `TraceIDRatioBased` sampler of the OpenTelemetry SDK does, so services that share a ratio agree.
+- A span that is not recorded still puts its span context in the returned context, with `Sampled` false, so its children and other services follow the decision.
+- `RecordError` adds an `exception` event with `exception.type` and `exception.message` and sets the status to `StatusError`. `SetStatus(StatusOK, ...)` is final: later calls do not change it.
+- `pkg/observer.StartSpanWithOptions` passes a span kind, such as `SpanKindServer`, and links to other spans. Spans started with `StartSpan` are `SpanKindInternal`.
+- A span keeps up to 128 attributes, events, and links, and each event and link up to 128 attributes. The rest are dropped, and their numbers are sent as the dropped counts of OTLP. A later attribute with the same key replaces the value.
+- Calls after `End` have no effect, and the methods of a span may be called concurrently.
+- The spans of the `Tracer` have the instrumentation scope `github.com/go-jappe/heterolog` and a resource made from `TelemetryConfig.Resource`, with the same attribute names as the OTel log format: `service.name` (`unknown_service:` followed by the executable name when empty), `service.version`, `host.name`, `os.type`, `deployment.environment`, `heterolog.runtime.type`, `service.instance.id`, `cloud.provider`, and `cloud.region`. Empty values are left out.
+
+### Continuing a trace across services
+
+`pkg/observer` reads and writes the W3C `traceparent` header:
+
+```go
+// Incoming request: continue the caller's trace.
+if sc, err := observer.ParseTraceParent(r.Header.Get("traceparent")); err == nil {
+    ctx = observer.ContextWithSpanContext(ctx, sc)
+}
+ctx, span := observer.StartSpanWithOptions(ctx, tel.Tracer(), "GET /items",
+    observer.StartOptions{Kind: observer.SpanKindServer})
+defer span.End()
+
+// Outgoing request: pass the current span on.
+req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent())
+```
+
+- `ParseTraceParent` accepts the fields of version `00` from later versions too, and rejects uppercase digits and all-zero IDs. Its error does not include the header value.
+- The `tracestate` header is not read or written.
+
+### Spans from the OpenTelemetry SDK
+
+`otelexport.NewSpanExporter(tel)` returns an `sdktrace.SpanExporter` that queues the spans of the SDK in the `Telemetry`, which sends them with its own spans. It is in the separate package `github.com/go-jappe/heterolog/otelexport`, so programs that do not use the SDK do not link it.
+
+- The SDK samples its spans; `SamplingRatio` applies only to the `Tracer` of the `Telemetry`.
+- The spans keep the resource and instrumentation scope of the SDK. A span with an empty resource is sent with the resource of the `Telemetry`.
+- `ExportSpans` returns without waiting for the network. `Shutdown` of the exporter only stops accepting spans. Shut down the `TracerProvider` before the `Telemetry`, so that the spans the SDK still holds reach the `Telemetry` before its `Shutdown` sends the last batches.
+
+### Delivery
+
+- Each destination has its own queue of `QueueSize` spans and its own goroutine, so a slow destination does not delay the others. `Span.End` and `ExportSpans` never wait: a span that does not fit in the queue of a destination is dropped for that destination.
+- A destination sends a batch when `BatchSize` spans are waiting, or `ExportInterval` after its previous send. While it is sending, spans wait in the queue.
+- `otlp` posts the batch in protobuf (`Content-Type: application/x-protobuf`), compressed with gzip unless `Compression` is `none`, to `OTLP.Endpoint` exactly as given (`/v1/traces` is not added), with `OTLP.Headers`. `OTLP.Timeout` limits each request. Redirects are not followed and are not retried, as for the log destinations.
+- Failed requests are retried up to `OTLP.Retries` times by the rules of the [OTLP specification](https://opentelemetry.io/docs/specs/otlp/), which differ from those of the log destinations: only the statuses 429, 502, 503, and 504 and failures without a response, such as a refused connection, a broken connection, or a timeout, are retried. The specification forbids retrying other statuses, such as 400, 408, or 500.
+- The wait before a retry doubles from `OTLP.RetryBaseDelay` with each retry, up to `OTLP.RetryMaxDelay`, and a random wait between half of it and all of it is chosen, so that many processes do not retry at the same moment. When the response has a `Retry-After`, it is used instead, up to `OTLP.RetryMaxDelay`.
+- A response that reports a partial success counts its rejected spans as failed and is not retried.
+- `file` and `stdout` write each batch as one line of OTLP JSON: trace and span IDs in hexadecimal, enumerations as numbers, and 64-bit integers and times as strings. `file` appends to `File.Path`, creating missing directories; the file is not rotated or removed.
+- Spans that cannot be sent after the retries are dropped. They are not kept on disk.
+- The delivery does not create spans for its own sending, which would in turn be sent. The metrics below report it instead, recorded with the `Meter` passed to `NewTelemetry` with `WithObservers`; the `Tracer` of that option is not used.
+- `Shutdown(ctx)` stops accepting spans, sends the queued spans, and closes the destinations. When `ctx` ends first, it returns `ctx.Err()` and the sending continues in the background; a later `Shutdown` waits for the same cleanup. Spans that end after `Shutdown` started are dropped. Close the loggers that use the `Tracer` before the `Telemetry`, so that their last spans are sent.
+
+### Environment variables
+
+`env.TelemetryConfig()` and `env.NewTelemetry(ctx)` use these keys, all listed in [.env.example](../.env.example):
+
+| Key | Setting | Default |
+|---|---|---|
+| `HETEROLOG_ENABLE_TRACES` | Whether to send traces. When `false`, the other keys are not read. | `false` |
+| `HETEROLOG_TRACES_TYPE` | `Exporters`, separated by commas. | `otlp` |
+| `HETEROLOG_TRACES_SAMPLING_RATIO` | `SamplingRatio` | `1` |
+| `HETEROLOG_TRACES_QUEUE_SIZE`, `HETEROLOG_TRACES_BATCH_SIZE` | `QueueSize`, `BatchSize` | `2048`, `512` |
+| `HETEROLOG_TRACES_EXPORT_INTERVAL_MILLISECOND` | `ExportInterval` | `5000` |
+| `HETEROLOG_TRACES_OTLP_ENDPOINT` | `OTLP.Endpoint` | `http://localhost:4318/v1/traces` |
+| `HETEROLOG_TRACES_OTLP_HEADERS` | `OTLP.Headers`, as a JSON object | none |
+| `HETEROLOG_TRACES_OTLP_COMPRESSION` | `OTLP.Compression` | `gzip` |
+| `HETEROLOG_TRACES_OTLP_TIMEOUT_SECOND` | `OTLP.Timeout` | `10` |
+| `HETEROLOG_TRACES_OTLP_RETRIES` | `OTLP.Retries` | `3` |
+| `HETEROLOG_TRACES_OTLP_RETRY_BASE_DELAY_MILLISECOND`, `HETEROLOG_TRACES_OTLP_RETRY_MAX_DELAY_MILLISECOND` | `OTLP.RetryBaseDelay`, `OTLP.RetryMaxDelay` | `1000`, `5000` |
+| `HETEROLOG_TRACES_FILE_DIR` | The directory of `File.Path`, which is `spans.jsonl` in it. Like the log directories, it is resolved under `HETEROLOG_SYSTEM_LOG_DIR` and `HETEROLOG_TARGET`. | `/traces` |
+
+- The resource comes from the keys the loggers use: `HETEROLOG_APP_NAME` (`service.name`), `HETEROLOG_APP_ENV`, `HETEROLOG_RUNTIME_TYPE`, `HETEROLOG_INSTANCE_ID`, `HETEROLOG_CLOUD_PROVIDER`, and `HETEROLOG_CLOUD_PROVIDER_REGION`, with the host name and OS of the process.
+- `LoadEnvConfig` checks the trace settings when `HETEROLOG_ENABLE_TRACES` is `true` and reports the problems under `HETEROLOG_TRACES_*`, as `pkg/telemetry` `FieldError`s. The values of the endpoint and the headers, which can contain credentials, are not shown.
+
 ## Metrics and traces
 
-Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and spans below. Without them, nothing is recorded.
+Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and spans below. Without them, nothing is recorded. The `heterolog_trace_*` metrics are those of [Sending traces](#sending-traces), recorded with the `Meter` passed to `NewTelemetry`.
 
 ### Metrics
 
@@ -421,6 +499,9 @@ Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and sp
 | `heterolog_memory_pressure_critical` | Gauge | `backend` | 1 when the last evaluation of the same monitor found memory critical, and 0 otherwise. |
 | `heterolog_spool_replay_records_total` | Counter | `backend`, `outcome` | Records read back from the spool and sent again, by result: `success`, `retryable` (returned to the spool to be sent again later), `dead`, or `quarantine`. A response that cannot be matched to the records quarantines the whole file, and all its records are counted as `quarantine`. |
 | `heterolog_file_dropped_entries_total` | Counter | none | Entries that the file logger discarded with the overload policy `drop`. |
+| `heterolog_trace_spans_total` | Counter | `exporter` (`otlp`, `file`, `stdout`), `outcome` | Spans that a destination of `NewTelemetry` handled, by result: `success`, `failure` (not sent after the retries, or rejected in a partial success), or `dropped` (did not fit in the queue, or ended after `Shutdown` started). |
+| `heterolog_trace_export_duration_seconds` | Histogram | `exporter`, `outcome` (`success`, `failure`) | Duration of sending one batch of spans, including the retries and the waits between them. A partial success is a `success`. |
+| `heterolog_trace_export_retries_total` | Counter | `exporter`, `reason` | Retries of the `otlp` destination, by the reason, such as `http_status` or `net_timeout`. |
 | `heterolog_internal_logs_total` | Counter | `level` (`error`, `warn`, `info`, `debug`) | Internal logs passed to the internal log notification targets (`OnErrorConfig` and the like), such as a failed write or a slow request, by level. See [Internal log notifications](#internal-log-notifications). |
 
 ### Spans

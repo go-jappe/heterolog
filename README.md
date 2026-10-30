@@ -21,6 +21,7 @@ This README is an overview. The [reference](docs/reference.md) describes the beh
 - [When a destination fails](#when-a-destination-fails)
 - [Changing the level and sampling while running](#changing-the-level-and-sampling-while-running)
 - [Log files](#log-files)
+- [Traces](#traces)
 - [Shutting down](#shutting-down)
 - [Recovering logs of a stopped application](#recovering-logs-of-a-stopped-application)
 - [Testing](#testing)
@@ -51,6 +52,7 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 - Overload protection with a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
 - Configuration in code, or from `HETEROLOG_` environment variables and an env file.
 - Level and sampling changes while running, in code or through a token-protected HTTP API.
+- Traces: a `Tracer`, and an exporter for the OpenTelemetry SDK, that send spans to an OTLP/HTTP receiver, a file, or stdout in batches with retries. The loggers can record their own work as spans.
 - A CLI that recovers the log files of a stopped application.
 - Tested on Linux, Windows, and macOS, including case-insensitive file systems.
 
@@ -295,9 +297,42 @@ See [Changing settings while running](docs/reference.md#changing-settings-while-
 
 The [reference](docs/reference.md#log-files) describes rotation, retention, compression, and uploads in detail.
 
+## Traces
+
+`NewTelemetry` sends spans to an OTLP/HTTP receiver, such as the OpenTelemetry Collector or Grafana Tempo, to a file, or to stdout. Its `Tracer` records the spans of your application, and passed to a logger with `WithObservers`, also the work of the logger as child spans:
+
+```go
+cfg := heterolog.DefaultTelemetryConfig()
+cfg.Resource.ServiceName = "checkout"
+cfg.Traces.Exporters = []heterolog.TraceExporter{heterolog.TraceExporterOTLP}
+cfg.Traces.OTLP.Endpoint = "http://localhost:4318/v1/traces"
+tel, err := heterolog.NewTelemetry(ctx, cfg)
+if err != nil {
+    log.Fatal(err)
+}
+defer tel.Shutdown(context.Background())
+
+runtime, err := heterolog.New(ctx, heterolog.DefaultConfig(),
+    heterolog.WithObservers(tel.Tracer(), nil))
+if err != nil {
+    log.Fatal(err)
+}
+defer runtime.Close()
+
+ctx, span := tel.Tracer().StartSpan(ctx, "checkout")
+defer span.End()
+```
+
+- From the environment, set `HETEROLOG_ENABLE_TRACES=true` and `HETEROLOG_TRACES_OTLP_ENDPOINT`, and call `env.NewTelemetry(ctx)`. The service name comes from `HETEROLOG_APP_NAME`.
+- Spans are sent in batches from a queue for each destination, so ending a span never waits for the network. Failed requests are retried; spans that still cannot be sent, or that do not fit in the queue, are dropped and counted in metrics.
+- `pkg/observer` reads and writes the W3C `traceparent` header, so a trace can continue across services.
+- Spans from the OpenTelemetry SDK are sent the same way through `otelexport.NewSpanExporter(tel)`, a separate package so that programs without the SDK do not link it.
+
+See [Sending traces](docs/reference.md#sending-traces) for details.
+
 ## Shutting down
 
-- Call `Close` or `Shutdown(ctx)` before the application exits. They finish accepted work, flush buffers, and release resources.
+- Call `Close` or `Shutdown(ctx)` before the application exits. They finish accepted work, flush buffers, and release resources. A `Telemetry` sends its queued spans in `Shutdown(ctx)`; close the loggers that use its `Tracer` first.
 - When the context of `Shutdown` ends, only that call stops waiting; the cleanup continues. `ForceClose` asks the cleanup to stop and returns without waiting.
 - Logs left in the spool are sent after the next start.
 

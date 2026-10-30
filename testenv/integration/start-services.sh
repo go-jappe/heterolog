@@ -41,6 +41,10 @@ it_read_env HETEROLOG_CLICKHOUSE_PASSWORD
 clickhouse_password=$IT_VALUE
 it_loopback_port HETEROLOG_OTEL_TEMPO_ADDR
 tempo_otlp_port=$IT_PORT
+it_loopback_port HETEROLOG_TRACES_OTLP_ENDPOINT
+tempo_otlp_http_port=$IT_PORT
+it_loopback_port HETEROLOG_OTEL_TEMPO_QUERY_ADDR
+tempo_http_port=$IT_PORT
 it_loopback_port HETEROLOG_OTEL_COLLECTOR_ADDR
 collector_otlp_port=$IT_PORT
 
@@ -55,8 +59,8 @@ done
 it_log "removing containers left by a previous run"
 it_remove_services
 
-for port in "$opensearch_port" "$loki_port" "$clickhouse_port" "$tempo_otlp_port" \
-	"$collector_otlp_port" "$IT_TEMPO_HTTP_PORT" "$IT_OTEL_COLLECTOR_HEALTH_PORT"; do
+for port in "$opensearch_port" "$loki_port" "$clickhouse_port" "$tempo_otlp_port" "$tempo_otlp_http_port" \
+	"$collector_otlp_port" "$tempo_http_port" "$IT_OTEL_COLLECTOR_HEALTH_PORT"; do
 	it_require_free_port "$port"
 done
 
@@ -102,8 +106,9 @@ docker run -d --name "$IT_CLICKHOUSE_CONTAINER" --label "$IT_LABEL" --network "$
 it_log "starting $IT_TEMPO_IMAGE"
 docker create --name "$IT_TEMPO_CONTAINER" --label "$IT_LABEL" --network "$IT_NETWORK" \
 	--network-alias tempo \
-	-p "127.0.0.1:$IT_TEMPO_HTTP_PORT:3200" \
+	-p "127.0.0.1:$tempo_http_port:3200" \
 	-p "127.0.0.1:$tempo_otlp_port:4317" \
+	-p "127.0.0.1:$tempo_otlp_http_port:4318" \
 	"$IT_TEMPO_IMAGE" -config.file=/etc/tempo.yaml >/dev/null
 docker cp "$IT_DIR/tempo.yaml" "$IT_TEMPO_CONTAINER:/etc/tempo.yaml"
 docker start "$IT_TEMPO_CONTAINER" >/dev/null
@@ -123,7 +128,7 @@ it_wait_ready Loki "$IT_LOKI_CONTAINER" "http://127.0.0.1:$loki_port/ready" 180
 # 認証付きのqueryで、利用者の作成まで終わったことを確認します。
 it_wait_ready ClickHouse "$IT_CLICKHOUSE_CONTAINER" "http://127.0.0.1:$clickhouse_port/?query=SELECT%201" 180 \
 	--user "$clickhouse_user:$clickhouse_password"
-it_wait_ready Tempo "$IT_TEMPO_CONTAINER" "http://127.0.0.1:$IT_TEMPO_HTTP_PORT/ready" 180
+it_wait_ready Tempo "$IT_TEMPO_CONTAINER" "http://127.0.0.1:$tempo_http_port/ready" 180
 it_wait_ready "OpenTelemetry Collector" "$IT_OTEL_COLLECTOR_CONTAINER" \
 	"http://127.0.0.1:$IT_OTEL_COLLECTOR_HEALTH_PORT/" 120
 
@@ -131,5 +136,5 @@ it_log "all backend services are ready:"
 it_log "  OpenSearch  http://127.0.0.1:$opensearch_port"
 it_log "  Loki        http://127.0.0.1:$loki_port"
 it_log "  ClickHouse  http://127.0.0.1:$clickhouse_port"
-it_log "  Tempo       127.0.0.1:$tempo_otlp_port (OTLP gRPC), http://127.0.0.1:$IT_TEMPO_HTTP_PORT"
+it_log "  Tempo       127.0.0.1:$tempo_otlp_port (OTLP gRPC), 127.0.0.1:$tempo_otlp_http_port (OTLP HTTP), http://127.0.0.1:$tempo_http_port"
 it_log "  Collector   127.0.0.1:$collector_otlp_port (OTLP gRPC)"
