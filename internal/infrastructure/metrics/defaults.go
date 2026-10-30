@@ -10,7 +10,7 @@ import (
 
 // metricsの配送の既定値です。.env.exampleと文書の値も合わせます。集める間隔と、属性の組の
 // 数の上限は、OpenTelemetry SDKの既定値と同じです。OTLP/HTTPの送り先のほかの既定値は、
-// traceと共通のdelivery.DefaultOTLPConfigです。
+// traceと共通のdelivery.DefaultHTTPConfigです。
 const (
 	DefaultExportInterval   = time.Minute
 	DefaultQueueSize        = 16
@@ -34,6 +34,6 @@ func DefaultConfig() pkgtelemetry.MetricsConfig {
 		QueueSize:        DefaultQueueSize,
 		HistogramBounds:  DefaultHistogramBounds(),
 		CardinalityLimit: DefaultCardinalityLimit,
-		OTLP:             delivery.DefaultOTLPConfig(DefaultOTLPEndpoint),
+		OTLP:             delivery.DefaultHTTPConfig(DefaultOTLPEndpoint),
 	}
 }

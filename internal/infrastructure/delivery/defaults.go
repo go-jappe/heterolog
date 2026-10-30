@@ -10,7 +10,7 @@ import (
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
-// spanとmetricsのOTLP/HTTPの送り先と、failure storeの既定値です。.env.exampleと文書の値も
+// spanとmetricsのHTTPの送り先（OTLP/HTTPなど）と、failure storeの既定値です。.env.exampleと文書の値も
 // 合わせます。
 const (
 	DefaultOTLPCompression    = "gzip"
@@ -30,11 +30,11 @@ const (
 	DefaultReplayRestartDelay        = time.Second
 )
 
-// DefaultOTLPConfigは、endpointへ送るOTLP/HTTPの送り先の既定の設定を返します。failure
-// storeは、何も残さない設定（DurableTypeが空）で、選んだときに使う同時実行の上限と
+// DefaultHTTPConfigは、endpointへ送るHTTPの送り先（OTLP/HTTPなど）の既定の設定を返します。
+// failure storeは、何も残さない設定（DurableTypeが空）で、選んだときに使う同時実行の上限と
 // 送り直しの設定を埋めます。
-func DefaultOTLPConfig(endpoint string) pkgtelemetry.OTLPConfig {
-	return pkgtelemetry.OTLPConfig{
+func DefaultHTTPConfig(endpoint string) pkgtelemetry.HTTPConfig {
+	return pkgtelemetry.HTTPConfig{
 		Endpoint:       endpoint,
 		Compression:    DefaultOTLPCompression,
 		Timeout:        DefaultOTLPTimeout,

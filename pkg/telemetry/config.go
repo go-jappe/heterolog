@@ -60,13 +60,14 @@ type TracesConfig struct {
 	// busy sending an earlier batch.
 	ExportInterval time.Duration
 	// OTLP configures TraceExporterOTLP.
-	OTLP OTLPConfig
+	OTLP HTTPConfig
 	// File configures TraceExporterFile.
 	File FileConfig
 }
 
-// OTLPConfig configures an OTLP/HTTP destination of spans or metrics.
-type OTLPConfig struct {
+// HTTPConfig configures a destination that posts spans or metrics over HTTP:
+// an OTLP/HTTP receiver.
+type HTTPConfig struct {
 	// Endpoint is the URL that the data is posted to, such as
 	// "http://localhost:4318/v1/traces" for spans. The path is used as given;
 	// /v1/traces or /v1/metrics is not added. Redirects are not followed.
@@ -195,7 +196,7 @@ type MetricsConfig struct {
 	// which counts toward the limit, as in the OpenTelemetry SDK.
 	CardinalityLimit int
 	// OTLP configures MetricExporterOTLP.
-	OTLP OTLPConfig
+	OTLP HTTPConfig
 	// File configures MetricExporterFile.
 	File FileConfig
 }

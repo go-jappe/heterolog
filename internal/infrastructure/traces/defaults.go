@@ -9,7 +9,7 @@ import (
 
 // traceの配送の既定値です。.env.exampleと文書の値も合わせます。待ち行列とbatchの大きさ、
 // 送る間隔は、OpenTelemetry SDKのBatchSpanProcessorの既定値と同じです。OTLP/HTTPの
-// 送り先のほかの既定値は、metricsと共通のdelivery.DefaultOTLPConfigです。
+// 送り先のほかの既定値は、metricsと共通のdelivery.DefaultHTTPConfigです。
 const (
 	DefaultSamplingRatio  = 1.0
 	DefaultQueueSize      = 2048
@@ -27,6 +27,6 @@ func DefaultConfig() pkgtelemetry.TracesConfig {
 		QueueSize:      DefaultQueueSize,
 		BatchSize:      DefaultBatchSize,
 		ExportInterval: DefaultExportInterval,
-		OTLP:           delivery.DefaultOTLPConfig(DefaultOTLPEndpoint),
+		OTLP:           delivery.DefaultHTTPConfig(DefaultOTLPEndpoint),
 	}
 }

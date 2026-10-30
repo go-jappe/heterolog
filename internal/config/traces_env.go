@@ -119,7 +119,7 @@ type otlpKeys struct {
 
 // loadOTLPEnvは、OTLP/HTTPの送り先の設定を、keysのkeyから読みます。keyがなければ、
 // defaultsの値を使います。failure storeの設定は、defaultsのままです。
-func loadOTLPEnv(env pkgenv.Lookup, keys otlpKeys, defaults pkgtelemetry.OTLPConfig) (pkgtelemetry.OTLPConfig, error) {
+func loadOTLPEnv(env pkgenv.Lookup, keys otlpKeys, defaults pkgtelemetry.HTTPConfig) (pkgtelemetry.HTTPConfig, error) {
 	headers, headersErr := loadHeaderEnv(env, keys.Headers, nil)
 	timeout, timeoutErr := env.GetEnvDuration(keys.Timeout, defaults.Timeout)
 	retries, retriesErr := env.GetEnvInt(keys.Retries, defaults.Retries)

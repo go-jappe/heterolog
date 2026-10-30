@@ -116,7 +116,7 @@ func (c TracesConfig) validate() error {
 }
 
 // validateは、prefix（Traces.OTLPなど）から始まるfieldの名前で、設定を確かめます。
-func (c OTLPConfig) validate(prefix string) error {
+func (c HTTPConfig) validate(prefix string) error {
 	var errs []error
 	// endpointはuserinfoなどに認証情報を含み得るため、errorに値を入れません。
 	if u, err := url.Parse(c.Endpoint); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

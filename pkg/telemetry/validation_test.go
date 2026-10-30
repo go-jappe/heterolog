@@ -18,7 +18,7 @@ func validConfig() telemetry.Config {
 		QueueSize:      10,
 		BatchSize:      5,
 		ExportInterval: time.Second,
-		OTLP: telemetry.OTLPConfig{
+		OTLP: telemetry.HTTPConfig{
 			Endpoint:       "https://collector.example:4318/v1/traces",
 			Headers:        map[string]string{"Authorization": "Bearer secret"},
 			Compression:    "gzip",
@@ -90,7 +90,7 @@ func TestValidateDoesNotShowCredentials(t *testing.T) {
 func TestValidateSkipsTheSettingsOfUnusedExporters(t *testing.T) {
 	cfg := validConfig()
 	cfg.Traces.Exporters = []telemetry.TraceExporter{telemetry.TraceExporterStdout}
-	cfg.Traces.OTLP = telemetry.OTLPConfig{}
+	cfg.Traces.OTLP = telemetry.HTTPConfig{}
 	cfg.Traces.File = telemetry.FileConfig{}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want no error for the settings of unused exporters", err)
@@ -151,7 +151,7 @@ func validMetricsConfig() telemetry.Config {
 		QueueSize:        4,
 		HistogramBounds:  []float64{0.1, 1},
 		CardinalityLimit: 10,
-		OTLP: telemetry.OTLPConfig{
+		OTLP: telemetry.HTTPConfig{
 			Endpoint: "http://localhost:4318/v1/metrics", Compression: "gzip", Timeout: time.Second,
 		},
 		File: telemetry.FileConfig{Path: "metrics.jsonl"},

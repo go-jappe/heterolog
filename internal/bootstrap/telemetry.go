@@ -172,7 +172,7 @@ func newMetricDestinations(
 }
 
 // otlpExporterConfigは、公開の設定を、OTLP/HTTPの送り先の設定にします。
-func otlpExporterConfig(cfg pkgtelemetry.OTLPConfig) otlphttp.Config {
+func otlpExporterConfig(cfg pkgtelemetry.HTTPConfig) otlphttp.Config {
 	return otlphttp.Config{
 		Endpoint:       cfg.Endpoint,
 		Headers:        cfg.Headers,
