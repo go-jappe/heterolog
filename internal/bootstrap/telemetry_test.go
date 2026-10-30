@@ -20,6 +20,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	"github.com/go-jappe/heterolog/internal/testutil/observertest"
+	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
@@ -250,5 +251,115 @@ func TestTelemetryReportsDeliveryErrorsToTheErrorHandler(t *testing.T) {
 	if len(reported) != 1 || !strings.Contains(reported[0].Error(), "the otlp trace exporter could not send 1 spans") ||
 		!strings.Contains(reported[0].Error(), "400") {
 		t.Errorf("reported errors = %v, want the rejected batch", reported)
+	}
+}
+
+// switchableReceiverは、downの間は503を返し、upになったら受け取ったspanをreceiverへ渡す
+// OTLP/HTTPの受信側です。
+type switchableReceiver struct {
+	*otlpReceiver
+	mu   sync.Mutex
+	down bool
+}
+
+func (r *switchableReceiver) setDown(down bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.down = down
+}
+
+func (r *switchableReceiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	r.mu.Lock()
+	down := r.down
+	r.mu.Unlock()
+	if down {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	r.otlpReceiver.ServeHTTP(w, req)
+}
+
+func spoolTelemetryConfig(endpoint, spoolDir string) pkgtelemetry.Config {
+	cfg := otlpTelemetryConfig(endpoint)
+	cfg.Traces.OTLP.Retries = 0
+	cfg.Traces.ExportInterval = 10 * time.Millisecond
+	cfg.Traces.OTLP.FailureStore.Store.DurableType = []pkgdurable.DurableType{pkgdurable.DurableTypeSpool}
+	cfg.Traces.OTLP.FailureStore.Store.DurableStoreConfig.SpoolConfig = pkgdurable.SpoolConfig{
+		SpoolPath: spoolDir,
+		Target:    "checkout",
+		Dir:       "traces_otlp",
+		OverloadPolicyConfig: pkgdurable.SpoolOverloadPolicyConfig{
+			OverloadPolicy:    pkgdurable.OverloadPolicyDrop,
+			SpillDestination:  pkgdurable.SpillDestinationStdout,
+			MaxDirSize:        1 << 30,
+			StatsScanInterval: time.Second,
+			MaxCallsSinceScan: 100,
+		},
+	}
+	return cfg
+}
+
+func TestTelemetryResendsSpansFromTheSpoolAfterTheReceiverRecovers(t *testing.T) {
+	inner, _ := newOTLPReceiver(t)
+	receiver := &switchableReceiver{otlpReceiver: inner, down: true}
+	server := httptest.NewServer(receiver)
+	t.Cleanup(server.Close)
+	spoolDir := t.TempDir()
+	var mu sync.Mutex
+	var reported []error
+	onError := loggerruntime.WithTelemetryErrorHandler(func(err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		reported = append(reported, err)
+	})
+
+	// 受信側が止まっている間に終わったspanは、spoolに保存してから終了します。
+	tel, err := bootstrap.NewTelemetry(context.Background(), spoolTelemetryConfig(server.URL, spoolDir), onError)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, span := tel.Tracer().StartSpan(context.Background(), "spooled")
+	span.End()
+	if err := tel.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := receiver.span("spooled"); got != nil {
+		t.Fatal("the span reached the receiver while it was down")
+	}
+	// spanは、spoolのactiveに保存したまま、次に始めるTelemetryを待ちます。
+	activeDir := filepath.Join(spoolDir, "checkout", "spool", "traces_otlp", "active")
+	var active []string
+	err = filepath.WalkDir(activeDir, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			active = append(active, path)
+		}
+		return err
+	})
+	if err != nil || len(active) != 1 {
+		t.Fatalf("active spool files = %v, %v; want the spooled span", active, err)
+	}
+
+	// 再起動した後、受信側が回復すれば、spoolのspanを送り直します。
+	receiver.setDown(false)
+	tel, err = bootstrap.NewTelemetry(context.Background(), spoolTelemetryConfig(server.URL, spoolDir), onError)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	deadline := time.Now().Add(10 * time.Second)
+	for got, _ := receiver.span("spooled"); got == nil; got, _ = receiver.span("spooled") {
+		if time.Now().After(deadline) {
+			t.Fatal("the spooled span was not resent")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, service := receiver.span("spooled"); service != "checkout" {
+		t.Errorf("service name of the resent span = %q, want the Resource it was stored with", service)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	// 送り直すspanは届く見込みがあるため、知らせません。
+	if len(reported) != 0 {
+		t.Errorf("reported errors = %v, want none", reported)
 	}
 }

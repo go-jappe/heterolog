@@ -72,6 +72,7 @@ select_group() {
 			TestFileLogger_Log_WritesToFile_ForTempo
 			TestFileLogger_Log_WritesToFile_ForTempo_Via_Collector
 			TestTelemetrySendsSpansToTempoOverOTLPHTTP
+			TestTelemetryResendsSpooledSpansToTempo
 		)
 		;;
 	*)

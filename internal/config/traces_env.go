@@ -4,8 +4,10 @@ import (
 	"errors"
 	"path/filepath"
 
+	"github.com/go-jappe/heterolog/internal/config/logconfig"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
 	pkgenv "github.com/go-jappe/heterolog/pkg/env"
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
@@ -27,6 +29,9 @@ type TracesConfig struct {
 	Traces pkgtelemetry.TracesConfig
 	// FileDirは、spanのfileを置くdirectoryです。
 	FileDir string
+	// FailureStoreは、otlpの送り先のfailure storeの設定です。保存先のpathなど、ログと共通の
+	// 項目は、MapTelemetryConfigが組み立てます。
+	FailureStore TracesFailureStoreConfig
 }
 
 // loadTracesConfigは、traceの設定を読み込みます。HETEROLOG_ENABLE_TRACESがfalseなら、
@@ -74,9 +79,11 @@ func loadTracesConfig(env pkgenv.Lookup) (TracesConfig, error) {
 	}
 
 	cfg.FileDir = env.GetEnvString("HETEROLOG_TRACES_FILE_DIR", defaultTracesFileDir)
+	failureStore, failureStoreErr := loadTracesFailureStoreConfig(env)
+	cfg.FailureStore = failureStore
 	return cfg, errors.Join(
 		samplingRatioErr, queueSizeErr, batchSizeErr, exportIntervalErr,
-		headersErr, timeoutErr, retriesErr, retryBaseDelayErr, retryMaxDelayErr, circuitBreakerErr,
+		headersErr, timeoutErr, retriesErr, retryBaseDelayErr, retryMaxDelayErr, circuitBreakerErr, failureStoreErr,
 	)
 }
 
@@ -91,5 +98,12 @@ func MapTelemetryConfig(a AppConfig) pkgtelemetry.Config {
 	}
 	cfg.Traces = a.Traces.Traces
 	cfg.Traces.File.Path = filepath.Join(a.FsstoreConfig.LogPath, a.RuntimeConfig.Target, a.Traces.FileDir, tracesFileName)
+	cfg.Traces.OTLP.FailureStore = pkgtelemetry.TraceFailureStoreConfig{
+		Store: newFailureStoreConfig(
+			&a, checkpointSourceTracesOTLP, pkglogger.LoggerContractSync, a.Traces.FailureStore.FailureHandler, logconfig.LogBodyConfig{},
+		),
+		Replay:           a.Traces.FailureStore.Replay,
+		ReplaySupervisor: a.Traces.FailureStore.ReplaySupervisor,
+	}
 	return cfg
 }

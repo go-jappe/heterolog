@@ -77,7 +77,7 @@ type Pipeline struct {
 // 止めるにはShutdownを呼びます。reportがnilなら、errorを標準のloggerへ1行ずつ書きます。
 func NewPipeline(cfg Config, destinations []Destination, meter pkgobserver.Meter, report ErrorHandler) *Pipeline {
 	meter = observer.EnsureMeter(meter)
-	report = safeErrorHandler(report)
+	report = NewErrorHandler(report)
 	p := &Pipeline{meter: meter, report: report, done: make(chan struct{})}
 	for _, destination := range destinations {
 		w := &worker{
@@ -247,7 +247,7 @@ func (w *worker) export(batch []tracing.SpanData) {
 	var failures []SpanFailure
 	failed := 0
 	if err != nil {
-		failures = exportFailures(err, len(batch))
+		failures = ExportFailures(err, len(batch))
 		for _, failure := range failures {
 			failed += failure.Failed()
 		}
@@ -301,10 +301,10 @@ func recordSpans(ctx context.Context, meter pkgobserver.Meter, exporter, outcome
 	)
 }
 
-// safeErrorHandlerは、reportのpanicで配送のgoroutineが止まらないようにします。reportが
+// NewErrorHandlerは、reportのpanicで配送のgoroutineが止まらないようにします。reportが
 // nilなら、errorを標準のloggerへ1行ずつ書きます。panicした場合も、errorを標準のloggerへ
 // 書きます。
-func safeErrorHandler(report ErrorHandler) ErrorHandler {
+func NewErrorHandler(report ErrorHandler) ErrorHandler {
 	if report == nil {
 		return logError
 	}

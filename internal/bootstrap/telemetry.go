@@ -11,6 +11,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/telemetryruntime"
 	"github.com/go-jappe/heterolog/internal/application/tracing"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
+	"github.com/go-jappe/heterolog/internal/infrastructure/traces/failurestore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces/jsonlines"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces/otlp"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces/otlphttp"
@@ -47,7 +48,8 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 		return telemetryruntime.New(nil, nil), nil
 	}
 	options := loggerruntime.ResolveOptions(opts)
-	destinations, err := newTraceDestinations(cfg, options.Meter)
+	report := traces.NewErrorHandler(options.TelemetryErrorHandler)
+	destinations, err := newTraceDestinations(ctx, cfg, options.Meter, report)
 	if err != nil {
 		return nil, err
 	}
@@ -55,20 +57,25 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 		QueueSize:      cfg.Traces.QueueSize,
 		BatchSize:      cfg.Traces.BatchSize,
 		ExportInterval: cfg.Traces.ExportInterval,
-	}, destinations, options.Meter, options.TelemetryErrorHandler)
+	}, destinations, options.Meter, report)
 	return telemetryruntime.New(tracing.NewTracer(pipeline, cfg.Traces.SamplingRatio), pipeline), nil
 }
 
 // newTraceDestinationsは、cfgで選んだ送り先を作ります。作れない送り先があれば、作った
 // 送り先を閉じてerrorを返します。
-func newTraceDestinations(cfg pkgtelemetry.Config, meter pkgobserver.Meter) ([]traces.Destination, error) {
+func newTraceDestinations(
+	ctx context.Context,
+	cfg pkgtelemetry.Config,
+	meter pkgobserver.Meter,
+	report traces.ErrorHandler,
+) ([]traces.Destination, error) {
 	resource := otlp.NewResource(cfg.Resource)
 	destinations := make([]traces.Destination, 0, len(cfg.Traces.Exporters))
 	for _, name := range cfg.Traces.Exporters {
 		switch name {
 		case pkgtelemetry.TraceExporterOTLP:
 			otlpCfg := cfg.Traces.OTLP
-			destinations = append(destinations, traces.Destination{Exporter: otlphttp.New(otlphttp.Config{
+			exporter := otlphttp.New(otlphttp.Config{
 				Endpoint:       otlpCfg.Endpoint,
 				Headers:        otlpCfg.Headers,
 				Compression:    otlpCfg.Compression,
@@ -77,7 +84,29 @@ func newTraceDestinations(cfg pkgtelemetry.Config, meter pkgobserver.Meter) ([]t
 				RetryBaseDelay: otlpCfg.RetryBaseDelay,
 				RetryMaxDelay:  otlpCfg.RetryMaxDelay,
 				CircuitBreaker: otlpCfg.CircuitBreaker,
-			}, resource, meter)})
+			}, resource, meter)
+			destination := traces.Destination{Exporter: exporter}
+			if otlpCfg.FailureStore.Enabled() {
+				store, err := failurestore.New(ctx, failurestore.Config{
+					Store:            otlpCfg.FailureStore.Store,
+					Replay:           otlpCfg.FailureStore.Replay,
+					ReplaySupervisor: otlpCfg.FailureStore.ReplaySupervisor,
+				}, failurestore.Options{
+					Backend:  otlphttp.BackendName,
+					Exporter: exporter,
+					Resource: resource,
+					Meter:    meter,
+					Report:   report,
+				})
+				if err != nil {
+					return nil, errors.Join(fmt.Errorf("create the failure store of the otlp trace exporter: %w", err),
+						exporter.Close(), closeTraceDestinations(destinations))
+				}
+				if store != nil {
+					destination.Store = store
+				}
+			}
+			destinations = append(destinations, destination)
 		case pkgtelemetry.TraceExporterStdout:
 			destinations = append(destinations, traces.Destination{Exporter: jsonlines.NewStdout(resource)})
 		case pkgtelemetry.TraceExporterFile:
@@ -91,9 +120,13 @@ func newTraceDestinations(cfg pkgtelemetry.Config, meter pkgobserver.Meter) ([]t
 	return destinations, nil
 }
 
+// closeTraceDestinationsは、作った送り先を、failure storeを止めてから閉じます。
 func closeTraceDestinations(destinations []traces.Destination) error {
 	var errs []error
 	for _, destination := range destinations {
+		if destination.Store != nil {
+			errs = append(errs, destination.Store.Shutdown(context.Background()))
+		}
 		errs = append(errs, destination.Exporter.Close())
 	}
 	return errors.Join(errs...)

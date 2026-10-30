@@ -28,9 +28,10 @@ import (
 // ExporterNameは、metricsのexporter属性の値です。
 const ExporterName = "otlp"
 
-// BreakerBackendは、circuit breakerのmetricsのbackend属性の値です。ログの出力先と
-// 区別できるよう、traceの送り先であることを名前に入れます。
-const BreakerBackend = "otlp_traces"
+// BackendNameは、circuit breakerとfailure storeのmetricsのbackend属性と、failure storeの
+// recordのbackendの値です。ログの出力先と区別できるよう、traceの送り先であることを名前に
+// 入れます。
+const BackendName = "otlp_traces"
 
 // maxResponseBytesは、読む応答の本文の上限です。partial_successを読むためだけに読みます。
 const maxResponseBytes = 64 << 10
@@ -72,7 +73,7 @@ func New(cfg Config, resource *tracing.Resource, meter pkgobserver.Meter) *Expor
 	if cfg.CircuitBreaker {
 		breaker = circuitbreaker.NewOperationGuard(circuitbreaker.OperationGuardOptions{
 			Meter:     meter,
-			Backend:   BreakerBackend,
+			Backend:   BackendName,
 			EventName: "otlp_traces.circuit_breaker",
 			Classify:  classify,
 		})

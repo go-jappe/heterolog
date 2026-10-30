@@ -90,9 +90,9 @@ func (e *ExportError) Unwrap() []error {
 	return errs
 }
 
-// exportFailuresは、Exportが返したerrorを範囲ごとの失敗にします。ExportErrorでない
+// ExportFailuresは、Exportが返したerrorを範囲ごとの失敗にします。ExportErrorでない
 // errorは、batchのすべてのspanを、結果の分からない失敗として送り直す扱いにします。
-func exportFailures(err error, n int) []SpanFailure {
+func ExportFailures(err error, n int) []SpanFailure {
 	var exportErr *ExportError
 	if errors.As(err, &exportErr) {
 		return exportErr.Failures

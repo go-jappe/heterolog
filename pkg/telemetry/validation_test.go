@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
@@ -100,5 +101,49 @@ func TestValidateSkipsTheSettingsOfUnusedExporters(t *testing.T) {
 	cfg.Traces.OTLP.RetryBaseDelay, cfg.Traces.OTLP.RetryMaxDelay = 0, 0
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() = %v, want no error for the delays without retries", err)
+	}
+}
+
+func TestValidateChecksTheFailureStore(t *testing.T) {
+	withStore := func(change func(*telemetry.TraceFailureStoreConfig)) telemetry.Config {
+		cfg := validConfig()
+		cfg.Traces.OTLP.FailureStore = telemetry.TraceFailureStoreConfig{
+			Store: durable.FailureStoreConfig{MaxConcurrent: 1, DurableType: []durable.DurableType{durable.DurableTypeSpool}},
+		}
+		cfg.Traces.OTLP.FailureStore.Replay.Runner.Interval = time.Second
+		change(&cfg.Traces.OTLP.FailureStore)
+		return cfg
+	}
+	if err := withStore(func(*telemetry.TraceFailureStoreConfig) {}).Validate(); err != nil {
+		t.Errorf("Validate() of a spool = %v", err)
+	}
+	// 何も選ばなければ、failure storeの設定は確かめません。
+	if err := withStore(func(c *telemetry.TraceFailureStoreConfig) { *c = telemetry.TraceFailureStoreConfig{} }).Validate(); err != nil {
+		t.Errorf("Validate() without a store = %v", err)
+	}
+	for _, tc := range []struct {
+		field  string
+		kind   error
+		change func(*telemetry.TraceFailureStoreConfig)
+	}{
+		{"Traces.OTLP.FailureStore.Store.DurableType", telemetry.ErrInvalidSetting, func(c *telemetry.TraceFailureStoreConfig) {
+			c.Store.DurableType = []durable.DurableType{durable.DurableTypeSpool, durable.DurableTypeSpool}
+		}},
+		{"Traces.OTLP.FailureStore.Store.MaxConcurrent", telemetry.ErrNonPositiveSetting, func(c *telemetry.TraceFailureStoreConfig) {
+			c.Store.MaxConcurrent = 0
+		}},
+		{"Traces.OTLP.FailureStore.Replay.Runner.Interval", telemetry.ErrNonPositiveSetting, func(c *telemetry.TraceFailureStoreConfig) {
+			c.Replay.Runner.Interval = 0
+		}},
+		{"Traces.OTLP.FailureStore.Store.DurableStoreConfig.FileArchiveConfig.ObjectStorageUploadConfig.Enabled", telemetry.ErrInvalidSetting, func(c *telemetry.TraceFailureStoreConfig) {
+			c.Store.DurableType = []durable.DurableType{durable.DurableTypeFileArchive}
+			c.Store.DurableStoreConfig.FileArchiveConfig.ObjectStorageUploadConfig.Enabled = true
+		}},
+	} {
+		err := withStore(tc.change).Validate()
+		var fieldErr *telemetry.FieldError
+		if !errors.As(err, &fieldErr) || fieldErr.Field != tc.field || !errors.Is(err, tc.kind) {
+			t.Errorf("%s: Validate() = %v, want a FieldError of the field with %v", tc.field, err, tc.kind)
+		}
 	}
 }

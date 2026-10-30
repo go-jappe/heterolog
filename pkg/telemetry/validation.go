@@ -6,6 +6,8 @@ import (
 	"math"
 	"net/url"
 	"strings"
+
+	"github.com/go-jappe/heterolog/pkg/logger/durable"
 )
 
 var (
@@ -154,6 +156,36 @@ func (c OTLPTracesConfig) validate() error {
 				Detail: fmt.Sprintf("must not be shorter than Traces.OTLP.RetryBaseDelay %v, got %v", c.RetryBaseDelay, c.RetryMaxDelay),
 			})
 		}
+	}
+	errs = append(errs, c.FailureStore.validate())
+	return errors.Join(errs...)
+}
+
+// validateは、failure storeの選び方と、traceで使えない設定を確かめます。store自体の
+// 設定は、ログの出力先と同じく、NewTelemetryがstoreを作るときに確かめます。
+func (c TraceFailureStoreConfig) validate() error {
+	const field = "Traces.OTLP.FailureStore"
+	if len(c.Store.DurableType) == 0 {
+		return nil
+	}
+	if err := durable.ValidateFailureStoreDurableTypes(c.Store.DurableType); err != nil {
+		return &FieldError{Field: field + ".Store.DurableType", Value: c.Store.DurableType, Err: ErrInvalidSetting, Detail: err.Error()}
+	}
+	if !c.Enabled() {
+		return nil
+	}
+	var errs []error
+	if err := durable.ValidateFailureHandlerMaxConcurrent(c.Store.MaxConcurrent); err != nil {
+		errs = append(errs, &FieldError{Field: field + ".Store.MaxConcurrent", Value: c.Store.MaxConcurrent, Err: ErrNonPositiveSetting, Detail: err.Error()})
+	}
+	if c.Store.DurableStoreConfig.FileArchiveConfig.ObjectStorageUploadConfig.Enabled {
+		errs = append(errs, &FieldError{
+			Field: field + ".Store.DurableStoreConfig.FileArchiveConfig.ObjectStorageUploadConfig.Enabled", Value: true, Err: ErrInvalidSetting,
+			Detail: "the upload of the trace failure archive to object storage is not supported yet",
+		})
+	}
+	if c.usesSpool() {
+		errs = append(errs, positive(field+".Replay.Runner.Interval", c.Replay.Runner.Interval))
 	}
 	return errors.Join(errs...)
 }

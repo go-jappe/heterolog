@@ -309,7 +309,7 @@ func TestExportWithACircuitBreakerStopsSendingAfterRepeatedFailures(t *testing.T
 	e.breaker = circuitbreaker.NewOperationGuard(circuitbreaker.OperationGuardOptions{
 		CircuitBreaker: retryable.NewCircuitBreaker(retryable.CircuitBreakerOptions{Clock: func() time.Time { return now }}),
 		Meter:          meter,
-		Backend:        BreakerBackend,
+		Backend:        BackendName,
 		Classify:       classify,
 	})
 	// 7回目の失敗（60秒後）で開き、30秒の間は送りません。9回目（80秒後）は断られます。
@@ -329,7 +329,7 @@ func TestExportWithACircuitBreakerStopsSendingAfterRepeatedFailures(t *testing.T
 	if r.count() != 7 {
 		t.Errorf("requests = %d, want 7 before the breaker opened", r.count())
 	}
-	if got := meter.Count(observertest.Key(telemetry.CircuitBreakerRejectedRequests, telemetry.AttrBackend, BreakerBackend)); got == 0 {
+	if got := meter.Count(observertest.Key(telemetry.CircuitBreakerRejectedRequests, telemetry.AttrBackend, BackendName)); got == 0 {
 		t.Errorf("rejected requests = %d, want some", got)
 	}
 }

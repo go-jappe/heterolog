@@ -81,6 +81,59 @@ func TestTelemetrySendsSpansToTempoOverOTLPHTTP(t *testing.T) {
 	}
 }
 
+func TestTelemetryResendsSpooledSpansToTempo(t *testing.T) {
+	settings := testutil.RequireIntegrationEnvironment(t, "TEMPO_INTEGRATION_TEST")
+	endpoint := strings.TrimSpace(settings["HETEROLOG_TRACES_OTLP_ENDPOINT"])
+	queryAddr := strings.TrimSpace(settings["HETEROLOG_OTEL_TEMPO_QUERY_ADDR"])
+	if endpoint == "" || queryAddr == "" {
+		t.Fatal("the Tempo integration test needs HETEROLOG_TRACES_OTLP_ENDPOINT and HETEROLOG_OTEL_TEMPO_QUERY_ADDR in the dedicated environment file")
+	}
+	spoolDir := t.TempDir()
+	ctx := context.Background()
+
+	// 接続できない受信先へ送ったspanは、spoolのOTLP/JSONのrecordに残ります。
+	unreachable := spoolTelemetryConfig("http://127.0.0.1:1/v1/traces", spoolDir)
+	unreachable.Resource.ServiceName = "heterolog-it-spool"
+	tel, err := bootstrap.NewTelemetry(ctx, unreachable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spanCtx, parent := pkgobserver.StartSpanWithOptions(ctx, tel.Tracer(), "heterolog.it.spooled",
+		pkgobserver.StartOptions{Kind: pkgobserver.SpanKindServer},
+		pkgobserver.Attr{Key: "heterolog.it.attempt", Value: 1},
+	)
+	_, child := tel.Tracer().StartSpan(spanCtx, "heterolog.it.spooled.child")
+	child.RecordError(errors.New("integration error"))
+	child.End()
+	parent.End()
+	traceID := string(parent.TraceID())
+	if err := tel.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// 同じspoolを使って再び始めると、Tempoへ送り直し、protobufに戻したspanが受け付けられます。
+	reachable := spoolTelemetryConfig(endpoint, spoolDir)
+	tel, err = bootstrap.NewTelemetry(ctx, reachable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+	url := "http://" + queryAddr + "/api/traces/" + traceID
+	deadline := time.Now().Add(60 * time.Second)
+	var body string
+	for {
+		body = fetchTempoTrace(t, url)
+		if strings.Contains(body, "heterolog.it.spooled.child") && strings.Contains(body, "heterolog-it-spool") &&
+			strings.Contains(body, "integration error") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Tempo did not return the resent trace %s; last response: %.2000s", traceID, body)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
 // fetchTempoTraceは、TempoのHTTP APIからtraceを読みます。まだ見つからない場合は空を返します。
 func fetchTempoTrace(t *testing.T, url string) string {
 	t.Helper()

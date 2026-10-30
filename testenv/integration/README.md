@@ -27,7 +27,7 @@ containerと一緒に破棄します。
 | `opensearch-client` | `OPENSEARCH_INTEGRATION_TEST` | `pkg/opensearch` | `TestIndexDocument(s)ToLocalOpenSearch`、`TestIndexDocument(s)CompressedToLocalOpenSearch`（4件） |
 | `loki` | `LOKI_INTEGRATION_TEST` | `internal/infrastructure/logger`、`internal/infrastructure/logger/loki` | `TestLokiLoggerUsesActualDotEnvConfigAndStoresEntry`、`TestLokiSpoolUsesActualDotEnvConfigActiveAndResendsToBackend`、`TestLokiLoggerWithIntegrationEnvironmentPushesToLocalLoki` |
 | `clickhouse` | `CLICKHOUSE_INTEGRATION_TEST` | `internal/infrastructure/logger` | `TestClickHouseLoggerUsesActualDotEnvConfigAndStoresRow`、`TestClickHouseSpoolUsesActualDotEnvConfigActiveAndResendsToBackend` |
-| `tracing` | `TEMPO_INTEGRATION_TEST`、`OTEL_COLLECTOR_INTEGRATION_TEST` | `internal/infrastructure/logger/file`、`internal/bootstrap` | `TestFileLogger_Log_WritesToFile_ForTempo`、`TestFileLogger_Log_WritesToFile_ForTempo_Via_Collector`、`TestTelemetrySendsSpansToTempoOverOTLPHTTP` |
+| `tracing` | `TEMPO_INTEGRATION_TEST`、`OTEL_COLLECTOR_INTEGRATION_TEST` | `internal/infrastructure/logger/file`、`internal/bootstrap` | `TestFileLogger_Log_WritesToFile_ForTempo`、`TestFileLogger_Log_WritesToFile_ForTempo_Via_Collector`、`TestTelemetrySendsSpansToTempoOverOTLPHTTP`、`TestTelemetryResendsSpooledSpansToTempo` |
 
 `run-live-tests.sh` は、選んだ試験のうちPASSしなかったもの（失敗のほか、skipや試験名の変更で
 実行されなかったもの）があれば失敗します。試験を追加・改名した場合は、scriptの一覧も更新してください。

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/presentation/envconfig"
+	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
@@ -84,5 +85,47 @@ func TestLoadRejectsInvalidTraceSettings(t *testing.T) {
 	// 無効にしたtraceの設定は読まないため、不正な値でも失敗しません。
 	if _, err := envconfig.Load(writeEnvFileForTest(t, "HETEROLOG_TRACES_SAMPLING_RATIO=2")); err != nil {
 		t.Errorf("Load with traces disabled = %v", err)
+	}
+}
+
+func TestTelemetryConfigReadsTheTraceFailureStoreSettings(t *testing.T) {
+	isolateEnvConfigForTest(t)
+	libDir := t.TempDir()
+	loaded, err := envconfig.Load(writeEnvFileForTest(t,
+		"HETEROLOG_ENABLE_TRACES=true",
+		"HETEROLOG_SYSTEM_LIB_DIR="+libDir,
+		"HETEROLOG_TARGET=api",
+		"HETEROLOG_TRACES_OTLP_SPOOL_RUNNER_INTERVAL_MILLISECOND=250",
+		"HETEROLOG_TRACES_OTLP_SPOOL_RUNNER_MAX_RETRY_AFTER_SECOND=60",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	failureStore := loaded.TelemetryConfig().Traces.OTLP.FailureStore
+	// 既定では、ログの出力先と同じくspoolを選び、traces_otlpに保存します。
+	spool := failureStore.Store.DurableStoreConfig.SpoolConfig
+	if !failureStore.Enabled() || len(failureStore.Store.DurableType) != 1 || failureStore.Store.DurableType[0] != pkgdurable.DurableTypeSpool ||
+		spool.SpoolPath != libDir || spool.Target != "api" || spool.Dir != "traces_otlp" {
+		t.Errorf("failure store = %+v, spool %+v; want the default spool under the lib directory", failureStore.Store, spool)
+	}
+	if failureStore.Replay.Runner.Interval != 250*time.Millisecond || failureStore.Replay.Worker.MaxRetryAfter != time.Minute ||
+		failureStore.ReplaySupervisor.RestartDelay <= 0 {
+		t.Errorf("replay = %+v, supervisor %+v", failureStore.Replay, failureStore.ReplaySupervisor)
+	}
+
+	loaded, err = envconfig.Load(writeEnvFileForTest(t,
+		"HETEROLOG_ENABLE_TRACES=true",
+		"HETEROLOG_SYSTEM_LIB_DIR="+libDir,
+		"HETEROLOG_TRACES_OTLP_DURABLE_TYPES=fileArchive",
+		"HETEROLOG_TRACES_OTLP_FAILURE_ARCHIVE_DIR=span_archives",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	failureStore = loaded.TelemetryConfig().Traces.OTLP.FailureStore
+	archive := failureStore.Store.DurableStoreConfig.FileArchiveConfig
+	if failureStore.Store.DurableType[0] != pkgdurable.DurableTypeFileArchive || archive.Dir != "span_archives" ||
+		archive.ObjectStorageUploadConfig.Enabled {
+		t.Errorf("failure store = %+v, archive %+v; want a failure archive without upload", failureStore.Store, archive)
 	}
 }

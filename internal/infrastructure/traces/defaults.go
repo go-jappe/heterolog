@@ -3,6 +3,10 @@ package traces
 import (
 	"time"
 
+	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
+	"github.com/go-jappe/heterolog/pkg/spool/spoollifecycle"
+	"github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
+	"github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
@@ -21,6 +25,16 @@ const (
 	DefaultOTLPRetries        = 3
 	DefaultOTLPRetryBaseDelay = time.Second
 	DefaultOTLPRetryMaxDelay  = 5 * time.Second
+
+	// failure storeの同時実行の上限と、spoolから送り直す設定の既定値です。ログの出力先の
+	// 既定値と同じです。
+	DefaultFailureStoreMaxConcurrent = 8
+	DefaultReplayInterval            = 100 * time.Millisecond
+	DefaultReplayFinalizeRetryDelay  = time.Second
+	DefaultReplayMaxFinalizeEntries  = 4098
+	DefaultReplayMaxRetryAfter       = time.Hour
+	DefaultReplaySizePurgeInterval   = time.Minute
+	DefaultReplayRestartDelay        = time.Second
 )
 
 // DefaultConfigは、送り先を選んでいないtraceの既定の設定を返します。
@@ -37,6 +51,24 @@ func DefaultConfig() pkgtelemetry.TracesConfig {
 			Retries:        DefaultOTLPRetries,
 			RetryBaseDelay: DefaultOTLPRetryBaseDelay,
 			RetryMaxDelay:  DefaultOTLPRetryMaxDelay,
+			FailureStore: pkgtelemetry.TraceFailureStoreConfig{
+				Store: pkgdurable.FailureStoreConfig{
+					MaxConcurrent: DefaultFailureStoreMaxConcurrent,
+					SpillType:     []pkgdurable.SpillType{pkgdurable.SpillType(pkgdurable.SpillDestinationStdout)},
+				},
+				Replay: spoolrunner.BackendSpoolRunnerConfig{
+					Runner: spoolrunner.RunnerConfig{Interval: DefaultReplayInterval},
+					Worker: spoolrunner.WorkerConfig{
+						Finalize: spoolrunner.FinalizeConfig{
+							RetryDelay: DefaultReplayFinalizeRetryDelay,
+							MaxEntries: DefaultReplayMaxFinalizeEntries,
+						},
+						MaxRetryAfter: DefaultReplayMaxRetryAfter,
+					},
+					LifeCycle: spoollifecycle.LifecycleConfig{SizePurgeInterval: DefaultReplaySizePurgeInterval},
+				},
+				ReplaySupervisor: spoolsupervisor.RunnerSupervisorConfig{RestartDelay: DefaultReplayRestartDelay},
+			},
 		},
 	}
 }

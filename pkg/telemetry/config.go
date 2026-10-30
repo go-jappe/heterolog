@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/pkg/logger"
+	"github.com/go-jappe/heterolog/pkg/logger/durable"
+	"github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
+	"github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 )
 
 // Config configures heterolog.NewTelemetry. Start with
@@ -92,6 +95,54 @@ type OTLPTracesConfig struct {
 	// receiver has recovered. The same breaker as that of the log
 	// destinations is used.
 	CircuitBreaker bool
+	// FailureStore keeps the spans that could not be sent, so that they are
+	// resent later or kept for inspection.
+	FailureStore TraceFailureStoreConfig
+}
+
+// TraceFailureStoreConfig configures where the otlp destination keeps the
+// spans that it could not send. It uses the failure stores of the log
+// destinations, and each span is kept as one record of OTLP JSON with its
+// resource and instrumentation scope.
+//
+// Spans that failed for a reason that allows a resend, including failures
+// whose outcome is unknown, are resent from the spool. Spans that the
+// receiver rejected are kept as dead, and spans of a partial success as
+// quarantine, without a resend.
+type TraceFailureStoreConfig struct {
+	// Store selects and configures the stores as for a log destination: with
+	// DurableTypeSpool, the spans are kept in a spool and resent; with
+	// DurableTypeFileArchive, they are appended to a failure archive; with
+	// DurableTypeNone and EnableDegrade, they are written to stdout. An empty
+	// DurableType keeps nothing, and the spans are dropped.
+	//
+	// The upload of the failure archive to object storage is not supported
+	// yet, and the internal log notification targets (HandlerConfig) are not
+	// used: the errors and warnings of the stores go to the function passed
+	// with heterolog.WithTelemetryErrorHandler.
+	Store durable.FailureStoreConfig
+	// Replay configures the worker that resends the spans in the spool, as
+	// for a log destination.
+	Replay spoolrunner.BackendSpoolRunnerConfig
+	// ReplaySupervisor configures the restarts of that worker.
+	ReplaySupervisor spoolsupervisor.RunnerSupervisorConfig
+}
+
+// Enabled reports whether Store keeps or writes the spans that could not be
+// sent.
+func (c TraceFailureStoreConfig) Enabled() bool {
+	types := c.Store.DurableType
+	return len(types) > 0 && (types[0] != durable.DurableTypeNone || c.Store.EnableDegrade)
+}
+
+// usesSpool reports whether Store selects the spool.
+func (c TraceFailureStoreConfig) usesSpool() bool {
+	for _, durableType := range c.Store.DurableType {
+		if durableType == durable.DurableTypeSpool {
+			return true
+		}
+	}
+	return false
 }
 
 // FileTracesConfig configures the file destination of spans.
