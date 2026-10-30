@@ -39,9 +39,10 @@ func DefaultTelemetryConfig() TelemetryConfig { return bootstrap.DefaultTelemetr
 // only to construction. Call Shutdown when the application exits to send the
 // spans that are still queued.
 //
-// Of opts, only the Meter of WithObservers is used: it records the
-// heterolog_trace_* metrics of the delivery. The delivery does not create
-// spans for its own sending, so the Tracer of WithObservers is not used.
+// Of opts, only the Meter of WithObservers and WithTelemetryErrorHandler are
+// used: the Meter records the heterolog_trace_* metrics of the delivery, and
+// the error handler receives its errors. The delivery does not create spans
+// for its own sending, so the Tracer of WithObservers is not used.
 //
 // To trace the work of loggers, pass the Tracer of the Telemetry to the
 // loggers with WithObservers.

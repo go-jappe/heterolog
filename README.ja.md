@@ -324,7 +324,7 @@ defer span.End()
 ```
 
 - 環境変数からは、`HETEROLOG_ENABLE_TRACES=true` と `HETEROLOG_TRACES_OTLP_ENDPOINT` を設定し、`env.NewTelemetry(ctx)` を呼びます。サービス名は `HETEROLOG_APP_NAME` から取ります。
-- spanは、出力先ごとの待ち行列からまとめて送るため、spanを終えるときにネットワークを待ちません。失敗した要求は送り直します。それでも送れなかったspanと、待ち行列に入らなかったspanは捨て、メトリクスで数えます。
+- spanは、出力先ごとの待ち行列からまとめて送るため、spanを終えるときにネットワークを待ちません。失敗した要求は送り直します。それでも送れなかったspanと、待ち行列に入らなかったspanは捨て、メトリクスで数え、`WithTelemetryErrorHandler` で渡した関数（渡さなければ標準のlogger）に知らせます。
 - `pkg/observer` はW3Cの `traceparent` headerを読み書きするため、traceをサービスをまたいで続けられます。
 - OpenTelemetry SDKのspanも、`otelexport.NewSpanExporter(tel)` で同じように送れます。SDKを使わないプログラムがSDKをリンクしないよう、別のパッケージにしています。
 

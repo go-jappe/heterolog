@@ -23,6 +23,9 @@ type Options struct {
 	// Tracerが始めたspanをcontextから取り出せるように包みます。
 	Tracer pkgobserver.Tracer
 	Meter  pkgobserver.Meter
+	// TelemetryErrorHandlerは、WithTelemetryErrorHandlerで渡した関数です。nilの場合は、
+	// telemetryの実装が既定の扱いを選びます。
+	TelemetryErrorHandler func(error)
 }
 
 // WithSpoolは、同期・非同期loggerのbackendがdurableなspoolを使う場合の再送の設定を
@@ -40,6 +43,12 @@ func WithCloudWatchLogsStreamRouting(routing pkgcloudwatchlogs.StreamRouting) Op
 // providerと、その終了は呼び出し元が受け持ちます。
 func WithObservers(tracer pkgobserver.Tracer, meter pkgobserver.Meter) Option {
 	return func(o *Options) { o.Tracer, o.Meter = tracer, meter }
+}
+
+// WithTelemetryErrorHandlerは、NewTelemetryの配送のerrorを受け取る関数を渡します。
+// loggerは使いません。
+func WithTelemetryErrorHandler(handler func(error)) Option {
+	return func(o *Options) { o.TelemetryErrorHandler = handler }
 }
 
 // WithMemoryPressureMonitorは、過負荷時の方針に使う、起動済みのmemory圧迫の監視を

@@ -91,6 +91,22 @@ func WithObservers(tracer Tracer, meter Meter) Option {
 	return loggerruntime.WithObservers(tracer, meter)
 }
 
+// WithTelemetryErrorHandler sets the function that a Telemetry calls with the
+// errors of its delivery: a batch of spans that could not be sent after the
+// retries, spans that a receiver rejected, and spans dropped because a queue
+// was full or because they ended after Shutdown started. Dropped spans are
+// reported in one error per destination at most once per ExportInterval.
+//
+// The function may be called concurrently from several goroutines, and the
+// delivery to a destination waits until it returns, so it should return
+// quickly. A panic in it is recovered and written to the standard logger.
+// Without this option, each error is written as one line to the standard
+// logger. To pass the errors to the error handler of the OpenTelemetry SDK,
+// pass otel.Handle. Loggers do not use this option.
+func WithTelemetryErrorHandler(handler func(error)) Option {
+	return loggerruntime.WithTelemetryErrorHandler(handler)
+}
+
 // WithMemoryPressureMonitor supplies an already-started monitor, such as one
 // from NewMemoryPressureMonitor, for overload policies. The caller owns its
 // lifetime: loggers neither start, reset, nor stop it. Its policy replaces the

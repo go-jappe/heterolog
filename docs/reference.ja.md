@@ -445,6 +445,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 - 部分的な成功（partial success）の応答は、受け付けられなかったspanを失敗として数え、送り直しません。
 - `file` と `stdout` は、batchをOTLP JSONの1行として書きます。trace IDとspan IDは16進数、列挙は数値、64-bitの整数と時刻は文字列です。`file` は、ないディレクトリを作って `File.Path` へ追記します。ファイルはローテーションも削除もしません。
 - 送り直しても送れなかったspanは捨てます。ディスクには残しません。
+- 配送のerrorは、`WithTelemetryErrorHandler` で渡した関数に渡します。渡さなければ、1件ずつ標準のloggerへ1行で書きます。対象は、送り直しても送れなかったbatch、部分的な成功で受け付けられなかったspan、捨てたspanです。待ち行列が一杯で捨てたspanは、出力先ごとに1つのerrorにまとめ、`ExportInterval` に1回までしか知らせません。`Shutdown` を始めた後に終わったspanは、最初の1回だけ知らせます。関数は並行に呼ばれることがあり、返るまでその出力先への送信を待たせます。関数のpanicは回復し、標準のloggerへ書きます。OpenTelemetry SDKのerror handlerへ渡すには、`otel.Handle` を渡します。
 - 配送の仕組みは、自分の送信のspanを作りません。作ると、そのspanもまた送ることになるためです。代わりに、以下のメトリクスで様子を知らせます。メトリクスは、`NewTelemetry` へ `WithObservers` で渡した `Meter` で記録し、そのoptionの `Tracer` は使いません。
 - `Shutdown(ctx)` は、spanの受け付けを止め、待ち行列のspanを送り、出力先を閉じます。先に `ctx` が終わると `ctx.Err()` を返し、送信は裏で続きます。後の `Shutdown` は同じ後始末を待ちます。`Shutdown` を始めた後に終わったspanは捨てます。最後のspanも送れるよう、`Tracer` を使うロガーは `Telemetry` より先に閉じてください。
 

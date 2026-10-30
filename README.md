@@ -324,7 +324,7 @@ defer span.End()
 ```
 
 - From the environment, set `HETEROLOG_ENABLE_TRACES=true` and `HETEROLOG_TRACES_OTLP_ENDPOINT`, and call `env.NewTelemetry(ctx)`. The service name comes from `HETEROLOG_APP_NAME`.
-- Spans are sent in batches from a queue for each destination, so ending a span never waits for the network. Failed requests are retried; spans that still cannot be sent, or that do not fit in the queue, are dropped and counted in metrics.
+- Spans are sent in batches from a queue for each destination, so ending a span never waits for the network. Failed requests are retried; spans that still cannot be sent, or that do not fit in the queue, are dropped, counted in metrics, and reported to the function passed with `WithTelemetryErrorHandler`, or to the standard logger without it.
 - `pkg/observer` reads and writes the W3C `traceparent` header, so a trace can continue across services.
 - Spans from the OpenTelemetry SDK are sent the same way through `otelexport.NewSpanExporter(tel)`, a separate package so that programs without the SDK do not link it.
 

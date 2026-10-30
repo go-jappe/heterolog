@@ -167,8 +167,8 @@ func (c *EnvConfig) NewAdminAudit(ctx context.Context, opts ...Option) (*Deliver
 func (c *EnvConfig) TelemetryConfig() TelemetryConfig { return c.impl().TelemetryConfig() }
 
 // NewTelemetry constructs a Telemetry from the settings that TelemetryConfig
-// returns. Of opts, only the Meter of WithObservers is used, as with the
-// package-level NewTelemetry.
+// returns. Of opts, only the Meter of WithObservers and
+// WithTelemetryErrorHandler are used, as with the package-level NewTelemetry.
 func (c *EnvConfig) NewTelemetry(ctx context.Context, opts ...Option) (*Telemetry, error) {
 	return newTelemetry(bootstrap.NewTelemetryFromEnv(ctx, c.impl(), opts...))
 }

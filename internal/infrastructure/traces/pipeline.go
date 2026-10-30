@@ -4,14 +4,17 @@
 //
 // 配送の仕組みは、自分の送信（batchの送信、HTTPの要求、再試行）のspanを作りません。
 // 自分のspanを送るためにまたspanを作る繰り返しを避けるためです。様子はmetrics
-// （heterolog_trace_*）で知らせます。
+// （heterolog_trace_*）で知らせ、送れなかったspanと捨てたspanは、error handlerにも
+// 知らせます。
 package traces
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
@@ -52,10 +55,17 @@ type Config struct {
 	ExportInterval time.Duration
 }
 
+// ErrorHandlerは、配送のerrorを受け取る関数です。複数のgoroutineから並行に呼ばれます。
+type ErrorHandler func(error)
+
 // Pipelineは、tracing.SpanSinkの実装です。
 type Pipeline struct {
 	meter   pkgobserver.Meter
+	report  ErrorHandler
 	workers []*worker
+
+	// droppedAfterShutdownは、Shutdownの後に終わったspanを捨てたことを、1回だけ知らせます。
+	droppedAfterShutdown sync.Once
 
 	// muは、closedと、待ち行列のchannelを閉じることを守ります。Enqueueは読み取りの
 	// lockを持ったまま送るため、閉じたchannelへ送ることはありません。
@@ -68,14 +78,16 @@ type Pipeline struct {
 }
 
 // NewPipelineは、exportersへspanを送るPipelineを作り、送り先ごとのgoroutineを始めます。
-// 止めるにはShutdownを呼びます。
-func NewPipeline(cfg Config, exporters []Exporter, meter pkgobserver.Meter) *Pipeline {
+// 止めるにはShutdownを呼びます。reportがnilなら、errorを標準のloggerへ1行ずつ書きます。
+func NewPipeline(cfg Config, exporters []Exporter, meter pkgobserver.Meter, report ErrorHandler) *Pipeline {
 	meter = observer.EnsureMeter(meter)
-	p := &Pipeline{meter: meter, done: make(chan struct{})}
+	report = safeErrorHandler(report)
+	p := &Pipeline{meter: meter, report: report, done: make(chan struct{})}
 	for _, exporter := range exporters {
 		w := &worker{
 			exporter: exporter,
 			meter:    meter,
+			report:   report,
 			queue:    make(chan tracing.SpanData, cfg.QueueSize),
 			batch:    cfg.BatchSize,
 			interval: cfg.ExportInterval,
@@ -88,16 +100,23 @@ func NewPipeline(cfg Config, exporters []Exporter, meter pkgobserver.Meter) *Pip
 }
 
 // Enqueueは、spanを送り先ごとの待ち行列へ入れます。待たずに返り、待ち行列が一杯の
-// 送り先と、Shutdownの後のspanは捨てて数えます。
+// 送り先と、Shutdownの後のspanは捨てて数えます。待ち行列が一杯で捨てたspanは、送り先の
+// goroutineがまとめて知らせます。Shutdownの後に捨てたspanは、最初の1回だけ知らせます。
 func (p *Pipeline) Enqueue(span tracing.SpanData) {
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	closed := p.closed
 	for _, w := range p.workers {
-		if p.closed {
+		if closed {
 			recordSpans(context.Background(), p.meter, w.exporter.Name(), telemetry.OutcomeDropped, 1)
 			continue
 		}
 		w.enqueue(span)
+	}
+	p.mu.RUnlock()
+	if closed && len(p.workers) > 0 {
+		p.droppedAfterShutdown.Do(func() {
+			p.report(errors.New("dropped spans that ended after the Shutdown of the telemetry started"))
+		})
 	}
 }
 
@@ -139,18 +158,36 @@ func (p *Pipeline) Shutdown(ctx context.Context) error {
 type worker struct {
 	exporter Exporter
 	meter    pkgobserver.Meter
+	report   ErrorHandler
 	queue    chan tracing.SpanData
 	batch    int
 	interval time.Duration
 	done     chan struct{}
+
+	// droppedは、待ち行列が一杯で捨て、まだ知らせていないspanの数です。
+	dropped atomic.Int64
+	// lastDropReportは、捨てたspanを最後に知らせた時刻です。runのgoroutineだけが使います。
+	lastDropReport time.Time
 }
 
 func (w *worker) enqueue(span tracing.SpanData) {
 	select {
 	case w.queue <- span:
 	default:
+		w.dropped.Add(1)
 		recordSpans(context.Background(), w.meter, w.exporter.Name(), telemetry.OutcomeDropped, 1)
 	}
+}
+
+// reportDroppedは、待ち行列が一杯で捨てたspanの数を知らせます。知らせが多くなりすぎない
+// よう、forceでなければ、前に知らせてからintervalが過ぎるまで知らせません。
+func (w *worker) reportDropped(force bool) {
+	if w.dropped.Load() == 0 || (!force && time.Since(w.lastDropReport) < w.interval) {
+		return
+	}
+	w.lastDropReport = time.Now()
+	n := w.dropped.Swap(0)
+	w.report(fmt.Errorf("dropped %d spans for the %s trace exporter because its queue was full", n, w.exporter.Name()))
 }
 
 // runは、batchが一杯になるか、前に送ってからintervalが過ぎたら、batchを送ります。
@@ -166,6 +203,7 @@ func (w *worker) run() {
 			clear(batch)
 			batch = batch[:0]
 		}
+		w.reportDropped(false)
 		timer.Reset(w.interval)
 	}
 	for {
@@ -173,6 +211,7 @@ func (w *worker) run() {
 		case span, ok := <-w.queue:
 			if !ok {
 				flush()
+				w.reportDropped(true)
 				return
 			}
 			batch = append(batch, span)
@@ -185,8 +224,8 @@ func (w *worker) run() {
 	}
 }
 
-// exportは、batchを送り、結果を数えます。送り先のpanicは失敗として数え、goroutineを
-// 止めません。
+// exportは、batchを送り、結果を数え、送れなかったspanを知らせます。送り先のpanicは
+// 失敗として扱い、goroutineを止めません。
 func (w *worker) export(batch []tracing.SpanData) {
 	ctx := context.Background()
 	name := w.exporter.Name()
@@ -206,9 +245,11 @@ func (w *worker) export(batch []tracing.SpanData) {
 	case err == nil:
 	case errors.As(err, &partial):
 		failed = min(max(partial.Failed, 0), len(batch))
+		w.report(fmt.Errorf("the %s trace exporter could not send %d of %d spans: %w", name, failed, len(batch), err))
 	default:
 		outcome = telemetry.OutcomeFailure
 		failed = len(batch)
+		w.report(fmt.Errorf("the %s trace exporter could not send %d spans: %w", name, failed, err))
 	}
 	w.meter.Histogram(telemetry.TraceExportDuration).Record(ctx, time.Since(start).Seconds(),
 		pkgobserver.Attr{Key: telemetry.AttrExporter, Value: name},
@@ -226,4 +267,25 @@ func recordSpans(ctx context.Context, meter pkgobserver.Meter, exporter, outcome
 		pkgobserver.Attr{Key: telemetry.AttrExporter, Value: exporter},
 		pkgobserver.Attr{Key: telemetry.AttrOutcome, Value: outcome},
 	)
+}
+
+// safeErrorHandlerは、reportのpanicで配送のgoroutineが止まらないようにします。reportが
+// nilなら、errorを標準のloggerへ1行ずつ書きます。panicした場合も、errorを標準のloggerへ
+// 書きます。
+func safeErrorHandler(report ErrorHandler) ErrorHandler {
+	if report == nil {
+		return logError
+	}
+	return func(err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[INTERNAL][ERROR] telemetry: the error handler panicked: %v; error: %v", r, err)
+			}
+		}()
+		report(err)
+	}
+}
+
+func logError(err error) {
+	log.Printf("[INTERNAL][ERROR] telemetry: %v", err)
 }

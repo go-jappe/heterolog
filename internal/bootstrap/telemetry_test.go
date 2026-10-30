@@ -223,3 +223,32 @@ func TestTelemetrySpansFollowAnIncomingTraceParent(t *testing.T) {
 		t.Error("a new trace was recorded with the sampling ratio 0")
 	}
 }
+
+func TestTelemetryReportsDeliveryErrorsToTheErrorHandler(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	t.Cleanup(server.Close)
+	var mu sync.Mutex
+	var reported []error
+	tel, err := bootstrap.NewTelemetry(context.Background(), otlpTelemetryConfig(server.URL),
+		loggerruntime.WithTelemetryErrorHandler(func(err error) {
+			mu.Lock()
+			defer mu.Unlock()
+			reported = append(reported, err)
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, span := tel.Tracer().StartSpan(context.Background(), "rejected")
+	span.End()
+	if err := tel.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reported) != 1 || !strings.Contains(reported[0].Error(), "the otlp trace exporter could not send 1 spans") ||
+		!strings.Contains(reported[0].Error(), "400") {
+		t.Errorf("reported errors = %v, want the rejected batch", reported)
+	}
+}

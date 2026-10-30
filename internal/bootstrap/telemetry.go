@@ -30,9 +30,9 @@ func DefaultTelemetryConfig() pkgtelemetry.Config {
 }
 
 // NewTelemetryは、cfgを検証し、送り先とTracerを組み立てます。optsは、WithObserversの
-// Meterだけを使い、traceの配送の仕組みのmetricsを記録します。配送の仕組みは自分の送信の
-// spanを作らないため、Tracerは使いません。送り先がなければ、何も記録しないtelemetryを
-// 返します。
+// Meterと、WithTelemetryErrorHandlerの関数だけを使います。Meterには、traceの配送の仕組みの
+// metricsを記録し、関数には配送のerrorを渡します。配送の仕組みは自分の送信のspanを
+// 作らないため、Tracerは使いません。送り先がなければ、何も記録しないtelemetryを返します。
 func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerruntime.Option) (*telemetryruntime.Runtime, error) {
 	if ctx == nil {
 		return nil, loggerruntime.ErrNilContext
@@ -46,8 +46,8 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 	if len(cfg.Traces.Exporters) == 0 {
 		return telemetryruntime.New(nil, nil), nil
 	}
-	meter := loggerruntime.ResolveOptions(opts).Meter
-	exporters, err := newTraceExporters(cfg, meter)
+	options := loggerruntime.ResolveOptions(opts)
+	exporters, err := newTraceExporters(cfg, options.Meter)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 		QueueSize:      cfg.Traces.QueueSize,
 		BatchSize:      cfg.Traces.BatchSize,
 		ExportInterval: cfg.Traces.ExportInterval,
-	}, exporters, meter)
+	}, exporters, options.Meter, options.TelemetryErrorHandler)
 	return telemetryruntime.New(tracing.NewTracer(pipeline, cfg.Traces.SamplingRatio), pipeline), nil
 }
 

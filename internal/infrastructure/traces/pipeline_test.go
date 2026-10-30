@@ -1,8 +1,13 @@
 package traces
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
+	"os"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -58,6 +63,24 @@ func (e *fakeExporter) snapshot() ([][]string, int) {
 
 func spanNamed(name string) tracing.SpanData { return tracing.SpanData{Name: name} }
 
+// errorRecorderは、Pipelineが知らせたerrorを記録します。
+type errorRecorder struct {
+	mu   sync.Mutex
+	errs []string
+}
+
+func (r *errorRecorder) report(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.errs = append(r.errs, err.Error())
+}
+
+func (r *errorRecorder) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.errs)
+}
+
 func spanCount(meter *observertest.Meter, exporter, outcome string) int64 {
 	return meter.Count(observertest.Key(telemetry.TraceSpans,
 		telemetry.AttrExporter, exporter, telemetry.AttrOutcome, outcome))
@@ -66,7 +89,8 @@ func spanCount(meter *observertest.Meter, exporter, outcome string) int64 {
 func TestPipelineSendsFullBatchesAndTheRestAtShutdown(t *testing.T) {
 	meter := observertest.NewMeter()
 	exporter := &fakeExporter{name: "a"}
-	p := NewPipeline(Config{QueueSize: 10, BatchSize: 2, ExportInterval: time.Hour}, []Exporter{exporter}, meter)
+	errs := &errorRecorder{}
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 2, ExportInterval: time.Hour}, []Exporter{exporter}, meter, errs.report)
 	for _, name := range []string{"1", "2", "3"} {
 		p.Enqueue(spanNamed(name))
 	}
@@ -82,8 +106,13 @@ func TestPipelineSendsFullBatchesAndTheRestAtShutdown(t *testing.T) {
 	}
 
 	p.Enqueue(spanNamed("late"))
-	if got := spanCount(meter, "a", telemetry.OutcomeDropped); got != 1 {
-		t.Errorf("dropped spans after shutdown = %d, want 1", got)
+	p.Enqueue(spanNamed("later"))
+	if got := spanCount(meter, "a", telemetry.OutcomeDropped); got != 2 {
+		t.Errorf("dropped spans after shutdown = %d, want 2", got)
+	}
+	// Shutdownの後に捨てたspanは、最初の1回だけ知らせます。
+	if got := errs.snapshot(); len(got) != 1 || !strings.Contains(got[0], "after the Shutdown") {
+		t.Errorf("reported errors = %q, want one about the spans after Shutdown", got)
 	}
 	if err := p.Shutdown(context.Background()); err != nil {
 		t.Errorf("second Shutdown = %v", err)
@@ -92,7 +121,7 @@ func TestPipelineSendsFullBatchesAndTheRestAtShutdown(t *testing.T) {
 
 func TestPipelineSendsAfterTheInterval(t *testing.T) {
 	exporter := &fakeExporter{name: "a"}
-	p := NewPipeline(Config{QueueSize: 10, BatchSize: 10, ExportInterval: 10 * time.Millisecond}, []Exporter{exporter}, nil)
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 10, ExportInterval: 10 * time.Millisecond}, []Exporter{exporter}, nil, nil)
 	defer p.Shutdown(context.Background())
 	p.Enqueue(spanNamed("1"))
 	deadline := time.Now().Add(5 * time.Second)
@@ -111,7 +140,8 @@ func TestPipelineDropsWhenTheQueueIsFullWithoutBlockingOtherExporters(t *testing
 	meter := observertest.NewMeter()
 	slow := &fakeExporter{name: "slow", block: make(chan struct{})}
 	fast := &fakeExporter{name: "fast"}
-	p := NewPipeline(Config{QueueSize: 2, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{slow, fast}, meter)
+	errs := &errorRecorder{}
+	p := NewPipeline(Config{QueueSize: 2, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{slow, fast}, meter, errs.report)
 
 	// slowは1件目を送る途中で止まるため、待ち行列に入るのは次の2件までです。fastの待ち行列も
 	// 2件のため、fastが受け取るのを待ってから次を入れます。
@@ -133,6 +163,35 @@ func TestPipelineDropsWhenTheQueueIsFullWithoutBlockingOtherExporters(t *testing
 	}
 	if batches, _ := slow.snapshot(); len(batches) != 3 {
 		t.Errorf("slow batches = %v, want the first span and the two queued spans", batches)
+	}
+	// 捨てたspanは、1つの知らせにまとめます。
+	if got := errs.snapshot(); len(got) != 1 || !strings.Contains(got[0], "dropped 2 spans for the slow trace exporter") {
+		t.Errorf("reported errors = %q, want one report of the 2 dropped spans", got)
+	}
+}
+
+func TestPipelineReportsDroppedSpansAtMostOncePerInterval(t *testing.T) {
+	blocked := &fakeExporter{name: "blocked", block: make(chan struct{})}
+	errs := &errorRecorder{}
+	p := NewPipeline(Config{QueueSize: 1, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{blocked}, nil, errs.report)
+	w := p.workers[0]
+	// 前に知らせたばかりなら、intervalが過ぎるまで知らせず、終わるときにまとめて知らせます。
+	w.lastDropReport = time.Now()
+	p.Enqueue(spanNamed("sent"))
+	waitFor(t, func() bool { return len(w.queue) == 0 })
+	for _, name := range []string{"queued", "dropped 1", "dropped 2"} {
+		p.Enqueue(spanNamed(name))
+	}
+	close(blocked.block)
+	waitFor(t, func() bool { batches, _ := blocked.snapshot(); return len(batches) == 2 })
+	if got := errs.snapshot(); len(got) != 0 {
+		t.Errorf("reported errors before the interval = %q, want none", got)
+	}
+	if err := p.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := errs.snapshot(); len(got) != 1 || !strings.Contains(got[0], "dropped 2 spans") {
+		t.Errorf("reported errors at shutdown = %q, want one report of the 2 dropped spans", got)
 	}
 }
 
@@ -162,7 +221,8 @@ func TestPipelineCountsFailuresAndSurvivesPanics(t *testing.T) {
 	failing := &fakeExporter{name: "failing", err: errors.New("down")}
 	partial := &fakeExporter{name: "partial", err: &PartialFailureError{Failed: 1, Err: errors.New("rejected")}}
 	panicking := &fakeExporter{name: "panicking", panic: true}
-	p := NewPipeline(Config{QueueSize: 10, BatchSize: 2, ExportInterval: time.Hour}, []Exporter{failing, partial, panicking}, meter)
+	errs := &errorRecorder{}
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 2, ExportInterval: time.Hour}, []Exporter{failing, partial, panicking}, meter, errs.report)
 	for _, name := range []string{"1", "2", "3"} {
 		p.Enqueue(spanNamed(name))
 	}
@@ -189,11 +249,56 @@ func TestPipelineCountsFailuresAndSurvivesPanics(t *testing.T) {
 	)); len(got) != 2 {
 		t.Errorf("failure durations = %v, want one per batch", got)
 	}
+	// 失敗したbatchごとに知らせます。
+	got := errs.snapshot()
+	slices.Sort(got)
+	want := []string{
+		"the failing trace exporter could not send 1 spans: down",
+		"the failing trace exporter could not send 2 spans: down",
+		"the panicking trace exporter could not send 1 spans: trace exporter panicking panicked: exporter bug",
+		"the panicking trace exporter could not send 2 spans: trace exporter panicking panicked: exporter bug",
+		"the partial trace exporter could not send 1 of 1 spans: 1 spans were not accepted: rejected",
+		"the partial trace exporter could not send 1 of 2 spans: 1 spans were not accepted: rejected",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("reported errors =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestPipelineSurvivesPanicsOfTheErrorHandlerAndLogsWithoutOne(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	failing := &fakeExporter{name: "failing", err: errors.New("down")}
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{failing}, nil,
+		func(error) { panic("handler bug") })
+	p.Enqueue(spanNamed("1"))
+	p.Enqueue(spanNamed("2"))
+	if err := p.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if batches, _ := failing.snapshot(); len(batches) != 2 {
+		t.Errorf("batches = %v, want both spans sent after the panic", batches)
+	}
+	if got := strings.Count(buf.String(), "the error handler panicked: handler bug"); got != 2 {
+		t.Errorf("log = %q, want two lines about the panics", buf.String())
+	}
+
+	buf.Reset()
+	p = NewPipeline(Config{QueueSize: 10, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{failing}, nil, nil)
+	p.Enqueue(spanNamed("3"))
+	if err := p.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); !strings.Contains(got, "[INTERNAL][ERROR] telemetry: the failing trace exporter could not send 1 spans: down") {
+		t.Errorf("log = %q, want the error in the standard logger", got)
+	}
 }
 
 func TestShutdownStopsWaitingWhenTheContextEnds(t *testing.T) {
 	blocked := &fakeExporter{name: "blocked", block: make(chan struct{})}
-	p := NewPipeline(Config{QueueSize: 10, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{blocked}, nil)
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{blocked}, nil, nil)
 	p.Enqueue(spanNamed("1"))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()

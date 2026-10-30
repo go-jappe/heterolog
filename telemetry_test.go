@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/go-jappe/heterolog"
+	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/testutil"
 )
 
@@ -33,6 +34,18 @@ func TestTelemetryForwardsToTheImplementation(t *testing.T) {
 
 	if _, err := heterolog.NewTelemetry(nil, cfg); !errors.Is(err, heterolog.ErrNilContext) {
 		t.Errorf("NewTelemetry(nil) = %v, want ErrNilContext", err)
+	}
+}
+
+func TestWithTelemetryErrorHandlerForwardsTheFunction(t *testing.T) {
+	var got error
+	options := loggerruntime.ResolveOptions([]heterolog.Option{
+		heterolog.WithTelemetryErrorHandler(func(err error) { got = err }),
+	})
+	want := errors.New("delivery failed")
+	options.TelemetryErrorHandler(want)
+	if got != want {
+		t.Errorf("handler received %v, want %v", got, want)
 	}
 }
 
