@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/tracing"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
 	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 )
@@ -228,8 +229,8 @@ func waitFor(t *testing.T, cond func() bool) {
 func TestPipelineCountsFailuresAndSurvivesPanics(t *testing.T) {
 	meter := observertest.NewMeter()
 	failing := &fakeExporter{name: "failing", err: errors.New("down")}
-	partial := &fakeExporter{name: "partial", err: &ExportError{Failures: []SpanFailure{
-		{Start: 0, End: 1, Disposition: DispositionQuarantine, Rejected: 1, Err: errors.New("rejected")},
+	partial := &fakeExporter{name: "partial", err: &delivery.ExportError{Failures: []delivery.Failure{
+		{Start: 0, End: 1, Disposition: delivery.DispositionQuarantine, Rejected: 1, Err: errors.New("rejected")},
 	}}}
 	panicking := &fakeExporter{name: "panicking", panic: true}
 	errs := &errorRecorder{}
@@ -335,7 +336,7 @@ type fakeStore struct {
 	stored []string
 }
 
-func (s *fakeStore) Store(_ context.Context, batch []tracing.SpanData, failures []SpanFailure) error {
+func (s *fakeStore) Store(_ context.Context, batch []tracing.SpanData, failures []delivery.Failure) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, failure := range failures {
@@ -364,9 +365,9 @@ func (e closingExporter) Close() error {
 
 func TestPipelineStoresFailedSpansAndReportsOnlyThoseNotResent(t *testing.T) {
 	var events []string
-	exporter := closingExporter{fakeExporter: &fakeExporter{name: "otlp", err: &ExportError{Failures: []SpanFailure{
-		{Start: 0, End: 1, Disposition: DispositionRetry, Err: errors.New("unavailable")},
-		{Start: 1, End: 2, Disposition: DispositionDead, StatusCode: 400, Err: errors.New("bad request")},
+	exporter := closingExporter{fakeExporter: &fakeExporter{name: "otlp", err: &delivery.ExportError{Failures: []delivery.Failure{
+		{Start: 0, End: 1, Disposition: delivery.DispositionRetry, Err: errors.New("unavailable")},
+		{Start: 1, End: 2, Disposition: delivery.DispositionDead, StatusCode: 400, Err: errors.New("bad request")},
 	}}}, events: &events}
 	store := &fakeStore{events: &events}
 	meter := observertest.NewMeter()

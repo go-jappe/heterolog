@@ -1,6 +1,7 @@
-// Package otlphttpは、spanをOTLP/HTTPのprotobufで受信側（OpenTelemetry Collector、
-// Grafana Tempoなど）へ送る送り先です。一時的な失敗は、OTLPの仕様
-// （https://opentelemetry.io/docs/specs/otlp/）の規則で送り直します。
+// Package otlphttpは、spanやmetricsをOTLP/HTTPのprotobufで受信側（OpenTelemetry
+// Collector、Grafana Tempoなど）へ送る送り先です。一時的な失敗は、OTLPの仕様
+// （https://opentelemetry.io/docs/specs/otlp/）の規則で送り直します。送るものの種類に
+// よる違いは、Signalで渡します。
 package otlphttp
 
 import (
@@ -16,22 +17,15 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/application/tracing"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/circuitbreaker"
 	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
-	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
-	"github.com/go-jappe/heterolog/internal/infrastructure/traces/otlp"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // ExporterNameは、metricsのexporter属性の値です。
 const ExporterName = "otlp"
-
-// BackendNameは、circuit breakerとfailure storeのmetricsのbackend属性と、failure storeの
-// recordのbackendの値です。ログの出力先と区別できるよう、traceの送り先であることを名前に
-// 入れます。
-const BackendName = "otlp_traces"
 
 // maxResponseBytesは、読む応答の本文の上限です。partial_successを読むためだけに読みます。
 const maxResponseBytes = 64 << 10
@@ -50,10 +44,23 @@ type Config struct {
 	CircuitBreaker bool
 }
 
-// Exporterは、traces.Exporterの実装です。
-type Exporter struct {
+// Signalは、送るものの種類（spanやmetric）による違いです。
+type Signal[T any] struct {
+	// Encodeは、itemsを1回の要求の本文（protobuf）にします。
+	Encode func(items []T) []byte
+	// RetriesMetricは、送り直した回数を数えるmetricsの名前です。
+	RetriesMetric string
+	// BackendNameは、circuit breakerのmetricsのbackend属性の値です。ログの出力先と
+	// 区別できるよう、送るものの種類を名前に入れます（otlp_tracesなど）。
+	BackendName string
+	// Unitは、部分的な成功の応答で受信側が数える単位（spans、data pointsなど）です。
+	Unit string
+}
+
+// Exporterは、delivery.Exporterの実装です。
+type Exporter[T any] struct {
 	cfg       Config
-	resource  *tracing.Resource
+	signal    Signal[T]
 	meter     pkgobserver.Meter
 	transport *http.Transport
 	client    *http.Client
@@ -65,23 +72,23 @@ type Exporter struct {
 	jitter func(n time.Duration) time.Duration
 }
 
-// Newは、Exporterを返します。resourceは、Resourceを持たないspanに付けます。
-// 利用者のprogramのほかの通信に影響しないよう、HTTPの接続は専用のtransportで持ちます。
-func New(cfg Config, resource *tracing.Resource, meter pkgobserver.Meter) *Exporter {
+// Newは、Exporterを返します。利用者のprogramのほかの通信に影響しないよう、HTTPの接続は
+// 専用のtransportで持ちます。
+func New[T any](cfg Config, signal Signal[T], meter pkgobserver.Meter) *Exporter[T] {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	var breaker *circuitbreaker.OperationGuard
 	if cfg.CircuitBreaker {
 		breaker = circuitbreaker.NewOperationGuard(circuitbreaker.OperationGuardOptions{
 			Meter:     meter,
-			Backend:   BackendName,
-			EventName: "otlp_traces.circuit_breaker",
+			Backend:   signal.BackendName,
+			EventName: signal.BackendName + ".circuit_breaker",
 			Classify:  classify,
 		})
 	}
-	return &Exporter{
+	return &Exporter[T]{
 		breaker:   breaker,
 		cfg:       cfg,
-		resource:  resource,
+		signal:    signal,
 		meter:     observer.EnsureMeter(meter),
 		transport: transport,
 		client: &http.Client{
@@ -95,63 +102,63 @@ func New(cfg Config, resource *tracing.Resource, meter pkgobserver.Meter) *Expor
 	}
 }
 
-func (e *Exporter) Name() string { return ExporterName }
+func (e *Exporter[T]) Name() string { return ExporterName }
 
-// Exportは、spansを1回の要求で送ります。一時的な失敗は、Retries回まで送り直します。
-// 受信側が要求を大きすぎると拒否した場合（413）は、spanを半分ずつに分けて送り直します。
-// 送れなかったspanがあれば、範囲ごとの扱いを入れた*traces.ExportErrorを返します。
-func (e *Exporter) Export(ctx context.Context, spans []tracing.SpanData) error {
-	run := exportRun{exporter: e}
-	run.export(ctx, spans, 0)
+// Exportは、itemsを1回の要求で送ります。一時的な失敗は、Retries回まで送り直します。
+// 受信側が要求を大きすぎると拒否した場合（413）は、itemsを半分ずつに分けて送り直します。
+// 送れなかったものがあれば、範囲ごとの扱いを入れた*delivery.ExportErrorを返します。
+func (e *Exporter[T]) Export(ctx context.Context, items []T) error {
+	run := exportRun[T]{exporter: e}
+	run.export(ctx, items, 0)
 	if len(run.failures) == 0 {
 		return nil
 	}
-	return &traces.ExportError{Failures: run.failures}
+	return &delivery.ExportError{Failures: run.failures}
 }
 
 // exportRunは、1回のExportで分けて送った要求の結果を集めます。
-type exportRun struct {
-	exporter *Exporter
-	failures []traces.SpanFailure
+type exportRun[T any] struct {
+	exporter *Exporter[T]
+	failures []delivery.Failure
 	// stoppedは、送り直す扱いで諦めた要求の失敗です。受信側の状態が悪いか、Retry-Afterで
 	// 待つよう求められているため、残りの要求は送らずに同じ扱いにします。
-	stopped *traces.SpanFailure
+	stopped *delivery.Failure
 }
 
-// exportは、batchのoffsetから始まるspansを送ります。
-func (r *exportRun) export(ctx context.Context, spans []tracing.SpanData, offset int) {
+// exportは、batchのoffsetから始まるitemsを送ります。
+func (r *exportRun[T]) export(ctx context.Context, items []T, offset int) {
 	if r.stopped != nil {
 		failure := *r.stopped
-		failure.Start, failure.End = offset, offset+len(spans)
+		failure.Start, failure.End = offset, offset+len(items)
 		failure.Err = fmt.Errorf("not sent after an earlier request failed: %w", r.stopped.Err)
 		r.failures = append(r.failures, failure)
 		return
 	}
-	err := r.exporter.sendWithRetries(ctx, spans)
+	err := r.exporter.sendWithRetries(ctx, items)
 	if err == nil {
 		return
 	}
 	var statusErr *StatusError
-	if errors.As(err, &statusErr) && statusErr.Code == http.StatusRequestEntityTooLarge && len(spans) > 1 {
+	if errors.As(err, &statusErr) && statusErr.Code == http.StatusRequestEntityTooLarge && len(items) > 1 {
 		r.exporter.countRetry(ctx, retryable.RetryReasonRequestTooLarge)
-		half := len(spans) / 2
-		r.export(ctx, spans[:half], offset)
-		r.export(ctx, spans[half:], offset+half)
+		half := len(items) / 2
+		r.export(ctx, items[:half], offset)
+		r.export(ctx, items[half:], offset+half)
 		return
 	}
 	failure := failureOf(ctx, err)
-	failure.Start, failure.End = offset, offset+len(spans)
+	failure.Start, failure.End = offset, offset+len(items)
 	r.failures = append(r.failures, failure)
-	if failure.Disposition == traces.DispositionRetry {
+	if failure.Disposition == delivery.DispositionRetry {
 		r.stopped = &failure
 	}
 }
 
-// sendWithRetriesは、spansを1回の要求で送り、一時的な失敗をRetries回まで送り直します。
+// sendWithRetriesは、itemsを1回の要求で送り、一時的な失敗をRetries回まで送り直します。
 // Retry-AfterがRetryMaxDelayより長い場合は、待たずに諦めます。仕様はRetry-Afterに従うよう
-// 求めており、送り先にfailure storeがあれば、spanはそこで期限まで待ちます。
-func (e *Exporter) sendWithRetries(ctx context.Context, spans []tracing.SpanData) error {
-	body, encoding, err := e.encode(spans)
+// 求めており、送り先にfailure storeがあれば、そこで期限まで待ちます。
+func (e *Exporter[T]) sendWithRetries(ctx context.Context, items []T) error {
+	body, encoding, err := e.encode(items)
 	if err != nil {
 		return err
 	}
@@ -172,40 +179,41 @@ func (e *Exporter) sendWithRetries(ctx context.Context, spans []tracing.SpanData
 }
 
 // sendGuardedは、circuit breakerがあれば、その許可を得てから1回の要求を送ります。
-// breakerが開いている間は送らず、*retryable.CircuitBreakerOpenErrorを返します。
-func (e *Exporter) sendGuarded(ctx context.Context, body []byte, encoding string) error {
+// breakerが開いている間は送らず、*retryable.CircuitBreakerOpenErrorを返します。errorには、
+// どの送り先のbreakerか分かるよう、Signal.BackendNameを操作の名前として入れます。
+func (e *Exporter[T]) sendGuarded(ctx context.Context, body []byte, encoding string) error {
 	if e.breaker == nil {
 		return e.send(ctx, body, encoding)
 	}
-	return e.breaker.Do(ctx, "export_traces", func(ctx context.Context) error {
+	return e.breaker.Do(ctx, e.signal.BackendName, func(ctx context.Context) error {
 		return e.send(ctx, body, encoding)
 	})
 }
 
-func (e *Exporter) countRetry(ctx context.Context, reason retryable.RetryReason) {
-	e.meter.Counter(telemetry.TraceExportRetries).Add(ctx, 1,
+func (e *Exporter[T]) countRetry(ctx context.Context, reason retryable.RetryReason) {
+	e.meter.Counter(e.signal.RetriesMetric).Add(ctx, 1,
 		pkgobserver.Attr{Key: telemetry.AttrExporter, Value: ExporterName},
 		pkgobserver.Attr{Key: telemetry.AttrReason, Value: string(reason)},
 	)
 }
 
 // failureOfは、諦めた要求のerrorから、failure storeでの扱いを決めます。受信側がstatusで
-// 拒否した要求は、送り直さずにdeadとして残します。部分的な成功は、どのspanが受け付け
+// 拒否した要求は、送り直さずにdeadとして残します。部分的な成功は、どれが受け付け
 // られたか分からないため、quarantineとして残します。応答を得られなかった失敗は、
 // 受け付けられたか分からなくても、欠落より重複を選んで送り直します。
-func failureOf(ctx context.Context, err error) traces.SpanFailure {
+func failureOf(ctx context.Context, err error) delivery.Failure {
 	var partial *partialSuccessError
 	if errors.As(err, &partial) {
-		return traces.SpanFailure{
-			Disposition: traces.DispositionQuarantine,
+		return delivery.Failure{
+			Disposition: delivery.DispositionQuarantine,
 			Rejected:    partial.rejected,
 			Reason:      string(retryable.RetryReasonRecordRejected),
 			Err:         err,
 		}
 	}
 	decision := classify(ctx, err)
-	failure := traces.SpanFailure{
-		Disposition: traces.DispositionRetry,
+	failure := delivery.Failure{
+		Disposition: delivery.DispositionRetry,
 		StatusCode:  decision.Code,
 		Reason:      string(decision.Reason),
 		Err:         err,
@@ -218,7 +226,7 @@ func failureOf(ctx context.Context, err error) traces.SpanFailure {
 		failure.RetryAfter = decision.RetryAfter
 		return failure
 	}
-	failure.Disposition = traces.DispositionDead
+	failure.Disposition = delivery.DispositionDead
 	if statusErr.Code == http.StatusRequestEntityTooLarge {
 		failure.Reason = string(retryable.RetryReasonRequestTooLarge)
 	}
@@ -253,7 +261,7 @@ func classify(ctx context.Context, err error) retryable.RetryDecision {
 // 使います（RetryMaxDelayより長い場合、sendWithRetriesは送り直しません）。なければ、
 // RetryBaseDelayを1回ごとに2倍にしてRetryMaxDelayまでに抑え、その半分から全部までの間で
 // 無作為に選びます。同じ受信側へ送る多くのprocessが、同時に送り直さないようにするためです。
-func (e *Exporter) retryDelay(retry int, decision retryable.RetryDecision) time.Duration {
+func (e *Exporter[T]) retryDelay(retry int, decision retryable.RetryDecision) time.Duration {
 	if decision.RetryAfter > 0 {
 		return decision.RetryAfter
 	}
@@ -269,9 +277,9 @@ func (e *Exporter) retryDelay(retry int, decision retryable.RetryDecision) time.
 	return delay/2 + e.jitter(delay-delay/2)
 }
 
-// encodeは、spansをprotobufにし、設定に従ってgzipで圧縮します。
-func (e *Exporter) encode(spans []tracing.SpanData) ([]byte, string, error) {
-	body := otlp.MarshalProto(spans, e.resource)
+// encodeは、itemsをprotobufにし、設定に従ってgzipで圧縮します。
+func (e *Exporter[T]) encode(items []T) ([]byte, string, error) {
+	body := e.signal.Encode(items)
 	if e.cfg.Compression != "gzip" {
 		return body, "", nil
 	}
@@ -288,7 +296,7 @@ func (e *Exporter) encode(spans []tracing.SpanData) ([]byte, string, error) {
 }
 
 // sendは、1回の要求を送ります。
-func (e *Exporter) send(ctx context.Context, body []byte, encoding string) error {
+func (e *Exporter[T]) send(ctx context.Context, body []byte, encoding string) error {
 	attemptCtx, cancel := context.WithTimeout(ctx, e.cfg.Timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, e.cfg.Endpoint, bytes.NewReader(body))
@@ -322,29 +330,31 @@ func (e *Exporter) send(ctx context.Context, body []byte, encoding string) error
 		// spanは受け付けられています。応答を読めなくても、送り直しません。
 		return nil
 	}
-	partial, err := otlp.UnmarshalPartialSuccess(respBody)
-	if err != nil || partial.RejectedSpans <= 0 {
+	partial, err := unmarshalPartialSuccess(respBody)
+	if err != nil || partial.Rejected <= 0 {
 		return nil
 	}
 	return &partialSuccessError{
-		rejected: int(min(partial.RejectedSpans, int64(^uint(0)>>1))),
+		rejected: int(min(partial.Rejected, int64(^uint(0)>>1))),
+		unit:     e.signal.Unit,
 		message:  partial.ErrorMessage,
 	}
 }
 
-// partialSuccessErrorは、受信側が要求のうちrejected件のspanを受け付けなかった応答
-// （partial success）です。OTLPの仕様は、この要求の送り直しを禁じています。
+// partialSuccessErrorは、受信側が要求のうちrejected件（単位はunit）を受け付けなかった
+// 応答（partial success）です。OTLPの仕様は、この要求の送り直しを禁じています。
 type partialSuccessError struct {
 	rejected int
+	unit     string
 	message  string
 }
 
 func (e *partialSuccessError) Error() string {
-	return fmt.Sprintf("the OTLP receiver rejected %d spans: %s", e.rejected, e.message)
+	return fmt.Sprintf("the OTLP receiver rejected %d %s: %s", e.rejected, e.unit, e.message)
 }
 
 // Closeは、待機中の接続を閉じます。
-func (e *Exporter) Close() error {
+func (e *Exporter[T]) Close() error {
 	e.transport.CloseIdleConnections()
 	return nil
 }

@@ -1,6 +1,7 @@
-// Package failurestoreは、traceの送り先へ送れなかったspanを、ログの出力先と同じ失敗処理
-// （spool、failure archive、degrade、overload）へ渡し、spoolに保存したspanを送り直します。
-// spanは1件ずつOTLP/JSONのrecordにして保存し、送り直すときにspanへ戻します。
+// Package failurestoreは、NewTelemetryの送り先へ送れなかったもの（spanやmetric）を、
+// ログの出力先と同じ失敗処理（spool、failure archive、degrade、overload）へ渡し、spoolに
+// 保存したものを送り直します。1件ずつCodecでrecordにして保存し、送り直すときにCodecで
+// 戻します。
 //
 // 配送の仕組みは自分の送信のspanを作らないため、使う部品にはspanを作らないTracerを
 // 渡します。失敗処理の内部ログは、Telemetryのerror handlerへ渡します。
@@ -17,7 +18,7 @@ import (
 	"sync"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
-	"github.com/go-jappe/heterolog/internal/application/tracing"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	fsstorespool "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool"
@@ -28,7 +29,6 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
 	logspool "github.com/go-jappe/heterolog/internal/infrastructure/spool/log"
 	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
-	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
@@ -38,9 +38,6 @@ import (
 	pkgspoolrunner "github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
 	pkgspoolsupervisor "github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 )
-
-// operationは、保存するrecordのoperationです。
-const operation = "export_traces"
 
 // Configは、failure storeの設定です。値の範囲は、pkg/telemetryの検証と、ログの出力先と
 // 同じ構築時の検証で確かめます。
@@ -52,25 +49,35 @@ type Config struct {
 	ReplaySupervisor pkgspoolsupervisor.RunnerSupervisorConfig
 }
 
+// Codecは、送るものをfailure storeのrecordにする方法と、recordから戻す方法です。
+type Codec[T any] struct {
+	// Encodeは、itemを、failure storeのrecordのpayload（JSONのobject）にします。
+	Encode func(item T) (map[string]any, error)
+	// Decodeは、recordのpayloadをitemへ戻します。戻せないrecordにはerrorを返します。
+	Decode func(payload []byte) (T, error)
+}
+
 // Optionsは、Newに渡す依存です。
-type Options struct {
+type Options[T any] struct {
 	// Backendは、保存するrecordと、spool・archiveのmetricsのbackend属性に使う名前です。
 	// Retry-Afterの期限を保存するfileの名前にもなるため、英小文字・数字・_・-だけにします。
 	Backend string
-	// Exporterは、spoolのspanを送り直す送り先です。Storeを止めるまで閉じてはいけません。
-	Exporter traces.Exporter
-	// Resourceは、Resourceを持たないspanを保存するときに付けるResourceです。
-	Resource *tracing.Resource
+	// Operationは、保存するrecordのoperation（export_tracesなど）です。
+	Operation string
+	// Exporterは、spoolのものを送り直す送り先です。Storeを止めるまで閉じてはいけません。
+	Exporter delivery.Exporter[T]
+	Codec    Codec[T]
 	Clock    clock.Clock
 	Meter    pkgobserver.Meter
-	// Reportは、保存できなかったspanのほかに、失敗処理の内部ログを受け取ります。
-	Report traces.ErrorHandler
+	// Reportは、失敗処理の内部ログを受け取ります。
+	Report delivery.ErrorHandler
 }
 
-// Storeは、traces.FailureStoreの実装です。
-type Store struct {
+// Storeは、delivery.FailureStoreの実装です。
+type Store[T any] struct {
 	backend   string
-	resource  *tracing.Resource
+	operation string
+	encode    func(item T) (map[string]any, error)
 	clock     clock.Clock
 	composite *flushfailure.CompositeFailureHandler
 	// writerは、spoolを選んだ場合のspoolへの保存です。compositeは借りて使うだけのため、
@@ -85,13 +92,13 @@ type Store struct {
 // Newは、cfgで選んだfailure storeを作ります。spoolを選んだ場合は、同じspoolから送り直す
 // runnerも始めます。何も保存しない設定（DurableTypeがnoneで、degradeもしない）なら、
 // nilを返します。
-func New(ctx context.Context, cfg Config, opts Options) (*Store, error) {
+func New[T any](ctx context.Context, cfg Config, opts Options[T]) (*Store[T], error) {
 	if opts.Clock == nil {
 		opts.Clock = clock.NewUTCClock()
 	}
 	opts.Meter = observer.EnsureMeter(opts.Meter)
 	report := opts.Report
-	s := &Store{backend: opts.Backend, resource: opts.Resource, clock: opts.Clock}
+	s := &Store[T]{backend: opts.Backend, operation: opts.Operation, encode: opts.Codec.Encode, clock: opts.Clock}
 	cfg.Store = ownArchiveUploadStorage(cfg.Store)
 	uploadSpools, err := prepareArchiveUpload(cfg.Store)
 	if err != nil {
@@ -125,8 +132,8 @@ func New(ctx context.Context, cfg Config, opts Options) (*Store, error) {
 	return s, nil
 }
 
-// Storeは、batchのうちfailuresの範囲のspanを、1件ずつrecordにして保存します。
-func (s *Store) Store(ctx context.Context, batch []tracing.SpanData, failures []traces.SpanFailure) error {
+// Storeは、batchのうちfailuresの範囲のものを、1件ずつrecordにして保存します。
+func (s *Store[T]) Store(ctx context.Context, batch []T, failures []delivery.Failure) error {
 	now := s.clock.Now()
 	result := loggerfailure.SendResult{Meta: loggerfailure.Meta{
 		Backend:     s.backend,
@@ -134,8 +141,8 @@ func (s *Store) Store(ctx context.Context, batch []tracing.SpanData, failures []
 		InputCount:  len(batch),
 	}}
 	for _, failure := range failures {
-		for _, span := range batch[failure.Start:failure.End] {
-			payload, err := encodePayload(span, s.resource)
+		for _, item := range batch[failure.Start:failure.End] {
+			payload, err := s.encode(item)
 			if err != nil {
 				return err
 			}
@@ -143,16 +150,16 @@ func (s *Store) Store(ctx context.Context, batch []tracing.SpanData, failures []
 				Cause:          failure.Err,
 				DeliveryStatus: deliveryStatus(failure),
 				FailedAt:       now,
-				Operation:      operation,
+				Operation:      s.operation,
 				StatusCode:     failure.StatusCode,
 				FailureCode:    failureCode(failure),
 				FailureReason:  errorText(failure.Err),
 				Payload:        payload,
 			}
 			switch failure.Disposition {
-			case traces.DispositionDead:
+			case delivery.DispositionDead:
 				result.DeadRecords = append(result.DeadRecords, record)
-			case traces.DispositionQuarantine:
+			case delivery.DispositionQuarantine:
 				result.QuarantineRecords = append(result.QuarantineRecords, record)
 			default:
 				record.RetryAfter = failure.RetryAfter
@@ -166,7 +173,7 @@ func (s *Store) Store(ctx context.Context, batch []tracing.SpanData, failures []
 // Shutdownは、受け付けた保存を終えてからfailure storeを止め、送り直すrunnerを止めます。
 // runnerは、開始済みの一周期を終えてから止まります。ctxが終わった場合は、開始済みの
 // 処理を中止させ、待つのをやめてerrorを返します。
-func (s *Store) Shutdown(ctx context.Context) error {
+func (s *Store[T]) Shutdown(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
@@ -217,11 +224,11 @@ func prepareArchiveUpload(cfg pkgdurable.FailureStoreConfig) (compressedlog.Root
 	if !upload.Enabled {
 		return nil, nil
 	}
-	if err := objectstoragevalidation.ValidateUploadTargetConfig("trace failure archive", archive.ObjectStorageUploadConfig); err != nil {
+	if err := objectstoragevalidation.ValidateUploadTargetConfig("telemetry failure archive", archive.ObjectStorageUploadConfig); err != nil {
 		return nil, err
 	}
 	if err := checkpoint.PrepareDirectory(archive.ArchiveCheckpointConfig.Directory); err != nil {
-		return nil, fmt.Errorf("prepare the checkpoint directory of the trace failure archive: %w", err)
+		return nil, fmt.Errorf("prepare the checkpoint directory of the telemetry failure archive: %w", err)
 	}
 	configs, err := compressedlog.UploadConfigs(upload)
 	if err != nil || configs == nil {
@@ -231,14 +238,14 @@ func prepareArchiveUpload(cfg pkgdurable.FailureStoreConfig) (compressedlog.Root
 }
 
 // deliveryStatusは、受信側が受け付けたかについて分かっていることです。
-func deliveryStatus(failure traces.SpanFailure) pkglogger.DeliveryStatus {
-	if failure.StatusCode != 0 || failure.Disposition != traces.DispositionRetry {
+func deliveryStatus(failure delivery.Failure) pkglogger.DeliveryStatus {
+	if failure.StatusCode != 0 || failure.Disposition != delivery.DispositionRetry {
 		return pkglogger.DeliveryFailed
 	}
 	return pkglogger.DeliveryUnconfirmed
 }
 
-func failureCode(failure traces.SpanFailure) loggerfailure.FailureCode {
+func failureCode(failure delivery.Failure) loggerfailure.FailureCode {
 	if failure.Reason == "" {
 		return "export_failed"
 	}
@@ -263,11 +270,11 @@ type replayRuntime struct {
 
 // startReplayは、writerと同じspoolから送り直すrunnerを作って始めます。writerが受け取った
 // Retry-Afterは、runnerの送り先全体の待ち期限として記録し、同じ上限で短くします。
-func startReplay(cfg Config, opts Options, writer *spoolstorehandler.SpoolStoreHandler) (*replayRuntime, error) {
+func startReplay[T any](cfg Config, opts Options[T], writer *spoolstorehandler.SpoolStoreHandler) (*replayRuntime, error) {
 	spoolCfg := cfg.Store.DurableStoreConfig.SpoolConfig
 	root, err := fsstorespool.NewRootDir(spoolCfg.SpoolPath, spoolCfg.Target, spoolCfg.Dir)
 	if err != nil {
-		return nil, fmt.Errorf("resolve the trace failure spool: %w", err)
+		return nil, fmt.Errorf("resolve the %s failure spool: %w", opts.Backend, err)
 	}
 	scope := directorylease.ScopeLabel("telemetry." + opts.Backend + ".failure_spool")
 	lease, err := directorylease.Acquire(scope, root.String())
@@ -280,12 +287,12 @@ func startReplay(cfg Config, opts Options, writer *spoolstorehandler.SpoolStoreH
 		SpoolConfig:      spoolCfg,
 		RunnerConfig:     cfg.Replay,
 		SupervisorConfig: cfg.ReplaySupervisor,
-		Sender:           replaySender{exporter: opts.Exporter, clock: opts.Clock},
+		Sender:           replaySender[T]{exporter: opts.Exporter, decode: opts.Codec.Decode, clock: opts.Clock},
 		OnWarn:           warnHandler(report),
 	}, observer.NopTracer{}, opts.Meter)
 	if err != nil {
 		lease.Release()
-		return nil, fmt.Errorf("build the trace failure spool runner: %w", err)
+		return nil, fmt.Errorf("build the %s failure spool runner: %w", opts.Backend, err)
 	}
 	writer.SetMaxRetryAfter(cfg.Replay.Worker.MaxRetryAfter)
 	if deadline := supervisor.Runner.RetryAfterDeadline(); deadline != nil {
@@ -319,6 +326,6 @@ func (r *replayRuntime) stop(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		r.forceCancel()
-		return fmt.Errorf("stop the trace failure spool runner: %w", ctx.Err())
+		return fmt.Errorf("stop the failure spool runner: %w", ctx.Err())
 	}
 }

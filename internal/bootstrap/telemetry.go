@@ -10,11 +10,12 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/application/telemetryruntime"
 	"github.com/go-jappe/heterolog/internal/application/tracing"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/failurestore"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/otlphttp"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
-	"github.com/go-jappe/heterolog/internal/infrastructure/traces/failurestore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces/jsonlines"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces/otlp"
-	"github.com/go-jappe/heterolog/internal/infrastructure/traces/otlphttp"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
@@ -48,7 +49,7 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 		return telemetryruntime.New(nil, nil), nil
 	}
 	options := loggerruntime.ResolveOptions(opts)
-	report := traces.NewErrorHandler(options.TelemetryErrorHandler)
+	report := delivery.NewErrorHandler(options.TelemetryErrorHandler)
 	destinations, err := newTraceDestinations(ctx, cfg, options.Meter, report)
 	if err != nil {
 		return nil, err
@@ -67,7 +68,7 @@ func newTraceDestinations(
 	ctx context.Context,
 	cfg pkgtelemetry.Config,
 	meter pkgobserver.Meter,
-	report traces.ErrorHandler,
+	report delivery.ErrorHandler,
 ) ([]traces.Destination, error) {
 	resource := otlp.NewResource(cfg.Resource)
 	destinations := make([]traces.Destination, 0, len(cfg.Traces.Exporters))
@@ -75,7 +76,7 @@ func newTraceDestinations(
 		switch name {
 		case pkgtelemetry.TraceExporterOTLP:
 			otlpCfg := cfg.Traces.OTLP
-			exporter := otlphttp.New(otlphttp.Config{
+			exporter := traces.NewOTLPExporter(otlphttp.Config{
 				Endpoint:       otlpCfg.Endpoint,
 				Headers:        otlpCfg.Headers,
 				Compression:    otlpCfg.Compression,
@@ -91,12 +92,13 @@ func newTraceDestinations(
 					Store:            otlpCfg.FailureStore.Store,
 					Replay:           otlpCfg.FailureStore.Replay,
 					ReplaySupervisor: otlpCfg.FailureStore.ReplaySupervisor,
-				}, failurestore.Options{
-					Backend:  otlphttp.BackendName,
-					Exporter: exporter,
-					Resource: resource,
-					Meter:    meter,
-					Report:   report,
+				}, failurestore.Options[tracing.SpanData]{
+					Backend:   traces.OTLPBackendName,
+					Operation: traces.FailureOperation,
+					Exporter:  exporter,
+					Codec:     traces.NewCodec(resource),
+					Meter:     meter,
+					Report:    report,
 				})
 				if err != nil {
 					return nil, errors.Join(fmt.Errorf("create the failure store of the otlp trace exporter: %w", err),

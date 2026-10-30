@@ -13,35 +13,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/application/tracing"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
 	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
-// Exporterは、spanのbatchを1つの送り先へ送ります。Exportは、同じExporterに対して
-// 並行には呼ばれません。
-type Exporter interface {
-	// Nameは、metricsのexporter属性の値（otlp・file・stdoutなど）です。
-	Name() string
-	// Exportは、spansを送ります。spansは、Exportが返った後に再利用されるため、
-	// 保持しません。送れなかったspanの範囲と扱いが分かる場合は、*ExportErrorを返します。
-	// ほかのerrorは、すべてのspanを送れなかったことを表します。
-	Export(ctx context.Context, spans []tracing.SpanData) error
-	// Closeは、送り先の資源（fileなど）を手放します。最後のExportの後に1回だけ呼ばれます。
-	Close() error
-}
+// Exporterは、spanのbatchを1つの送り先へ送ります。
+type Exporter = delivery.Exporter[tracing.SpanData]
 
 // Destinationは、spanの送り先と、そこへ送れなかったspanを保存するfailure storeの組です。
 // Storeがnilなら、送れなかったspanは捨てます。
 type Destination struct {
 	Exporter Exporter
-	Store    FailureStore
+	Store    delivery.FailureStore[tracing.SpanData]
 }
 
 // Configは、待ち行列とbatchの設定です。値の範囲は、pkg/telemetryの検証で確かめます。
@@ -51,13 +41,10 @@ type Config struct {
 	ExportInterval time.Duration
 }
 
-// ErrorHandlerは、配送のerrorを受け取る関数です。複数のgoroutineから並行に呼ばれます。
-type ErrorHandler func(error)
-
 // Pipelineは、tracing.SpanSinkの実装です。
 type Pipeline struct {
 	meter   pkgobserver.Meter
-	report  ErrorHandler
+	report  delivery.ErrorHandler
 	workers []*worker
 
 	// droppedAfterShutdownは、Shutdownの後に終わったspanを捨てたことを、1回だけ知らせます。
@@ -75,9 +62,9 @@ type Pipeline struct {
 
 // NewPipelineは、destinationsへspanを送るPipelineを作り、送り先ごとのgoroutineを始めます。
 // 止めるにはShutdownを呼びます。reportがnilなら、errorを標準のloggerへ1行ずつ書きます。
-func NewPipeline(cfg Config, destinations []Destination, meter pkgobserver.Meter, report ErrorHandler) *Pipeline {
+func NewPipeline(cfg Config, destinations []Destination, meter pkgobserver.Meter, report delivery.ErrorHandler) *Pipeline {
 	meter = observer.EnsureMeter(meter)
-	report = NewErrorHandler(report)
+	report = delivery.NewErrorHandler(report)
 	p := &Pipeline{meter: meter, report: report, done: make(chan struct{})}
 	for _, destination := range destinations {
 		w := &worker{
@@ -161,9 +148,9 @@ func (p *Pipeline) Shutdown(ctx context.Context) error {
 // workerは、1つの送り先の待ち行列とbatchを受け持ちます。
 type worker struct {
 	exporter Exporter
-	store    FailureStore
+	store    delivery.FailureStore[tracing.SpanData]
 	meter    pkgobserver.Meter
-	report   ErrorHandler
+	report   delivery.ErrorHandler
 	queue    chan tracing.SpanData
 	batch    int
 	interval time.Duration
@@ -244,10 +231,10 @@ func (w *worker) export(batch []tracing.SpanData) {
 		}()
 		return w.exporter.Export(ctx, batch)
 	}()
-	var failures []SpanFailure
+	var failures []delivery.Failure
 	failed := 0
 	if err != nil {
-		failures = ExportFailures(err, len(batch))
+		failures = delivery.ExportFailures(err, len(batch))
 		for _, failure := range failures {
 			failed += failure.Failed()
 		}
@@ -276,7 +263,7 @@ func (w *worker) export(batch []tracing.SpanData) {
 	}
 	for _, failure := range failures {
 		recordSpans(ctx, w.meter, name, failure.Disposition.Outcome(), failure.Failed())
-		if failure.Disposition != DispositionRetry {
+		if failure.Disposition != delivery.DispositionRetry {
 			w.report(fmt.Errorf("%w; they were stored as %s and are not resent",
 				w.sendError(failure.Failed(), len(batch), failure.Err), failure.Disposition.Outcome()))
 		}
@@ -299,25 +286,4 @@ func recordSpans(ctx context.Context, meter pkgobserver.Meter, exporter, outcome
 		pkgobserver.Attr{Key: telemetry.AttrExporter, Value: exporter},
 		pkgobserver.Attr{Key: telemetry.AttrOutcome, Value: outcome},
 	)
-}
-
-// NewErrorHandlerは、reportのpanicで配送のgoroutineが止まらないようにします。reportが
-// nilなら、errorを標準のloggerへ1行ずつ書きます。panicした場合も、errorを標準のloggerへ
-// 書きます。
-func NewErrorHandler(report ErrorHandler) ErrorHandler {
-	if report == nil {
-		return logError
-	}
-	return func(err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("[INTERNAL][ERROR] telemetry: the error handler panicked: %v; error: %v", r, err)
-			}
-		}()
-		report(err)
-	}
-}
-
-func logError(err error) {
-	log.Printf("[INTERNAL][ERROR] telemetry: %v", err)
 }

@@ -8,20 +8,20 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
 	fsstoreretryafter "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool/retryafter"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/flushfailure"
 	loggerhandler "github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	logspool "github.com/go-jappe/heterolog/internal/infrastructure/spool/log"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/log/worker"
-	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
 	pkgdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
 // internalHandlersは、spoolとfailure archiveの内部ログのうち、ERRORとWARNをerror handlerへ
 // 渡す通知関数を返します。ログの通知先の設定は使いません。INFOとDEBUGは知らせません。
-func internalHandlers(report traces.ErrorHandler) flushfailure.InternalLogHandlerFactory {
+func internalHandlers(report delivery.ErrorHandler) flushfailure.InternalLogHandlerFactory {
 	return func(pkgdurable.DurableType, loggerhandler.ConfigProvider) flushfailure.InternalHandlers {
 		return flushfailure.InternalHandlers{
 			OnError: func(_ context.Context, err error, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
@@ -32,7 +32,7 @@ func internalHandlers(report traces.ErrorHandler) flushfailure.InternalLogHandle
 	}
 }
 
-func warnHandler(report traces.ErrorHandler) logging.LoggerHandlerFunc {
+func warnHandler(report delivery.ErrorHandler) logging.LoggerHandlerFunc {
 	return func(_ context.Context, entry *logging.LogEntry, _ pkgobserver.Tracer, _ pkgobserver.Meter) {
 		report(entryError(entry, nil))
 	}
@@ -41,13 +41,13 @@ func warnHandler(report traces.ErrorHandler) logging.LoggerHandlerFunc {
 // entryErrorは、内部ログを、発生元、本文、原因、fieldを並べたerrorにします。
 func entryError(entry *logging.LogEntry, err error) error {
 	if entry == nil {
-		return fmt.Errorf("trace failure store: %w", err)
+		return fmt.Errorf("telemetry failure store: %w", err)
 	}
 	if err == nil {
 		err = entry.Err
 	}
 	var b strings.Builder
-	b.WriteString("trace failure store")
+	b.WriteString("telemetry failure store")
 	if entry.Source != "" {
 		b.WriteString(" " + entry.Source)
 	}
@@ -66,7 +66,7 @@ func entryError(entry *logging.LogEntry, err error) error {
 // quarantine、Retry-Afterの期限の短縮、期限を保存するfileの失敗を知らせます。
 type runReporter struct {
 	backend string
-	report  traces.ErrorHandler
+	report  delivery.ErrorHandler
 }
 
 func (r runReporter) ReportSpoolRunnerRun(ctx context.Context, run logspool.RunReport, err error) {

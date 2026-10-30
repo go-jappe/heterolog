@@ -15,10 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/tracing"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
-	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
 	"github.com/go-jappe/heterolog/pkg/failurestore"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -51,22 +50,18 @@ func archiveConfig(root string) Config {
 	}}
 }
 
-func TestStoreArchivesEachSpanWithItsDisposition(t *testing.T) {
+func TestStoreArchivesEachItemWithItsDisposition(t *testing.T) {
 	root := t.TempDir()
-	store, err := New(context.Background(), archiveConfig(root), Options{
-		Backend: "otlp_traces", Exporter: &recordingExporter{}, Resource: testResource, Report: func(err error) { t.Error(err) },
+	store, err := New(context.Background(), archiveConfig(root), Options[string]{
+		Backend: "otlp_traces", Operation: "export_traces", Exporter: &recordingExporter{}, Codec: testCodec, Report: func(err error) { t.Error(err) },
 	})
 	if err != nil || store == nil {
 		t.Fatalf("New = %v, %v", store, err)
 	}
-	batch := []tracing.SpanData{
-		{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{1}, Name: "retry-span"},
-		{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{2}, Name: "dead-span"},
-		{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{3}, Name: "sent-span"},
-	}
-	err = store.Store(context.Background(), batch, []traces.SpanFailure{
-		{Start: 0, End: 1, Disposition: traces.DispositionRetry, Reason: "http_status", StatusCode: 503, Err: errors.New("unavailable")},
-		{Start: 1, End: 2, Disposition: traces.DispositionDead, Reason: "http_status", StatusCode: 400, Err: errors.New("bad request")},
+	batch := []string{"retry-span", "dead-span", "sent-span"}
+	err = store.Store(context.Background(), batch, []delivery.Failure{
+		{Start: 0, End: 1, Disposition: delivery.DispositionRetry, Reason: "http_status", StatusCode: 503, Err: errors.New("unavailable")},
+		{Start: 1, End: 2, Disposition: delivery.DispositionDead, Reason: "http_status", StatusCode: 400, Err: errors.New("bad request")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +81,7 @@ func TestStoreArchivesEachSpanWithItsDisposition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 送り直す扱いのspanはretryableへ、拒否されたspanはpermanentへ、OTLP/JSONで残します。
+	// 送り直す扱いのものはretryableへ、拒否されたものはpermanentへ、Codecのrecordで残します。
 	retryable, permanent := contents["retryable"], contents["permanent"]
 	if !strings.Contains(retryable, `"name":"retry-span"`) || !strings.Contains(retryable, `"backend":"otlp_traces"`) ||
 		!strings.Contains(retryable, `"failure_code":"http_status"`) || strings.Contains(retryable, "dead-span") {
@@ -101,7 +96,7 @@ func TestStoreArchivesEachSpanWithItsDisposition(t *testing.T) {
 func TestNewReturnsNilWithoutAStore(t *testing.T) {
 	store, err := New(context.Background(), Config{Store: pkgdurable.FailureStoreConfig{
 		DurableType: []pkgdurable.DurableType{pkgdurable.DurableTypeNone},
-	}}, Options{Backend: "otlp_traces"})
+	}}, Options[string]{Backend: "otlp_traces"})
 	if err != nil || store != nil {
 		t.Errorf("New = %v, %v; want no store", store, err)
 	}
@@ -127,8 +122,8 @@ func TestInternalLogsReachTheErrorHandler(t *testing.T) {
 		t.Error("INFO and DEBUG are reported, want only ERROR and WARN")
 	}
 	want := []string{
-		"trace failure store failure_spool: failed to store a=1 b=2: disk full",
-		"trace failure store failure_spool: backlog",
+		"telemetry failure store failure_spool: failed to store a=1 b=2: disk full",
+		"telemetry failure store failure_spool: backlog",
 	}
 	if len(reported) != 2 || reported[0] != want[0] || reported[1] != want[1] {
 		t.Errorf("reported = %q, want %q", reported, want)
@@ -194,8 +189,8 @@ func TestStoreUploadsTheArchiveWithItsOwnUploadStorage(t *testing.T) {
 			RunnerInterval: time.Hour, LifecycleInterval: time.Hour, CircuitBreakerOpenCooldown: time.Second, MaxRetryAfter: time.Hour,
 		}),
 	}
-	store, err := New(context.Background(), cfg, Options{
-		Backend: "otlp_traces", Exporter: &recordingExporter{}, Resource: testResource, Report: func(err error) { t.Error(err) },
+	store, err := New(context.Background(), cfg, Options[string]{
+		Backend: "otlp_traces", Operation: "export_traces", Exporter: &recordingExporter{}, Codec: testCodec, Report: func(err error) { t.Error(err) },
 	})
 	if err != nil {
 		t.Fatalf("New = %v", err)
@@ -210,8 +205,8 @@ func TestStoreUploadsTheArchiveWithItsOwnUploadStorage(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(permanent, previous), gzipped(t, "{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	dead := []traces.SpanFailure{{Start: 0, End: 1, Disposition: traces.DispositionDead, Err: errors.New("bad request")}}
-	batch := []tracing.SpanData{{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{1}, Name: "dead-span"}}
+	dead := []delivery.Failure{{Start: 0, End: 1, Disposition: delivery.DispositionDead, Err: errors.New("bad request")}}
+	batch := []string{"dead-span"}
 	if err := store.Store(context.Background(), batch, dead); err != nil {
 		t.Fatal(err)
 	}

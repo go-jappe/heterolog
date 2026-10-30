@@ -13,10 +13,11 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/tracing"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/circuitbreaker"
 	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
-	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
+	"github.com/go-jappe/heterolog/internal/infrastructure/traces/otlp"
 	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/proto"
@@ -75,7 +76,7 @@ func status(code int, header ...string) func(http.ResponseWriter) {
 	}
 }
 
-func newTestExporter(t *testing.T, r *receiver, cfg Config) (*Exporter, *observertest.Meter, *[]time.Duration) {
+func newTestExporter(t *testing.T, r *receiver, cfg Config) (*Exporter[tracing.SpanData], *observertest.Meter, *[]time.Duration) {
 	t.Helper()
 	server := httptest.NewServer(r)
 	t.Cleanup(server.Close)
@@ -84,7 +85,7 @@ func newTestExporter(t *testing.T, r *receiver, cfg Config) (*Exporter, *observe
 		cfg.Timeout = 5 * time.Second
 	}
 	meter := observertest.NewMeter()
-	e := New(cfg, &tracing.Resource{}, meter)
+	e := New(cfg, testSignal, meter)
 	t.Cleanup(func() { _ = e.Close() })
 	var waits []time.Duration
 	e.sleep = func(ctx context.Context, d time.Duration) bool {
@@ -97,6 +98,16 @@ func newTestExporter(t *testing.T, r *receiver, cfg Config) (*Exporter, *observe
 }
 
 var testBatch = []tracing.SpanData{{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{1}, Name: "op"}}
+
+// testBackendNameとtestSignalは、spanを送る送り先としての設定です。
+const testBackendName = "otlp_traces"
+
+var testSignal = Signal[tracing.SpanData]{
+	Encode:        func(spans []tracing.SpanData) []byte { return otlp.MarshalProto(spans, &tracing.Resource{}) },
+	RetriesMetric: telemetry.TraceExportRetries,
+	BackendName:   testBackendName,
+	Unit:          "spans",
+}
 
 func TestExportPostsCompressedProtobufWithHeaders(t *testing.T) {
 	r := &receiver{t: t}
@@ -148,7 +159,7 @@ func TestExportRetriesTemporaryFailures(t *testing.T) {
 }
 
 func TestRetryDelayGrowsExponentiallyWithJitterUpToTheMaximum(t *testing.T) {
-	e := New(Config{RetryBaseDelay: 100 * time.Millisecond, RetryMaxDelay: time.Second}, &tracing.Resource{}, nil)
+	e := New(Config{RetryBaseDelay: 100 * time.Millisecond, RetryMaxDelay: time.Second}, testSignal, nil)
 	for _, tc := range []struct {
 		retry    int
 		low, top time.Duration
@@ -188,16 +199,16 @@ func TestExportStopsAfterTheRetries(t *testing.T) {
 		t.Errorf("Export = %v after %d requests, want the 503 after one retry", err, r.count())
 	}
 	// 一時的な失敗のspanは、failure storeで送り直す扱いです。
-	want := traces.SpanFailure{Start: 0, End: 1, Disposition: traces.DispositionRetry, StatusCode: 503, Reason: "http_status"}
+	want := delivery.Failure{Start: 0, End: 1, Disposition: delivery.DispositionRetry, StatusCode: 503, Reason: "http_status"}
 	if got := onlyFailure(t, err); !sameFailure(got, want) {
 		t.Errorf("failure = %+v, want %+v", got, want)
 	}
 }
 
 // onlyFailureは、Exportのerrorがただ1つの範囲の失敗であることを確かめて返します。
-func onlyFailure(t *testing.T, err error) traces.SpanFailure {
+func onlyFailure(t *testing.T, err error) delivery.Failure {
 	t.Helper()
-	var exportErr *traces.ExportError
+	var exportErr *delivery.ExportError
 	if !errors.As(err, &exportErr) || len(exportErr.Failures) != 1 {
 		t.Fatalf("Export = %v, want an ExportError with one failure", err)
 	}
@@ -205,7 +216,7 @@ func onlyFailure(t *testing.T, err error) traces.SpanFailure {
 }
 
 // sameFailureは、Errを除いて失敗を比べます。
-func sameFailure(got, want traces.SpanFailure) bool {
+func sameFailure(got, want delivery.Failure) bool {
 	got.Err, want.Err = nil, nil
 	return got == want
 }
@@ -224,7 +235,7 @@ func TestExportDoesNotRetryPermanentFailuresOrFollowRedirects(t *testing.T) {
 			t.Errorf("status %d: Export = %v after %d requests, want the status without a retry", code, err, r.count())
 		}
 		// 受信側が拒否したspanは、送り直さずにdeadとして残す扱いです。
-		if got := onlyFailure(t, err); got.Disposition != traces.DispositionDead || got.StatusCode != code {
+		if got := onlyFailure(t, err); got.Disposition != delivery.DispositionDead || got.StatusCode != code {
 			t.Errorf("status %d: failure = %+v, want dead with the status", code, got)
 		}
 	}
@@ -246,7 +257,7 @@ func TestExportSplitsRequestsThatAreTooLarge(t *testing.T) {
 		{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{4}, Name: "d"},
 	}
 	err := e.Export(context.Background(), batch)
-	want := traces.SpanFailure{Start: 0, End: 1, Disposition: traces.DispositionDead, StatusCode: 413, Reason: "request_too_large"}
+	want := delivery.Failure{Start: 0, End: 1, Disposition: delivery.DispositionDead, StatusCode: 413, Reason: "request_too_large"}
 	if got := onlyFailure(t, err); !sameFailure(got, want) {
 		t.Errorf("failure = %+v, want %+v", got, want)
 	}
@@ -276,14 +287,14 @@ func TestExportStopsAfterARequestFailsTemporarily(t *testing.T) {
 		{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{2}, Name: "b"},
 	}
 	err := e.Export(context.Background(), batch)
-	var exportErr *traces.ExportError
+	var exportErr *delivery.ExportError
 	if !errors.As(err, &exportErr) || len(exportErr.Failures) != 2 {
 		t.Fatalf("Export = %v, want two failures", err)
 	}
 	// Retry-AfterがRetryMaxDelayより長いため、待たずに諦め、期限をfailure storeへ渡します。
-	for i, want := range []traces.SpanFailure{
-		{Start: 0, End: 1, Disposition: traces.DispositionRetry, StatusCode: 429, Reason: "http_throttling", RetryAfter: time.Minute},
-		{Start: 1, End: 2, Disposition: traces.DispositionRetry, StatusCode: 429, Reason: "http_throttling", RetryAfter: time.Minute},
+	for i, want := range []delivery.Failure{
+		{Start: 0, End: 1, Disposition: delivery.DispositionRetry, StatusCode: 429, Reason: "http_throttling", RetryAfter: time.Minute},
+		{Start: 1, End: 2, Disposition: delivery.DispositionRetry, StatusCode: 429, Reason: "http_throttling", RetryAfter: time.Minute},
 	} {
 		if got := exportErr.Failures[i]; !sameFailure(got, want) {
 			t.Errorf("failure %d = %+v, want %+v", i, got, want)
@@ -309,7 +320,7 @@ func TestExportWithACircuitBreakerStopsSendingAfterRepeatedFailures(t *testing.T
 	e.breaker = circuitbreaker.NewOperationGuard(circuitbreaker.OperationGuardOptions{
 		CircuitBreaker: retryable.NewCircuitBreaker(retryable.CircuitBreakerOptions{Clock: func() time.Time { return now }}),
 		Meter:          meter,
-		Backend:        BackendName,
+		Backend:        testBackendName,
 		Classify:       classify,
 	})
 	// 7回目の失敗（60秒後）で開き、30秒の間は送りません。9回目（80秒後）は断られます。
@@ -323,13 +334,13 @@ func TestExportWithACircuitBreakerStopsSendingAfterRepeatedFailures(t *testing.T
 	if !errors.As(err, &openErr) {
 		t.Fatalf("Export = %v, want the open circuit breaker", err)
 	}
-	if got := onlyFailure(t, err); got.Disposition != traces.DispositionRetry || got.Reason != "circuit_breaker_open" {
+	if got := onlyFailure(t, err); got.Disposition != delivery.DispositionRetry || got.Reason != "circuit_breaker_open" {
 		t.Errorf("failure = %+v, want a retry because the breaker is open", got)
 	}
 	if r.count() != 7 {
 		t.Errorf("requests = %d, want 7 before the breaker opened", r.count())
 	}
-	if got := meter.Count(observertest.Key(telemetry.CircuitBreakerRejectedRequests, telemetry.AttrBackend, BackendName)); got == 0 {
+	if got := meter.Count(observertest.Key(telemetry.CircuitBreakerRejectedRequests, telemetry.AttrBackend, testBackendName)); got == 0 {
 		t.Errorf("rejected requests = %d, want some", got)
 	}
 }
@@ -348,7 +359,7 @@ func TestExportReportsPartialSuccessWithoutRetrying(t *testing.T) {
 	e, _, _ := newTestExporter(t, r, Config{Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond})
 	err = e.Export(context.Background(), testBatch)
 	// どのspanが受け付けられたか分からないため、quarantineとして残す扱いです。
-	want := traces.SpanFailure{Start: 0, End: 1, Disposition: traces.DispositionQuarantine, Rejected: 1, Reason: "record_rejected"}
+	want := delivery.Failure{Start: 0, End: 1, Disposition: delivery.DispositionQuarantine, Rejected: 1, Reason: "record_rejected"}
 	if got := onlyFailure(t, err); !sameFailure(got, want) || r.count() != 1 {
 		t.Errorf("failure = %+v after %d requests, want %+v without a retry", got, r.count(), want)
 	}

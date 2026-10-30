@@ -1,4 +1,4 @@
-package otlp
+package otlphttp
 
 import (
 	"errors"
@@ -6,21 +6,23 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
-// errMalformedResponseは、ExportTraceServiceResponseとして読めない応答です。
+// errMalformedResponseは、OTLPのexportの応答として読めない応答です。
 var errMalformedResponse = errors.New("malformed OTLP export response")
 
-// PartialSuccessは、受信側が一部のspanを受け付けなかったことを表す、
-// ExportTraceServiceResponseのpartial_successです。
-type PartialSuccess struct {
-	RejectedSpans int64
-	ErrorMessage  string
+// partialSuccessは、受信側が一部を受け付けなかったことを表す、exportの応答の
+// partial_successです。
+type partialSuccess struct {
+	// Rejectedは、受け付けなかった数です。traceではspan、metricsではdata pointの数です。
+	Rejected     int64
+	ErrorMessage string
 }
 
-// UnmarshalPartialSuccessは、protobufのExportTraceServiceResponseから、partial_success
-// （field 1。中身はrejected_spans = 1とerror_message = 2）を読みます。知らないfieldは
-// 読み飛ばします。
-func UnmarshalPartialSuccess(b []byte) (PartialSuccess, error) {
-	var result PartialSuccess
+// unmarshalPartialSuccessは、protobufのexportの応答（ExportTraceServiceResponseや
+// ExportMetricsServiceResponse）から、partial_success（field 1。中身はrejected_spansまたは
+// rejected_data_points = 1とerror_message = 2）を読みます。どの種類の応答も同じ形です。
+// 知らないfieldは読み飛ばします。
+func unmarshalPartialSuccess(b []byte) (partialSuccess, error) {
+	var result partialSuccess
 	err := consumeFields(b, func(num protowire.Number, typ protowire.Type, field []byte) error {
 		if num != 1 || typ != protowire.BytesType {
 			return nil
@@ -36,7 +38,7 @@ func UnmarshalPartialSuccess(b []byte) (PartialSuccess, error) {
 				if n < 0 {
 					return errMalformedResponse
 				}
-				result.RejectedSpans = int64(v)
+				result.Rejected = int64(v)
 			case num == 2 && typ == protowire.BytesType:
 				v, n := protowire.ConsumeString(field)
 				if n < 0 {

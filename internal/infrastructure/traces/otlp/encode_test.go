@@ -13,7 +13,6 @@ import (
 	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
-	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -217,25 +216,6 @@ func TestMarshalJSONFollowsTheOTLPJSONMapping(t *testing.T) {
 	}
 	if status, _ := json.Marshal(root["status"]); string(status) != `{"code":2,"message":"boom"}` {
 		t.Errorf("status = %s", status)
-	}
-}
-
-func TestUnmarshalPartialSuccessReadsRejectedSpans(t *testing.T) {
-	b, err := proto.Marshal(&collectortrace.ExportTraceServiceResponse{
-		PartialSuccess: &collectortrace.ExportTracePartialSuccess{RejectedSpans: 3, ErrorMessage: "too old"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// 知らないfieldは読み飛ばします。
-	b = protowire.AppendTag(b, 9, protowire.BytesType)
-	b = protowire.AppendString(b, "future")
-	got, err := UnmarshalPartialSuccess(b)
-	if err != nil || got != (PartialSuccess{RejectedSpans: 3, ErrorMessage: "too old"}) {
-		t.Errorf("UnmarshalPartialSuccess = %+v, %v", got, err)
-	}
-	if _, err := UnmarshalPartialSuccess([]byte{0x0a, 0x05}); err == nil {
-		t.Error("a truncated response was accepted")
 	}
 }
 
