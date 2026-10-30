@@ -46,6 +46,18 @@ func (sp *otelSpan) RecordError(err error, attrs ...pkgobserver.Attr) {
 	sp.s.SetStatus(codes.Error, err.Error())
 }
 
+func (sp *otelSpan) SetStatus(code pkgobserver.StatusCode, description string) {
+	if sp == nil || observer.IsNilInterface(sp.s) {
+		return
+	}
+	switch code {
+	case pkgobserver.StatusOK:
+		sp.s.SetStatus(codes.Ok, "")
+	case pkgobserver.StatusError:
+		sp.s.SetStatus(codes.Error, description)
+	}
+}
+
 func (sp *otelSpan) End() {
 	if sp == nil || observer.IsNilInterface(sp.s) {
 		return

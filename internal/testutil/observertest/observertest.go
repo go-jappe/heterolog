@@ -208,6 +208,7 @@ type Span struct {
 	attrs  map[string]any
 	events []string
 	errors []error
+	status pkgobserver.StatusCode
 	ends   int
 }
 
@@ -237,6 +238,19 @@ func (sp *Span) RecordError(err error, _ ...pkgobserver.Attr) {
 	sp.mu.Lock()
 	defer sp.mu.Unlock()
 	sp.errors = append(sp.errors, err)
+}
+
+func (sp *Span) SetStatus(code pkgobserver.StatusCode, _ string) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	sp.status = code
+}
+
+// Statusは、最後にSetStatusで設定したstatusを返します。
+func (sp *Span) Status() pkgobserver.StatusCode {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	return sp.status
 }
 
 // Attrは、spanの属性keyの値を返します。

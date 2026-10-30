@@ -69,6 +69,8 @@ func (NopSpan) TraceID() pkgobserver.TraceID {
 
 func (NopSpan) SetAttributes(attrs ...pkgobserver.Attr) {}
 
+func (NopSpan) SetStatus(code pkgobserver.StatusCode, description string) {}
+
 type NopMeter struct{}
 
 func (NopMeter) Counter(name string) pkgobserver.Counter {

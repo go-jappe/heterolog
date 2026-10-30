@@ -57,6 +57,7 @@ func (*runtimeObserverSpan) AddEvent(string, ...pkgobserver.Attr) {}
 func (*runtimeObserverSpan) SetAttributes(...pkgobserver.Attr)    {}
 func (*runtimeObserverSpan) RecordError(error, ...pkgobserver.Attr) {
 }
+func (*runtimeObserverSpan) SetStatus(pkgobserver.StatusCode, string) {}
 
 func TestObserversReachBackendAndEndStartedSpans(t *testing.T) {
 	for _, kind := range []string{"sync", "async", "delivery"} {

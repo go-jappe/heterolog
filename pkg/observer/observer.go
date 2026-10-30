@@ -1,6 +1,13 @@
 // Package observer defines the instrumentation interfaces that heterolog
 // loggers report to. Pass implementations to heterolog.WithObservers; a nil
-// Tracer or Meter uses a no-op implementation.
+// Tracer or Meter uses a no-op implementation. The Tracer of
+// heterolog.NewTelemetry implements Tracer and OptionsTracer and sends the
+// spans it records.
+//
+// It also carries span contexts between services: ParseTraceParent and
+// SpanContext.TraceParent read and write the W3C traceparent header, and
+// ContextWithSpanContext and SpanContextFromContext keep a span context in a
+// context.
 package observer
 
 import "context"
@@ -27,8 +34,26 @@ type Span interface {
 	End()
 	AddEvent(name string, attrs ...Attr)
 	SetAttributes(attrs ...Attr)
+	// RecordError records err as an event of the span. Implementations may
+	// also set the status of the span to StatusError.
 	RecordError(err error, attrs ...Attr)
+	// SetStatus sets the result of the operation. description is used only
+	// with StatusError. Once the status is StatusOK, later calls do not
+	// change it, and StatusUnset never replaces another status.
+	SetStatus(code StatusCode, description string)
 }
+
+// StatusCode is the result of the operation of a span.
+type StatusCode int
+
+const (
+	// StatusUnset means that the status was not set.
+	StatusUnset StatusCode = iota
+	// StatusOK means that the operation succeeded.
+	StatusOK
+	// StatusError means that the operation failed.
+	StatusError
+)
 
 // Meter creates the instruments that loggers record measurements with.
 type Meter interface {

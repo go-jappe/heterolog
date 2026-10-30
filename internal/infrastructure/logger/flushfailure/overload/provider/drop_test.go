@@ -30,6 +30,8 @@ func (s *recordingDropSpan) SetAttributes(attrs ...pkgobserver.Attr) {
 	s.attributes = append(s.attributes, attrs...)
 }
 
+func (s *recordingDropSpan) SetStatus(pkgobserver.StatusCode, string) {}
+
 // dropは保存せずに破棄したことを、metricとspan eventに加えてErrLogDroppedで返します。
 func TestOverloadDropHandlerReportsDroppedRecords(t *testing.T) {
 	meter := observertest.NewMeter()

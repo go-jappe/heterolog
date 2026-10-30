@@ -53,6 +53,25 @@ func TestRecordNilErrorKeepsStatus(t *testing.T) {
 	}
 }
 
+func TestSetStatusMapsToOpenTelemetryCodes(t *testing.T) {
+	for _, tc := range []struct {
+		code pkgobserver.StatusCode
+		want sdktrace.Status
+	}{
+		{pkgobserver.StatusOK, sdktrace.Status{Code: codes.Ok}},
+		{pkgobserver.StatusError, sdktrace.Status{Code: codes.Error, Description: "rejected"}},
+		{pkgobserver.StatusUnset, sdktrace.Status{Code: codes.Unset}},
+	} {
+		tracer, recorder := newRecordedTracer(t)
+		_, span := tracer.StartSpan(context.Background(), "heterolog.test")
+		span.SetStatus(tc.code, "rejected")
+		span.End()
+		if got := recorder.Ended()[0].Status(); got != tc.want {
+			t.Errorf("SetStatus(%v) status = %+v, want %+v", tc.code, got, tc.want)
+		}
+	}
+}
+
 func TestSpanAttributesKeepTheirTypes(t *testing.T) {
 	tracer, recorder := newRecordedTracer(t)
 

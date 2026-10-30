@@ -112,6 +112,7 @@ func (s *recordingSpan) SetAttributes(attrs ...pkgobserver.Attr) {
 }
 
 func (s *recordingSpan) RecordError(err error, attrs ...pkgobserver.Attr) {}
+func (s *recordingSpan) SetStatus(pkgobserver.StatusCode, string)         {}
 
 func TestNewRetryingClientKeepsValidatedConfigAndDefaultsObserver(t *testing.T) {
 	t.Parallel()

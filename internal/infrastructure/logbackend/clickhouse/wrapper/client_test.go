@@ -98,6 +98,7 @@ func (s *recordingSpan) SetAttributes(attrs ...pkgobserver.Attr) {
 }
 
 func (s *recordingSpan) RecordError(err error, attrs ...pkgobserver.Attr) {}
+func (s *recordingSpan) SetStatus(pkgobserver.StatusCode, string)         {}
 
 type staticRetryConfig struct {
 	maxAttempts int

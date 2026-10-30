@@ -163,7 +163,8 @@ func (span closePanicSpan) End() {
 		panic(span.tracer.cause)
 	}
 }
-func (closePanicSpan) TraceID() pkgobserver.TraceID           { return "" }
-func (closePanicSpan) AddEvent(string, ...pkgobserver.Attr)   {}
-func (closePanicSpan) SetAttributes(...pkgobserver.Attr)      {}
-func (closePanicSpan) RecordError(error, ...pkgobserver.Attr) {}
+func (closePanicSpan) TraceID() pkgobserver.TraceID             { return "" }
+func (closePanicSpan) AddEvent(string, ...pkgobserver.Attr)     {}
+func (closePanicSpan) SetAttributes(...pkgobserver.Attr)        {}
+func (closePanicSpan) RecordError(error, ...pkgobserver.Attr)   {}
+func (closePanicSpan) SetStatus(pkgobserver.StatusCode, string) {}
