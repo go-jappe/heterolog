@@ -22,7 +22,8 @@ const (
 	clickHouseExceptionCodeHeader       = "X-ClickHouse-Exception-Code"
 )
 
-// Client writes log records to ClickHouse through its HTTP API.
+// Client writes rows, such as log records, to a ClickHouse table through its
+// HTTP API.
 type Client struct {
 	endpoint        string
 	database        string
@@ -237,6 +238,19 @@ func (c *Client) InsertLogsWithOptions(
 	body, err := MarshalJSONEachRow(records)
 	if err != nil {
 		return nil, err
+	}
+	return c.InsertJSONEachRow(ctx, body, opts)
+}
+
+// InsertJSONEachRow inserts the rows of body, in the JSONEachRow format, into
+// the table of the client in one request. Each row is one JSON object followed
+// by a newline; the object keys are column names. The body is sent as given,
+// compressed with gzip when CompressRequest is set, so it can hold the rows of
+// any table, not only log records. An empty body sends nothing. The result is
+// reported as for InsertLogsWithOptions.
+func (c *Client) InsertJSONEachRow(ctx context.Context, body []byte, opts InsertOptions) (*InsertResponse, error) {
+	if len(body) == 0 {
+		return &InsertResponse{}, nil
 	}
 	requestBody, compressed, err := prepareRequestBody(body, c.compressRequest)
 	if err != nil {

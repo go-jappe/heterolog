@@ -146,6 +146,50 @@ func TestClientInsertLogsCompressesRequest(t *testing.T) {
 	assert.True(t, strings.HasSuffix(gotBody, "\n"))
 }
 
+func TestClientInsertJSONEachRowSendsTheRowsAsGiven(t *testing.T) {
+	var gotQuery, gotEncoding, gotBody string
+	requests := 0
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			requests++
+			gotQuery = r.URL.Query().Get("query")
+			gotEncoding = r.Header.Get("Content-Encoding")
+			reader, err := gzip.NewReader(r.Body)
+			require.NoError(t, err)
+			defer reader.Close()
+			body, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			gotBody = string(body)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader("")),
+			}, nil
+		}),
+	}
+	client, err := New(Config{
+		Endpoint:        "http://clickhouse.local:8123",
+		Database:        "otel",
+		Table:           "otel_traces",
+		CompressRequest: true,
+		HTTPClient:      httpClient,
+	})
+	require.NoError(t, err)
+
+	rows := "{\"TraceId\":\"a\"}\n{\"TraceId\":\"b\"}\n"
+	_, err = client.InsertJSONEachRow(context.Background(), []byte(rows), InsertOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "INSERT INTO `otel`.`otel_traces` FORMAT JSONEachRow", gotQuery)
+	assert.Equal(t, "gzip", gotEncoding)
+	assert.Equal(t, rows, gotBody)
+
+	// 空の本文は送りません。
+	_, err = client.InsertJSONEachRow(context.Background(), nil, InsertOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, requests)
+}
+
 func TestClientInsertLogsReturnsRecordIndexWhenJSONEncodingFailsBeforeRequest(t *testing.T) {
 	requestCount := 0
 	httpClient := &http.Client{
