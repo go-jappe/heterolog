@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 結合テスト用の使い捨てcontainer（OpenSearch・Loki・ClickHouse・Tempo・OpenTelemetry Collector）を
-# 起動し、準備完了まで待ちます。宛先のportとClickHouseの認証情報は環境設定file
+# 結合テスト用の使い捨てcontainer（OpenSearch・Loki・ClickHouse・Tempo・OpenTelemetry Collector・
+# VictoriaMetrics）を起動し、準備完了まで待ちます。宛先のportとClickHouseの認証情報は環境設定file
 # （HETEROLOG_INTEGRATION_ENV_PATH、未指定なら同じdirectoryのci.env）から読みます。
 # 前回の実行で残ったcontainerは作り直します。準備できない場合は診断情報を表示して失敗します。
 # imageが手元にない場合はdocker pullで取得します。
@@ -47,6 +47,8 @@ it_loopback_port HETEROLOG_OTEL_TEMPO_QUERY_ADDR
 tempo_http_port=$IT_PORT
 it_loopback_port HETEROLOG_OTEL_COLLECTOR_ADDR
 collector_otlp_port=$IT_PORT
+it_loopback_port HETEROLOG_VICTORIAMETRICS_QUERY_ADDR
+victoriametrics_port=$IT_PORT
 
 # containerのuser（Tempo・Collectorは非root）が設定fileを読めるか、複製前に確認します。
 for config in tempo.yaml otel-collector.yaml; do
@@ -60,13 +62,13 @@ it_log "removing containers left by a previous run"
 it_remove_services
 
 for port in "$opensearch_port" "$loki_port" "$clickhouse_port" "$tempo_otlp_port" "$tempo_otlp_http_port" \
-	"$collector_otlp_port" "$tempo_http_port" "$IT_OTEL_COLLECTOR_HEALTH_PORT"; do
+	"$collector_otlp_port" "$tempo_http_port" "$IT_OTEL_COLLECTOR_HEALTH_PORT" "$victoriametrics_port"; do
 	it_require_free_port "$port"
 done
 
 it_group "pulling images"
 for image in "$IT_OPENSEARCH_IMAGE" "$IT_LOKI_IMAGE" "$IT_CLICKHOUSE_IMAGE" \
-	"$IT_TEMPO_IMAGE" "$IT_OTEL_COLLECTOR_IMAGE"; do
+	"$IT_TEMPO_IMAGE" "$IT_OTEL_COLLECTOR_IMAGE" "$IT_VICTORIAMETRICS_IMAGE"; do
 	it_pull_image "$image"
 done
 it_endgroup
@@ -121,6 +123,13 @@ docker create --name "$IT_OTEL_COLLECTOR_CONTAINER" --label "$IT_LABEL" --networ
 docker cp "$IT_DIR/otel-collector.yaml" "$IT_OTEL_COLLECTOR_CONTAINER:/etc/otelcol-contrib/config.yaml"
 docker start "$IT_OTEL_COLLECTOR_CONTAINER" >/dev/null
 
+# VictoriaMetricsは、OTLP/HTTPとPrometheusのtext形式の取り込みを同じportで受けます。
+# dataはcontainerの中だけに置き、1日で消えるようにします。
+it_log "starting $IT_VICTORIAMETRICS_IMAGE"
+docker run -d --name "$IT_VICTORIAMETRICS_CONTAINER" --label "$IT_LABEL" --network "$IT_NETWORK" \
+	-p "127.0.0.1:$victoriametrics_port:8428" \
+	"$IT_VICTORIAMETRICS_IMAGE" -retentionPeriod=1d >/dev/null
+
 # 起動は並行して進むため、待機時間の上限は各serviceの起動にかかる時間の目安です。
 it_wait_ready OpenSearch "$IT_OPENSEARCH_CONTAINER" \
 	"http://127.0.0.1:$opensearch_port/_cluster/health?wait_for_status=yellow&timeout=5s" 240
@@ -131,6 +140,7 @@ it_wait_ready ClickHouse "$IT_CLICKHOUSE_CONTAINER" "http://127.0.0.1:$clickhous
 it_wait_ready Tempo "$IT_TEMPO_CONTAINER" "http://127.0.0.1:$tempo_http_port/ready" 180
 it_wait_ready "OpenTelemetry Collector" "$IT_OTEL_COLLECTOR_CONTAINER" \
 	"http://127.0.0.1:$IT_OTEL_COLLECTOR_HEALTH_PORT/" 120
+it_wait_ready VictoriaMetrics "$IT_VICTORIAMETRICS_CONTAINER" "http://127.0.0.1:$victoriametrics_port/health" 120
 
 it_log "all backend services are ready:"
 it_log "  OpenSearch  http://127.0.0.1:$opensearch_port"
@@ -138,3 +148,4 @@ it_log "  Loki        http://127.0.0.1:$loki_port"
 it_log "  ClickHouse  http://127.0.0.1:$clickhouse_port"
 it_log "  Tempo       127.0.0.1:$tempo_otlp_port (OTLP gRPC), 127.0.0.1:$tempo_otlp_http_port (OTLP HTTP), http://127.0.0.1:$tempo_http_port"
 it_log "  Collector   127.0.0.1:$collector_otlp_port (OTLP gRPC)"
+it_log "  VictoriaMetrics http://127.0.0.1:$victoriametrics_port"

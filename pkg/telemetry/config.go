@@ -66,11 +66,12 @@ type TracesConfig struct {
 }
 
 // HTTPConfig configures a destination that posts spans or metrics over HTTP:
-// an OTLP/HTTP receiver.
+// an OTLP/HTTP receiver, or VictoriaMetrics.
 type HTTPConfig struct {
 	// Endpoint is the URL that the data is posted to, such as
 	// "http://localhost:4318/v1/traces" for spans. The path is used as given;
-	// /v1/traces or /v1/metrics is not added. Redirects are not followed.
+	// /v1/traces, /v1/metrics or /api/v1/import/prometheus is not added.
+	// Redirects are not followed.
 	Endpoint string
 	// Headers are added to each request, such as an Authorization header.
 	Headers map[string]string
@@ -169,6 +170,10 @@ const (
 	MetricExporterFile MetricExporter = "file"
 	// MetricExporterStdout writes metrics to the standard output as OTLP JSON.
 	MetricExporterStdout MetricExporter = "stdout"
+	// MetricExporterVictoriaMetrics posts metrics to the
+	// /api/v1/import/prometheus API of VictoriaMetrics in the Prometheus text
+	// format, with the time of each collection.
+	MetricExporterVictoriaMetrics MetricExporter = "victoriametrics"
 )
 
 // MetricsConfig configures the recording and delivery of metrics.
@@ -197,6 +202,10 @@ type MetricsConfig struct {
 	CardinalityLimit int
 	// OTLP configures MetricExporterOTLP.
 	OTLP HTTPConfig
+	// VictoriaMetrics configures MetricExporterVictoriaMetrics. It posts with
+	// the same requests, retries, splitting, circuit breaker, and failure store
+	// as OTLP; the receiver does not report partial successes.
+	VictoriaMetrics HTTPConfig
 	// File configures MetricExporterFile.
 	File FileConfig
 }

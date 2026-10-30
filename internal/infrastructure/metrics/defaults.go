@@ -18,6 +18,9 @@ const (
 
 	// DefaultOTLPEndpointは、OpenTelemetryの既定のOTLP/HTTPの受信先です。
 	DefaultOTLPEndpoint = "http://localhost:4318/v1/metrics"
+	// DefaultVictoriaMetricsEndpointは、VictoriaMetricsの既定のportの、Prometheusのtext形式を
+	// 受け取るAPIです。
+	DefaultVictoriaMetricsEndpoint = "http://localhost:8428/api/v1/import/prometheus"
 )
 
 // defaultHistogramBoundsは、Histogramのbucketの上限の既定値です。heterologのHistogramは
@@ -35,5 +38,6 @@ func DefaultConfig() pkgtelemetry.MetricsConfig {
 		HistogramBounds:  DefaultHistogramBounds(),
 		CardinalityLimit: DefaultCardinalityLimit,
 		OTLP:             delivery.DefaultHTTPConfig(DefaultOTLPEndpoint),
+		VictoriaMetrics:  delivery.DefaultHTTPConfig(DefaultVictoriaMetricsEndpoint),
 	}
 }

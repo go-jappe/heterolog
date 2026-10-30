@@ -57,4 +57,7 @@ if it_loopback_port HETEROLOG_OTEL_TEMPO_QUERY_ADDR; then
 	probe Tempo "http://127.0.0.1:$IT_PORT/ready"
 fi
 probe "OpenTelemetry Collector" "http://127.0.0.1:$IT_OTEL_COLLECTOR_HEALTH_PORT/"
+if it_loopback_port HETEROLOG_VICTORIAMETRICS_QUERY_ADDR; then
+	probe VictoriaMetrics "http://127.0.0.1:$IT_PORT/health"
+fi
 it_endgroup

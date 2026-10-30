@@ -24,8 +24,11 @@ import (
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
-// ExporterNameは、metricsのexporter属性の値です。
+// ExporterNameは、Signal.Nameを指定しない送り先の、metricsのexporter属性の値です。
 const ExporterName = "otlp"
+
+// protobufContentTypeは、Signal.ContentTypeを指定しない送り先の、要求の本文の種類です。
+const protobufContentType = "application/x-protobuf"
 
 // maxResponseBytesは、読む応答の本文の上限です。partial_successを読むためだけに読みます。
 const maxResponseBytes = 64 << 10
@@ -55,6 +58,11 @@ type Signal[T any] struct {
 	BackendName string
 	// Unitは、部分的な成功の応答で受信側が数える単位（spans、data pointsなど）です。
 	Unit string
+	// Nameは、metricsのexporter属性の値です。空ならExporterNameです。
+	Name string
+	// ContentTypeは、要求の本文の種類です。空ならOTLPのprotobufです。部分的な成功の応答は、
+	// protobufの応答だけを読みます。
+	ContentType string
 }
 
 // Exporterは、delivery.Exporterの実装です。
@@ -102,7 +110,12 @@ func New[T any](cfg Config, signal Signal[T], meter pkgobserver.Meter) *Exporter
 	}
 }
 
-func (e *Exporter[T]) Name() string { return ExporterName }
+func (e *Exporter[T]) Name() string {
+	if e.signal.Name != "" {
+		return e.signal.Name
+	}
+	return ExporterName
+}
 
 // Exportは、itemsを1回の要求で送ります。一時的な失敗は、Retries回まで送り直します。
 // 受信側が要求を大きすぎると拒否した場合（413）は、itemsを半分ずつに分けて送り直します。
@@ -192,7 +205,7 @@ func (e *Exporter[T]) sendGuarded(ctx context.Context, body []byte, encoding str
 
 func (e *Exporter[T]) countRetry(ctx context.Context, reason retryable.RetryReason) {
 	e.meter.Counter(e.signal.RetriesMetric).Add(ctx, 1,
-		pkgobserver.Attr{Key: telemetry.AttrExporter, Value: ExporterName},
+		pkgobserver.Attr{Key: telemetry.AttrExporter, Value: e.Name()},
 		pkgobserver.Attr{Key: telemetry.AttrReason, Value: string(reason)},
 	)
 }
@@ -307,7 +320,11 @@ func (e *Exporter[T]) send(ctx context.Context, body []byte, encoding string) er
 	for name, value := range e.cfg.Headers {
 		req.Header.Set(name, value)
 	}
-	req.Header.Set("Content-Type", "application/x-protobuf")
+	contentType := e.signal.ContentType
+	if contentType == "" {
+		contentType = protobufContentType
+	}
+	req.Header.Set("Content-Type", contentType)
 	if encoding != "" {
 		req.Header.Set("Content-Encoding", encoding)
 	}
@@ -326,7 +343,7 @@ func (e *Exporter[T]) send(ctx context.Context, body []byte, encoding string) er
 			RetryAfterDuration: retryable.ClassifyRetryFromResponse(resp).RetryAfter,
 		}
 	}
-	if readErr != nil || len(respBody) == 0 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/x-protobuf") {
+	if readErr != nil || len(respBody) == 0 || !strings.HasPrefix(resp.Header.Get("Content-Type"), protobufContentType) {
 		// spanは受け付けられています。応答を読めなくても、送り直しません。
 		return nil
 	}

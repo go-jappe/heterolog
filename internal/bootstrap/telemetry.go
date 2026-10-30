@@ -17,6 +17,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/jsonlines"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/otlphttp"
 	metricsdelivery "github.com/go-jappe/heterolog/internal/infrastructure/metrics"
+	"github.com/go-jappe/heterolog/internal/infrastructure/metrics/victoriametrics"
 	"github.com/go-jappe/heterolog/internal/infrastructure/otlpcommon"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -101,7 +102,7 @@ func newTraceDestinations(
 	for _, name := range cfg.Traces.Exporters {
 		switch name {
 		case pkgtelemetry.TraceExporterOTLP:
-			exporter := traces.NewOTLPExporter(otlpExporterConfig(cfg.Traces.OTLP), resource, meter)
+			exporter := traces.NewOTLPExporter(httpExporterConfig(cfg.Traces.OTLP), resource, meter)
 			store, err := newFailureStore(ctx, cfg.Traces.OTLP.FailureStore, failurestore.Options[tracing.SpanData]{
 				Backend:   traces.OTLPBackendName,
 				Operation: traces.FailureOperation,
@@ -145,7 +146,7 @@ func newMetricDestinations(
 	for _, name := range cfg.Metrics.Exporters {
 		switch name {
 		case pkgtelemetry.MetricExporterOTLP:
-			exporter := metricsdelivery.NewOTLPExporter(otlpExporterConfig(cfg.Metrics.OTLP), resource, meter)
+			exporter := metricsdelivery.NewOTLPExporter(httpExporterConfig(cfg.Metrics.OTLP), resource, meter)
 			store, err := newFailureStore(ctx, cfg.Metrics.OTLP.FailureStore, failurestore.Options[metrics.Metric]{
 				Backend:   metricsdelivery.OTLPBackendName,
 				Operation: metricsdelivery.FailureOperation,
@@ -156,6 +157,20 @@ func newMetricDestinations(
 			})
 			if err != nil {
 				return nil, errors.Join(fmt.Errorf("create the failure store of the otlp metric exporter: %w", err), exporter.Close(), closeAll())
+			}
+			destinations = append(destinations, metricsdelivery.Destination{Exporter: exporter, Store: store})
+		case pkgtelemetry.MetricExporterVictoriaMetrics:
+			exporter := victoriametrics.NewExporter(httpExporterConfig(cfg.Metrics.VictoriaMetrics), resource, meter)
+			store, err := newFailureStore(ctx, cfg.Metrics.VictoriaMetrics.FailureStore, failurestore.Options[metrics.Metric]{
+				Backend:   victoriametrics.BackendName,
+				Operation: metricsdelivery.FailureOperation,
+				Exporter:  exporter,
+				Codec:     metricsdelivery.NewCodec(resource),
+				Meter:     meter,
+				Report:    report,
+			})
+			if err != nil {
+				return nil, errors.Join(fmt.Errorf("create the failure store of the victoriametrics metric exporter: %w", err), exporter.Close(), closeAll())
 			}
 			destinations = append(destinations, metricsdelivery.Destination{Exporter: exporter, Store: store})
 		case pkgtelemetry.MetricExporterStdout:
@@ -171,8 +186,8 @@ func newMetricDestinations(
 	return destinations, nil
 }
 
-// otlpExporterConfigは、公開の設定を、OTLP/HTTPの送り先の設定にします。
-func otlpExporterConfig(cfg pkgtelemetry.HTTPConfig) otlphttp.Config {
+// httpExporterConfigは、公開の設定を、HTTPの送り先（OTLP/HTTPとVictoriaMetrics）の設定にします。
+func httpExporterConfig(cfg pkgtelemetry.HTTPConfig) otlphttp.Config {
 	return otlphttp.Config{
 		Endpoint:       cfg.Endpoint,
 		Headers:        cfg.Headers,

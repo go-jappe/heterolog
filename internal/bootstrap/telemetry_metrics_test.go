@@ -201,3 +201,41 @@ func TestTelemetryResendsMetricsFromTheSpoolAfterTheReceiverRecovers(t *testing.
 		t.Errorf("resent orders = %v (service %q), want the stored value and Resource", got, service)
 	}
 }
+
+func TestTelemetrySendsMetricsToVictoriaMetricsInTheTextFormat(t *testing.T) {
+	var mu sync.Mutex
+	var bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		zr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			t.Errorf("gzip body: %v", err)
+			return
+		}
+		raw, _ := io.ReadAll(zr)
+		mu.Lock()
+		bodies = append(bodies, r.URL.Path+"\n"+string(raw))
+		mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	cfg := bootstrap.DefaultTelemetryConfig()
+	cfg.Resource.ServiceName = "checkout"
+	cfg.Metrics.Exporters = []pkgtelemetry.MetricExporter{pkgtelemetry.MetricExporterVictoriaMetrics}
+	cfg.Metrics.VictoriaMetrics.Endpoint = server.URL + "/api/v1/import/prometheus"
+	cfg.Metrics.ExportInterval = time.Hour
+	tel, err := bootstrap.NewTelemetry(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tel.Meter().Counter("orders_total").Add(context.Background(), 2, pkgobserver.Attr{Key: "region", Value: "eu"})
+	if err := tel.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 1 || !strings.HasPrefix(bodies[0], "/api/v1/import/prometheus\n") ||
+		!strings.Contains(bodies[0], `orders_total{`) || !strings.Contains(bodies[0], `region="eu"`) ||
+		!strings.Contains(bodies[0], `service_name="checkout"`) || !strings.Contains(bodies[0], "} 2 ") {
+		t.Errorf("bodies = %q, want the counter in the text format", bodies)
+	}
+}

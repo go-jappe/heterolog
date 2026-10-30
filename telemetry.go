@@ -27,6 +27,8 @@ const (
 	MetricExporterOTLP   = pkgtelemetry.MetricExporterOTLP
 	MetricExporterFile   = pkgtelemetry.MetricExporterFile
 	MetricExporterStdout = pkgtelemetry.MetricExporterStdout
+
+	MetricExporterVictoriaMetrics = pkgtelemetry.MetricExporterVictoriaMetrics
 )
 
 // Telemetry records spans and metrics with its Tracer and Meter and delivers

@@ -21,7 +21,7 @@ fi
 export HETEROLOG_INTEGRATION_ENV_PATH=$IT_ENV_FILE
 
 go_test_timeout=300s
-all_groups=(opensearch opensearch-client loki clickhouse tracing)
+all_groups=(opensearch opensearch-client loki clickhouse tracing victoriametrics)
 
 # select_group GROUP: groupのopt-in変数、package、試験名を設定します。
 # どの試験もHETEROLOG_INTEGRATION_ENV_PATHの専用fileだけから設定を読みます。
@@ -73,6 +73,15 @@ select_group() {
 			TestFileLogger_Log_WritesToFile_ForTempo_Via_Collector
 			TestTelemetrySendsSpansToTempoOverOTLPHTTP
 			TestTelemetryResendsSpooledSpansToTempo
+		)
+		;;
+	victoriametrics)
+		opt_in=(VICTORIAMETRICS_INTEGRATION_TEST)
+		packages=(./internal/bootstrap)
+		tests=(
+			TestTelemetrySendsMetricsToVictoriaMetricsOverOTLP
+			TestTelemetrySendsMetricsToVictoriaMetricsInThePrometheusFormat
+			TestTelemetryResendsSpooledMetricsToVictoriaMetrics
 		)
 		;;
 	*)

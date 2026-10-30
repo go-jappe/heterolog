@@ -494,7 +494,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 
 ## Sending metrics
 
-`NewTelemetry` records metrics with its `Meter` and sends them, together with metrics from the OpenTelemetry SDK, to the destinations in `TelemetryConfig.Metrics.Exporters`: an OTLP/HTTP receiver (`otlp`), such as the OpenTelemetry Collector, Prometheus, or VictoriaMetrics, a file (`file`), and stdout (`stdout`). Without destinations, its `Meter` records nothing. `DefaultTelemetryConfig()` fills every setting except the destinations, and `TelemetryConfig.Validate` checks the metric settings together with the trace settings.
+`NewTelemetry` records metrics with its `Meter` and sends them, together with metrics from the OpenTelemetry SDK, to the destinations in `TelemetryConfig.Metrics.Exporters`: an OTLP/HTTP receiver (`otlp`), such as the OpenTelemetry Collector, Prometheus, or VictoriaMetrics, the Prometheus import API of VictoriaMetrics (`victoriametrics`), a file (`file`), and stdout (`stdout`). Without destinations, its `Meter` records nothing. `DefaultTelemetryConfig()` fills every setting except the destinations, and `TelemetryConfig.Validate` checks the metric settings together with the trace settings.
 
 ### The Meter
 
@@ -518,6 +518,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 
 - Every `ExportInterval`, the values of the `Meter` are collected and queued for each destination, which keeps up to `QueueSize` collections and has its own goroutine. A collection that does not fit in the queue of a destination is dropped for that destination; because the values are cumulative, the next collection still has the totals.
 - `otlp` posts each collection like the spans of `Traces.OTLP`: in protobuf, by the retry rules of the OTLP specification, splitting a request rejected as too large by metric, and with the optional circuit breaker. A partial success counts the rejected data points as failed. The metrics of the circuit breaker have the `backend` `otlp_metrics`.
+- `victoriametrics` posts each collection to `VictoriaMetrics.Endpoint` (`/api/v1/import/prometheus` by default) in the Prometheus text format, with the time of the collection in milliseconds, compressed with gzip unless `Compression` is `none`. The requests, retries, splitting, circuit breaker (`backend` `victoriametrics`), and failure store are those of `otlp`. A sum or gauge is one line with the name of the metric; a histogram has a `_bucket` line with the cumulative count for each bound in `le` and for `+Inf`, then `_sum` and `_count`. The labels are the resource attributes and the attributes of the data point, which win when the names are the same; characters that names cannot have become `_`, and in a histogram, an attribute named `le` is not used.
 - `file` and `stdout` write each collection as one line of OTLP JSON, with 64-bit integers, counts, and times as strings.
 - The errors of the delivery go to the function given with `WithTelemetryErrorHandler`, as for spans. Data points dropped because a queue was full are reported in one error per destination at most once per `ExportInterval`.
 - The delivery does not create spans for its own sending. The `heterolog_metric_*` metrics below report it, recorded with the `Meter` passed to `NewTelemetry` with `WithObservers`.
@@ -525,7 +526,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 
 ### Failed metrics
 
-`Metrics.OTLP.FailureStore` keeps the metrics that `otlp` could not send in the failure stores of the log destinations, with the same settings and behavior as [Failed spans](#failed-spans). Each record holds one metric with all its data points, as OTLP JSON with its resource and scope. The records, and the metrics of the spool and the failure archive, have the backend `otlp_metrics`.
+`Metrics.OTLP.FailureStore` and `Metrics.VictoriaMetrics.FailureStore` keep the metrics that `otlp` and `victoriametrics` could not send in the failure stores of the log destinations, with the same settings and behavior as [Failed spans](#failed-spans). Each record holds one metric with all its data points, as OTLP JSON with its resource and scope. The records, and the metrics of the spool and the failure archive, have the backend `otlp_metrics` or `victoriametrics`; the records of both are OTLP JSON, which the spool worker sends again in the format of the destination.
 
 - Metrics whose outcome is unknown are resent instead of going to quarantine, because duplicates are preferred over losses. The same value can therefore arrive twice. The values are cumulative, so the second copy is the same value of the same series at the same time: a receiver that removes duplicate samples keeps one, and the totals that queries compute do not change. With delta temporality, which heterolog does not use, the increase would be counted twice.
 - A resent value is older than the values collected after it. Receivers that reject samples older than the newest one of a series, or older than a time window, such as Prometheus without out-of-order ingestion, reject it with a status, and it is kept as dead without a resend.
@@ -544,6 +545,8 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 | `HETEROLOG_METRICS_CARDINALITY_LIMIT` | `CardinalityLimit` | `2000` |
 | `HETEROLOG_METRICS_OTLP_*` and `HETEROLOG_ENABLE_METRICS_OTLP_CIRCUIT_BREAKER` | `OTLP`, with the same keys and defaults as `HETEROLOG_TRACES_OTLP_*`, except that the endpoint is `http://localhost:4318/v1/metrics`. | |
 | `HETEROLOG_METRICS_OTLP_DURABLE_TYPES` and the other failure store keys with `METRICS_OTLP` in place of the destination name | `OTLP.FailureStore`, as for traces. The directories are `metrics_otlp` (spool) and `metrics_otlp_failure_archives`. | `spool` |
+| `HETEROLOG_METRICS_VICTORIAMETRICS_*` and `HETEROLOG_ENABLE_METRICS_VICTORIAMETRICS_CIRCUIT_BREAKER` | `VictoriaMetrics`, with the same keys and defaults as `HETEROLOG_METRICS_OTLP_*`, except that the endpoint is `http://localhost:8428/api/v1/import/prometheus`. | |
+| `HETEROLOG_METRICS_VICTORIAMETRICS_DURABLE_TYPES` and the other failure store keys with `METRICS_VICTORIAMETRICS` in place of the destination name | `VictoriaMetrics.FailureStore`. The directories are `metrics_victoriametrics` (spool) and `metrics_victoriametrics_failure_archives`. | `spool` |
 | `HETEROLOG_METRICS_FILE_DIR` | The directory of `File.Path`, which is `metrics.jsonl` in it, resolved like the trace directory. | `/metrics` |
 
 - The resource comes from the same keys as for traces.
@@ -581,9 +584,9 @@ Pass a `Tracer` and a `Meter` with `WithObservers` to receive the metrics and sp
 | `heterolog_trace_spans_total` | Counter | `exporter` (`otlp`, `file`, `stdout`), `outcome` | Spans that a destination of `NewTelemetry` handled, by result: `success`; `retryable`, `dead`, or `quarantine` (not sent, and kept in the failure store to be resent, or without a resend); `failure` (not sent and not kept); or `dropped` (did not fit in the queue, or ended after `Shutdown` started). For a partial success, only the rejected spans are counted as `quarantine`, although the whole request is kept. |
 | `heterolog_trace_export_duration_seconds` | Histogram | `exporter`, `outcome` (`success`, `failure`) | Duration of sending one batch of spans, including the retries and the waits between them. A batch is a `failure` when none of its spans was sent. |
 | `heterolog_trace_export_retries_total` | Counter | `exporter`, `reason` | Retries of the `otlp` destination, by the reason, such as `http_status` or `net_timeout`. Splitting a request that was too large counts as `request_too_large`. |
-| `heterolog_metric_points_total` | Counter | `exporter` (`otlp`, `file`, `stdout`), `outcome` | Data points that a metric destination of `NewTelemetry` handled, by the same results as `heterolog_trace_spans_total`. |
+| `heterolog_metric_points_total` | Counter | `exporter` (`otlp`, `victoriametrics`, `file`, `stdout`), `outcome` | Data points that a metric destination of `NewTelemetry` handled, by the same results as `heterolog_trace_spans_total`. |
 | `heterolog_metric_export_duration_seconds` | Histogram | `exporter`, `outcome` (`success`, `failure`) | Duration of sending one collection of metrics, including the retries and the waits between them. |
-| `heterolog_metric_export_retries_total` | Counter | `exporter`, `reason` | Retries of the `otlp` metric destination, by the reason, as for spans. |
+| `heterolog_metric_export_retries_total` | Counter | `exporter`, `reason` | Retries of the `otlp` and `victoriametrics` metric destinations, by the reason, as for spans. |
 | `heterolog_internal_logs_total` | Counter | `level` (`error`, `warn`, `info`, `debug`) | Internal logs passed to the internal log notification targets (`OnErrorConfig` and the like), such as a failed write or a slow request, by level. See [Internal log notifications](#internal-log-notifications). |
 
 ### Spans

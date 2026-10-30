@@ -177,6 +177,11 @@ func TestValidateReportsEachInvalidMetricSetting(t *testing.T) {
 		{"Metrics.HistogramBounds", telemetry.ErrInvalidSetting, func(c *telemetry.MetricsConfig) { c.HistogramBounds = []float64{1, 1} }},
 		{"Metrics.HistogramBounds", telemetry.ErrInvalidSetting, func(c *telemetry.MetricsConfig) { c.HistogramBounds = []float64{math.Inf(1)} }},
 		{"Metrics.OTLP.Endpoint", telemetry.ErrInvalidSetting, func(c *telemetry.MetricsConfig) { c.OTLP.Endpoint = "collector:4318" }},
+		{"Metrics.VictoriaMetrics.Timeout", telemetry.ErrNonPositiveSetting, func(c *telemetry.MetricsConfig) {
+			c.Exporters = append(c.Exporters, telemetry.MetricExporterVictoriaMetrics)
+			c.VictoriaMetrics = c.OTLP
+			c.VictoriaMetrics.Timeout = 0
+		}},
 		{"Metrics.File.Path", telemetry.ErrInvalidSetting, func(c *telemetry.MetricsConfig) { c.File.Path = "" }},
 	} {
 		cfg := validMetricsConfig()

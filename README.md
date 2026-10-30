@@ -54,7 +54,7 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 - Configuration in code, or from `HETEROLOG_` environment variables and an env file.
 - Level and sampling changes while running, in code or through a token-protected HTTP API.
 - Traces: a `Tracer`, and an exporter for the OpenTelemetry SDK, that send spans to an OTLP/HTTP receiver, a file, or stdout in batches with retries. Spans that could not be sent go to the same spool and failure archive as logs. The loggers can record their own work as spans.
-- Metrics: a `Meter` that sends counters, gauges, and histograms to an OTLP/HTTP receiver, a file, or stdout, with the same retries, spool, and failure archive.
+- Metrics: a `Meter` that sends counters, gauges, and histograms to an OTLP/HTTP receiver, VictoriaMetrics, a file, or stdout, with the same retries, spool, and failure archive.
 - A CLI that recovers the log files of a stopped application.
 - Tested on Linux, Windows, and macOS, including case-insensitive file systems.
 
@@ -334,7 +334,7 @@ See [Sending traces](docs/reference.md#sending-traces) for details.
 
 ## Metrics
 
-The same `Telemetry` sends metrics to an OTLP/HTTP receiver, such as the OpenTelemetry Collector, Prometheus, or VictoriaMetrics, to a file, or to stdout. Its `Meter` records counters, gauges, and histograms, and passed to a logger with `WithObservers`, also the `heterolog_*` metrics of the logger:
+The same `Telemetry` sends metrics to an OTLP/HTTP receiver, such as the OpenTelemetry Collector, Prometheus, or VictoriaMetrics, to the Prometheus import API of VictoriaMetrics, to a file, or to stdout. Its `Meter` records counters, gauges, and histograms, and passed to a logger with `WithObservers`, also the `heterolog_*` metrics of the logger:
 
 ```go
 cfg.Metrics.Exporters = []heterolog.MetricExporter{heterolog.MetricExporterOTLP}

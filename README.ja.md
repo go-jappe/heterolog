@@ -54,7 +54,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - コードでの設定、または `HETEROLOG_` 環境変数と環境設定ファイルからの設定。
 - 稼働中のログレベルとサンプリングの変更。コードまたはトークンで保護したHTTP APIから行います。
 - トレース: spanを、OTLP/HTTPの受信先、file、stdoutへ、まとめて再試行付きで送る `Tracer` と、OpenTelemetry SDK用のexporter。送れなかったspanは、ログと同じspoolとfailure archiveへ渡します。ロガーも自分の処理をspanとして記録できます。
-- メトリクス: counter、gauge、histogramを、OTLP/HTTPの受信先、file、stdoutへ、同じ再試行、spool、failure archive付きで送る `Meter`。
+- メトリクス: counter、gauge、histogramを、OTLP/HTTPの受信先、VictoriaMetrics、file、stdoutへ、同じ再試行、spool、failure archive付きで送る `Meter`。
 - 停止中のアプリケーションのログファイルを復旧するCLI。
 - Linux・Windows・macOSで、大文字小文字を区別しないファイルシステムも含めて試験しています。
 
@@ -334,7 +334,7 @@ defer span.End()
 
 ## メトリクス
 
-同じ `Telemetry` が、メトリクスを、OTLP/HTTPの受信先（OpenTelemetry Collector、Prometheus、VictoriaMetricsなど）、file、stdoutへ送ります。その `Meter` は、counter、gauge、histogramを記録し、`WithObservers` でロガーへ渡せば、ロガーの `heterolog_*` のメトリクスも記録します。
+同じ `Telemetry` が、メトリクスを、OTLP/HTTPの受信先（OpenTelemetry Collector、Prometheus、VictoriaMetricsなど）、VictoriaMetricsのPrometheus形式の取り込みAPI、file、stdoutへ送ります。その `Meter` は、counter、gauge、histogramを記録し、`WithObservers` でロガーへ渡せば、ロガーの `heterolog_*` のメトリクスも記録します。
 
 ```go
 cfg.Metrics.Exporters = []heterolog.MetricExporter{heterolog.MetricExporterOTLP}

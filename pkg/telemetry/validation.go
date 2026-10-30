@@ -193,11 +193,11 @@ func (c MetricsConfig) validate() error {
 	seen := make(map[MetricExporter]bool, len(c.Exporters))
 	for _, exporter := range c.Exporters {
 		switch exporter {
-		case MetricExporterOTLP, MetricExporterFile, MetricExporterStdout:
+		case MetricExporterOTLP, MetricExporterVictoriaMetrics, MetricExporterFile, MetricExporterStdout:
 		default:
 			errs = append(errs, &FieldError{
 				Field: "Metrics.Exporters", Value: exporter, Err: ErrInvalidSetting,
-				Detail: fmt.Sprintf("unsupported exporter %q; use otlp, file or stdout", exporter),
+				Detail: fmt.Sprintf("unsupported exporter %q; use otlp, victoriametrics, file or stdout", exporter),
 			})
 			continue
 		}
@@ -225,6 +225,9 @@ func (c MetricsConfig) validate() error {
 	}
 	if seen[MetricExporterOTLP] {
 		errs = append(errs, c.OTLP.validate("Metrics.OTLP"))
+	}
+	if seen[MetricExporterVictoriaMetrics] {
+		errs = append(errs, c.VictoriaMetrics.validate("Metrics.VictoriaMetrics"))
 	}
 	if seen[MetricExporterFile] && strings.TrimSpace(c.File.Path) == "" {
 		errs = append(errs, &FieldError{

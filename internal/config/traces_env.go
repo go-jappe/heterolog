@@ -58,7 +58,7 @@ func loadTracesConfig(env pkgenv.Lookup) (TracesConfig, error) {
 	cfg.Traces.BatchSize = batchSize
 	cfg.Traces.ExportInterval = exportInterval
 
-	otlpCfg, otlpErr := loadOTLPEnv(env, otlpKeys{
+	otlpCfg, otlpErr := loadHTTPEnv(env, httpKeys{
 		Endpoint:       "HETEROLOG_TRACES_OTLP_ENDPOINT",
 		Headers:        "HETEROLOG_TRACES_OTLP_HEADERS",
 		Compression:    "HETEROLOG_TRACES_OTLP_COMPRESSION",
@@ -97,6 +97,9 @@ func MapTelemetryConfig(a AppConfig) pkgtelemetry.Config {
 		cfg.Metrics = a.Metrics.Metrics
 		cfg.Metrics.File.Path = filepath.Join(a.FsstoreConfig.LogPath, a.RuntimeConfig.Target, a.Metrics.FileDir, metricsFileName)
 		cfg.Metrics.OTLP.FailureStore = mapTelemetryFailureStoreConfig(&a, checkpointSourceMetricsOTLP, a.Metrics.FailureStore)
+		cfg.Metrics.VictoriaMetrics.FailureStore = mapTelemetryFailureStoreConfig(
+			&a, checkpointSourceMetricsVictoriaMetrics, a.Metrics.VictoriaMetricsFailureStore,
+		)
 	}
 	return cfg
 }
@@ -112,14 +115,14 @@ func mapTelemetryFailureStoreConfig(a *AppConfig, checkpointSource archiveCheckp
 	}
 }
 
-// otlpKeysは、OTLP/HTTPの送り先の環境変数のkeyです。
-type otlpKeys struct {
+// httpKeysは、HTTPの送り先（OTLP/HTTPとVictoriaMetrics）の環境変数のkeyです。
+type httpKeys struct {
 	Endpoint, Headers, Compression, Timeout, Retries, RetryBaseDelay, RetryMaxDelay, CircuitBreaker string
 }
 
-// loadOTLPEnvは、OTLP/HTTPの送り先の設定を、keysのkeyから読みます。keyがなければ、
-// defaultsの値を使います。failure storeの設定は、defaultsのままです。
-func loadOTLPEnv(env pkgenv.Lookup, keys otlpKeys, defaults pkgtelemetry.HTTPConfig) (pkgtelemetry.HTTPConfig, error) {
+// loadHTTPEnvは、HTTPの送り先の設定を、keysのkeyから読みます。keyがなければ、defaultsの
+// 値を使います。failure storeの設定は、defaultsのままです。
+func loadHTTPEnv(env pkgenv.Lookup, keys httpKeys, defaults pkgtelemetry.HTTPConfig) (pkgtelemetry.HTTPConfig, error) {
 	headers, headersErr := loadHeaderEnv(env, keys.Headers, nil)
 	timeout, timeoutErr := env.GetEnvDuration(keys.Timeout, defaults.Timeout)
 	retries, retriesErr := env.GetEnvInt(keys.Retries, defaults.Retries)

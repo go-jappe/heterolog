@@ -318,10 +318,11 @@ type publicEnvKeyEffectSpec struct {
 
 // publicEnvKeyEffectExemptionsは、値の変更をLoadConfigの結果で確認できないkeyと理由です。
 var publicEnvKeyEffectExemptions = map[string]string{
-	"HETEROLOG_ENV_PATH":              "selects the environment file; this test sets it to an empty file",
-	"HETEROLOG_OTEL_COLLECTOR_ADDR":   "test-only variable for the opt-in OpenTelemetry Collector integration test",
-	"HETEROLOG_OTEL_TEMPO_ADDR":       "test-only variable for the opt-in Grafana Tempo integration test",
-	"HETEROLOG_OTEL_TEMPO_QUERY_ADDR": "test-only variable for the opt-in Grafana Tempo integration test",
+	"HETEROLOG_ENV_PATH":                   "selects the environment file; this test sets it to an empty file",
+	"HETEROLOG_OTEL_COLLECTOR_ADDR":        "test-only variable for the opt-in OpenTelemetry Collector integration test",
+	"HETEROLOG_OTEL_TEMPO_ADDR":            "test-only variable for the opt-in Grafana Tempo integration test",
+	"HETEROLOG_OTEL_TEMPO_QUERY_ADDR":      "test-only variable for the opt-in Grafana Tempo integration test",
+	"HETEROLOG_VICTORIAMETRICS_QUERY_ADDR": "test-only variable for the opt-in VictoriaMetrics integration test",
 }
 
 // publicEnvKeyMapperExemptionsは、LoadConfigが読みますがmapperの変換結果へ届かないkeyと理由です。
@@ -501,9 +502,10 @@ var publicEnvKeyEffectCandidateOverrides = map[string][]string{
 	"HETEROLOG_TRACES_SAMPLING_RATIO":   {"0.5", "0.25"},
 	"HETEROLOG_TRACES_OTLP_COMPRESSION": {"none"},
 	// metricsの送り先の既定値はotlpなので、それ以外を候補にします。
-	"HETEROLOG_METRICS_TYPE":             {"file,stdout", "stdout"},
-	"HETEROLOG_METRICS_OTLP_COMPRESSION": {"none"},
-	"HETEROLOG_METRICS_HISTOGRAM_BOUNDS": {"0.1,1,10", "1,2"},
+	"HETEROLOG_METRICS_TYPE":                        {"file,stdout", "stdout"},
+	"HETEROLOG_METRICS_OTLP_COMPRESSION":            {"none"},
+	"HETEROLOG_METRICS_VICTORIAMETRICS_COMPRESSION": {"none"},
+	"HETEROLOG_METRICS_HISTOGRAM_BOUNDS":            {"0.1,1,10", "1,2"},
 }
 
 // publicEnvKeyEffectIntegerSuffixesは、公開例の値が空でも整数を受け付けるkeyの語尾です。

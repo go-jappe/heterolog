@@ -28,9 +28,10 @@ type MetricsConfig struct {
 	Metrics pkgtelemetry.MetricsConfig
 	// FileDirは、metricsのfileを置くdirectoryです。
 	FileDir string
-	// FailureStoreは、otlpの送り先のfailure storeの設定です。保存先のpathなど、ログと共通の
-	// 項目は、MapTelemetryConfigが組み立てます。
-	FailureStore TelemetryFailureStoreConfig
+	// FailureStoreとVictoriaMetricsFailureStoreは、otlpとvictoriametricsの送り先のfailure
+	// storeの設定です。保存先のpathなど、ログと共通の項目は、MapTelemetryConfigが組み立てます。
+	FailureStore                TelemetryFailureStoreConfig
+	VictoriaMetricsFailureStore TelemetryFailureStoreConfig
 }
 
 // loadMetricsConfigは、metricsの設定を読み込みます。HETEROLOG_ENABLE_METRICSがfalseなら、
@@ -56,7 +57,7 @@ func loadMetricsConfig(env pkgenv.Lookup) (MetricsConfig, error) {
 	cfg.Metrics.CardinalityLimit = cardinalityLimit
 	cfg.Metrics.HistogramBounds = bounds
 
-	otlpCfg, otlpErr := loadOTLPEnv(env, otlpKeys{
+	otlpCfg, otlpErr := loadHTTPEnv(env, httpKeys{
 		Endpoint:       "HETEROLOG_METRICS_OTLP_ENDPOINT",
 		Headers:        "HETEROLOG_METRICS_OTLP_HEADERS",
 		Compression:    "HETEROLOG_METRICS_OTLP_COMPRESSION",
@@ -67,11 +68,27 @@ func loadMetricsConfig(env pkgenv.Lookup) (MetricsConfig, error) {
 		CircuitBreaker: "HETEROLOG_ENABLE_METRICS_OTLP_CIRCUIT_BREAKER",
 	}, defaults.OTLP)
 	cfg.Metrics.OTLP = otlpCfg
+	victoriaMetricsCfg, victoriaMetricsErr := loadHTTPEnv(env, httpKeys{
+		Endpoint:       "HETEROLOG_METRICS_VICTORIAMETRICS_ENDPOINT",
+		Headers:        "HETEROLOG_METRICS_VICTORIAMETRICS_HEADERS",
+		Compression:    "HETEROLOG_METRICS_VICTORIAMETRICS_COMPRESSION",
+		Timeout:        "HETEROLOG_METRICS_VICTORIAMETRICS_TIMEOUT_SECOND",
+		Retries:        "HETEROLOG_METRICS_VICTORIAMETRICS_RETRIES",
+		RetryBaseDelay: "HETEROLOG_METRICS_VICTORIAMETRICS_RETRY_BASE_DELAY_MILLISECOND",
+		RetryMaxDelay:  "HETEROLOG_METRICS_VICTORIAMETRICS_RETRY_MAX_DELAY_MILLISECOND",
+		CircuitBreaker: "HETEROLOG_ENABLE_METRICS_VICTORIAMETRICS_CIRCUIT_BREAKER",
+	}, defaults.VictoriaMetrics)
+	cfg.Metrics.VictoriaMetrics = victoriaMetricsCfg
 
 	cfg.FileDir = env.GetEnvString("HETEROLOG_METRICS_FILE_DIR", defaultMetricsFileDir)
 	failureStore, failureStoreErr := loadTelemetryFailureStoreConfig(env, metricsOTLPFailureStoreKeys)
 	cfg.FailureStore = failureStore
-	return cfg, errors.Join(exportIntervalErr, queueSizeErr, cardinalityLimitErr, boundsErr, otlpErr, failureStoreErr)
+	victoriaMetricsFailureStore, victoriaMetricsFailureStoreErr := loadTelemetryFailureStoreConfig(env, metricsVictoriaMetricsFailureStoreKeys)
+	cfg.VictoriaMetricsFailureStore = victoriaMetricsFailureStore
+	return cfg, errors.Join(
+		exportIntervalErr, queueSizeErr, cardinalityLimitErr, boundsErr,
+		otlpErr, victoriaMetricsErr, failureStoreErr, victoriaMetricsFailureStoreErr,
+	)
 }
 
 // loadHistogramBoundsEnvは、カンマ区切りの数の並びを読みます。keyがなければdefaultsを

@@ -11,6 +11,7 @@ IT_LOKI_IMAGE=grafana/loki:3.4.2
 IT_CLICKHOUSE_IMAGE=clickhouse/clickhouse-server:24.8.4.13
 IT_TEMPO_IMAGE=grafana/tempo:2.7.2
 IT_OTEL_COLLECTOR_IMAGE=otel/opentelemetry-collector-contrib:0.120.0
+IT_VICTORIAMETRICS_IMAGE=victoriametrics/victoria-metrics:v1.106.1
 
 # 起動するcontainerとnetworkにはこのlabelを付け、削除もこのlabelのものだけを対象にします。
 IT_LABEL=heterolog.integration=ci
@@ -20,6 +21,7 @@ IT_LOKI_CONTAINER=heterolog-it-loki
 IT_CLICKHOUSE_CONTAINER=heterolog-it-clickhouse
 IT_TEMPO_CONTAINER=heterolog-it-tempo
 IT_OTEL_COLLECTOR_CONTAINER=heterolog-it-otel-collector
+IT_VICTORIAMETRICS_CONTAINER=heterolog-it-victoriametrics
 # shellcheck disable=SC2034 # collect-diagnostics.shが使います。
 IT_CONTAINERS=(
 	"$IT_OPENSEARCH_CONTAINER"
@@ -27,6 +29,7 @@ IT_CONTAINERS=(
 	"$IT_CLICKHOUSE_CONTAINER"
 	"$IT_TEMPO_CONTAINER"
 	"$IT_OTEL_COLLECTOR_CONTAINER"
+	"$IT_VICTORIAMETRICS_CONTAINER"
 )
 
 # 環境設定fileにはなく、準備完了の確認と診断だけに使うportです。TempoのHTTPのportは、

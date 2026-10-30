@@ -28,6 +28,7 @@ containerと一緒に破棄します。
 | `loki` | `LOKI_INTEGRATION_TEST` | `internal/infrastructure/logger`、`internal/infrastructure/logger/loki` | `TestLokiLoggerUsesActualDotEnvConfigAndStoresEntry`、`TestLokiSpoolUsesActualDotEnvConfigActiveAndResendsToBackend`、`TestLokiLoggerWithIntegrationEnvironmentPushesToLocalLoki` |
 | `clickhouse` | `CLICKHOUSE_INTEGRATION_TEST` | `internal/infrastructure/logger` | `TestClickHouseLoggerUsesActualDotEnvConfigAndStoresRow`、`TestClickHouseSpoolUsesActualDotEnvConfigActiveAndResendsToBackend` |
 | `tracing` | `TEMPO_INTEGRATION_TEST`、`OTEL_COLLECTOR_INTEGRATION_TEST` | `internal/infrastructure/logger/file`、`internal/bootstrap` | `TestFileLogger_Log_WritesToFile_ForTempo`、`TestFileLogger_Log_WritesToFile_ForTempo_Via_Collector`、`TestTelemetrySendsSpansToTempoOverOTLPHTTP`、`TestTelemetryResendsSpooledSpansToTempo` |
+| `victoriametrics` | `VICTORIAMETRICS_INTEGRATION_TEST` | `internal/bootstrap` | `TestTelemetrySendsMetricsToVictoriaMetricsOverOTLP`、`TestTelemetrySendsMetricsToVictoriaMetricsInThePrometheusFormat`、`TestTelemetryResendsSpooledMetricsToVictoriaMetrics` |
 
 `run-live-tests.sh` は、選んだ試験のうちPASSしなかったもの（失敗のほか、skipや試験名の変更で
 実行されなかったもの）があれば失敗します。試験を追加・改名した場合は、scriptの一覧も更新してください。
@@ -45,6 +46,7 @@ containerと一緒に破棄します。
 | ClickHouse | `clickhouse/clickhouse-server:24.8.4.13` | 28123 | 認証付きの `SELECT 1` |
 | Tempo | `grafana/tempo:2.7.2` | 24317（OTLP gRPC）、24318（OTLP HTTP）、23200（HTTP） | `/ready` |
 | OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.120.0` | 25317（OTLP gRPC）、23133（health check） | health check extension |
+| VictoriaMetrics | `victoriametrics/victoria-metrics:v1.106.1` | 28428（OTLP HTTP・Prometheusのtext形式の取り込み・HTTP API） | `/health` |
 
 - 開発者がローカルで既定port（9200・3100・8123・4317など）のserviceを動かしていても書き込まない
   よう、CI専用のport帯を使います。使用中のportがあれば、起動前に失敗します。
@@ -100,6 +102,9 @@ LOKI_INTEGRATION_TEST=true HETEROLOG_INTEGRATION_ENV_PATH="$PWD/testenv/integrat
 - Tempo試験の送信先は `HETEROLOG_OTEL_TEMPO_ADDR`、Collector試験の送信先は `HETEROLOG_OTEL_COLLECTOR_ADDR` です。
   `NewTelemetry` の試験は、`HETEROLOG_TRACES_OTLP_ENDPOINT` へOTLP/HTTPでspanを送り、`HETEROLOG_OTEL_TEMPO_QUERY_ADDR`
   （TempoのHTTP API）でtraceを読み戻して、届いたことを確かめます。
+  metricsの試験は、`HETEROLOG_METRICS_OTLP_ENDPOINT`（VictoriaMetricsのOTLP/HTTP）と
+  `HETEROLOG_METRICS_VICTORIAMETRICS_ENDPOINT`（Prometheusのtext形式の取り込み）へmetricsを送り、
+  `HETEROLOG_VICTORIAMETRICS_QUERY_ADDR`（VictoriaMetricsのHTTP API）で読み戻します。
   どの試験も、専用の設定fileに送信先のkeyがない場合は既定の送信先へ送らずに失敗します。
 - portを変える場合は `ci.env` の宛先を変更します。`start-services.sh` は `ci.env` の宛先から
   公開するportを決めます（Collectorのhealth checkのportは `common.sh` で定義）。
