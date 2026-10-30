@@ -18,6 +18,8 @@ const (
 	TraceExporterOTLP   = pkgtelemetry.TraceExporterOTLP
 	TraceExporterFile   = pkgtelemetry.TraceExporterFile
 	TraceExporterStdout = pkgtelemetry.TraceExporterStdout
+
+	TraceExporterOpenSearch = pkgtelemetry.TraceExporterOpenSearch
 )
 
 // MetricExporter names a destination of metrics in TelemetryConfig.

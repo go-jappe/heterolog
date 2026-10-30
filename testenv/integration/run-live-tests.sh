@@ -32,10 +32,12 @@ select_group() {
 	case $1 in
 	opensearch)
 		opt_in=(OPENSEARCH_INTEGRATION_TEST)
-		packages=(./internal/infrastructure/logger)
+		packages=(./internal/infrastructure/logger ./internal/bootstrap)
 		tests=(
 			TestOpenSearchLoggerUsesActualDotEnvConfigAndStoresDocument
 			TestOpenSearchSpoolUsesActualDotEnvConfigActiveAndResendsToBackend
+			TestTelemetryWritesSpansToOpenSearch
+			TestTelemetryResendsSpooledSpansToOpenSearch
 		)
 		;;
 	opensearch-client)

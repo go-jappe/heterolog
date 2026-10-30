@@ -6,8 +6,10 @@ import (
 	"math"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
+	"github.com/go-jappe/heterolog/pkg/opensearch"
 )
 
 var (
@@ -76,11 +78,11 @@ func (c TracesConfig) validate() error {
 	seen := make(map[TraceExporter]bool, len(c.Exporters))
 	for _, exporter := range c.Exporters {
 		switch exporter {
-		case TraceExporterOTLP, TraceExporterFile, TraceExporterStdout:
+		case TraceExporterOTLP, TraceExporterOpenSearch, TraceExporterFile, TraceExporterStdout:
 		default:
 			errs = append(errs, &FieldError{
 				Field: "Traces.Exporters", Value: exporter, Err: ErrInvalidSetting,
-				Detail: fmt.Sprintf("unsupported exporter %q; use otlp, file or stdout", exporter),
+				Detail: fmt.Sprintf("unsupported exporter %q; use otlp, opensearch, file or stdout", exporter),
 			})
 			continue
 		}
@@ -105,6 +107,9 @@ func (c TracesConfig) validate() error {
 	}
 	if seen[TraceExporterOTLP] {
 		errs = append(errs, c.OTLP.validate("Traces.OTLP"))
+	}
+	if seen[TraceExporterOpenSearch] {
+		errs = append(errs, c.OpenSearch.validate("Traces.OpenSearch"))
 	}
 	if seen[TraceExporterFile] && strings.TrimSpace(c.File.Path) == "" {
 		errs = append(errs, &FieldError{
@@ -140,26 +145,54 @@ func (c HTTPConfig) validate(prefix string) error {
 			Detail: fmt.Sprintf("must be gzip or none, got %q", c.Compression),
 		})
 	}
-	errs = append(errs, positive(prefix+".Timeout", c.Timeout))
-	if c.Retries < 0 {
-		errs = append(errs, &FieldError{
-			Field: prefix + ".Retries", Value: c.Retries, Err: ErrNegativeSetting,
-			Detail: fmt.Sprintf("must not be negative, got %d", c.Retries),
-		})
+	errs = append(errs,
+		positive(prefix+".Timeout", c.Timeout),
+		validateRetries(prefix, c.Retries, c.RetryBaseDelay, c.RetryMaxDelay),
+		c.FailureStore.validate(prefix+".FailureStore"),
+	)
+	return errors.Join(errs...)
+}
+
+// validateは、prefix（Traces.OpenSearch）から始まるfieldの名前で、設定を確かめます。接続の
+// 設定は、ログの出力先と同じくpkg/opensearchの検証で確かめます。その検証のerrorは、
+// 認証情報を含みません。
+func (c OpenSearchConfig) validate(prefix string) error {
+	var errs []error
+	if err := opensearch.ValidateConfig(c.Client); err != nil {
+		errs = append(errs, &FieldError{Field: prefix + ".Client", Err: ErrInvalidSetting, Detail: err.Error()})
 	}
-	if c.Retries > 0 {
-		errs = append(errs,
-			positive(prefix+".RetryBaseDelay", c.RetryBaseDelay),
-			positive(prefix+".RetryMaxDelay", c.RetryMaxDelay),
-		)
-		if c.RetryBaseDelay > 0 && c.RetryMaxDelay > 0 && c.RetryMaxDelay < c.RetryBaseDelay {
-			errs = append(errs, &FieldError{
-				Field: prefix + ".RetryMaxDelay", Value: c.RetryMaxDelay, Err: ErrInvalidSetting,
-				Detail: fmt.Sprintf("must not be shorter than %s.RetryBaseDelay %v, got %v", prefix, c.RetryBaseDelay, c.RetryMaxDelay),
-			})
+	if err := opensearch.ValidateIndex(c.Index); err != nil {
+		errs = append(errs, &FieldError{Field: prefix + ".Index", Value: c.Index, Err: ErrInvalidSetting, Detail: err.Error()})
+	}
+	errs = append(errs,
+		validateRetries(prefix, c.Retries, c.RetryBaseDelay, c.RetryMaxDelay),
+		c.FailureStore.validate(prefix+".FailureStore"),
+	)
+	return errors.Join(errs...)
+}
+
+// validateRetriesは、送り直す回数と、送り直す前に待つ時間の幅を確かめます。待つ時間は、
+// 送り直す場合だけ確かめます。
+func validateRetries(prefix string, retries int, baseDelay, maxDelay time.Duration) error {
+	if retries < 0 {
+		return &FieldError{
+			Field: prefix + ".Retries", Value: retries, Err: ErrNegativeSetting,
+			Detail: fmt.Sprintf("must not be negative, got %d", retries),
 		}
 	}
-	errs = append(errs, c.FailureStore.validate(prefix+".FailureStore"))
+	if retries == 0 {
+		return nil
+	}
+	errs := []error{
+		positive(prefix+".RetryBaseDelay", baseDelay),
+		positive(prefix+".RetryMaxDelay", maxDelay),
+	}
+	if baseDelay > 0 && maxDelay > 0 && maxDelay < baseDelay {
+		errs = append(errs, &FieldError{
+			Field: prefix + ".RetryMaxDelay", Value: maxDelay, Err: ErrInvalidSetting,
+			Detail: fmt.Sprintf("must not be shorter than %s.RetryBaseDelay %v, got %v", prefix, baseDelay, maxDelay),
+		})
+	}
 	return errors.Join(errs...)
 }
 

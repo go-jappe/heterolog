@@ -1,6 +1,7 @@
 // Package telemetry defines the configuration of heterolog.NewTelemetry, which
 // delivers spans and metrics, from the Tracer and the Meter of heterolog and
-// from the OpenTelemetry SDK, to OTLP/HTTP receivers, files and stdout.
+// from the OpenTelemetry SDK, to OTLP/HTTP receivers, OpenSearch,
+// VictoriaMetrics, files and stdout.
 package telemetry
 
 import (
@@ -8,6 +9,7 @@ import (
 
 	"github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
+	"github.com/go-jappe/heterolog/pkg/opensearch"
 	"github.com/go-jappe/heterolog/pkg/spool/spoolrunner"
 	"github.com/go-jappe/heterolog/pkg/spool/spoolsupervisor"
 )
@@ -35,6 +37,10 @@ const (
 	TraceExporterFile TraceExporter = "file"
 	// TraceExporterStdout writes spans to the standard output as OTLP JSON.
 	TraceExporterStdout TraceExporter = "stdout"
+	// TraceExporterOpenSearch writes each span to OpenSearch as a document in
+	// the format of the trace analytics of OpenSearch Data Prepper, which the
+	// Trace Analytics of OpenSearch Dashboards shows.
+	TraceExporterOpenSearch TraceExporter = "opensearch"
 )
 
 // TracesConfig configures the recording and delivery of spans.
@@ -63,6 +69,8 @@ type TracesConfig struct {
 	OTLP HTTPConfig
 	// File configures TraceExporterFile.
 	File FileConfig
+	// OpenSearch configures TraceExporterOpenSearch.
+	OpenSearch OpenSearchConfig
 }
 
 // HTTPConfig configures a destination that posts spans or metrics over HTTP:
@@ -100,6 +108,46 @@ type HTTPConfig struct {
 	CircuitBreaker bool
 	// FailureStore keeps the data that could not be sent, so that it is
 	// resent later or kept for inspection.
+	FailureStore FailureStoreConfig
+}
+
+// OpenSearchConfig configures TraceExporterOpenSearch.
+//
+// Each span is written with the create action of the Bulk API as one document
+// in the format that OpenSearch Data Prepper writes for trace analytics
+// (otel-v1-apm-span), so that the Trace Analytics of OpenSearch Dashboards can
+// show the spans. The ID of the document is made of the trace ID and the span
+// ID, so a span that is sent again is not written twice. Before sending,
+// install an index template that maps the fields as Data Prepper does, such
+// as docs/opensearch/otel-v1-apm-span-index-template.json in the repository.
+type OpenSearchConfig struct {
+	// Client configures the connection as for the log destination of
+	// OpenSearch: the endpoint, the authentication, TLS, the timeout of each
+	// request, and the compression.
+	Client opensearch.Config
+	// Index is the index that the spans are written to. It can also be a write
+	// alias, such as one that Index State Management rolls over, or date math,
+	// such as "<otel-v1-apm-span-{now/d}>". The default matches the index
+	// pattern otel-v1-apm-span-* that Trace Analytics reads.
+	Index string
+	// Retries is the number of times that a request that failed temporarily
+	// is sent again. As for the log destination of OpenSearch, the statuses
+	// 408, 429, 500, 502, 503, and 504 and failures without a response are
+	// temporary. Of the documents that the Bulk API reports as not written,
+	// only those with these statuses are sent again. 0 does not resend.
+	Retries int
+	// RetryBaseDelay and RetryMaxDelay set the wait before each resend, as in
+	// HTTPConfig.
+	RetryBaseDelay time.Duration
+	RetryMaxDelay  time.Duration
+	// CircuitBreaker stops sending for a while after requests keep failing
+	// temporarily, as in HTTPConfig. A request whose documents the Bulk API
+	// reports one by one is not a failure for the breaker.
+	CircuitBreaker bool
+	// FailureStore keeps the spans that could not be sent, as in HTTPConfig.
+	// A document that OpenSearch rejected for its content, such as a field
+	// that does not match the mapping, is kept as quarantine, and one that it
+	// rejected for another reason, such as a missing index, as dead.
 	FailureStore FailureStoreConfig
 }
 

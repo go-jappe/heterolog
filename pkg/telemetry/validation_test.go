@@ -8,12 +8,15 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
+	"github.com/go-jappe/heterolog/pkg/opensearch"
 	"github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
 func validConfig() telemetry.Config {
 	return telemetry.Config{Traces: telemetry.TracesConfig{
-		Exporters:      []telemetry.TraceExporter{telemetry.TraceExporterOTLP, telemetry.TraceExporterFile, telemetry.TraceExporterStdout},
+		Exporters: []telemetry.TraceExporter{
+			telemetry.TraceExporterOTLP, telemetry.TraceExporterOpenSearch, telemetry.TraceExporterFile, telemetry.TraceExporterStdout,
+		},
 		SamplingRatio:  1,
 		QueueSize:      10,
 		BatchSize:      5,
@@ -28,6 +31,14 @@ func validConfig() telemetry.Config {
 			RetryMaxDelay:  2 * time.Second,
 		},
 		File: telemetry.FileConfig{Path: "spans.jsonl"},
+		OpenSearch: telemetry.OpenSearchConfig{
+			Client: opensearch.Config{
+				Endpoint:   "https://opensearch.example:9200",
+				AuthConfig: opensearch.AuthConfig{Type: opensearch.AuthTypeBasic, Config: opensearch.BasicAuthConfig{Username: "user", Password: "secret"}},
+			},
+			Index:   "otel-v1-apm-span-test",
+			Retries: 0,
+		},
 	}}
 }
 
@@ -66,6 +77,12 @@ func TestValidateReportsEachInvalidSetting(t *testing.T) {
 		{"Traces.OTLP.RetryBaseDelay", telemetry.ErrNonPositiveSetting, func(c *telemetry.Config) { c.Traces.OTLP.RetryBaseDelay = 0 }},
 		{"Traces.OTLP.RetryMaxDelay", telemetry.ErrInvalidSetting, func(c *telemetry.Config) { c.Traces.OTLP.RetryMaxDelay = time.Millisecond }},
 		{"Traces.File.Path", telemetry.ErrInvalidSetting, func(c *telemetry.Config) { c.Traces.File.Path = " " }},
+		{"Traces.OpenSearch.Client", telemetry.ErrInvalidSetting, func(c *telemetry.Config) {
+			c.Traces.OpenSearch.Client.AuthConfig.Config = opensearch.BasicAuthConfig{Username: "user"}
+		}},
+		{"Traces.OpenSearch.Index", telemetry.ErrInvalidSetting, func(c *telemetry.Config) { c.Traces.OpenSearch.Index = " spans" }},
+		{"Traces.OpenSearch.Retries", telemetry.ErrNegativeSetting, func(c *telemetry.Config) { c.Traces.OpenSearch.Retries = -1 }},
+		{"Traces.OpenSearch.RetryBaseDelay", telemetry.ErrNonPositiveSetting, func(c *telemetry.Config) { c.Traces.OpenSearch.Retries = 1 }},
 	} {
 		cfg := validConfig()
 		tc.change(&cfg)
@@ -81,6 +98,7 @@ func TestValidateDoesNotShowCredentials(t *testing.T) {
 	cfg := validConfig()
 	cfg.Traces.OTLP.Endpoint = "ftp://user:password@collector"
 	cfg.Traces.OTLP.Headers = map[string]string{"Authorization": "Bearer secret\n"}
+	cfg.Traces.OpenSearch.Client.Endpoint = "ftp://user:password@opensearch"
 	err := cfg.Validate()
 	if err == nil || strings.Contains(err.Error(), "password") || strings.Contains(err.Error(), "secret") {
 		t.Errorf("Validate() = %v, want an error without the credentials", err)

@@ -360,6 +360,10 @@ var publicEnvKeyMapperExemptions = func() map[string]string {
 // publicEnvKeyEffectContractPrefixesは、sync・async・Deliveryの各loggerのkeyの接頭辞です。
 var publicEnvKeyEffectContractPrefixes = []string{"ASYNC_", "DELIVERY_", ""}
 
+// publicEnvKeyEffectOpenSearchPrefixesは、OpenSearchへの接続のkeyの接頭辞です。ログの
+// loggerの契約のほかに、spanの送り先（TRACES_）があります。
+var publicEnvKeyEffectOpenSearchPrefixes = append(slices.Clone(publicEnvKeyEffectContractPrefixes), "TRACES_")
+
 func publicEnvKeyEffectSpecFor(entry publicEnvExampleKey) publicEnvKeyEffectSpec {
 	key := entry.key
 	if reason, exempt := publicEnvKeyEffectExemptions[key]; exempt {
@@ -389,7 +393,7 @@ func publicEnvKeyEffectValue(value string) *string { return &value }
 // publicEnvKeyEffectActivationは、共通の環境では読まないkeyを読ませる追加の設定を返します。
 func publicEnvKeyEffectActivation(key string) map[string]*string {
 	activation := map[string]*string{}
-	for _, prefix := range publicEnvKeyEffectContractPrefixes {
+	for _, prefix := range publicEnvKeyEffectOpenSearchPrefixes {
 		// OpenSearchの認証情報は、選択した認証方式の項目だけを読みます。
 		authKey := "HETEROLOG_" + prefix + "OPENSEARCH_AUTH_TYPE"
 		for _, rule := range []struct{ suffix, authType string }{

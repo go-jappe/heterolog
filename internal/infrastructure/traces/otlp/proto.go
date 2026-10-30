@@ -57,7 +57,7 @@ func appendSpan(b []byte, span *tracing.SpanData) []byte {
 		b = oc.AppendBytes(b, 4, span.ParentSpanID[:])
 	}
 	b = oc.AppendString(b, 5, span.Name)
-	b = oc.AppendVarint(b, 6, uint64(otlpSpanKind(span.Kind)))
+	b = oc.AppendVarint(b, 6, uint64(SpanKind(span.Kind)))
 	b = oc.AppendFixed64(b, 7, oc.UnixNano(span.StartTime))
 	b = oc.AppendFixed64(b, 8, oc.UnixNano(span.EndTime))
 	b = oc.AppendKeyValues(b, 9, oc.ToKeyValues(span.Attrs))
@@ -84,7 +84,7 @@ func appendSpan(b []byte, span *tracing.SpanData) []byte {
 		// Span.status = 15（Statusのmessage = 2、code = 3。1は廃止された番号です）
 		b = oc.AppendMessage(b, 15, func(b []byte) []byte {
 			b = oc.AppendString(b, 2, span.StatusMessage)
-			return oc.AppendVarint(b, 3, uint64(otlpStatusCode(span.Status)))
+			return oc.AppendVarint(b, 3, uint64(StatusCode(span.Status)))
 		})
 	}
 	return b

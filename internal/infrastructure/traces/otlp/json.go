@@ -86,7 +86,7 @@ func toJSONSpan(span *tracing.SpanData) jsonSpan {
 		TraceID:                span.TraceID.String(),
 		SpanID:                 span.SpanID.String(),
 		Name:                   span.Name,
-		Kind:                   otlpSpanKind(span.Kind),
+		Kind:                   SpanKind(span.Kind),
 		StartTimeUnixNano:      oc.JSONTime(span.StartTime),
 		EndTimeUnixNano:        oc.JSONTime(span.EndTime),
 		Attributes:             oc.ToJSONKeyValues(oc.ToKeyValues(span.Attrs)),
@@ -114,7 +114,7 @@ func toJSONSpan(span *tracing.SpanData) jsonSpan {
 		})
 	}
 	if span.Status != 0 || span.StatusMessage != "" {
-		out.Status = &jsonStatus{Message: span.StatusMessage, Code: otlpStatusCode(span.Status)}
+		out.Status = &jsonStatus{Message: span.StatusMessage, Code: StatusCode(span.Status)}
 	}
 	return out
 }

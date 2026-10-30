@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/go-jappe/heterolog/internal/config/logconfig"
+	"github.com/go-jappe/heterolog/internal/config/opensearch"
 	metricsdelivery "github.com/go-jappe/heterolog/internal/infrastructure/metrics"
 	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
@@ -30,9 +31,33 @@ type TracesConfig struct {
 	Traces pkgtelemetry.TracesConfig
 	// FileDirは、spanのfileを置くdirectoryです。
 	FileDir string
-	// FailureStoreは、otlpの送り先のfailure storeの設定です。保存先のpathなど、ログと共通の
-	// 項目は、MapTelemetryConfigが組み立てます。
-	FailureStore TelemetryFailureStoreConfig
+	// FailureStoreとOpenSearchFailureStoreは、otlpとopensearchの送り先のfailure storeの設定
+	// です。保存先のpathなど、ログと共通の項目は、MapTelemetryConfigが組み立てます。
+	FailureStore           TelemetryFailureStoreConfig
+	OpenSearchFailureStore TelemetryFailureStoreConfig
+}
+
+// tracesOpenSearchClientEnvKeysは、spanを書くOpenSearchへの接続のkeyです。ログの出力先の
+// OpenSearch（HETEROLOG_OPENSEARCH_*）とは別に設定します。
+var tracesOpenSearchClientEnvKeys = openSearchClientKeys{
+	Endpoint:           "HETEROLOG_TRACES_OPENSEARCH_ENDPOINT",
+	Timeout:            "HETEROLOG_TRACES_OPENSEARCH_TIMEOUT_SECOND",
+	SkipVerifySSL:      "HETEROLOG_TRACES_OPENSEARCH_SKIP_VERIFY_SSL",
+	CompressRequest:    "HETEROLOG_ENABLE_TRACES_OPENSEARCH_COMPRESS_REQUEST",
+	AuthType:           "HETEROLOG_TRACES_OPENSEARCH_AUTH_TYPE",
+	Username:           "HETEROLOG_TRACES_OPENSEARCH_USERNAME",
+	Password:           "HETEROLOG_TRACES_OPENSEARCH_PASSWORD",
+	APIKeyID:           "HETEROLOG_TRACES_OPENSEARCH_API_KEY_ID",
+	APIKeySecret:       "HETEROLOG_TRACES_OPENSEARCH_API_KEY_SECRET",
+	AWSRegion:          "HETEROLOG_TRACES_OPENSEARCH_AWS_REGION",
+	AWSAccessKeyID:     "HETEROLOG_TRACES_OPENSEARCH_AWS_ACCESS_KEY_ID",
+	AWSSecretAccessKey: "HETEROLOG_TRACES_OPENSEARCH_AWS_SECRET_ACCESS_KEY",
+	AWSSessionToken:    "HETEROLOG_TRACES_OPENSEARCH_AWS_SESSION_TOKEN",
+	SAMLToken:          "HETEROLOG_TRACES_OPENSEARCH_SAML_TOKEN",
+	OIDCToken:          "HETEROLOG_TRACES_OPENSEARCH_OIDC_TOKEN",
+	CertFile:           "HETEROLOG_TRACES_OPENSEARCH_CERT_FILE",
+	KeyFile:            "HETEROLOG_TRACES_OPENSEARCH_KEY_FILE",
+	CAFile:             "HETEROLOG_TRACES_OPENSEARCH_CA_FILE",
 }
 
 // loadTracesConfigは、traceの設定を読み込みます。HETEROLOG_ENABLE_TRACESがfalseなら、
@@ -70,13 +95,43 @@ func loadTracesConfig(env pkgenv.Lookup) (TracesConfig, error) {
 	}, defaults.OTLP)
 	cfg.Traces.OTLP = otlpCfg
 
+	openSearchCfg, openSearchErr := loadTracesOpenSearchEnv(env, defaults.OpenSearch)
+	cfg.Traces.OpenSearch = openSearchCfg
+
 	cfg.FileDir = env.GetEnvString("HETEROLOG_TRACES_FILE_DIR", defaultTracesFileDir)
 	failureStore, failureStoreErr := loadTelemetryFailureStoreConfig(env, tracesOTLPFailureStoreKeys)
 	cfg.FailureStore = failureStore
+	openSearchFailureStore, openSearchFailureStoreErr := loadTelemetryFailureStoreConfig(env, tracesOpenSearchFailureStoreKeys)
+	cfg.OpenSearchFailureStore = openSearchFailureStore
 	return cfg, errors.Join(
 		samplingRatioErr, queueSizeErr, batchSizeErr, exportIntervalErr,
-		otlpErr, failureStoreErr,
+		otlpErr, openSearchErr, failureStoreErr, openSearchFailureStoreErr,
 	)
+}
+
+// loadTracesOpenSearchEnvは、spanを書くOpenSearchの送り先の設定を読みます。接続は、ログの
+// 出力先と同じ読み方で、HETEROLOG_TRACES_OPENSEARCH_*から読みます。failure storeの設定は、
+// defaultsのままです。
+func loadTracesOpenSearchEnv(env pkgenv.Lookup, defaults pkgtelemetry.OpenSearchConfig) (pkgtelemetry.OpenSearchConfig, error) {
+	client, clientErr := loadOpenSearchClientEnv(env, tracesOpenSearchClientEnvKeys, opensearch.OpenSearchClientConfig{
+		Endpoint:        defaults.Client.Endpoint,
+		Timeout:         defaults.Client.Timeout,
+		SkipVerifySSL:   defaults.Client.SkipVerifySSL,
+		Auth:            opensearch.OpenSearchAuthConfig{Type: defaults.Client.AuthConfig.Type},
+		CompressRequest: defaults.Client.CompressRequest,
+	})
+	retries, retriesErr := env.GetEnvInt("HETEROLOG_TRACES_OPENSEARCH_RETRIES", defaults.Retries)
+	retryBaseDelay, retryBaseDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_TRACES_OPENSEARCH_RETRY_BASE_DELAY_MILLISECOND", defaults.RetryBaseDelay)
+	retryMaxDelay, retryMaxDelayErr := env.GetEnvDurationMillisecond("HETEROLOG_TRACES_OPENSEARCH_RETRY_MAX_DELAY_MILLISECOND", defaults.RetryMaxDelay)
+	circuitBreaker, circuitBreakerErr := env.GetEnvBool("HETEROLOG_ENABLE_TRACES_OPENSEARCH_CIRCUIT_BREAKER", defaults.CircuitBreaker)
+	cfg := defaults
+	cfg.Client = *newOpenSearchClientConfig(client)
+	cfg.Index = env.GetEnvString("HETEROLOG_TRACES_OPENSEARCH_INDEX", defaults.Index)
+	cfg.Retries = retries
+	cfg.RetryBaseDelay = retryBaseDelay
+	cfg.RetryMaxDelay = retryMaxDelay
+	cfg.CircuitBreaker = circuitBreaker
+	return cfg, errors.Join(clientErr, retriesErr, retryBaseDelayErr, retryMaxDelayErr, circuitBreakerErr)
 }
 
 // MapTelemetryConfigは、読み込んだ設定を、NewTelemetryへ渡す設定にします。Resourceは、
@@ -92,6 +147,9 @@ func MapTelemetryConfig(a AppConfig) pkgtelemetry.Config {
 		cfg.Traces = a.Traces.Traces
 		cfg.Traces.File.Path = filepath.Join(a.FsstoreConfig.LogPath, a.RuntimeConfig.Target, a.Traces.FileDir, tracesFileName)
 		cfg.Traces.OTLP.FailureStore = mapTelemetryFailureStoreConfig(&a, checkpointSourceTracesOTLP, a.Traces.FailureStore)
+		cfg.Traces.OpenSearch.FailureStore = mapTelemetryFailureStoreConfig(
+			&a, checkpointSourceTracesOpenSearch, a.Traces.OpenSearchFailureStore,
+		)
 	}
 	if a.Metrics.Enabled {
 		cfg.Metrics = a.Metrics.Metrics

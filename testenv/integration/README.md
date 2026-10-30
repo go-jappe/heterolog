@@ -23,7 +23,7 @@ containerと一緒に破棄します。
 
 | group | opt-inの変数 | package | 試験 |
 | --- | --- | --- | --- |
-| `opensearch` | `OPENSEARCH_INTEGRATION_TEST` | `internal/infrastructure/logger` | `TestOpenSearchLoggerUsesActualDotEnvConfigAndStoresDocument`、`TestOpenSearchSpoolUsesActualDotEnvConfigActiveAndResendsToBackend` |
+| `opensearch` | `OPENSEARCH_INTEGRATION_TEST` | `internal/infrastructure/logger`、`internal/bootstrap` | `TestOpenSearchLoggerUsesActualDotEnvConfigAndStoresDocument`、`TestOpenSearchSpoolUsesActualDotEnvConfigActiveAndResendsToBackend`、`TestTelemetryWritesSpansToOpenSearch`、`TestTelemetryResendsSpooledSpansToOpenSearch` |
 | `opensearch-client` | `OPENSEARCH_INTEGRATION_TEST` | `pkg/opensearch` | `TestIndexDocument(s)ToLocalOpenSearch`、`TestIndexDocument(s)CompressedToLocalOpenSearch`（4件） |
 | `loki` | `LOKI_INTEGRATION_TEST` | `internal/infrastructure/logger`、`internal/infrastructure/logger/loki` | `TestLokiLoggerUsesActualDotEnvConfigAndStoresEntry`、`TestLokiSpoolUsesActualDotEnvConfigActiveAndResendsToBackend`、`TestLokiLoggerWithIntegrationEnvironmentPushesToLocalLoki` |
 | `clickhouse` | `CLICKHOUSE_INTEGRATION_TEST` | `internal/infrastructure/logger` | `TestClickHouseLoggerUsesActualDotEnvConfigAndStoresRow`、`TestClickHouseSpoolUsesActualDotEnvConfigActiveAndResendsToBackend` |

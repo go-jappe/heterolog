@@ -89,7 +89,7 @@ func fromJSONSpan(js jsonSpan) (tracing.SpanData, error) {
 	return span, errors.Join(errs...)
 }
 
-// observerSpanKindは、otlpSpanKindの逆です。
+// observerSpanKindは、SpanKindの逆です。
 func observerSpanKind(kind int) pkgobserver.SpanKind {
 	switch kind {
 	case 2:
@@ -105,7 +105,7 @@ func observerSpanKind(kind int) pkgobserver.SpanKind {
 	}
 }
 
-// observerStatusCodeは、otlpStatusCodeの逆です。
+// observerStatusCodeは、StatusCodeの逆です。
 func observerStatusCode(code int) pkgobserver.StatusCode {
 	switch code {
 	case 1:

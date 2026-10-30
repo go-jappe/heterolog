@@ -7,8 +7,12 @@
 package otlpcommon
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
@@ -117,4 +121,79 @@ func ToKeyValues(attrs []pkgobserver.Attr) []KeyValue {
 		out[i] = KeyValue{key: attr.Key, value: toValue(attr.Value)}
 	}
 	return out
+}
+
+// PlainValueは、属性の値を、OTLPでない形式（OpenSearchの文書など）で使う値にします。
+// 文字列・bool・整数（int64）・小数（float64）はそのまま返します。JSONの数値で表せない
+// NaNと無限大は、OTLP/JSONと同じ文字列にします。配列は、OpenTelemetryの仕様がOTLPでない
+// 送り先に勧めるとおり、JSONの配列の文字列にします。
+func PlainValue(v any) any {
+	return toValue(v).plain()
+}
+
+// StringValueは、属性の値を文字列にします（ClickHouseのMap(String, String)など）。文字列は
+// そのまま、boolと数はJSONと同じ書き方、配列はJSONの配列の文字列にします。
+func StringValue(v any) string {
+	return toValue(v).text()
+}
+
+func (v value) plain() any {
+	switch v.kind {
+	case kindBool:
+		return v.b
+	case kindInt:
+		return v.i
+	case kindDouble:
+		if math.IsNaN(v.f) || math.IsInf(v.f, 0) {
+			return v.text()
+		}
+		return v.f
+	case kindArray:
+		return v.text()
+	default:
+		return v.str
+	}
+}
+
+func (v value) text() string {
+	switch v.kind {
+	case kindBool:
+		return strconv.FormatBool(v.b)
+	case kindInt:
+		return strconv.FormatInt(v.i, 10)
+	case kindDouble:
+		return strings.Trim(string(JSONDouble(v.f)), `"`)
+	case kindArray:
+		return string(v.appendJSON(nil))
+	default:
+		return v.str
+	}
+}
+
+// appendJSONは、値をJSONで書きます。配列の要素の小数は、JSONDoubleで書きます。
+func (v value) appendJSON(b []byte) []byte {
+	switch v.kind {
+	case kindBool:
+		return strconv.AppendBool(b, v.b)
+	case kindInt:
+		return strconv.AppendInt(b, v.i, 10)
+	case kindDouble:
+		return append(b, JSONDouble(v.f)...)
+	case kindArray:
+		b = append(b, '[')
+		for i, element := range v.array {
+			if i > 0 {
+				b = append(b, ',')
+			}
+			b = element.appendJSON(b)
+		}
+		return append(b, ']')
+	default:
+		// 読みやすいよう、<・>・&はescapeしません。
+		var buf bytes.Buffer
+		encoder := json.NewEncoder(&buf)
+		encoder.SetEscapeHTML(false)
+		_ = encoder.Encode(v.str)
+		return append(b, bytes.TrimSuffix(buf.Bytes(), []byte("\n"))...)
+	}
 }

@@ -1,0 +1,67 @@
+{
+  "index_patterns": ["otel-v1-apm-span-*"],
+  "priority": 100,
+  "template": {
+    "mappings": {
+      "date_detection": false,
+      "dynamic_templates": [
+        { "span_attributes": { "path_match": "span.attributes.*", "mapping": { "type": "keyword", "ignore_above": 1024 } } },
+        { "resource_attributes": { "path_match": "resource.attributes.*", "mapping": { "type": "keyword", "ignore_above": 1024 } } },
+        { "event_attributes": { "path_match": "events.attributes.*", "mapping": { "type": "keyword", "ignore_above": 1024 } } },
+        { "link_attributes": { "path_match": "links.attributes.*", "mapping": { "type": "keyword", "ignore_above": 1024 } } }
+      ],
+      "properties": {
+        "traceId": { "type": "keyword", "ignore_above": 256 },
+        "spanId": { "type": "keyword", "ignore_above": 256 },
+        "parentSpanId": { "type": "keyword", "ignore_above": 256 },
+        "traceState": { "type": "keyword", "ignore_above": 1024 },
+        "name": { "type": "keyword", "ignore_above": 1024 },
+        "kind": { "type": "keyword", "ignore_above": 128 },
+        "startTime": { "type": "date_nanos" },
+        "endTime": { "type": "date_nanos" },
+        "durationInNanos": { "type": "long" },
+        "serviceName": { "type": "keyword", "ignore_above": 1024 },
+        "traceGroup": { "type": "keyword", "ignore_above": 1024 },
+        "traceGroupFields": {
+          "properties": {
+            "endTime": { "type": "date_nanos" },
+            "durationInNanos": { "type": "long" },
+            "statusCode": { "type": "integer" }
+          }
+        },
+        "status": {
+          "properties": {
+            "code": { "type": "integer" },
+            "message": { "type": "keyword", "ignore_above": 1024 }
+          }
+        },
+        "instrumentationScope": {
+          "properties": {
+            "name": { "type": "keyword", "ignore_above": 1024 },
+            "version": { "type": "keyword", "ignore_above": 1024 }
+          }
+        },
+        "droppedAttributesCount": { "type": "integer" },
+        "droppedEventsCount": { "type": "integer" },
+        "droppedLinksCount": { "type": "integer" },
+        "events": {
+          "type": "nested",
+          "properties": {
+            "name": { "type": "keyword", "ignore_above": 1024 },
+            "time": { "type": "date_nanos" },
+            "droppedAttributesCount": { "type": "integer" }
+          }
+        },
+        "links": {
+          "type": "nested",
+          "properties": {
+            "traceId": { "type": "keyword", "ignore_above": 256 },
+            "spanId": { "type": "keyword", "ignore_above": 256 },
+            "traceState": { "type": "keyword", "ignore_above": 1024 },
+            "droppedAttributesCount": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}

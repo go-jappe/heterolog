@@ -396,7 +396,7 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 
 ## トレースの送信
 
-`NewTelemetry` は、その `Tracer` でspanを記録し、OpenTelemetry SDKのspanとともに、`TelemetryConfig.Traces.Exporters` の出力先へ送ります。出力先は、OpenTelemetry CollectorやGrafana TempoなどのOTLP/HTTPの受信先（`otlp`）、file（`file`）、stdout（`stdout`）です。出力先がなければ、`Tracer` は何も記録しません。出力先以外のすべての設定を埋めた `DefaultTelemetryConfig()` から始めます。`TelemetryConfig.Validate` は不正な設定を列挙し、`NewTelemetry` も同じerrorを返します。
+`NewTelemetry` は、その `Tracer` でspanを記録し、OpenTelemetry SDKのspanとともに、`TelemetryConfig.Traces.Exporters` の出力先へ送ります。出力先は、OpenTelemetry CollectorやGrafana TempoなどのOTLP/HTTPの受信先（`otlp`）、OpenSearch（`opensearch`）、file（`file`）、stdout（`stdout`）です。出力先がなければ、`Tracer` は何も記録しません。出力先以外のすべての設定を埋めた `DefaultTelemetryConfig()` から始めます。`TelemetryConfig.Validate` は不正な設定を列挙し、`NewTelemetry` も同じerrorを返します。
 
 ### span
 
@@ -448,10 +448,31 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 - 部分的な成功（partial success）の応答は、受け付けられなかったspanを失敗として数え、送り直しません。
 - `OTLP.CircuitBreaker` を有効にすると、ログの出力先と同じcircuit breakerが、一時的な失敗が続いたときにしばらく送るのを止めます。15秒以内の間隔で3回以上続いた失敗が1分続くと、30秒の間は要求を送らずに失敗させ、その後、受信側が回復したかを確かめるために1件だけ送ります。そのメトリクスの `backend` は `otlp_traces` です。
 - `file` と `stdout` は、batchをOTLP JSONの1行として書きます。trace IDとspan IDは16進数、列挙は数値、64-bitの整数と時刻は文字列です。`file` は、ないディレクトリを作って `File.Path` へ追記します。ファイルはローテーションも削除もしません。
-- `otlp` が送り直しても送れなかったspanは、`OTLP.FailureStore` へ渡します（[送れなかったspan](#送れなかったspan)）。それがない場合と、`file`・`stdout` のspanは捨てます。
+- `otlp` が送り直しても送れなかったspanは、`OTLP.FailureStore` へ渡します（[送れなかったspan](#送れなかったspan)）。それがない場合と、`file`・`stdout` のspanは捨てます。`opensearch` も、自分の設定で同じように動きます（[OpenSearchへのspanの書き込み](#opensearchへのspanの書き込み)）。
 - 配送のerrorは、`WithTelemetryErrorHandler` で渡した関数に渡します。渡さなければ、1件ずつ標準のloggerへ1行で書きます。対象は、送れず、後で送り直すこともないspan（捨てたspanと、送り直さずに残したspan）と、failure storeのerrorと警告です。待ち行列が一杯で捨てたspanは、出力先ごとに1つのerrorにまとめ、`ExportInterval` に1回までしか知らせません。`Shutdown` を始めた後に終わったspanは、最初の1回だけ知らせます。関数は並行に呼ばれることがあり、返るまでその出力先への送信を待たせます。関数のpanicは回復し、標準のloggerへ書きます。OpenTelemetry SDKのerror handlerへ渡すには、`otel.Handle` を渡します。
 - 配送の仕組みは、自分の送信のspanを作りません。作ると、そのspanもまた送ることになるためです。代わりに、以下のメトリクスで様子を知らせます。メトリクスは、`NewTelemetry` へ `WithObservers` で渡した `Meter` で記録し、そのoptionの `Tracer` は使いません。
 - `Shutdown(ctx)` は、spanの受け付けを止め、待ち行列のspanを送り、出力先を閉じます。先に `ctx` が終わると `ctx.Err()` を返し、送信は裏で続きます。後の `Shutdown` は同じ後始末を待ちます。`Shutdown` を始めた後に終わったspanは捨てます。最後のspanも送れるよう、`Tracer` を使うロガーは `Telemetry` より先に閉じてください。
+
+### OpenSearchへのspanの書き込み
+
+`opensearch` は、spanを1件ずつ、OpenSearch Data Prepperがtrace analyticsのために書く形（`otel-v1-apm-span`）の文書として、OpenSearchへ書きます。Data Prepperなしで、OpenSearch DashboardsのTrace Analyticsでspanを見られます。
+
+- 文書は、Bulk APIの `create` で `OpenSearch.Index`（既定は `otel-v1-apm-span-heterolog`。Trace Analyticsのindex pattern `otel-v1-apm-span-*` に合います）へ書きます。Index State Managementでrolloverするwrite aliasや、`<otel-v1-apm-span-{now/d}>` のようなdate mathの式も使えます。
+- 文書のIDは、trace IDの後にspan IDをつなげた16進数です。既に書いたspanを送り直すと、OpenSearchは409を返し、それを書けたものとして扱うため、spanを2回書くことはありません。
+- Data Prepperと同じく、spanとresourceの属性は、keyの `.` を `@` に替えて、`span.attributes.<key>` と `resource.attributes.<key>` のfieldにします（`span.attributes.http@request@method` など）。OpenSearchがkeyをobjectとして展開しないようにするためです。eventとlinkの属性は、同じkeyで、それぞれの `attributes` のobjectに入れます。配列の値は、JSONの文字列にします。`serviceName` は、resourceの `service.name` です。
+- `traceGroup` と `traceGroupFields` は、親のないspan（traceの根）にだけ入れます。Data Prepperは、traceのほかのspanにも写しますが、そのためには根が終わるまでspanを持っておく必要があり、heterologは写しません。
+- 送る前に、index templateを登録してください。Data Prepperと同じく、時刻を `date_nanos`、属性を `keyword` として扱わせるためです。templateがないと、OpenSearchが型を推測し、最初に見た型と違う型の属性を持つspanを拒否します。[docs/opensearch/otel-v1-apm-span-index-template.json](opensearch/otel-v1-apm-span-index-template.json) は、`otel-v1-apm-span-*` 用のtemplateです。
+
+  ```sh
+  curl -X PUT http://localhost:9200/_index_template/otel-v1-apm-span \
+    -H 'Content-Type: application/json' \
+    --data-binary @docs/opensearch/otel-v1-apm-span-index-template.json
+  ```
+
+- `OpenSearch.Client` は、ログの出力先のOpenSearchと同じく、接続先、認証、TLS、1回の要求のタイムアウト、gzipの圧縮を設定します。`DefaultTelemetryConfig` は、ログの出力先と同じく、認証情報なしのbasic認証を選びます。securityのないclusterには、`AuthConfig.Type` を `none` にしてください。
+- 失敗した要求は、ログの出力先のOpenSearchと同じ規則で、`OpenSearch.Retries` 回まで送り直します。送り直すのは、ステータス408・429・500・502・503・504と、応答を受け取れなかった失敗です。Bulk APIの応答で書けなかった文書は、これらのステータス（待ち行列が一杯の429など）の文書だけを、それだけで送り直します。送り直す前の待ち時間、`Retry-After`、一時的な失敗の後にbatchの残りを送らないこと、`OpenSearch.CircuitBreaker` は、`otlp` と同じです。Bulk APIが文書ごとの結果を返した要求は、circuit breakerでは失敗として数えません。
+- OpenSearchが要求を大きすぎると拒否した場合（413）と、文書の内容を理由に要求全体を拒否した場合は、spanを半分に分けて、1件になるまで送り直します。拒否された要求の文書は、1件も書かれていません。
+- `opensearch` が送れなかったspanは、`OpenSearch.FailureStore` へ渡します。`OTLP.FailureStore` と同じように動き（[送れなかったspan](#送れなかったspan)）、backendは `opensearch_traces` です。mappingに合わないfieldなど、OpenSearchが内容を理由に拒否した文書はquarantineに、indexがない、権限がないなど、ほかの理由で拒否した文書はdeadに残します。応答を読めなかった場合など、結果の分からないspanは送り直します。その文書は重複しません。
 
 ### 送れなかったspan
 
@@ -487,11 +508,15 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 | `HETEROLOG_TRACES_OTLP_RETRIES` | `OTLP.Retries` | `3` |
 | `HETEROLOG_TRACES_OTLP_RETRY_BASE_DELAY_MILLISECOND`、`HETEROLOG_TRACES_OTLP_RETRY_MAX_DELAY_MILLISECOND` | `OTLP.RetryBaseDelay`、`OTLP.RetryMaxDelay` | `1000`、`5000` |
 | `HETEROLOG_ENABLE_TRACES_OTLP_CIRCUIT_BREAKER` | `OTLP.CircuitBreaker` | `false` |
-| `HETEROLOG_TRACES_OTLP_DURABLE_TYPES` と、出力先の名前の位置に `TRACES_OTLP` を入れたほかのfailure storeのキー（`HETEROLOG_TRACES_OTLP_FAILURE_SPOOL_DIR`、`HETEROLOG_TRACES_OTLP_SPOOL_RUNNER_INTERVAL_MILLISECOND` など） | `OTLP.FailureStore`。`HETEROLOG_LOKI_*` などログの出力先のキーと同じ意味と既定値です。ただし、`*_HANDLER` のキーはなく、`HETEROLOG_TRACES_OTLP_SPOOL_MAX_RESEND_AGE_SECOND` で `OTLP.FailureStore.MaxAge`（既定は `0`）を指定します。failure archiveがuploadできなかった圧縮fileは、`HETEROLOG_OBJECT_STORAGE_COMPRESSED_LOG_FILE_UPLOAD_FAILURE_*` の保存先の、`telemetry` の下へ入れます。ディレクトリは `traces_otlp`（spool）と `traces_otlp_failure_archives` で、ログの出力先と同じく解決します。spoolのworkerの再起動は、`HETEROLOG_MAX_RESTART_SPOOL_TIMES` に従います。 | `spool` |
+| `HETEROLOG_TRACES_OPENSEARCH_ENDPOINT`、`HETEROLOG_TRACES_OPENSEARCH_TIMEOUT_SECOND`、`HETEROLOG_TRACES_OPENSEARCH_SKIP_VERIFY_SSL`、`HETEROLOG_ENABLE_TRACES_OPENSEARCH_COMPRESS_REQUEST` | `OpenSearch.Client` | `http://localhost:9200`、`10`、`false`、`true` |
+| `HETEROLOG_TRACES_OPENSEARCH_AUTH_TYPE` と、`HETEROLOG_TRACES_OPENSEARCH_USERNAME`・`HETEROLOG_TRACES_OPENSEARCH_PASSWORD` などの認証情報 | `OpenSearch.Client.AuthConfig`。値は、ログの出力先の `HETEROLOG_OPENSEARCH_AUTH_TYPE` などのキーと同じです。 | `basic`、認証情報なし |
+| `HETEROLOG_TRACES_OPENSEARCH_INDEX` | `OpenSearch.Index` | `otel-v1-apm-span-heterolog` |
+| `HETEROLOG_TRACES_OPENSEARCH_RETRIES`、`HETEROLOG_TRACES_OPENSEARCH_RETRY_BASE_DELAY_MILLISECOND`、`HETEROLOG_TRACES_OPENSEARCH_RETRY_MAX_DELAY_MILLISECOND`、`HETEROLOG_ENABLE_TRACES_OPENSEARCH_CIRCUIT_BREAKER` | `OpenSearch.Retries`、`OpenSearch.RetryBaseDelay`、`OpenSearch.RetryMaxDelay`、`OpenSearch.CircuitBreaker` | `3`、`1000`、`5000`、`false` |
+| `HETEROLOG_TRACES_OTLP_DURABLE_TYPES` と、出力先の名前の位置に `TRACES_OTLP` を入れたほかのfailure storeのキー（`HETEROLOG_TRACES_OTLP_FAILURE_SPOOL_DIR`、`HETEROLOG_TRACES_OTLP_SPOOL_RUNNER_INTERVAL_MILLISECOND` など） | `OTLP.FailureStore`。`HETEROLOG_LOKI_*` などログの出力先のキーと同じ意味と既定値です。ただし、`*_HANDLER` のキーはなく、`HETEROLOG_TRACES_OTLP_SPOOL_MAX_RESEND_AGE_SECOND` で `OTLP.FailureStore.MaxAge`（既定は `0`）を指定します。failure archiveがuploadできなかった圧縮fileは、`HETEROLOG_OBJECT_STORAGE_COMPRESSED_LOG_FILE_UPLOAD_FAILURE_*` の保存先の、`telemetry` の下へ入れます。ディレクトリは `traces_otlp`（spool）と `traces_otlp_failure_archives` で、ログの出力先と同じく解決します。spoolのworkerの再起動は、`HETEROLOG_MAX_RESTART_SPOOL_TIMES` に従います。`HETEROLOG_TRACES_OPENSEARCH_DURABLE_TYPES` など、`TRACES_OPENSEARCH` のキーは、同じように `OpenSearch.FailureStore` を指定します。ディレクトリは `traces_opensearch` と `traces_opensearch_failure_archives` です。 | `spool` |
 | `HETEROLOG_TRACES_FILE_DIR` | `File.Path` のディレクトリ。`File.Path` はその中の `spans.jsonl` です。ログのディレクトリと同じく、`HETEROLOG_SYSTEM_LOG_DIR` と `HETEROLOG_TARGET` を基準に解決します。 | `/traces` |
 
 - resourceは、ロガーと同じキーから作ります。`HETEROLOG_APP_NAME`（`service.name`）、`HETEROLOG_APP_ENV`、`HETEROLOG_RUNTIME_TYPE`、`HETEROLOG_INSTANCE_ID`、`HETEROLOG_CLOUD_PROVIDER`、`HETEROLOG_CLOUD_PROVIDER_REGION` と、プロセスのホスト名とOSです。
-- `LoadEnvConfig` は、`HETEROLOG_ENABLE_TRACES` が `true` ならトレースの設定を確かめ、問題を `HETEROLOG_TRACES_*` の下に `pkg/telemetry` の `FieldError` として返します。認証情報を含み得るエンドポイントとheaderの値は表示しません。
+- `LoadEnvConfig` は、`HETEROLOG_ENABLE_TRACES` が `true` ならトレースの設定を確かめ、問題を `HETEROLOG_TRACES_*` の下に `pkg/telemetry` の `FieldError` として返します。秘密の情報を含み得るエンドポイント、header、OpenSearchの認証情報の値は表示しません。
 
 ## メトリクスの送信
 
@@ -582,9 +607,9 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 | `heterolog_memory_pressure_critical` | Gauge | `backend` | 同じ監視の最後の判定で、memoryが逼迫している（critical）なら1、そうでなければ0です。 |
 | `heterolog_spool_replay_records_total` | Counter | `backend`・`outcome` | spoolから読み戻して送り直したrecordの数を、結果ごとに数えます。結果は `success`・`retryable`（spoolへ戻し、後でまた送り直します）・`dead`・`quarantine` です。応答をrecordへ対応付けられない場合はfile全体を隔離し、そのrecordをすべて `quarantine` として数えます。 |
 | `heterolog_file_dropped_entries_total` | Counter | なし | fileロガーが過負荷時の方針 `drop` で破棄したentryの数です。 |
-| `heterolog_trace_spans_total` | Counter | `exporter`（`otlp`・`file`・`stdout`）、`outcome` | `NewTelemetry` の出力先が扱ったspanの数を、結果ごとに数えます。結果は、`success`、`retryable`・`dead`・`quarantine`（送れず、failure storeに残したspan。送り直すものと、送り直さないもの）、`failure`（送れず、残さなかったspan）、`dropped`（待ち行列に入らなかったspanと、`Shutdown` を始めた後に終わったspan）です。部分的な成功では、要求全体を残しますが、`quarantine` には受け付けられなかったspanだけを数えます。 |
+| `heterolog_trace_spans_total` | Counter | `exporter`（`otlp`・`opensearch`・`file`・`stdout`）、`outcome` | `NewTelemetry` の出力先が扱ったspanの数を、結果ごとに数えます。結果は、`success`、`retryable`・`dead`・`quarantine`（送れず、failure storeに残したspan。送り直すものと、送り直さないもの）、`failure`（送れず、残さなかったspan）、`dropped`（待ち行列に入らなかったspanと、`Shutdown` を始めた後に終わったspan）です。部分的な成功では、要求全体を残しますが、`quarantine` には受け付けられなかったspanだけを数えます。 |
 | `heterolog_trace_export_duration_seconds` | Histogram | `exporter`、`outcome`（`success`・`failure`） | spanの1つのbatchを送るのにかかった秒数です。送り直しとその間の待ち時間を含みます。batchのspanが1件も届かなかった場合は `failure` です。 |
-| `heterolog_trace_export_retries_total` | Counter | `exporter`、`reason` | `otlp` の出力先が送り直した回数を、`http_status` や `net_timeout` などの理由ごとに数えます。大きすぎた要求を分けた回数は `request_too_large` です。 |
+| `heterolog_trace_export_retries_total` | Counter | `exporter`、`reason` | `otlp` と `opensearch` の出力先が送り直した回数を、`http_status` や `net_timeout` などの理由ごとに数えます。大きすぎた要求を分けた回数は `request_too_large`、`opensearch` が文書の内容を理由に拒否した要求を分けた回数は `record_rejected` です。 |
 | `heterolog_metric_points_total` | Counter | `exporter`（`otlp`・`victoriametrics`・`file`・`stdout`）、`outcome` | `NewTelemetry` のメトリクスの出力先が扱ったdata pointの数を、`heterolog_trace_spans_total` と同じ結果ごとに数えます。 |
 | `heterolog_metric_export_duration_seconds` | Histogram | `exporter`、`outcome`（`success`・`failure`） | メトリクスの1回分を送るのにかかった秒数です。送り直しとその間の待ち時間を含みます。 |
 | `heterolog_metric_export_retries_total` | Counter | `exporter`、`reason` | `otlp` と `victoriametrics` のメトリクスの出力先が送り直した回数を、spanと同じく理由ごとに数えます。 |

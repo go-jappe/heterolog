@@ -2,9 +2,9 @@ package otlp
 
 import pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 
-// otlpSpanKindは、pkg/observerのSpanKindを、OTLPのSpan.SpanKind（UNSPECIFIEDが0）に
+// SpanKindは、pkg/observerのSpanKindを、OTLPのSpan.SpanKind（UNSPECIFIEDが0）に
 // します。
-func otlpSpanKind(kind pkgobserver.SpanKind) int {
+func SpanKind(kind pkgobserver.SpanKind) int {
 	switch kind {
 	case pkgobserver.SpanKindServer:
 		return 2
@@ -19,8 +19,8 @@ func otlpSpanKind(kind pkgobserver.SpanKind) int {
 	}
 }
 
-// otlpStatusCodeは、pkg/observerのStatusCodeを、OTLPのStatus.StatusCodeにします。
-func otlpStatusCode(code pkgobserver.StatusCode) int {
+// StatusCodeは、pkg/observerのStatusCodeを、OTLPのStatus.StatusCodeにします。
+func StatusCode(code pkgobserver.StatusCode) int {
 	switch code {
 	case pkgobserver.StatusOK:
 		return 1

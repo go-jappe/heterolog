@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	goruntime "runtime"
+	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/application/metrics"
@@ -21,8 +22,10 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/metrics/victoriametrics"
 	"github.com/go-jappe/heterolog/internal/infrastructure/otlpcommon"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
+	tracesopensearch "github.com/go-jappe/heterolog/internal/infrastructure/traces/opensearch"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
@@ -116,6 +119,12 @@ func newTraceDestinations(
 				return nil, errors.Join(fmt.Errorf("create the failure store of the otlp trace exporter: %w", err), exporter.Close(), closeAll())
 			}
 			destinations = append(destinations, traces.Destination{Exporter: exporter, Store: store})
+		case pkgtelemetry.TraceExporterOpenSearch:
+			destination, err := newOpenSearchTraceDestination(ctx, cfg.Traces.OpenSearch, resource, meter, report)
+			if err != nil {
+				return nil, errors.Join(err, closeAll())
+			}
+			destinations = append(destinations, destination)
 		case pkgtelemetry.TraceExporterStdout:
 			destinations = append(destinations, traces.Destination{Exporter: jsonlines.NewStdout(traces.MarshalJSON(resource))})
 		case pkgtelemetry.TraceExporterFile:
@@ -127,6 +136,36 @@ func newTraceDestinations(
 		}
 	}
 	return destinations, nil
+}
+
+// newOpenSearchTraceDestinationは、spanをOpenSearchへ書く送り先と、そのfailure storeを作ります。
+func newOpenSearchTraceDestination(
+	ctx context.Context,
+	cfg pkgtelemetry.OpenSearchConfig,
+	resource *telemetrydata.Resource,
+	meter pkgobserver.Meter,
+	report delivery.ErrorHandler,
+) (traces.Destination, error) {
+	client, err := pkgopensearch.New(cfg.Client)
+	if err != nil {
+		return traces.Destination{}, fmt.Errorf("create the opensearch trace exporter: %w", err)
+	}
+	exporter := tracesopensearch.NewExporter(client, tracesopensearch.Config{
+		Index: cfg.Index,
+		Retry: retryConfig(cfg.Retries, cfg.RetryBaseDelay, cfg.RetryMaxDelay, cfg.CircuitBreaker),
+	}, resource, meter)
+	store, err := newFailureStore(ctx, cfg.FailureStore, failurestore.Options[tracing.SpanData]{
+		Backend:   tracesopensearch.BackendName,
+		Operation: traces.FailureOperation,
+		Exporter:  exporter,
+		Codec:     traces.NewCodec(resource),
+		Meter:     meter,
+		Report:    report,
+	})
+	if err != nil {
+		return traces.Destination{}, errors.Join(fmt.Errorf("create the failure store of the opensearch trace exporter: %w", err), exporter.Close())
+	}
+	return traces.Destination{Exporter: exporter, Store: store}, nil
 }
 
 // newMetricDestinationsは、cfgで選んだmetricsの送り先を作ります。作れない送り先があれば、
@@ -194,12 +233,17 @@ func httpExporterConfig(cfg pkgtelemetry.HTTPConfig) otlphttp.Config {
 		Headers:     cfg.Headers,
 		Compression: cfg.Compression,
 		Timeout:     cfg.Timeout,
-		Retry: retrying.Config{
-			Retries:        cfg.Retries,
-			RetryBaseDelay: cfg.RetryBaseDelay,
-			RetryMaxDelay:  cfg.RetryMaxDelay,
-			CircuitBreaker: cfg.CircuitBreaker,
-		},
+		Retry:       retryConfig(cfg.Retries, cfg.RetryBaseDelay, cfg.RetryMaxDelay, cfg.CircuitBreaker),
+	}
+}
+
+// retryConfigは、公開の設定の送り直しとcircuit breakerの項目を、送り先の設定にします。
+func retryConfig(retries int, baseDelay, maxDelay time.Duration, circuitBreaker bool) retrying.Config {
+	return retrying.Config{
+		Retries:        retries,
+		RetryBaseDelay: baseDelay,
+		RetryMaxDelay:  maxDelay,
+		CircuitBreaker: circuitBreaker,
 	}
 }
 
