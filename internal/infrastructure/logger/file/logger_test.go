@@ -1649,24 +1649,10 @@ func TestFileLogger_OnError_Debug(t *testing.T) {
 // 送信失敗もチェック
 func TestFileLogger_Log_WritesToFile_ForTempo(t *testing.T) {
 	settings := integrationtestutil.RequireIntegrationEnvironment(t, "TEMPO_INTEGRATION_TEST")
-	// 送信先は専用の設定fileで明示した値だけを使います。fileにkeyがない場合に設定の既定の送信先
-	// （localhost:4317）へ送らないよう、fileの値を必須とし、読み込んだ設定がその値であることを確認します。
-	wantEndpoint := settings["HETEROLOG_OTEL_SPAN_ENDPOINT"]
-	require.NotEmpty(t, strings.TrimSpace(wantEndpoint), "実Tempo integrationには専用の設定fileのHETEROLOG_OTEL_SPAN_ENDPOINTが必要です")
-
-	cfg, err := config.LoadConfig()
-	require.NoError(t, err)
-
-	require.True(t, cfg.ObservabilityCfg.Tracing.Enabled, "実Tempo integrationにはHETEROLOG_TRACING_ENABLED=trueが必要です")
-	require.True(
-		t,
-		strings.EqualFold(cfg.ObservabilityCfg.Tracing.Exporter.Type, "otlp"),
-		"実Tempo integrationにはHETEROLOG_TRACING_EXPORTER_TYPE=otlpが必要です",
-	)
-	require.NotNil(t, cfg.ObservabilityCfg.Tracing.Exporter.OTLP)
-	tempoEndpoint := cfg.ObservabilityCfg.Tracing.Exporter.OTLP.Endpoint
-	require.Equal(t, wantEndpoint, tempoEndpoint, "HETEROLOG_OTEL_SPAN_ENDPOINTは専用の設定fileの値で読み込まれる必要があります")
-	t.Log("HETEROLOG_OTEL_SPAN_ENDPOINT=", tempoEndpoint)
+	// 送信先は専用の設定fileで明示した値だけを使います。既定の送信先へ送らないよう、fileの値を必須にします。
+	tempoEndpoint := settings["HETEROLOG_OTEL_TEMPO_ADDR"]
+	require.NotEmpty(t, strings.TrimSpace(tempoEndpoint), "実Tempo integrationには専用の設定fileのHETEROLOG_OTEL_TEMPO_ADDRが必要です")
+	t.Log("HETEROLOG_OTEL_TEMPO_ADDR=", tempoEndpoint)
 	// コンテキスト
 	ctx := context.Background()
 

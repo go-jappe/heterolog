@@ -19,7 +19,6 @@ import (
 	lokicfg "github.com/go-jappe/heterolog/internal/config/loki"
 	objectstorages3cfg "github.com/go-jappe/heterolog/internal/config/objectstorage/s3"
 	"github.com/go-jappe/heterolog/internal/config/objectstoragecompressedlog"
-	"github.com/go-jappe/heterolog/internal/config/observability"
 	"github.com/go-jappe/heterolog/internal/config/opensearch"
 	"github.com/go-jappe/heterolog/internal/config/runtime"
 	"github.com/go-jappe/heterolog/internal/config/slack"
@@ -87,7 +86,6 @@ type AppConfig struct {
 	ClickHouseClient                    clickhousecfg.ClientConfig
 	AsyncClickHouseClient               clickhousecfg.ClientConfig
 	DeliveryClickHouseClient            clickhousecfg.ClientConfig
-	ObservabilityCfg                    observability.ObservabilityConfig
 	// AdminServerは、管理用APIの管理用サーバーの設定です。loggerの設定には含めません。
 	AdminServer AdminServerConfig
 	// AdminAuditは、管理用APIの監査logを記録する送達確認loggerの設定です。管理用
@@ -5629,59 +5627,6 @@ func loadSlackAppConfig() slack.SlackConfig {
 	}
 }
 
-// Observability設定を読み込む
-func loadObservabilityConfig(env pkgenv.Lookup) (observability.ObservabilityConfig, error) {
-	tracingConfig, err := loadTracingConfig(env)
-	return observability.ObservabilityConfig{
-		Tracing: tracingConfig,
-		Metrics: loadMetricsConfig(),
-	}, err
-}
-
-func loadTracingConfig(env pkgenv.Lookup) (observability.TracingConfig, error) {
-	var environmentErrors []error
-	tracingEnabled, tracingEnabledErr := env.GetEnvBool("HETEROLOG_TRACING_ENABLED", false)
-	if tracingEnabledErr != nil {
-		environmentErrors = append(environmentErrors, tracingEnabledErr)
-	}
-	exporterConfig, exporterErr := loadTracingExporterConfig(env)
-	return observability.TracingConfig{
-		Enabled:  tracingEnabled,
-		Provider: env.GetEnvString("HETEROLOG_TRACING_PROVIDER", observability.DefaultTracingProvider),
-		Exporter: exporterConfig,
-	}, errors.Join(errors.Join(environmentErrors...), exporterErr)
-}
-
-func loadTracingExporterConfig(env pkgenv.Lookup) (observability.TraceExporterConfig, error) {
-	otlpConfig, err := loadTracingOtlpConfig(env)
-	return observability.TraceExporterConfig{
-		Type: env.GetEnvString("HETEROLOG_TRACING_EXPORTER_TYPE", observability.DefaultTracingExporterType),
-		OTLP: otlpConfig,
-	}, err
-}
-
-func loadTracingOtlpConfig(env pkgenv.Lookup) (*observability.OtlpClientConfig, error) {
-	var environmentErrors []error
-	otelSpanInsecure, otelSpanInsecureErr := env.GetEnvBool("HETEROLOG_OTEL_SPAN_INSECURE", false)
-	if otelSpanInsecureErr != nil {
-		environmentErrors = append(environmentErrors, otelSpanInsecureErr)
-	}
-	otelSpanHeaders, otelSpanHeadersErr := loadHeaderEnv(env, "HETEROLOG_OTEL_SPAN_HEADERS", map[string]string{})
-	if otelSpanHeadersErr != nil {
-		environmentErrors = append(environmentErrors, otelSpanHeadersErr)
-	}
-	return &observability.OtlpClientConfig{
-		Endpoint: env.GetEnvString("HETEROLOG_OTEL_SPAN_ENDPOINT", observability.DefaultTracingEndpoint),
-		Protocol: env.GetEnvString("HETEROLOG_OTEL_SPAN_PROTOCOL", observability.DefaultTracingProtocol),
-		Insecure: otelSpanInsecure,
-		Headers:  otelSpanHeaders,
-	}, errors.Join(environmentErrors...)
-}
-
-func loadMetricsConfig() observability.MetricsConfig {
-	return observability.MetricsConfig{}
-}
-
 // OpenSearch設定を読み込む
 func loadOpenSearchClientConfig(env pkgenv.Lookup) (opensearch.OpenSearchClientConfig, error) {
 	var environmentErrors []error
@@ -6261,14 +6206,6 @@ func loadConfig(source envSource) (AppConfig, error) {
 	) || appCfg.AdminAudit.requires(logconfig.LogOutputClickHouse) {
 		var err error
 		appCfg.DeliveryClickHouseClient, err = loadDeliveryClickHouseClientConfig(env)
-		errs = append(errs, err)
-	}
-
-	enableObservability, enableObservabilityErr := env.GetEnvBool("HETEROLOG_ENABLE_OBSERVABILITY", false)
-	errs = append(errs, enableObservabilityErr)
-	if enableObservability {
-		var err error
-		appCfg.ObservabilityCfg, err = loadObservabilityConfig(env)
 		errs = append(errs, err)
 	}
 

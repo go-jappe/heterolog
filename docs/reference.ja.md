@@ -526,7 +526,7 @@ go build -o log-recovery ./cmd/log-recovery
 - `--target` はログ生成時と同じ識別子にします。英数字で始まる英数字・ハイフン・アンダースコア・ドットを使用でき、パス区切りやWindowsの予約名は使用できません。
 - CLIの環境設定項目は [.env.example](../.env.example)、復旧対象や操作手順は [手動ログ復旧](manual-log-recovery.txt) を参照してください。
 - CLIは明示した環境設定を読み込みます。読み込んだ設定に `--target` を反映した後、アプリケーションの設定全体の検証（保存先ディレクトリの重複と所有権、upload対象、failure storeの構成、timeout階層（`must_fit` など）、memory healthの閾値）を行います。不整合がある場合は、復旧処理を始める前に設定エラー（`invalid config: ...`、終了コード1）で終了し、保存先のディレクトリやファイルを作成・変更しません。
-- 認証情報を含み得る値（`*_HEADERS`・`HETEROLOG_OTEL_SPAN_HEADERS` のHTTP header、`*_S3_DESTINATIONS` の一覧）が不正な場合、設定エラーはkeyと種類だけを示し、値は表示文にも `errors.As` で取り出せるerrorにも含めません。
+- 認証情報を含み得る値（`*_HEADERS` のHTTP header、`*_S3_DESTINATIONS` の一覧）が不正な場合、設定エラーはkeyと種類だけを示し、値は表示文にも `errors.As` で取り出せるerrorにも含めません。
 - 環境設定で `HETEROLOG_LOG_TYPE`・`HETEROLOG_ASYNC_LOG_TYPE`・`HETEROLOG_DELIVERY_LOG_TYPE` を省略または空にした場合、出力先は通常・非同期・Deliveryとも標準出力だけです。fileやSlackなどは明示した場合だけ有効になり、Slackのトークンなど必要な認証情報がなければ設定エラーになります。
 - fileのログを復旧する場合は、ログ生成時と同じ出力先（例: `HETEROLOG_LOG_TYPE=file`）を指定してください。
 - 環境設定から読み込む場合も、`HETEROLOG_ENABLE_LOCAL_TIME_LOG` を指定しなければUTCで記録します。

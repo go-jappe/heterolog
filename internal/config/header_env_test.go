@@ -6,18 +6,16 @@ import (
 	"github.com/go-jappe/heterolog/pkg/env"
 )
 
-// TestLoadConfigRejectsInvalidHeadersWithoutExposingValuesは、HTTP headerのJSON（*_HEADERSと
-// HETEROLOG_OTEL_SPAN_HEADERS）が不正な場合に、LoadConfigが拒否したkeyとenv.ErrInvalidJSONを
+// TestLoadConfigRejectsInvalidHeadersWithoutExposingValuesは、HTTP headerのJSON（*_HEADERS）が
+// 不正な場合に、LoadConfigが拒否したkeyとenv.ErrInvalidJSONを
 // errors.Asとerrors.Isで判別できるerrorを返し、値を表示文にも型付きerrorのValueにも、包んだ
 // 原因にも残さないことを検証します。headerにはAuthorizationなどの認証情報が含まれ得るためです。
 // JSON parserの診断は値の一部（header名など）を含み得るため、header名に秘密を置く場合も確認します。
 func TestLoadConfigRejectsInvalidHeadersWithoutExposingValues(t *testing.T) {
 	const secret = "header-secret-token-value"
-	routes := []struct {
+	var routes []struct {
 		key   string
 		setup []string
-	}{
-		{key: "HETEROLOG_OTEL_SPAN_HEADERS", setup: []string{"HETEROLOG_ENABLE_OBSERVABILITY=true"}},
 	}
 	for _, contract := range []struct{ prefix, enableKey string }{
 		{"", "HETEROLOG_ENABLE_LOGGING"},

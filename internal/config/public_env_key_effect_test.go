@@ -285,7 +285,6 @@ var publicEnvKeyEffectBaseActivation = map[string]string{
 	"HETEROLOG_LOG_TYPE":                         publicEnvKeyEffectAllDestinations,
 	"HETEROLOG_ASYNC_LOG_TYPE":                   publicEnvKeyEffectAllDestinations,
 	"HETEROLOG_DELIVERY_LOG_TYPE":                publicEnvKeyEffectAllDestinations,
-	"HETEROLOG_ENABLE_OBSERVABILITY":             "true",
 	// 公開例のOpenSearchはspoolだけを選ぶため、failure archiveの設定も読み込ませます。
 	"HETEROLOG_OPENSEARCH_DURABLE_TYPES":       "spool,fileArchive",
 	"HETEROLOG_ASYNC_OPENSEARCH_DURABLE_TYPES": "spool,fileArchive",
@@ -318,6 +317,7 @@ type publicEnvKeyEffectSpec struct {
 var publicEnvKeyEffectExemptions = map[string]string{
 	"HETEROLOG_ENV_PATH":            "selects the environment file; this test sets it to an empty file",
 	"HETEROLOG_OTEL_COLLECTOR_ADDR": "test-only variable for the opt-in OpenTelemetry Collector integration test",
+	"HETEROLOG_OTEL_TEMPO_ADDR":     "test-only variable for the opt-in Grafana Tempo integration test",
 }
 
 // publicEnvKeyMapperExemptionsは、LoadConfigが読みますがmapperの変換結果へ届かないkeyと理由です。
@@ -331,8 +331,6 @@ var publicEnvKeyMapperExemptions = func() map[string]string {
 			"Map*LoggerConfig only validates it"
 		unusedClient = "it only makes LoadConfig read and syntax-check the OpenSearch client settings when OpenSearch is not selected; " +
 			"the mapper uses the client only for a selected OpenSearch output"
-		observability = "it is loaded into AppConfig.ObservabilityCfg for the tracer (internal/application/trace/tracer, on hold); " +
-			"no logger mapper uses it"
 		adminServer = "it is loaded into AppConfig.AdminServer; the application starts the admin server with " +
 			"EnvConfig.AdminServerConfig, so no logger mapper uses it"
 	)
@@ -343,12 +341,6 @@ var publicEnvKeyMapperExemptions = func() map[string]string {
 	for _, prefix := range publicEnvKeyEffectContractPrefixes {
 		exemptions["HETEROLOG_"+prefix+"LOG_TIMEOUT_BUDGET_POLICY"] = timeoutBudget
 		exemptions["HETEROLOG_"+prefix+"CLOUDWATCH_LOG_STREAM_ROTATION"] = streamRouting
-	}
-	for _, key := range []string{
-		"HETEROLOG_ENABLE_OBSERVABILITY", "HETEROLOG_TRACING_ENABLED", "HETEROLOG_TRACING_PROVIDER", "HETEROLOG_TRACING_EXPORTER_TYPE",
-		"HETEROLOG_OTEL_SPAN_ENDPOINT", "HETEROLOG_OTEL_SPAN_HEADERS", "HETEROLOG_OTEL_SPAN_INSECURE", "HETEROLOG_OTEL_SPAN_PROTOCOL",
-	} {
-		exemptions[key] = observability
 	}
 	// HETEROLOG_ADMIN_ADDRは、管理用serverとともに監査用loggerも有効にするため、監査用loggerの
 	// 実行時の設定が変わります。除外しません。
@@ -499,9 +491,6 @@ var publicEnvKeyEffectCandidateOverrides = map[string][]string{
 	"HETEROLOG_MEMORY_CRITICAL_RATIO": {"0.5", "0.75"},
 	"HETEROLOG_APP_ENV":               {"prod", "stg", "dev"},
 	"HETEROLOG_RUNTIME_TYPE":          {"k8s", "ecs", "local"},
-	"HETEROLOG_TRACING_PROVIDER":      {"noop", "otel"},
-	"HETEROLOG_TRACING_EXPORTER_TYPE": {"stdout", "none", "OTLP"},
-	"HETEROLOG_OTEL_SPAN_PROTOCOL":    {"http", "grpc"},
 	"HETEROLOG_TIMEZONE_LOG":          {"America/New_York", "Asia/Tokyo"},
 }
 

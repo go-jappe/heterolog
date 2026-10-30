@@ -97,7 +97,7 @@ LOKI_INTEGRATION_TEST=true HETEROLOG_INTEGRATION_ENV_PATH="$PWD/testenv/integrat
   （logger 18s、OpenSearch 1s、Loki・ClickHouse 2s）のままでも検証は通りますが、起動直後の
   containerに合わせてOpenSearchのclient timeoutを2sにするため、その予算（26s）を上回る
   30sを指定しています。
-- Tempo試験の送信先は `HETEROLOG_OTEL_SPAN_ENDPOINT`、Collector試験の送信先は `HETEROLOG_OTEL_COLLECTOR_ADDR` です。
+- Tempo試験の送信先は `HETEROLOG_OTEL_TEMPO_ADDR`、Collector試験の送信先は `HETEROLOG_OTEL_COLLECTOR_ADDR` です。
   どちらの試験も、専用の設定fileに送信先のkeyがない場合は既定の送信先へ送らずに失敗します。
 - portを変える場合は `ci.env` の宛先を変更します。`start-services.sh` は `ci.env` の宛先から
   公開するportを決めます（TempoのHTTPとCollectorのhealth checkのportは `common.sh` で定義）。

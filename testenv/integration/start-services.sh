@@ -39,7 +39,7 @@ it_read_env HETEROLOG_CLICKHOUSE_USERNAME
 clickhouse_user=$IT_VALUE
 it_read_env HETEROLOG_CLICKHOUSE_PASSWORD
 clickhouse_password=$IT_VALUE
-it_loopback_port HETEROLOG_OTEL_SPAN_ENDPOINT
+it_loopback_port HETEROLOG_OTEL_TEMPO_ADDR
 tempo_otlp_port=$IT_PORT
 it_loopback_port HETEROLOG_OTEL_COLLECTOR_ADDR
 collector_otlp_port=$IT_PORT
