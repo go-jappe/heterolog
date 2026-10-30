@@ -39,7 +39,7 @@ func TestAdminAPIChangesARunningLoggerAndRecordsTheAuditLog(t *testing.T) {
 			return strings.NewReader(`{"loggers":{"app":{"outputs":{"stdout":{"level":"` + level + `"}}}}}`)
 		}
 
-		handler, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Loggers: loggers}, audit)
+		handler, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Members: heterolog.AdminMembers{Loggers: loggers}}, audit)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -55,7 +55,7 @@ func TestAdminAPIChangesARunningLoggerAndRecordsTheAuditLog(t *testing.T) {
 			t.Fatalf("stdout level = %v after the handler PATCH, want DEBUG", got)
 		}
 
-		server, err := heterolog.StartAdminServer(heterolog.AdminServerConfig{Addr: ":0", Token: adminTokenForTest}, loggers, audit)
+		server, err := heterolog.StartAdminServer(heterolog.AdminServerConfig{Addr: ":0", Token: adminTokenForTest}, heterolog.AdminMembers{Loggers: loggers}, audit)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -94,10 +94,10 @@ func TestAdminAPIChangesARunningLoggerAndRecordsTheAuditLog(t *testing.T) {
 // 監査logの記録先がない管理用APIは作りません。
 func TestAdminAPIRequiresTheAuditLogger(t *testing.T) {
 	loggers := map[string]heterolog.SettingsController{"app": &heterolog.Runtime{}}
-	if _, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Loggers: loggers}, nil); !errors.Is(err, heterolog.ErrAdminAuditLoggerRequired) {
+	if _, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Members: heterolog.AdminMembers{Loggers: loggers}}, nil); !errors.Is(err, heterolog.ErrAdminAuditLoggerRequired) {
 		t.Errorf("NewAdminHandler(nil audit) error = %v, want ErrAdminAuditLoggerRequired", err)
 	}
-	if _, err := heterolog.StartAdminServer(heterolog.AdminServerConfig{Addr: ":0", Token: adminTokenForTest}, loggers, &heterolog.DeliveryRuntime{}); !errors.Is(err, heterolog.ErrAdminAuditLoggerRequired) {
+	if _, err := heterolog.StartAdminServer(heterolog.AdminServerConfig{Addr: ":0", Token: adminTokenForTest}, heterolog.AdminMembers{Loggers: loggers}, &heterolog.DeliveryRuntime{}); !errors.Is(err, heterolog.ErrAdminAuditLoggerRequired) {
 		t.Errorf("StartAdminServer(zero audit) error = %v, want ErrAdminAuditLoggerRequired", err)
 	}
 }
@@ -142,10 +142,10 @@ func TestAdminAPIRejectsLoggersSharingLiveSettings(t *testing.T) {
 		"one logger under two names":               {"app": separate, "copy": separate},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Loggers: loggers}, audit); !errors.Is(err, heterolog.ErrAdminSharedLiveSettings) {
+			if _, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Members: heterolog.AdminMembers{Loggers: loggers}}, audit); !errors.Is(err, heterolog.ErrAdminSharedLiveSettings) {
 				t.Errorf("NewAdminHandler() error = %v, want ErrAdminSharedLiveSettings", err)
 			}
-			server, err := heterolog.StartAdminServer(heterolog.AdminServerConfig{Addr: "127.0.0.1:0", Token: adminTokenForTest}, loggers, audit)
+			server, err := heterolog.StartAdminServer(heterolog.AdminServerConfig{Addr: "127.0.0.1:0", Token: adminTokenForTest}, heterolog.AdminMembers{Loggers: loggers}, audit)
 			if err == nil {
 				_ = server.Close()
 			}
@@ -157,7 +157,62 @@ func TestAdminAPIRejectsLoggersSharingLiveSettings(t *testing.T) {
 
 	// それぞれ自分の設定を持つloggerは受け付けます。
 	loggers := map[string]heterolog.SettingsController{"app": app, "separate": separate}
-	if _, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Loggers: loggers}, audit); err != nil {
+	if _, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Members: heterolog.AdminMembers{Loggers: loggers}}, audit); err != nil {
 		t.Errorf("NewAdminHandler(own settings) error = %v, want no error", err)
+	}
+}
+
+// 公開APIで渡したlogger・delivery logger・telemetryの設定を、GET /configが秘密の値を
+// 伏せて返すことを確かめます。文書の形はinternal/application/configviewで試験します。
+func TestAdminAPIReportsTheConfigurationOfEveryMember(t *testing.T) {
+	ctx := context.Background()
+	cfg := heterolog.DefaultConfig()
+	cfg.Slack = &pkglogger.SlackLoggerConfig{Token: "xoxb-secret", Channel: "#ops"}
+	runtime, err := heterolog.New(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = runtime.Close() }()
+	audit, err := heterolog.NewDelivery(ctx, heterolog.DefaultDeliveryConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = audit.Close() }()
+	telemetryCfg := heterolog.DefaultTelemetryConfig()
+	telemetryCfg.Resource.ServiceName = "admin-test"
+	tel, err := heterolog.NewTelemetry(ctx, telemetryCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tel.Shutdown(ctx) }()
+	handler, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{Token: adminTokenForTest, Members: heterolog.AdminMembers{
+		Loggers:         map[string]heterolog.SettingsController{"app": runtime},
+		DeliveryLoggers: map[string]heterolog.DeliveryLogger{"audit": audit},
+		Telemetries:     map[string]heterolog.TelemetryMember{"tel": tel},
+	}}, audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	get := func(path string) (int, string) {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set("Authorization", "Bearer "+adminTokenForTest)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		return recorder.Code, recorder.Body.String()
+	}
+	status, body := get("/config")
+	if status != http.StatusOK {
+		t.Fatalf("GET /config = %d %s, want 200", status, body)
+	}
+	for _, want := range []string{`"app": {`, `"kind": "logger"`, `"token": "***"`, `"audit": {`, `"kind": "delivery_logger"`, `"tel": {`, `"service_name": "admin-test"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET /config lacks %s:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "xoxb-secret") {
+		t.Errorf("GET /config contains the Slack token:\n%s", body)
+	}
+	if status, body := get("/config/loggers/app/config/slack/channel"); status != http.StatusOK || strings.TrimSpace(body) != `"#ops"` {
+		t.Errorf("GET /config/.../channel = %d %q, want 200 \"#ops\"", status, body)
 	}
 }

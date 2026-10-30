@@ -11,6 +11,12 @@ import (
 // TelemetryConfig configures NewTelemetry. See pkg/telemetry for its settings.
 type TelemetryConfig = pkgtelemetry.Config
 
+// TelemetryMember is the interface of *Telemetry: a Tracer and a Meter whose
+// data is delivered until Shutdown. AdminMembers.Telemetries takes it.
+type TelemetryMember = pkgtelemetry.Telemetry
+
+var _ TelemetryMember = (*Telemetry)(nil)
+
 // TraceExporter names a destination of spans in TelemetryConfig.
 type TraceExporter = pkgtelemetry.TraceExporter
 

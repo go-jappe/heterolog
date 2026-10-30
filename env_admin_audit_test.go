@@ -56,7 +56,7 @@ func TestEnvAdminAuditRecordsTheAdminAPIInTheAuditDirectory(t *testing.T) {
 		if !ok {
 			t.Fatal("AdminServerConfig reports the admin server as disabled")
 		}
-		server, err := heterolog.StartAdminServer(adminCfg, map[string]heterolog.SettingsController{"app": runtime}, audit)
+		server, err := heterolog.StartAdminServer(adminCfg, heterolog.AdminMembers{Loggers: map[string]heterolog.SettingsController{"app": runtime}}, audit)
 		if err != nil {
 			t.Fatal(err)
 		}

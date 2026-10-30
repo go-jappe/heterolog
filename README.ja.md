@@ -52,7 +52,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - 送れなかったログを保存するローカルのspool。自動で送り直し、`Retry-After` には再起動後も従います。
 - 空き容量の閾値、任意のメモリ逼迫の監視器、`drop`・`degrade` の方針による過負荷の保護。
 - コードでの設定、または `HETEROLOG_` 環境変数と環境設定ファイルからの設定。
-- 稼働中のログレベルとサンプリングの変更。コードまたはトークンで保護したHTTP APIから行います。
+- 稼働中のログレベルとサンプリングの変更。コードまたはトークンで保護したHTTP APIから行い、そのAPIは使っている設定も返します。
 - トレース: spanを、OTLP/HTTPの受信先、OpenSearch（Trace Analytics用）、ClickHouse（OpenTelemetry Collectorと同じ表）、file、stdoutへ、まとめて再試行付きで送る `Tracer` と、OpenTelemetry SDK用のexporter。送れなかったspanは、ログと同じspoolとfailure archiveへ渡します。ロガーも自分の処理をspanとして記録できます。
 - メトリクス: counter、gauge、histogramを、OTLP/HTTPの受信先、VictoriaMetrics、file、stdoutへ、同じ再試行、spool、failure archive付きで送る `Meter`。
 - 停止中のアプリケーションのログファイルを復旧するCLI。
@@ -226,8 +226,13 @@ if adminCfg, ok := env.AdminServerConfig(); ok {
         log.Fatal(err)
     }
     defer audit.Close()
-    admin, err := heterolog.StartAdminServer(adminCfg,
-        map[string]heterolog.SettingsController{"app": runtime}, audit)
+    members := heterolog.AdminMembers{
+        // Loggers: 設定を読み取り・変更でき、作ったときの設定も返します。
+        Loggers: map[string]heterolog.SettingsController{"app": runtime},
+        // DeliveryLoggersとTelemetries: 作ったときの設定を返します。
+        DeliveryLoggers: map[string]heterolog.DeliveryLogger{"audit": audit},
+    }
+    admin, err := heterolog.StartAdminServer(adminCfg, members, audit)
     if err != nil {
         log.Fatal(err)
     }
@@ -235,11 +240,19 @@ if adminCfg, ok := env.AdminServerConfig(); ok {
 }
 ```
 
-各ロガーに付けた名前（ここでは `app`）が、JSONのキーになります。
+各メンバーに付けた名前（ここでは `app` と `audit`）が、JSONのキーになります。
 
 ```sh
 # すべてのロガーの設定を表示する
 curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/settings
+
+# すべてのメンバーを作ったときの設定を表示する（トークンと鍵は伏せます）
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/config
+
+# その中の一つの値、または複数の値を1回の要求で表示する
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/config/loggers/app/config/timeout
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
+  "http://127.0.0.1:9100/config?path=loggers/app/config/timeout&path=loggers/app/config/max_log_entry_bytes"
 
 # stdoutにDEBUGのログを書く
 curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
@@ -285,6 +298,7 @@ curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
 - 変更後の設定が要求どおりでない場合、変更は戻しません。応答は `500` で今の設定を返し、食い違いをERRORで記録します。監査ログの出力先にSlackを加えると、これが通知になります。監査の記録が出力先のすべてに届かない場合も変更は続け、応答に警告を含めます。
 - 自分のHTTPサーバーで提供する場合は、同じ監査用ロガーを渡して `NewAdminHandler` を使います。コードでは、`runtime.OutputSettings()` が設定を返し、`runtime.UpdateOutputSettings(changes)` が設定を変えます。
 - 稼働中に変えられるのはレベルとサンプリングだけで、出力先や保存先は変えられません。Deliveryのロガーには、この設定はありません。
+- `GET /config` は、各メンバーを作ったときの設定を、`snake_case` のキーのJSONで返し、`GET /config/<path>` はその中の一つの値を返します（`GET /config?path=...&path=...` なら複数）。トークン・パスワード・鍵は `***` で表示します。`AdminMembers` に加えたDeliveryのロガーとtelemetryの設定も返します。
 
 詳しくは[稼働中の設定変更](docs/reference.ja.md#稼働中の設定変更)を参照してください。
 

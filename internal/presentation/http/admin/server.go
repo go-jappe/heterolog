@@ -75,21 +75,21 @@ type Server struct {
 const defaultResponseWriteTimeout = 10 * time.Second
 
 // StartServerは、管理用API専用のHTTP serverを起動し、待ち受けを始めてから返ります。
-// loggersは、APIで使う名前と、設定を読み取り・変更するloggerの対応で、auditは監査logの
-// 記録先です。cfgがhostを明示してTLSを有効にしない限り、loopback addressで待ち受けます。
+// membersは、APIで使う名前と、設定を読み取り・変更するloggerや設定を返すtelemetryの
+// 対応で、auditは監査logの記録先です。cfgがhostを明示してTLSを有効にしない限り、loopback addressで待ち受けます。
 // 止めるにはShutdownかCloseを呼びます。auditは閉じないため、serverを止めた後で閉じます。
-func StartServer(cfg pkgadmin.ServerConfig, loggers map[string]pkglogger.SettingsController, audit pkglogger.DeliveryLogger) (*Server, error) {
-	return startServer(cfg, loggers, audit, defaultResponseWriteTimeout)
+func StartServer(cfg pkgadmin.ServerConfig, members pkgadmin.Members, audit pkglogger.DeliveryLogger) (*Server, error) {
+	return startServer(cfg, members, audit, defaultResponseWriteTimeout)
 }
 
 // startServerは、応答の書き込み期限をresponseWriteTimeoutにして、StartServerの処理を
 // 行います。試験は短い期限を渡します。
-func startServer(cfg pkgadmin.ServerConfig, loggers map[string]pkglogger.SettingsController, audit pkglogger.DeliveryLogger, responseWriteTimeout time.Duration) (*Server, error) {
+func startServer(cfg pkgadmin.ServerConfig, members pkgadmin.Members, audit pkglogger.DeliveryLogger, responseWriteTimeout time.Duration) (*Server, error) {
 	address, err := listenAddress(cfg)
 	if err != nil {
 		return nil, err
 	}
-	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: cfg.Token, Loggers: loggers}, audit)
+	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: cfg.Token, Members: members}, audit)
 	if err != nil {
 		return nil, err
 	}

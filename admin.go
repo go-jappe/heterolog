@@ -8,6 +8,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/presentation/http/admin"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
 // MinAdminTokenLength is the minimum length in bytes of an admin API token.
@@ -29,6 +30,9 @@ var (
 	// also change the other, which the audit log could neither record nor
 	// verify.
 	ErrAdminSharedLiveSettings = outputsettings.ErrSharedLiveSettings
+	// ErrAdminDuplicateName reports a name used in more than one map of
+	// AdminMembers.
+	ErrAdminDuplicateName = admin.ErrDuplicateName
 	// ErrAdminServerAddrRequired reports an AdminServerConfig without Addr.
 	ErrAdminServerAddrRequired = admin.ErrServerAddrRequired
 	// ErrAdminServerInsecure reports an admin server that would listen on a
@@ -50,8 +54,14 @@ var (
 )
 
 // AdminHandlerConfig configures NewAdminHandler: the bearer Token (at least
-// MinAdminTokenLength bytes) and the Loggers by the names used in the API.
+// MinAdminTokenLength bytes) and the Members served by the API.
 type AdminHandlerConfig = pkgadmin.HandlerConfig
+
+// AdminMembers are the loggers and telemetries the admin API serves, each
+// under the name used in the API: Loggers, whose settings it reads and changes
+// and whose configuration it reports, and DeliveryLoggers and Telemetries,
+// whose configuration it reports. A name must not appear in more than one map.
+type AdminMembers = pkgadmin.Members
 
 // AdminServerConfig configures StartAdminServer. Addr is the TCP address to
 // listen on; with an empty host, such as ":9100", the server listens on
@@ -66,17 +76,33 @@ type AdminServer struct {
 }
 
 // NewAdminHandler returns an http.Handler for the admin API, which reads and
-// changes the level and sampling of the outputs of running loggers. Mount it
-// on your own server, behind your own TLS when it is reachable over a network;
-// StartAdminServer starts a dedicated server instead. The handler serves:
+// changes the level and sampling of the outputs of running loggers and reports
+// the configuration of loggers and telemetries. Mount it on your own server,
+// behind your own TLS when it is reachable over a network; StartAdminServer
+// starts a dedicated server instead. The handler serves:
 //
-//	GET   /settings  returns the current settings of every logger
-//	PATCH /settings  changes the fields given in the JSON body
+//	GET   /settings       returns the current settings of every logger
+//	PATCH /settings       changes the fields given in the JSON body
+//	GET   /config         returns the configuration of every member
+//	GET   /config/<path>  returns one value of that configuration
 //
 // Every request must send "Authorization: Bearer <Token>". PATCH requests are
 // processed one at a time, and a PATCH checks all of its changes before
 // applying any of them. Changes take effect from the next entry and are kept
 // in memory only, so a restart returns to the configured settings.
+//
+// GET /config returns the configuration each member was created with, as the
+// structs of Config, AsyncConfig, DeliveryConfig and TelemetryConfig in JSON
+// with snake_case keys. Tokens, passwords and keys are replaced by "***".
+// Only members created by heterolog are reported; other implementations of
+// SettingsController, DeliveryLogger and Telemetry are left out. Changes made
+// through PATCH /settings are not part of it. GET /config/<path> walks the
+// document by its keys and array indexes, for example
+// /config/loggers/app/config/file/log_dir, and is 404 when the path does not
+// exist, and GET /config?path=<path>&path=<path> returns several values in
+// one request, as {"values": {"<path>": ...}}. It returns
+// ErrAdminDuplicateName if a name is used in more than one map of
+// cfg.Members.
 //
 // audit records the audit log of the API: each change request, the settings
 // when the change starts and after it, and every rejected request; only a
@@ -99,34 +125,38 @@ func NewAdminHandler(cfg AdminHandlerConfig, audit *DeliveryRuntime) (http.Handl
 	if audit == nil || audit.DeliveryLogger == nil {
 		return nil, ErrAdminAuditLoggerRequired
 	}
-	cfg.Loggers = adminLoggers(cfg.Loggers)
+	cfg.Members = adminMembers(cfg.Members)
 	return admin.NewHandler(cfg, audit)
 }
 
 // StartAdminServer starts a dedicated HTTP server for the admin API of
-// NewAdminHandler and returns once it listens. loggers maps the names used in
-// the API to the loggers whose settings it reads and changes, and audit records
-// the audit log; both are checked as in NewAdminHandler. The server listens on
-// a loopback address unless cfg names another host and enables TLS. Call
+// NewAdminHandler and returns once it listens. members are the loggers and
+// telemetries served under the names used in the API, and audit records the
+// audit log; both are checked as in NewAdminHandler. The server listens on a
+// loopback address unless cfg names another host and enables TLS. Call
 // Shutdown or Close to stop it, and close audit after that.
-func StartAdminServer(cfg AdminServerConfig, loggers map[string]SettingsController, audit *DeliveryRuntime) (*AdminServer, error) {
+func StartAdminServer(cfg AdminServerConfig, members AdminMembers, audit *DeliveryRuntime) (*AdminServer, error) {
 	if audit == nil || audit.DeliveryLogger == nil {
 		return nil, ErrAdminAuditLoggerRequired
 	}
-	server, err := admin.StartServer(cfg, adminLoggers(loggers), audit)
+	server, err := admin.StartServer(cfg, adminMembers(members), audit)
 	if err != nil {
 		return nil, err
 	}
 	return &AdminServer{server: server}, nil
 }
 
-// adminLoggersは、heterologが作るloggerを、処理を受け持つ内部のruntimeに置き換えた
-// 複製を返します。内部のruntimeは出力先ごとのLiveSettingsを示せるため、管理用APIは
-// 出力先どうしの共有を見つけられます。設定の読み取りと変更は、公開の型を通した場合と
-// 同じく内部のruntimeが行います。
-func adminLoggers(loggers map[string]SettingsController) map[string]SettingsController {
-	result := make(map[string]SettingsController, len(loggers))
-	for name, logger := range loggers {
+// adminMembersは、heterologが作るloggerとtelemetryを、処理を受け持つ内部のruntimeに
+// 置き換えた複製を返します。内部のruntimeは出力先ごとのLiveSettingsと、自分を作った
+// 設定を示せるため、管理用APIは出力先どうしの共有を見つけ、設定の文書を作れます。設定の
+// 読み取りと変更は、公開の型を通した場合と同じく内部のruntimeが行います。
+func adminMembers(members AdminMembers) AdminMembers {
+	result := AdminMembers{
+		Loggers:         make(map[string]SettingsController, len(members.Loggers)),
+		DeliveryLoggers: make(map[string]DeliveryLogger, len(members.DeliveryLoggers)),
+		Telemetries:     make(map[string]pkgtelemetry.Telemetry, len(members.Telemetries)),
+	}
+	for name, logger := range members.Loggers {
 		switch runtime := logger.(type) {
 		case *Runtime:
 			if runtime != nil {
@@ -137,7 +167,19 @@ func adminLoggers(loggers map[string]SettingsController) map[string]SettingsCont
 				logger = runtime.impl()
 			}
 		}
-		result[name] = logger
+		result.Loggers[name] = logger
+	}
+	for name, logger := range members.DeliveryLoggers {
+		if runtime, ok := logger.(*DeliveryRuntime); ok && runtime != nil {
+			logger = runtime.impl()
+		}
+		result.DeliveryLoggers[name] = logger
+	}
+	for name, telemetry := range members.Telemetries {
+		if runtime, ok := telemetry.(*Telemetry); ok && runtime != nil {
+			telemetry = runtime.impl()
+		}
+		result.Telemetries[name] = telemetry
 	}
 	return result
 }

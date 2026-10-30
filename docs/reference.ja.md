@@ -179,9 +179,11 @@ reportの宛先ごとの結果は、次のいずれかです。
 
 HTTP API（管理用API）は、curlなどのツールから呼べます。
 
-- `NewAdminHandler` は、アプリケーション自身のサーバーに組み込む `http.Handler` を返します。代わりに `StartAdminServer` で専用のサーバーを起動することもできます。どちらにも、[監査ログ](#管理用apiの監査ログ)を記録する送達確認ロガーを渡します。
+- `NewAdminHandler` は、アプリケーション自身のサーバーに組み込む `http.Handler` を返します。代わりに `StartAdminServer` で専用のサーバーを起動することもできます。どちらにも、APIで扱うメンバー（`AdminMembers`）を、APIで使う名前とともに渡します。`Loggers` は、設定を読み取り・変更し、作ったときの設定も返すロガーで、一つ以上が必要です。`DeliveryLoggers` と `Telemetries` は省略でき、作ったときの設定を返します。同じ名前を二つのマップで使うと `ErrAdminDuplicateName` です。どちらにも、[監査ログ](#管理用apiの監査ログ)を記録する送達確認ロガーも渡します。
 - 管理用APIに渡すロガーの出力先は、それぞれ自分の設定を持つ必要があります。二つの出力先が `pkg/logger` の同じ `LiveSettings`（`RuntimeConfig.Live` で設定）を共有している場合は、同じロガーの中でも別のロガーの間でも、また一つのロガーを二つの名前で渡した場合も、`NewAdminHandler` と `StartAdminServer` は `ErrAdminSharedLiveSettings` を返します。一方への変更がもう一方も変え、その変化を監査ログに記録することも、要求と照合することもできないためです。確かめるのはheterologが作るロガーで、`SettingsController` を独自に実装したものは確かめません。環境設定から作るロガーが設定を共有することはありません。
 - `GET /settings` はすべてのロガーの現在の設定を返し、`PATCH /settings` はJSONの本文で指定した項目を変えます。レベルは `DEBUG`・`INFO`・`WARN`・`ERROR`（大文字小文字を区別しません）で、`PATCH` で省略したサンプリングの項目は、別の `PATCH` が同時にほかの項目を変えても、今の値のままです。
+- `GET /config` は、各メンバーを作ったときの設定を返します。`Config`・`AsyncConfig`・`DeliveryConfig`・`TelemetryConfig` の構造体を、`snake_case` のキー（`HTTPClient` は `http_client`）のJSONにし、`loggers` と `telemetries` の下に、`kind`（`logger`・`async_logger`・`delivery_logger`・`telemetry`）と `config` を付けて並べます。時間の長さは `1m30s` のような文字列、レベルはその名前で、トークン・パスワード・鍵は `***` に置き換えます（空のものは空のままです）。関数のフィールドは省き、interfaceのフィールドに入れた他のモジュールの型の値（AWSの認証情報providerなど）は、型の名前で示します。返すのはheterologが作ったメンバーだけで、`PATCH /settings` での変更は反映しません。
+- `GET /config/<path>` は、その文書の中の一つの値を返します。キーと配列の添字で辿り、例えば `/config/loggers/app/config/timeout` や `/config/loggers/app/config/log_output_destinations/0` です。存在しないパスは `404` です。`GET /config?path=<path>&path=<path>` は、複数の値を1回の要求で、指定したパスをキーにした `{"values": {"<path>": ...}}` で返します。存在しないパスが一つでもあれば、そのパスを示して `404` を返します。
 - すべての要求で `Authorization: Bearer <トークン>` が必要です。トークンは32バイト以上（`MinAdminTokenLength`）で、例えば `openssl rand -hex 32` のように無作為に作ります。比較は一定時間で行い、エラーにトークンを含めません。
 - `PATCH` は1件ずつ順に処理し、処理中に届いた要求は、前の要求が終わるまで待ちます。`PATCH` は、すべてのロガーのすべての変更を検証してから反映します。本文は64KiBまでで、未知の項目は拒否します。
 - どの応答にも、監査ログでの要求IDを `X-Request-Id` ヘッダーで返します。

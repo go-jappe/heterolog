@@ -52,7 +52,7 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 - A local spool for logs that could not be sent, replayed automatically and following `Retry-After` across restarts.
 - Overload protection with a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
 - Configuration in code, or from `HETEROLOG_` environment variables and an env file.
-- Level and sampling changes while running, in code or through a token-protected HTTP API.
+- Level and sampling changes while running, in code or through a token-protected HTTP API, which also reports the configuration in use.
 - Traces: a `Tracer`, and an exporter for the OpenTelemetry SDK, that send spans to an OTLP/HTTP receiver, OpenSearch (for its Trace Analytics), ClickHouse (in the table of the OpenTelemetry Collector), a file, or stdout in batches with retries. Spans that could not be sent go to the same spool and failure archive as logs. The loggers can record their own work as spans.
 - Metrics: a `Meter` that sends counters, gauges, and histograms to an OTLP/HTTP receiver, VictoriaMetrics, a file, or stdout, with the same retries, spool, and failure archive.
 - A CLI that recovers the log files of a stopped application.
@@ -226,8 +226,13 @@ if adminCfg, ok := env.AdminServerConfig(); ok {
         log.Fatal(err)
     }
     defer audit.Close()
-    admin, err := heterolog.StartAdminServer(adminCfg,
-        map[string]heterolog.SettingsController{"app": runtime}, audit)
+    members := heterolog.AdminMembers{
+        // Loggers: the settings can be read and changed, and the configuration is reported.
+        Loggers: map[string]heterolog.SettingsController{"app": runtime},
+        // DeliveryLoggers and Telemetries: the configuration is reported.
+        DeliveryLoggers: map[string]heterolog.DeliveryLogger{"audit": audit},
+    }
+    admin, err := heterolog.StartAdminServer(adminCfg, members, audit)
     if err != nil {
         log.Fatal(err)
     }
@@ -235,11 +240,19 @@ if adminCfg, ok := env.AdminServerConfig(); ok {
 }
 ```
 
-The name given to each logger (here `app`) is its key in the JSON:
+The name given to each member (here `app` and `audit`) is its key in the JSON:
 
 ```sh
 # Show the settings of every logger
 curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/settings
+
+# Show the configuration every member was created with (tokens and keys are masked)
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/config
+
+# Show one value of it, or several in one request
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/config/loggers/app/config/timeout
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
+  "http://127.0.0.1:9100/config?path=loggers/app/config/timeout&path=loggers/app/config/max_log_entry_bytes"
 
 # Write DEBUG logs to stdout
 curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
@@ -285,6 +298,7 @@ Every request returns the settings of every logger. For example, this is the std
 - If the settings after a change do not match the request, the change is not reverted: the response is `500` with the current settings, and the mismatch is recorded at ERROR, which a Slack output of the audit log turns into a notification. If an audit record does not reach every output, the change still goes ahead and the response carries a warning.
 - To serve the API from your own HTTP server, use `NewAdminHandler` with the same audit logger. In code, `runtime.OutputSettings()` returns the settings and `runtime.UpdateOutputSettings(changes)` changes them.
 - Only the level and sampling can change while running; destinations and storage cannot. The delivery logger has no such settings.
+- `GET /config` returns the configuration each member was created with, as JSON with `snake_case` keys, and `GET /config/<path>` returns one value of it (`GET /config?path=...&path=...` several). Tokens, passwords, and keys are shown as `***`. Delivery loggers and telemetries added to `AdminMembers` are reported too.
 
 See [Changing settings while running](docs/reference.md#changing-settings-while-running) for details.
 

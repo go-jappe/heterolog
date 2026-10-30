@@ -1,6 +1,7 @@
 // Package adminは、稼働中のloggerの出力先ごとのlog levelとsampling設定を読み取り・
-// 変更する、HTTPの管理用APIの受け口です。要求の認証、経路、JSONの変換、errorと
-// 状態codeの対応を扱い、設定の検証と反映はapplication層のoutputsettingsに任せます。
+// 変更し、loggerとtelemetryを作った設定を返す、HTTPの管理用APIの受け口です。要求の
+// 認証、経路、JSONの変換、errorと状態codeの対応を扱い、設定の検証と反映はapplication層
+// のoutputsettingsに、設定の文書はconfigviewに任せます。
 package admin
 
 import (
@@ -15,6 +16,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/go-jappe/heterolog/internal/application/configview"
 	"github.com/go-jappe/heterolog/internal/application/outputsettings"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -24,13 +26,20 @@ import (
 // maxRequestBytesは、管理用APIの要求本文の上限です。
 const maxRequestBytes = 64 << 10
 
-// ErrTokenTooShortは、tokenがMinTokenLengthより短いことを表します。tokenは含めません。
-var ErrTokenTooShort = fmt.Errorf("admin token must be at least %d bytes", pkgadmin.MinTokenLength)
+var (
+	// ErrTokenTooShortは、tokenがMinTokenLengthより短いことを表します。tokenは含めません。
+	ErrTokenTooShort = fmt.Errorf("admin token must be at least %d bytes", pkgadmin.MinTokenLength)
+	// ErrDuplicateNameは、Membersの二つのmapに同じ名前があることを表します。
+	ErrDuplicateName = errors.New("admin API member name is used more than once")
+)
 
 // NewHandlerは、管理用APIのhttp.Handlerを返します。
 //
-//	GET   /settings  全loggerの現在の設定を返します
-//	PATCH /settings  JSONの本文で指定した項目を変更し、変更後の設定を返します
+//	GET   /settings        全loggerの現在の設定を返します
+//	PATCH /settings        JSONの本文で指定した項目を変更し、変更後の設定を返します
+//	GET   /config          全loggerとtelemetryを作った設定を返します
+//	GET   /config/<path>   設定の文書のpathの先の値だけを返します
+//	GET   /config?path=<path>&path=<path>  複数のpathの先の値をまとめて返します
 //
 // すべての要求で「Authorization: Bearer <Token>」が必要です。PATCHは一つずつ順に処理し、
 // 全loggerの全変更を検証してから反映して、一つでも不正なら何も反映しません。要求、変更を
@@ -38,20 +47,63 @@ var ErrTokenTooShort = fmt.Errorf("admin token must be at least %d bytes", pkgad
 // 記録しないのは、成功したGETだけです。変更は次のlogから反映し、メモリ上だけに保持します。
 // loggersの出力先どうしが同じLiveSettingsを共有している場合は、outputsettingsの
 // ErrSharedLiveSettingsを返します。
+//
+// /configの文書には、Membersのうちconfigview.Sourceを実装するもの（heterologが作った
+// loggerとtelemetry）だけが入ります。秘密の値は伏せます。Membersの二つのmapに同じ名前が
+// あれば、ErrDuplicateNameを返します。
 func NewHandler(cfg pkgadmin.HandlerConfig, audit pkglogger.DeliveryLogger) (http.Handler, error) {
 	if len(cfg.Token) < pkgadmin.MinTokenLength {
 		return nil, ErrTokenTooShort
 	}
-	service, err := outputsettings.NewService(cfg.Loggers, audit)
+	service, err := outputsettings.NewService(cfg.Members.Loggers, audit)
 	if err != nil {
 		return nil, err
 	}
-	return &handler{tokenDigest: sha256.Sum256([]byte(cfg.Token)), service: service}, nil
+	sources, err := configSources(cfg.Members)
+	if err != nil {
+		return nil, err
+	}
+	config, err := configview.NewService(sources)
+	if err != nil {
+		return nil, err
+	}
+	return &handler{tokenDigest: sha256.Sum256([]byte(cfg.Token)), service: service, config: config}, nil
+}
+
+// configSourcesは、Membersのうち設定を示せるものを、名前ごとに集めます。
+func configSources(members pkgadmin.Members) (map[string]configview.Source, error) {
+	sources := map[string]configview.Source{}
+	var errs []error
+	add := func(name string, member any) {
+		if _, taken := sources[name]; taken {
+			errs = append(errs, fmt.Errorf("%w: %q", ErrDuplicateName, name))
+			return
+		}
+		// 設定を示せないmember（SettingsControllerの独自の実装など）は、文書に入れません。
+		// 名前の重複は、文書に入らないmemberでも見つけたいので、入れない場合も名前を取ります。
+		source, _ := member.(configview.Source)
+		sources[name] = source
+	}
+	for _, name := range slices.Sorted(maps.Keys(members.Loggers)) {
+		add(name, members.Loggers[name])
+	}
+	for _, name := range slices.Sorted(maps.Keys(members.DeliveryLoggers)) {
+		add(name, members.DeliveryLoggers[name])
+	}
+	for _, name := range slices.Sorted(maps.Keys(members.Telemetries)) {
+		add(name, members.Telemetries[name])
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	maps.DeleteFunc(sources, func(_ string, source configview.Source) bool { return source == nil })
+	return sources, nil
 }
 
 type handler struct {
 	tokenDigest [sha256.Size]byte
 	service     *outputsettings.Service
+	config      *configview.Service
 }
 
 // 管理用APIのJSONの文書です。
@@ -121,6 +173,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, reason, false)
 		return
 	}
+	if r.URL.Path == "/config" || strings.HasPrefix(r.URL.Path, "/config/") {
+		h.serveConfig(w, r, request)
+		return
+	}
 	if r.URL.Path != "/settings" {
 		const reason = "not found"
 		writeError(w, http.StatusNotFound, reason, h.service.Reject(r.Context(), request, reason))
@@ -136,6 +192,49 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "GET, PATCH")
 		writeError(w, http.StatusMethodNotAllowed, reason, h.service.Reject(r.Context(), request, reason))
 	}
+}
+
+// serveConfigは、/configの文書か、/config/<path>の先の値か、/config?path=...で指定した
+// 複数のpathの先の値を返します。pathの各要素は文書のkeyか配列の添字で、一つでも辿れ
+// なければ404にし、辿れなかったpathを理由に含めます。
+func (h *handler) serveConfig(w http.ResponseWriter, r *http.Request, request outputsettings.Request) {
+	if r.Method != http.MethodGet {
+		const reason = "method not allowed"
+		w.Header().Set("Allow", "GET")
+		writeError(w, http.StatusMethodNotAllowed, reason, h.service.Reject(r.Context(), request, reason))
+		return
+	}
+	if rest, ok := strings.CutPrefix(r.URL.Path, "/config/"); ok {
+		value, found := h.config.Value(strings.Split(rest, "/"))
+		if !found {
+			const reason = "not found"
+			writeError(w, http.StatusNotFound, reason, h.service.Reject(r.Context(), request, reason))
+			return
+		}
+		writeJSON(w, http.StatusOK, value)
+		return
+	}
+	paths := r.URL.Query()["path"]
+	if len(paths) == 0 {
+		writeJSON(w, http.StatusOK, h.config.Document())
+		return
+	}
+	values := make(map[string]any, len(paths))
+	var missing []string
+	for _, path := range paths {
+		value, found := h.config.Value(strings.Split(strings.Trim(path, "/"), "/"))
+		if !found {
+			missing = append(missing, path)
+			continue
+		}
+		values[path] = value
+	}
+	if len(missing) > 0 {
+		reason := "not found: " + strings.Join(missing, ", ")
+		writeError(w, http.StatusNotFound, reason, h.service.Reject(r.Context(), request, reason))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"values": values})
 }
 
 // authorizedは、tokenのdigestを一定時間で比較します。拒否までの時間から、tokenの

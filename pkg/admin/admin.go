@@ -1,13 +1,30 @@
 // Package admin holds the configuration types of the admin API, which reads and
-// changes the level and sampling of the outputs of running loggers. The
-// heterolog package serves the API with NewAdminHandler and StartAdminServer,
-// which record every change request in an audit logger.
+// changes the level and sampling of the outputs of running loggers and reports
+// the configuration of loggers and telemetries. The heterolog package serves
+// the API with NewAdminHandler and StartAdminServer, which record every change
+// request in an audit logger.
 package admin
 
-import pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+import (
+	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	"github.com/go-jappe/heterolog/pkg/telemetry"
+)
 
 // MinTokenLength is the minimum length in bytes of an admin API token.
 const MinTokenLength = 32
+
+// Members are the loggers and telemetries the admin API serves, each under the
+// name used in the API. A name must not appear in more than one map.
+type Members struct {
+	// Loggers are the loggers whose settings the API reads and changes, and
+	// whose configuration it reports. At least one is required.
+	Loggers map[string]pkglogger.SettingsController
+	// DeliveryLoggers are delivery loggers whose configuration the API reports.
+	// They have no settings that change while running.
+	DeliveryLoggers map[string]pkglogger.DeliveryLogger
+	// Telemetries are telemetries whose configuration the API reports.
+	Telemetries map[string]telemetry.Telemetry
+}
 
 // HandlerConfig configures the admin API handler.
 type HandlerConfig struct {
@@ -15,9 +32,8 @@ type HandlerConfig struct {
 	// "Authorization: Bearer <Token>". It must be at least MinTokenLength bytes;
 	// create it at random, for example with "openssl rand -hex 32".
 	Token string
-	// Loggers maps the names used in the API to the loggers whose settings it
-	// reads and changes.
-	Loggers map[string]pkglogger.SettingsController
+	// Members are the loggers and telemetries the API serves.
+	Members Members
 }
 
 // ServerConfig configures the dedicated admin API server.

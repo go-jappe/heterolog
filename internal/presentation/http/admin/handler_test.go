@@ -12,9 +12,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jappe/heterolog/internal/application/configview"
 	"github.com/go-jappe/heterolog/internal/application/outputsettings"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
+	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
 const tokenForTest = "0123456789abcdef0123456789abcdef"
@@ -102,7 +105,7 @@ func (l *auditLoggerForTest) snapshot() []string {
 func newHandlerForTest(t *testing.T, loggers map[string]pkglogger.SettingsController) (http.Handler, *auditLoggerForTest) {
 	t.Helper()
 	audit := &auditLoggerForTest{}
-	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Loggers: loggers}, audit)
+	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{Loggers: loggers}}, audit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,13 +126,13 @@ func requestForTest(t *testing.T, handler http.Handler, method, path, token, bod
 
 func TestNewHandlerRejectsAShortTokenNoLoggersAndNoAuditLogger(t *testing.T) {
 	loggers := map[string]pkglogger.SettingsController{"app": newControllerForTest(t)}
-	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: "short", Loggers: loggers}, &auditLoggerForTest{}); !errors.Is(err, ErrTokenTooShort) {
+	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: "short", Members: pkgadmin.Members{Loggers: loggers}}, &auditLoggerForTest{}); !errors.Is(err, ErrTokenTooShort) {
 		t.Errorf("NewHandler(short token) error = %v, want ErrTokenTooShort", err)
 	}
 	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest}, &auditLoggerForTest{}); !errors.Is(err, outputsettings.ErrNoLoggers) {
 		t.Errorf("NewHandler(no loggers) error = %v, want ErrNoLoggers", err)
 	}
-	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Loggers: loggers}, nil); !errors.Is(err, outputsettings.ErrNoAuditLogger) {
+	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{Loggers: loggers}}, nil); !errors.Is(err, outputsettings.ErrNoAuditLogger) {
 		t.Errorf("NewHandler(no audit logger) error = %v, want ErrNoAuditLogger", err)
 	}
 }
@@ -385,5 +388,126 @@ func TestHandlerRejectsOtherMethodsAndPaths(t *testing.T) {
 	want := []string{post + " rejected method not allowed", other + " rejected not found"}
 	if got := audit.snapshot(); !slices.Equal(got, want) {
 		t.Errorf("audit records = %q, want %q", got, want)
+	}
+}
+
+// configSourceForTestは、設定を示せるController・delivery logger・telemetryの代わりです。
+type configSourceForTest struct {
+	controllerForTest
+	auditLoggerForTest
+	cfg configview.Configuration
+}
+
+func (s *configSourceForTest) Configuration() configview.Configuration { return s.cfg }
+
+func (s *configSourceForTest) Tracer() pkgobserver.Tracer     { return nil }
+func (s *configSourceForTest) Meter() pkgobserver.Meter       { return nil }
+func (s *configSourceForTest) Shutdown(context.Context) error { return nil }
+
+func TestHandlerServesTheConfigWithSecretsMasked(t *testing.T) {
+	app := &configSourceForTest{controllerForTest: newControllerForTest(t), cfg: configview.Configuration{
+		Kind: configview.KindLogger,
+		Value: pkglogger.LoggerConfig{Timeout: 3 * time.Second, LogOutputDestinations: pkglogger.LogOutputDestinations{pkglogger.LogOutputSlack},
+			Slack: &pkglogger.SlackLoggerConfig{Token: "xoxb-secret", Channel: "#ops"}},
+	}}
+	audit := &configSourceForTest{cfg: configview.Configuration{Kind: configview.KindDeliveryLogger, Value: pkglogger.DeliveryLoggerConfig{MaxLogEntryBytes: 64}}}
+	tel := &configSourceForTest{cfg: configview.Configuration{Kind: configview.KindTelemetry, Value: pkgtelemetry.Config{Traces: pkgtelemetry.TracesConfig{SamplingRatio: 0.25}}}}
+	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{
+		Loggers:         map[string]pkglogger.SettingsController{"app": app, "plain": newControllerForTest(t)},
+		DeliveryLoggers: map[string]pkglogger.DeliveryLogger{"audit": audit},
+		Telemetries:     map[string]pkgtelemetry.Telemetry{"tel": tel},
+	}}, &auditLoggerForTest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body, _ := requestForTest(t, handler, http.MethodGet, "/config", tokenForTest, "")
+	if status != http.StatusOK {
+		t.Fatalf("GET /config = %d %s, want 200", status, body)
+	}
+	for _, want := range []string{
+		`"app": {`, `"kind": "logger"`, `"timeout": "3s"`, `"log_output_destinations": [`, `"token": "***"`, `"channel": "#ops"`,
+		`"audit": {`, `"kind": "delivery_logger"`, `"max_log_entry_bytes": 64`,
+		`"telemetries": {`, `"tel": {`, `"kind": "telemetry"`, `"sampling_ratio": 0.25`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET /config lacks %s:\n%s", want, body)
+		}
+	}
+	// 設定を示せないControllerと、秘密の値は、文書に入りません。
+	for _, unwanted := range []string{`"plain"`, "xoxb-secret"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("GET /config contains %s:\n%s", unwanted, body)
+		}
+	}
+	for path, want := range map[string]string{
+		"/config/loggers/app/config/slack/channel":             `"#ops"`,
+		"/config/loggers/app/config/log_output_destinations/0": `"slack"`,
+		"/config/telemetries/tel/kind":                         `"telemetry"`,
+	} {
+		status, body, _ := requestForTest(t, handler, http.MethodGet, path, tokenForTest, "")
+		if status != http.StatusOK || strings.TrimSpace(body) != want {
+			t.Errorf("GET %s = %d %q, want 200 %s", path, status, body, want)
+		}
+	}
+}
+
+func TestHandlerServesSeveralConfigValuesInOneRequest(t *testing.T) {
+	app := &configSourceForTest{controllerForTest: newControllerForTest(t), cfg: configview.Configuration{
+		Kind: configview.KindLogger, Value: pkglogger.LoggerConfig{Timeout: 3 * time.Second, MaxLogEntryBytes: 512},
+	}}
+	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{
+		Loggers: map[string]pkglogger.SettingsController{"app": app},
+	}}, &auditLoggerForTest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body, _ := requestForTest(t, handler, http.MethodGet, "/config?path=loggers/app/config/timeout&path=/loggers/app/kind", tokenForTest, "")
+	if status != http.StatusOK {
+		t.Fatalf("GET /config?path=... = %d %s, want 200", status, body)
+	}
+	var document struct {
+		Values map[string]any `json:"values"`
+	}
+	if err := json.Unmarshal([]byte(body), &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.Values["loggers/app/config/timeout"] != "3s" || document.Values["/loggers/app/kind"] != "logger" {
+		t.Errorf("values = %v, want the timeout and the kind under the given paths", document.Values)
+	}
+	// 一つでも辿れないpathがあれば404にし、そのpathを理由に含めます。
+	status, body, _ = requestForTest(t, handler, http.MethodGet, "/config?path=loggers/app/config/timeout&path=loggers/nope", tokenForTest, "")
+	if status != http.StatusNotFound || !strings.Contains(body, "loggers/nope") || strings.Contains(body, `"3s"`) {
+		t.Errorf("GET with a missing path = %d %s, want 404 naming loggers/nope and no values", status, body)
+	}
+}
+
+func TestHandlerRejectsUnknownConfigPathsAndOtherMethods(t *testing.T) {
+	handler, audit := newHandlerForTest(t, map[string]pkglogger.SettingsController{"app": newControllerForTest(t)})
+	status, body, missing := requestForTest(t, handler, http.MethodGet, "/config/loggers/nope", tokenForTest, "")
+	if status != http.StatusNotFound {
+		t.Errorf("GET /config/loggers/nope = %d %s, want 404", status, body)
+	}
+	status, body, trailing := requestForTest(t, handler, http.MethodGet, "/config/", tokenForTest, "")
+	if status != http.StatusNotFound {
+		t.Errorf("GET /config/ = %d %s, want 404", status, body)
+	}
+	status, body, patch := requestForTest(t, handler, http.MethodPatch, "/config", tokenForTest, "{}")
+	if status != http.StatusMethodNotAllowed {
+		t.Errorf("PATCH /config = %d %s, want 405", status, body)
+	}
+	want := []string{missing + " rejected not found", trailing + " rejected not found", patch + " rejected method not allowed"}
+	if got := audit.snapshot(); !slices.Equal(got, want) {
+		t.Errorf("audit records = %q, want %q", got, want)
+	}
+}
+
+func TestNewHandlerRejectsANameUsedTwice(t *testing.T) {
+	app := &configSourceForTest{controllerForTest: newControllerForTest(t)}
+	_, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{
+		Loggers:     map[string]pkglogger.SettingsController{"app": app},
+		Telemetries: map[string]pkgtelemetry.Telemetry{"app": app},
+	}}, &auditLoggerForTest{})
+	if !errors.Is(err, ErrDuplicateName) {
+		t.Errorf("NewHandler(name used twice) error = %v, want ErrDuplicateName", err)
 	}
 }
