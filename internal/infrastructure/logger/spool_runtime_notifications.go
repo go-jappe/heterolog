@@ -109,7 +109,7 @@ type failureSpoolRunLogReporter struct {
 
 func (r *failureSpoolRunLogReporter) ReportSpoolRunnerRun(ctx context.Context, report logspool.RunReport, err error) {
 	// StopOnError等に使う戻り値は変更せず、停止要求だけのエラーは通知から除きます。
-	if notificationErr := failureSpoolNotificationError(ctx, err); notificationErr != nil && r.onError != nil {
+	if notificationErr := logspool.NotificationError(ctx, err); notificationErr != nil && r.onError != nil {
 		entry := r.entry(pkglogger.LogLevelError, "failure spool runner failed", report, notificationErr)
 		r.notifications.Enqueue(func() {
 			handler.CallErrorHandlerIfPresent(r.onError, ctx, notificationErr, entry, r.tracer, r.meter)
@@ -171,41 +171,4 @@ func (r *failureSpoolRunLogReporter) entry(level pkglogger.LogLevel, message str
 			"transition_retry_operation": report.ProcessingFileTransitionRetryReport.Operation,
 		},
 	}
-}
-
-// runtimeへの中止要求だけは異常通知から除きます。送信timeoutや、まだ稼働中の
-// runtimeに戻ったcontext errorは通知し、Joinされた別の障害も捨てません。
-// Unwrapがnilや空の原因を返すerror（例: Errがnilのos.PathError）は辿れる原因を
-// 持たないため、それ自体を障害として判定し、中止要求でなければ通知します。
-func failureSpoolNotificationError(ctx context.Context, err error) error {
-	if err == nil {
-		return nil
-	}
-	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		var remaining []error
-		causes := 0
-		for _, cause := range joined.Unwrap() {
-			if cause == nil {
-				continue
-			}
-			causes++
-			if cause = failureSpoolNotificationError(ctx, cause); cause != nil {
-				remaining = append(remaining, cause)
-			}
-		}
-		if causes > 0 {
-			return errors.Join(remaining...)
-		}
-	} else if wrapped, ok := err.(interface{ Unwrap() error }); ok {
-		if cause := wrapped.Unwrap(); cause != nil {
-			if failureSpoolNotificationError(ctx, cause) == nil {
-				return nil
-			}
-			return err
-		}
-	}
-	if errors.Is(ctx.Err(), context.Canceled) && errors.Is(err, context.Canceled) {
-		return nil
-	}
-	return err
 }

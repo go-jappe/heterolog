@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -173,51 +172,6 @@ func TestFailureSpoolCloseDrainsAcceptedNotificationUnlessForced(t *testing.T) {
 				}
 				boundedwait.ReceiveInBubble(t, runtime.ShutdownDone(), "the runtime shutdown")
 			})
-		})
-	}
-}
-
-func TestFailureSpoolNotificationErrorKeepsFailuresJoinedWithCancellation(t *testing.T) {
-	stoppedCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	failure := errors.New("filesystem failed")
-	err := failureSpoolNotificationError(stoppedCtx, errors.Join(fmt.Errorf("stop: %w", context.Canceled), failure))
-	require.ErrorIs(t, err, failure)
-	require.NotErrorIs(t, err, context.Canceled)
-	for _, err := range []error{nil, context.Canceled, fmt.Errorf("stop: %w", context.Canceled)} {
-		require.NoError(t, failureSpoolNotificationError(stoppedCtx, err))
-	}
-	for _, ctx := range []context.Context{context.Background(), stoppedCtx} {
-		require.ErrorIs(t, failureSpoolNotificationError(ctx, context.DeadlineExceeded), context.DeadlineExceeded)
-	}
-	require.ErrorIs(t, failureSpoolNotificationError(context.Background(), context.Canceled), context.Canceled)
-}
-
-// causeLessJoinErrorは原因を一つも返さないmulti-error実装です。
-type causeLessJoinError struct{}
-
-func (causeLessJoinError) Error() string   { return "multi error without causes" }
-func (causeLessJoinError) Unwrap() []error { return nil }
-
-// Unwrapがnilや空の原因を返すerrorも、中止要求ではない障害として通知します。
-// runtimeが稼働中かどうかにかかわらず、原因を辿れないことを理由に捨ててはいけません。
-func TestFailureSpoolNotificationErrorKeepsErrorsWithoutCause(t *testing.T) {
-	stoppedCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	for name, ctx := range map[string]context.Context{"running": context.Background(), "stopped": stoppedCtx} {
-		t.Run(name, func(t *testing.T) {
-			pathErr := &os.PathError{Op: "open", Path: "active.hlogspool"}
-			require.Nil(t, pathErr.Unwrap())
-			require.Same(t, pathErr, failureSpoolNotificationError(ctx, pathErr))
-
-			wrapped := fmt.Errorf("claim spool file: %w", pathErr)
-			require.Same(t, wrapped, failureSpoolNotificationError(ctx, wrapped))
-
-			joined := failureSpoolNotificationError(ctx, errors.Join(fmt.Errorf("stop: %w", context.Canceled), pathErr))
-			require.ErrorIs(t, joined, pathErr)
-
-			var causeLess error = causeLessJoinError{}
-			require.Equal(t, causeLess, failureSpoolNotificationError(ctx, causeLess))
 		})
 	}
 }
