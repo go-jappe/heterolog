@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/tracing"
+	"github.com/go-jappe/heterolog/internal/infrastructure/otlpcommon"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
@@ -22,7 +23,7 @@ var (
 )
 
 func testSpans() ([]tracing.SpanData, *tracing.Resource) {
-	defaultResource := NewResource(pkglogger.Resource{ServiceName: "api", Environment: "prod"})
+	defaultResource := otlpcommon.NewResource(pkglogger.Resource{ServiceName: "api", Environment: "prod"})
 	sdkResource := &tracing.Resource{Attrs: []pkgobserver.Attr{{Key: "service.name", Value: "sdk"}}, SchemaURL: "https://example.com/schema"}
 	root := tracing.SpanData{
 		TraceID:   tracing.TraceID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
@@ -216,12 +217,5 @@ func TestMarshalJSONFollowsTheOTLPJSONMapping(t *testing.T) {
 	}
 	if status, _ := json.Marshal(root["status"]); string(status) != `{"code":2,"message":"boom"}` {
 		t.Errorf("status = %s", status)
-	}
-}
-
-func TestNewResourceNamesAnUnknownService(t *testing.T) {
-	r := NewResource(pkglogger.Resource{})
-	if len(r.Attrs) != 1 || !strings.HasPrefix(r.Attrs[0].Value.(string), "unknown_service:") {
-		t.Errorf("resource = %+v, want only an unknown_service name", r.Attrs)
 	}
 }

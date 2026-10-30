@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"time"
 
+	"github.com/go-jappe/heterolog/internal/application/telemetrydata"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
@@ -54,18 +55,11 @@ func ParseSpanID(s pkgobserver.SpanID) SpanID {
 }
 
 // Scopeは、spanを作った計装（OpenTelemetryのinstrumentation scope）です。
-type Scope struct {
-	Name    string
-	Version string
-}
+type Scope = telemetrydata.Scope
 
 // Resourceは、spanを送ったprocessを表す属性です。SpanDataのResourceがnilのspanは、
 // 配送の仕組みに設定したResourceで送ります。
-type Resource struct {
-	Attrs        []pkgobserver.Attr
-	DroppedAttrs int
-	SchemaURL    string
-}
+type Resource = telemetrydata.Resource
 
 // Eventは、spanの途中で起きたことです。
 type Event struct {

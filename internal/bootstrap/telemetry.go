@@ -13,9 +13,9 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/failurestore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/otlphttp"
+	"github.com/go-jappe/heterolog/internal/infrastructure/otlpcommon"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces/jsonlines"
-	"github.com/go-jappe/heterolog/internal/infrastructure/traces/otlp"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
@@ -70,7 +70,7 @@ func newTraceDestinations(
 	meter pkgobserver.Meter,
 	report delivery.ErrorHandler,
 ) ([]traces.Destination, error) {
-	resource := otlp.NewResource(cfg.Resource)
+	resource := otlpcommon.NewResource(cfg.Resource)
 	destinations := make([]traces.Destination, 0, len(cfg.Traces.Exporters))
 	for _, name := range cfg.Traces.Exporters {
 		switch name {

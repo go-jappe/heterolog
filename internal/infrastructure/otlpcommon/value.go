@@ -1,9 +1,10 @@
-// Package otlpは、終わったspanをOTLP（OpenTelemetry Protocol）のprotobufとJSONに変換します。
-// protobufは、OTLP/HTTPのExportTraceServiceRequestと同じ形のTracesDataです。JSONは、
-// OTLP/JSONの規則（IDは16進数、enumは数値、64-bitの整数は文字列）に従います。
-// 生成したprotobufの型は使わず、google.golang.org/protobuf/encoding/protowireで直接
-// 書きます。protobufの型とreflectionを、heterologを使うすべてのprogramへ入れないためです。
-package otlp
+// Package otlpcommonは、OTLP（OpenTelemetry Protocol）の、spanとmetricsに共通する部分の
+// 変換です。属性（KeyValueとAnyValue）、Resource、InstrumentationScopeを、protobufとOTLP/JSON
+// へ書き、OTLP/JSONから読みます。OTLP/JSONは、IDは16進数、enumは数値、64-bitの整数は文字列と
+// いう規則に従います。生成したprotobufの型は使わず、google.golang.org/protobuf/encoding/
+// protowireで直接書きます。protobufの型とreflectionを、heterologを使うすべてのprogramへ
+// 入れないためです。
+package otlpcommon
 
 import (
 	"fmt"
@@ -100,19 +101,20 @@ func arrayValue[T any](values []T) value {
 	return value{kind: kindArray, array: out}
 }
 
-// keyValueは、変換した属性です。
-type keyValue struct {
+// KeyValueは、変換した属性です。
+type KeyValue struct {
 	key   string
 	value value
 }
 
-func toKeyValues(attrs []pkgobserver.Attr) []keyValue {
+// ToKeyValuesは、属性を、型を保ったままAnyValueの属性に変換します。
+func ToKeyValues(attrs []pkgobserver.Attr) []KeyValue {
 	if len(attrs) == 0 {
 		return nil
 	}
-	out := make([]keyValue, len(attrs))
+	out := make([]KeyValue, len(attrs))
 	for i, attr := range attrs {
-		out[i] = keyValue{key: attr.Key, value: toValue(attr.Value)}
+		out[i] = KeyValue{key: attr.Key, value: toValue(attr.Value)}
 	}
 	return out
 }
