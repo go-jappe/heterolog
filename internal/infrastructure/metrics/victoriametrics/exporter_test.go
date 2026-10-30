@@ -14,6 +14,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/metrics"
 	"github.com/go-jappe/heterolog/internal/application/telemetrydata"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/otlphttp"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/retrying"
 	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/internal/testutil/observertest"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
@@ -70,7 +71,7 @@ func TestExporterPostsTheTextFormat(t *testing.T) {
 	meter := observertest.NewMeter()
 	exporter := NewExporter(otlphttp.Config{
 		Endpoint: server.URL + "/api/v1/import/prometheus", Compression: "gzip", Timeout: time.Second,
-		Retries: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond,
+		Retry: retrying.Config{Retries: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond},
 	}, &telemetrydata.Resource{}, meter)
 	defer exporter.Close()
 	err := exporter.Export(context.Background(), []metrics.Metric{{Name: "orders_total", Kind: metrics.KindSum, Points: []metrics.Point{{Time: testTime, IsInt: true, Int: 1}}}})

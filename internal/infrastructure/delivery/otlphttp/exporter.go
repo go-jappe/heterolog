@@ -11,16 +11,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/retrying"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/circuitbreaker"
-	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 )
 
@@ -38,13 +35,10 @@ type Config struct {
 	Endpoint string
 	Headers  map[string]string
 	// Compressionは、gzipかnoneです。
-	Compression    string
-	Timeout        time.Duration
-	Retries        int
-	RetryBaseDelay time.Duration
-	RetryMaxDelay  time.Duration
-	// CircuitBreakerは、続けて失敗した後、しばらく要求を送らずに失敗させます。
-	CircuitBreaker bool
+	Compression string
+	Timeout     time.Duration
+	// Retryは、送り直しとcircuit breakerの設定です。
+	Retry retrying.Config
 }
 
 // Signalは、送るものの種類（spanやmetric）による違いです。
@@ -65,149 +59,57 @@ type Signal[T any] struct {
 	ContentType string
 }
 
-// Exporterは、delivery.Exporterの実装です。
-type Exporter[T any] struct {
-	cfg       Config
-	signal    Signal[T]
-	meter     pkgobserver.Meter
-	transport *http.Transport
-	client    *http.Client
-	// breakerは、Config.CircuitBreakerのときだけ持ちます。
-	breaker *circuitbreaker.OperationGuard
-	// sleepは、再試行の前に待ちます。ctxが終わったらfalseを返します。試験で置き換えます。
-	sleep func(ctx context.Context, d time.Duration) bool
-	// jitterは、0からnまでの時間を無作為に返します。試験で置き換えます。
-	jitter func(n time.Duration) time.Duration
+// Exporterは、OTLP/HTTPの送り先です。
+type Exporter[T any] = retrying.Exporter[T]
+
+// senderは、1回の要求をOTLP/HTTPで送ります。
+type sender[T any] struct {
+	cfg    Config
+	signal Signal[T]
+	client *http.Client
 }
 
-// Newは、Exporterを返します。利用者のprogramのほかの通信に影響しないよう、HTTPの接続は
-// 専用のtransportで持ちます。
+// Newは、Exporterを返します。一時的な失敗は、OTLPの仕様の規則で送り直します。受信側が
+// 要求を大きすぎると拒否した場合（413）は、itemsを半分ずつに分けて送り直します。利用者の
+// programのほかの通信に影響しないよう、HTTPの接続は専用のtransportで持ちます。
 func New[T any](cfg Config, signal Signal[T], meter pkgobserver.Meter) *Exporter[T] {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	var breaker *circuitbreaker.OperationGuard
-	if cfg.CircuitBreaker {
-		breaker = circuitbreaker.NewOperationGuard(circuitbreaker.OperationGuardOptions{
-			Meter:     meter,
-			Backend:   signal.BackendName,
-			EventName: signal.BackendName + ".circuit_breaker",
-			Classify:  classify,
-		})
-	}
-	return &Exporter[T]{
-		breaker:   breaker,
-		cfg:       cfg,
-		signal:    signal,
-		meter:     observer.EnsureMeter(meter),
-		transport: transport,
+	s := &sender[T]{
+		cfg:    cfg,
+		signal: signal,
 		client: &http.Client{
 			Transport: transport,
 			// redirectは、設定した送信先が本来の送信先ではないことを表します。ログの送信と
 			// 同じく追従せず、元のHTTP statusを失敗として返します。
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
-		sleep:  sleepContext,
-		jitter: randomDuration,
 	}
-}
-
-func (e *Exporter[T]) Name() string {
-	if e.signal.Name != "" {
-		return e.signal.Name
+	name := signal.Name
+	if name == "" {
+		name = ExporterName
 	}
-	return ExporterName
-}
-
-// Exportは、itemsを1回の要求で送ります。一時的な失敗は、Retries回まで送り直します。
-// 受信側が要求を大きすぎると拒否した場合（413）は、itemsを半分ずつに分けて送り直します。
-// 送れなかったものがあれば、範囲ごとの扱いを入れた*delivery.ExportErrorを返します。
-func (e *Exporter[T]) Export(ctx context.Context, items []T) error {
-	run := exportRun[T]{exporter: e}
-	run.export(ctx, items, 0)
-	if len(run.failures) == 0 {
-		return nil
-	}
-	return &delivery.ExportError{Failures: run.failures}
-}
-
-// exportRunは、1回のExportで分けて送った要求の結果を集めます。
-type exportRun[T any] struct {
-	exporter *Exporter[T]
-	failures []delivery.Failure
-	// stoppedは、送り直す扱いで諦めた要求の失敗です。受信側の状態が悪いか、Retry-Afterで
-	// 待つよう求められているため、残りの要求は送らずに同じ扱いにします。
-	stopped *delivery.Failure
-}
-
-// exportは、batchのoffsetから始まるitemsを送ります。
-func (r *exportRun[T]) export(ctx context.Context, items []T, offset int) {
-	if r.stopped != nil {
-		failure := *r.stopped
-		failure.Start, failure.End = offset, offset+len(items)
-		failure.Err = fmt.Errorf("not sent after an earlier request failed: %w", r.stopped.Err)
-		r.failures = append(r.failures, failure)
-		return
-	}
-	err := r.exporter.sendWithRetries(ctx, items)
-	if err == nil {
-		return
-	}
-	var statusErr *StatusError
-	if errors.As(err, &statusErr) && statusErr.Code == http.StatusRequestEntityTooLarge && len(items) > 1 {
-		r.exporter.countRetry(ctx, retryable.RetryReasonRequestTooLarge)
-		half := len(items) / 2
-		r.export(ctx, items[:half], offset)
-		r.export(ctx, items[half:], offset+half)
-		return
-	}
-	failure := failureOf(ctx, err)
-	failure.Start, failure.End = offset, offset+len(items)
-	r.failures = append(r.failures, failure)
-	if failure.Disposition == delivery.DispositionRetry {
-		r.stopped = &failure
-	}
-}
-
-// sendWithRetriesは、itemsを1回の要求で送り、一時的な失敗をRetries回まで送り直します。
-// Retry-AfterがRetryMaxDelayより長い場合は、待たずに諦めます。仕様はRetry-Afterに従うよう
-// 求めており、送り先にfailure storeがあれば、そこで期限まで待ちます。
-func (e *Exporter[T]) sendWithRetries(ctx context.Context, items []T) error {
-	body, encoding, err := e.encode(items)
-	if err != nil {
-		return err
-	}
-	for retry := 1; ; retry++ {
-		err = e.sendGuarded(ctx, body, encoding)
-		if err == nil {
+	return retrying.New(cfg.Retry, retrying.Backend[T]{
+		Name:          name,
+		BackendName:   signal.BackendName,
+		RetriesMetric: signal.RetriesMetric,
+		Send:          s.sendItems,
+		Classify:      classify,
+		Split:         split,
+		Fail:          failureOf,
+		Close: func() error {
+			transport.CloseIdleConnections()
 			return nil
-		}
-		decision := classify(ctx, err)
-		if !decision.Retry || retry > e.cfg.Retries || decision.RetryAfter > e.cfg.RetryMaxDelay {
-			return err
-		}
-		e.countRetry(ctx, decision.Reason)
-		if !e.sleep(ctx, e.retryDelay(retry, decision)) {
-			return retryable.InterruptedWait(err, ctx.Err())
-		}
-	}
+		},
+	}, meter)
 }
 
-// sendGuardedは、circuit breakerがあれば、その許可を得てから1回の要求を送ります。
-// breakerが開いている間は送らず、*retryable.CircuitBreakerOpenErrorを返します。errorには、
-// どの送り先のbreakerか分かるよう、Signal.BackendNameを操作の名前として入れます。
-func (e *Exporter[T]) sendGuarded(ctx context.Context, body []byte, encoding string) error {
-	if e.breaker == nil {
-		return e.send(ctx, body, encoding)
+// splitは、受信側が要求を大きすぎると拒否した場合（413）に、要求を分けます。
+func split(_ context.Context, err error) retryable.RetryReason {
+	var statusErr *StatusError
+	if errors.As(err, &statusErr) && statusErr.Code == http.StatusRequestEntityTooLarge {
+		return retryable.RetryReasonRequestTooLarge
 	}
-	return e.breaker.Do(ctx, e.signal.BackendName, func(ctx context.Context) error {
-		return e.send(ctx, body, encoding)
-	})
-}
-
-func (e *Exporter[T]) countRetry(ctx context.Context, reason retryable.RetryReason) {
-	e.meter.Counter(e.signal.RetriesMetric).Add(ctx, 1,
-		pkgobserver.Attr{Key: telemetry.AttrExporter, Value: e.Name()},
-		pkgobserver.Attr{Key: telemetry.AttrReason, Value: string(reason)},
-	)
+	return ""
 }
 
 // failureOfは、諦めた要求のerrorから、failure storeでの扱いを決めます。受信側がstatusで
@@ -270,30 +172,19 @@ func classify(ctx context.Context, err error) retryable.RetryDecision {
 	return decision
 }
 
-// retryDelayは、n回目の送り直しの前に待つ時間です。応答にRetry-Afterがあれば、それを
-// 使います（RetryMaxDelayより長い場合、sendWithRetriesは送り直しません）。なければ、
-// RetryBaseDelayを1回ごとに2倍にしてRetryMaxDelayまでに抑え、その半分から全部までの間で
-// 無作為に選びます。同じ受信側へ送る多くのprocessが、同時に送り直さないようにするためです。
-func (e *Exporter[T]) retryDelay(retry int, decision retryable.RetryDecision) time.Duration {
-	if decision.RetryAfter > 0 {
-		return decision.RetryAfter
+// sendItemsは、itemsを1回の要求で送ります。
+func (s *sender[T]) sendItems(ctx context.Context, items []T) error {
+	body, encoding, err := s.encode(items)
+	if err != nil {
+		return err
 	}
-	delay := e.cfg.RetryBaseDelay
-	for i := 1; i < retry && delay < e.cfg.RetryMaxDelay; i++ {
-		if delay > e.cfg.RetryMaxDelay/2 {
-			delay = e.cfg.RetryMaxDelay
-			break
-		}
-		delay *= 2
-	}
-	delay = min(delay, e.cfg.RetryMaxDelay)
-	return delay/2 + e.jitter(delay-delay/2)
+	return s.send(ctx, body, encoding)
 }
 
 // encodeは、itemsをprotobufにし、設定に従ってgzipで圧縮します。
-func (e *Exporter[T]) encode(items []T) ([]byte, string, error) {
-	body := e.signal.Encode(items)
-	if e.cfg.Compression != "gzip" {
+func (s *sender[T]) encode(items []T) ([]byte, string, error) {
+	body := s.signal.Encode(items)
+	if s.cfg.Compression != "gzip" {
 		return body, "", nil
 	}
 	var buf bytes.Buffer
@@ -309,18 +200,18 @@ func (e *Exporter[T]) encode(items []T) ([]byte, string, error) {
 }
 
 // sendは、1回の要求を送ります。
-func (e *Exporter[T]) send(ctx context.Context, body []byte, encoding string) error {
-	attemptCtx, cancel := context.WithTimeout(ctx, e.cfg.Timeout)
+func (s *sender[T]) send(ctx context.Context, body []byte, encoding string) error {
+	attemptCtx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, e.cfg.Endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, s.cfg.Endpoint, bytes.NewReader(body))
 	if err != nil {
 		// URLは認証情報を含み得るため、errorに入れません。
 		return errors.New("create OTLP request: the endpoint URL is invalid")
 	}
-	for name, value := range e.cfg.Headers {
+	for name, value := range s.cfg.Headers {
 		req.Header.Set(name, value)
 	}
-	contentType := e.signal.ContentType
+	contentType := s.signal.ContentType
 	if contentType == "" {
 		contentType = protobufContentType
 	}
@@ -328,7 +219,7 @@ func (e *Exporter[T]) send(ctx context.Context, body []byte, encoding string) er
 	if encoding != "" {
 		req.Header.Set("Content-Encoding", encoding)
 	}
-	resp, err := e.client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -353,7 +244,7 @@ func (e *Exporter[T]) send(ctx context.Context, body []byte, encoding string) er
 	}
 	return &partialSuccessError{
 		rejected: int(min(partial.Rejected, int64(^uint(0)>>1))),
-		unit:     e.signal.Unit,
+		unit:     s.signal.Unit,
 		message:  partial.ErrorMessage,
 	}
 }
@@ -368,12 +259,6 @@ type partialSuccessError struct {
 
 func (e *partialSuccessError) Error() string {
 	return fmt.Sprintf("the OTLP receiver rejected %d %s: %s", e.rejected, e.unit, e.message)
-}
-
-// Closeは、待機中の接続を閉じます。
-func (e *Exporter[T]) Close() error {
-	e.transport.CloseIdleConnections()
-	return nil
 }
 
 // StatusErrorは、受信側が2xx以外のHTTP statusを返したことを表します。
@@ -391,24 +276,3 @@ func (e *StatusError) Error() string {
 func (e *StatusError) StatusCode() int { return e.Code }
 
 func (e *StatusError) RetryAfter() time.Duration { return e.RetryAfterDuration }
-
-func randomDuration(n time.Duration) time.Duration {
-	if n <= 0 {
-		return 0
-	}
-	return rand.N(n + 1)
-}
-
-func sleepContext(ctx context.Context, d time.Duration) bool {
-	if d <= 0 {
-		return ctx.Err() == nil
-	}
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return true
-	case <-ctx.Done():
-		return false
-	}
-}

@@ -14,8 +14,8 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/tracing"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/retrying"
 	"github.com/go-jappe/heterolog/internal/infrastructure/http/retryable"
-	"github.com/go-jappe/heterolog/internal/infrastructure/logbackend/circuitbreaker"
 	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"github.com/go-jappe/heterolog/internal/infrastructure/traces/otlp"
 	"github.com/go-jappe/heterolog/internal/testutil/observertest"
@@ -85,15 +85,15 @@ func newTestExporter(t *testing.T, r *receiver, cfg Config) (*Exporter[tracing.S
 		cfg.Timeout = 5 * time.Second
 	}
 	meter := observertest.NewMeter()
-	e := New(cfg, testSignal, meter)
-	t.Cleanup(func() { _ = e.Close() })
 	var waits []time.Duration
-	e.sleep = func(ctx context.Context, d time.Duration) bool {
+	cfg.Retry.Sleep = func(ctx context.Context, d time.Duration) bool {
 		waits = append(waits, d)
 		return ctx.Err() == nil
 	}
 	// 待ち時間を確かめられるよう、ばらつきの範囲の上限を選びます。
-	e.jitter = func(n time.Duration) time.Duration { return n }
+	cfg.Retry.Jitter = func(n time.Duration) time.Duration { return n }
+	e := New(cfg, testSignal, meter)
+	t.Cleanup(func() { _ = e.Close() })
 	return e, meter, &waits
 }
 
@@ -141,7 +141,7 @@ func TestExportRetriesTemporaryFailures(t *testing.T) {
 		status(http.StatusGatewayTimeout),
 		status(http.StatusTooManyRequests),
 	}}
-	e, meter, waits := newTestExporter(t, r, Config{Retries: 4, RetryBaseDelay: 100 * time.Millisecond, RetryMaxDelay: time.Second})
+	e, meter, waits := newTestExporter(t, r, Config{Retry: retrying.Config{Retries: 4, RetryBaseDelay: 100 * time.Millisecond, RetryMaxDelay: time.Second}})
 	if err := e.Export(context.Background(), testBatch); err != nil {
 		t.Fatal(err)
 	}
@@ -158,41 +158,11 @@ func TestExportRetriesTemporaryFailures(t *testing.T) {
 	}
 }
 
-func TestRetryDelayGrowsExponentiallyWithJitterUpToTheMaximum(t *testing.T) {
-	e := New(Config{RetryBaseDelay: 100 * time.Millisecond, RetryMaxDelay: time.Second}, testSignal, nil)
-	for _, tc := range []struct {
-		retry    int
-		low, top time.Duration
-	}{
-		{1, 50 * time.Millisecond, 100 * time.Millisecond},
-		{2, 100 * time.Millisecond, 200 * time.Millisecond},
-		{4, 400 * time.Millisecond, 800 * time.Millisecond},
-		{5, 500 * time.Millisecond, time.Second},
-		{100, 500 * time.Millisecond, time.Second},
-	} {
-		e.jitter = func(time.Duration) time.Duration { return 0 }
-		if got := e.retryDelay(tc.retry, retryable.RetryDecision{Retry: true}); got != tc.low {
-			t.Errorf("retry %d: lowest delay = %v, want %v", tc.retry, got, tc.low)
-		}
-		e.jitter = func(n time.Duration) time.Duration { return n }
-		if got := e.retryDelay(tc.retry, retryable.RetryDecision{Retry: true}); got != tc.top {
-			t.Errorf("retry %d: highest delay = %v, want %v", tc.retry, got, tc.top)
-		}
-	}
-	// 本来の無作為な値も、範囲に収まります。
-	e.jitter = randomDuration
-	for range 100 {
-		if got := e.retryDelay(2, retryable.RetryDecision{Retry: true}); got < 100*time.Millisecond || got > 200*time.Millisecond {
-			t.Fatalf("random delay = %v, want from 100ms to 200ms", got)
-		}
-	}
-}
-
 func TestExportStopsAfterTheRetries(t *testing.T) {
 	r := &receiver{t: t, responses: []func(http.ResponseWriter){
 		status(http.StatusServiceUnavailable), status(http.StatusServiceUnavailable), status(http.StatusServiceUnavailable),
 	}}
-	e, _, _ := newTestExporter(t, r, Config{Retries: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond})
+	e, _, _ := newTestExporter(t, r, Config{Retry: retrying.Config{Retries: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond}})
 	err := e.Export(context.Background(), testBatch)
 	var statusErr *StatusError
 	if !errors.As(err, &statusErr) || statusErr.Code != http.StatusServiceUnavailable || r.count() != 2 {
@@ -228,7 +198,7 @@ func TestExportDoesNotRetryPermanentFailuresOrFollowRedirects(t *testing.T) {
 		http.StatusTemporaryRedirect,
 	} {
 		r := &receiver{t: t, responses: []func(http.ResponseWriter){status(code, "Location", "/elsewhere")}}
-		e, _, _ := newTestExporter(t, r, Config{Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond})
+		e, _, _ := newTestExporter(t, r, Config{Retry: retrying.Config{Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond}})
 		err := e.Export(context.Background(), testBatch)
 		var statusErr *StatusError
 		if !errors.As(err, &statusErr) || statusErr.Code != code || r.count() != 1 {
@@ -249,7 +219,7 @@ func TestExportSplitsRequestsThatAreTooLarge(t *testing.T) {
 		status(http.StatusRequestEntityTooLarge),
 		status(http.StatusRequestEntityTooLarge),
 	}}
-	e, meter, _ := newTestExporter(t, r, Config{Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond})
+	e, meter, _ := newTestExporter(t, r, Config{Retry: retrying.Config{Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond}})
 	batch := []tracing.SpanData{
 		{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{1}, Name: "a"},
 		{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{2}, Name: "b"},
@@ -281,7 +251,7 @@ func TestExportStopsAfterARequestFailsTemporarily(t *testing.T) {
 		status(http.StatusRequestEntityTooLarge),
 		status(http.StatusTooManyRequests, "Retry-After", "60"),
 	}}
-	e, _, waits := newTestExporter(t, r, Config{Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Second})
+	e, _, waits := newTestExporter(t, r, Config{Retry: retrying.Config{Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Second}})
 	batch := []tracing.SpanData{
 		{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{1}, Name: "a"},
 		{TraceID: tracing.TraceID{1}, SpanID: tracing.SpanID{2}, Name: "b"},
@@ -311,18 +281,9 @@ func TestExportWithACircuitBreakerStopsSendingAfterRepeatedFailures(t *testing.T
 	for i := range r.responses {
 		r.responses[i] = status(http.StatusServiceUnavailable)
 	}
-	e, meter, _ := newTestExporter(t, r, Config{Retries: 0, CircuitBreaker: true})
-	if e.breaker == nil {
-		t.Fatal("CircuitBreaker did not create a breaker")
-	}
-	// breakerは、失敗が1分以上続くと開きます。時刻を進められるbreakerに替えます。
+	// breakerは、失敗が1分以上続くと開きます。時刻を進められるようにします。
 	now := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
-	e.breaker = circuitbreaker.NewOperationGuard(circuitbreaker.OperationGuardOptions{
-		CircuitBreaker: retryable.NewCircuitBreaker(retryable.CircuitBreakerOptions{Clock: func() time.Time { return now }}),
-		Meter:          meter,
-		Backend:        testBackendName,
-		Classify:       classify,
-	})
+	e, meter, _ := newTestExporter(t, r, Config{Retry: retrying.Config{CircuitBreaker: true, Now: func() time.Time { return now }}})
 	// 7回目の失敗（60秒後）で開き、30秒の間は送りません。9回目（80秒後）は断られます。
 	var err error
 	for range 9 {
@@ -356,7 +317,7 @@ func TestExportReportsPartialSuccessWithoutRetrying(t *testing.T) {
 		w.Header().Set("Content-Type", "application/x-protobuf")
 		_, _ = w.Write(response)
 	}}}
-	e, _, _ := newTestExporter(t, r, Config{Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond})
+	e, _, _ := newTestExporter(t, r, Config{Retry: retrying.Config{Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond}})
 	err = e.Export(context.Background(), testBatch)
 	// どのspanが受け付けられたか分からないため、quarantineとして残す扱いです。
 	want := delivery.Failure{Start: 0, End: 1, Disposition: delivery.DispositionQuarantine, Rejected: 1, Reason: "record_rejected"}
@@ -371,7 +332,7 @@ func TestExportTimesOutEachRequest(t *testing.T) {
 	r := &receiver{t: t, responses: []func(http.ResponseWriter){
 		func(http.ResponseWriter) { <-release },
 	}}
-	e, meter, _ := newTestExporter(t, r, Config{Timeout: 50 * time.Millisecond, Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond})
+	e, meter, _ := newTestExporter(t, r, Config{Timeout: 50 * time.Millisecond, Retry: retrying.Config{Retries: 3, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond}})
 	if err := e.Export(context.Background(), testBatch); err != nil {
 		t.Fatalf("Export = %v, want success on the retry after the timeout", err)
 	}
@@ -382,16 +343,23 @@ func TestExportTimesOutEachRequest(t *testing.T) {
 }
 
 func TestExportRetriesWhenItCannotConnect(t *testing.T) {
-	r := &receiver{t: t}
-	e, _, waits := newTestExporter(t, r, Config{Retries: 2, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond})
 	// 受信側を止め、接続を拒否させます。
-	server := httptest.NewServer(r)
-	e.cfg.Endpoint = server.URL
+	server := httptest.NewServer(http.NotFoundHandler())
+	endpoint := server.URL
 	server.Close()
+	var waits []time.Duration
+	e := New(Config{Endpoint: endpoint, Timeout: 5 * time.Second, Retry: retrying.Config{
+		Retries: 2, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond,
+		Sleep: func(_ context.Context, d time.Duration) bool {
+			waits = append(waits, d)
+			return true
+		},
+	}}, testSignal, nil)
+	defer e.Close()
 	if err := e.Export(context.Background(), testBatch); err == nil {
 		t.Fatal("Export = nil, want the connection error")
 	}
-	if len(*waits) != 2 {
-		t.Errorf("waits = %v, want two retries", *waits)
+	if len(waits) != 2 {
+		t.Errorf("waits = %v, want two retries", waits)
 	}
 }

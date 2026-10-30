@@ -16,6 +16,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/failurestore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/jsonlines"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/otlphttp"
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/retrying"
 	metricsdelivery "github.com/go-jappe/heterolog/internal/infrastructure/metrics"
 	"github.com/go-jappe/heterolog/internal/infrastructure/metrics/victoriametrics"
 	"github.com/go-jappe/heterolog/internal/infrastructure/otlpcommon"
@@ -189,14 +190,16 @@ func newMetricDestinations(
 // httpExporterConfigは、公開の設定を、HTTPの送り先（OTLP/HTTPとVictoriaMetrics）の設定にします。
 func httpExporterConfig(cfg pkgtelemetry.HTTPConfig) otlphttp.Config {
 	return otlphttp.Config{
-		Endpoint:       cfg.Endpoint,
-		Headers:        cfg.Headers,
-		Compression:    cfg.Compression,
-		Timeout:        cfg.Timeout,
-		Retries:        cfg.Retries,
-		RetryBaseDelay: cfg.RetryBaseDelay,
-		RetryMaxDelay:  cfg.RetryMaxDelay,
-		CircuitBreaker: cfg.CircuitBreaker,
+		Endpoint:    cfg.Endpoint,
+		Headers:     cfg.Headers,
+		Compression: cfg.Compression,
+		Timeout:     cfg.Timeout,
+		Retry: retrying.Config{
+			Retries:        cfg.Retries,
+			RetryBaseDelay: cfg.RetryBaseDelay,
+			RetryMaxDelay:  cfg.RetryMaxDelay,
+			CircuitBreaker: cfg.CircuitBreaker,
+		},
 	}
 }
 
