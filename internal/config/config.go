@@ -33,7 +33,6 @@ import (
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgloggerdurable "github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
-	pkgopensearch "github.com/go-jappe/heterolog/pkg/opensearch"
 	"github.com/go-jappe/heterolog/pkg/path/appstatepath"
 	"github.com/go-jappe/heterolog/pkg/path/logpath"
 	pkgslack "github.com/go-jappe/heterolog/pkg/slack"
@@ -182,151 +181,6 @@ func loadLogRotation(
 		return defaultValue
 	}
 	return rotation
-}
-
-// OpenSearch認証設定を構築する
-// 認証情報は暗黙に補完しません。basic認証の利用者名・passwordが未設定の場合、
-// OpenSearchを出力先またはinternal logの委譲先として使う構成は、mapper後の
-// validationで設定エラーになります。
-func buildOpenSearchAuthConfig(env pkgenv.Lookup) opensearch.OpenSearchAuthConfig {
-	authType := pkgopensearch.AuthType(env.GetEnvString("HETEROLOG_OPENSEARCH_AUTH_TYPE", string(opensearch.DefaultAuthType)))
-
-	authConfig := opensearch.OpenSearchAuthConfig{
-		Type: authType,
-	}
-
-	switch authType {
-	case pkgopensearch.AuthTypeBasic:
-		authConfig.Basic = &opensearch.BasicAuthConfig{
-			Username: env.GetEnvString("HETEROLOG_OPENSEARCH_USERNAME", ""),
-			Password: env.GetEnvString("HETEROLOG_OPENSEARCH_PASSWORD", ""),
-		}
-	case pkgopensearch.AuthTypeAPIKey:
-		authConfig.APIKey = &opensearch.APIKeyAuthConfig{
-			ID:     env.GetEnvString("HETEROLOG_OPENSEARCH_API_KEY_ID", ""),
-			Secret: env.GetEnvString("HETEROLOG_OPENSEARCH_API_KEY_SECRET", ""),
-		}
-	case pkgopensearch.AuthTypeAWSIAM:
-		authConfig.AWSIAM = &opensearch.AWSIAMAuthConfig{
-			Region:          env.GetEnvString("HETEROLOG_OPENSEARCH_AWS_REGION", ""),
-			AccessKeyID:     env.GetEnvString("HETEROLOG_OPENSEARCH_AWS_ACCESS_KEY_ID", ""),
-			SecretAccessKey: env.GetEnvString("HETEROLOG_OPENSEARCH_AWS_SECRET_ACCESS_KEY", ""),
-			SessionToken:    env.GetEnvString("HETEROLOG_OPENSEARCH_AWS_SESSION_TOKEN", ""),
-		}
-	case pkgopensearch.AuthTypeSAML:
-		authConfig.SAML = &opensearch.SAMLAuthConfig{
-			Token: env.GetEnvString("HETEROLOG_OPENSEARCH_SAML_TOKEN", ""),
-		}
-	case pkgopensearch.AuthTypeOIDC:
-		authConfig.OIDC = &opensearch.OIDCAuthConfig{
-			Token: env.GetEnvString("HETEROLOG_OPENSEARCH_OIDC_TOKEN", ""),
-		}
-	case pkgopensearch.AuthTypeCertificate:
-		authConfig.Certificate = &opensearch.CertificateAuthConfig{
-			CertFile: env.GetEnvString("HETEROLOG_OPENSEARCH_CERT_FILE", ""),
-			KeyFile:  env.GetEnvString("HETEROLOG_OPENSEARCH_KEY_FILE", ""),
-			CAFile:   env.GetEnvString("HETEROLOG_OPENSEARCH_CA_FILE", ""),
-		}
-	case pkgopensearch.AuthTypeNone:
-		// 何もしない（全てnil）
-	}
-
-	return authConfig
-}
-
-// 非同期logger用のOpenSearch認証設定を構築する
-// 認証情報の扱いはbuildOpenSearchAuthConfigと同じで、未設定値を補完しません。
-func buildAsyncOpenSearchAuthConfig(env pkgenv.Lookup) opensearch.OpenSearchAuthConfig {
-	authType := pkgopensearch.AuthType(env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_AUTH_TYPE", string(opensearch.DefaultAuthType)))
-
-	authConfig := opensearch.OpenSearchAuthConfig{
-		Type: authType,
-	}
-
-	switch authType {
-	case pkgopensearch.AuthTypeBasic:
-		authConfig.Basic = &opensearch.BasicAuthConfig{
-			Username: env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_USERNAME", ""),
-			Password: env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_PASSWORD", ""),
-		}
-	case pkgopensearch.AuthTypeAPIKey:
-		authConfig.APIKey = &opensearch.APIKeyAuthConfig{
-			ID:     env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_API_KEY_ID", ""),
-			Secret: env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_API_KEY_SECRET", ""),
-		}
-	case pkgopensearch.AuthTypeAWSIAM:
-		authConfig.AWSIAM = &opensearch.AWSIAMAuthConfig{
-			Region:          env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_AWS_REGION", ""),
-			AccessKeyID:     env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_AWS_ACCESS_KEY_ID", ""),
-			SecretAccessKey: env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_AWS_SECRET_ACCESS_KEY", ""),
-			SessionToken:    env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_AWS_SESSION_TOKEN", ""),
-		}
-	case pkgopensearch.AuthTypeSAML:
-		authConfig.SAML = &opensearch.SAMLAuthConfig{
-			Token: env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_SAML_TOKEN", ""),
-		}
-	case pkgopensearch.AuthTypeOIDC:
-		authConfig.OIDC = &opensearch.OIDCAuthConfig{
-			Token: env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_OIDC_TOKEN", ""),
-		}
-	case pkgopensearch.AuthTypeCertificate:
-		authConfig.Certificate = &opensearch.CertificateAuthConfig{
-			CertFile: env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_CERT_FILE", ""),
-			KeyFile:  env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_KEY_FILE", ""),
-			CAFile:   env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_CA_FILE", ""),
-		}
-	case pkgopensearch.AuthTypeNone:
-		// 何もしない（全てnil）
-	}
-
-	return authConfig
-}
-
-// buildDeliveryOpenSearchAuthConfigはDelivery専用の認証設定を読み込みます。
-// sync/asyncの設定は継承せず、認証方式の未指定にはOpenSearchの既定値を使います。
-// 認証情報は補完せず、不足はmapper後のvalidationで設定エラーにします。
-func buildDeliveryOpenSearchAuthConfig(env pkgenv.Lookup) opensearch.OpenSearchAuthConfig {
-	authType := pkgopensearch.AuthType(env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_AUTH_TYPE", string(opensearch.DefaultAuthType)))
-	authConfig := opensearch.OpenSearchAuthConfig{Type: authType}
-
-	switch authType {
-	case pkgopensearch.AuthTypeBasic:
-		authConfig.Basic = &opensearch.BasicAuthConfig{
-			Username: env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_USERNAME", ""),
-			Password: env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_PASSWORD", ""),
-		}
-	case pkgopensearch.AuthTypeAPIKey:
-		authConfig.APIKey = &opensearch.APIKeyAuthConfig{
-			ID:     env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_API_KEY_ID", ""),
-			Secret: env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_API_KEY_SECRET", ""),
-		}
-	case pkgopensearch.AuthTypeAWSIAM:
-		authConfig.AWSIAM = &opensearch.AWSIAMAuthConfig{
-			Region:          env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_AWS_REGION", ""),
-			AccessKeyID:     env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_AWS_ACCESS_KEY_ID", ""),
-			SecretAccessKey: env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_AWS_SECRET_ACCESS_KEY", ""),
-			SessionToken:    env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_AWS_SESSION_TOKEN", ""),
-		}
-	case pkgopensearch.AuthTypeSAML:
-		authConfig.SAML = &opensearch.SAMLAuthConfig{
-			Token: env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_SAML_TOKEN", ""),
-		}
-	case pkgopensearch.AuthTypeOIDC:
-		authConfig.OIDC = &opensearch.OIDCAuthConfig{
-			Token: env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_OIDC_TOKEN", ""),
-		}
-	case pkgopensearch.AuthTypeCertificate:
-		authConfig.Certificate = &opensearch.CertificateAuthConfig{
-			CertFile: env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_CERT_FILE", ""),
-			KeyFile:  env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_KEY_FILE", ""),
-			CAFile:   env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_CA_FILE", ""),
-		}
-	case pkgopensearch.AuthTypeNone:
-		// 認証設定は不要です。
-	default:
-		// 未知のtypeはそのまま保持し、mapper後のvalidationで拒否します。
-	}
-	return authConfig
 }
 
 // ランタイム実行環境を読み込む
@@ -5635,73 +5489,17 @@ func loadSlackAppConfig() slack.SlackConfig {
 
 // OpenSearch設定を読み込む
 func loadOpenSearchClientConfig(env pkgenv.Lookup) (opensearch.OpenSearchClientConfig, error) {
-	var environmentErrors []error
-	opensearchTimeoutSecond, opensearchTimeoutSecondErr := env.GetEnvDuration("HETEROLOG_OPENSEARCH_TIMEOUT_SECOND", opensearch.DefaultOpenSearchTimeout)
-	if opensearchTimeoutSecondErr != nil {
-		environmentErrors = append(environmentErrors, opensearchTimeoutSecondErr)
-	}
-	opensearchSkipVerifySsl, opensearchSkipVerifySslErr := env.GetEnvBool("HETEROLOG_OPENSEARCH_SKIP_VERIFY_SSL", opensearch.DefaultOpenSearchSkipVerify)
-	if opensearchSkipVerifySslErr != nil {
-		environmentErrors = append(environmentErrors, opensearchSkipVerifySslErr)
-	}
-	enableOpensearchCompressRequest, enableOpensearchCompressRequestErr := env.GetEnvBool("HETEROLOG_ENABLE_OPENSEARCH_COMPRESS_REQUEST", opensearch.DefaultCompressRequest)
-	if enableOpensearchCompressRequestErr != nil {
-		environmentErrors = append(environmentErrors, enableOpensearchCompressRequestErr)
-	}
-	return opensearch.OpenSearchClientConfig{
-		Endpoint:        env.GetEnvString("HETEROLOG_OPENSEARCH_ENDPOINT", opensearch.DefaultOpenSearchEndpoint),
-		Timeout:         opensearchTimeoutSecond,
-		SkipVerifySSL:   opensearchSkipVerifySsl,
-		Auth:            buildOpenSearchAuthConfig(env),
-		CompressRequest: enableOpensearchCompressRequest,
-	}, errors.Join(environmentErrors...)
+	return loadOpenSearchClientEnv(env, openSearchClientEnvKeys, defaultOpenSearchClientConfig)
 }
 
 // 非同期OpenSearch設定を読み込む
 func loadAsyncOpenSearchClientConfig(env pkgenv.Lookup) (opensearch.OpenSearchClientConfig, error) {
-	var environmentErrors []error
-	asyncOpensearchTimeoutSecond, asyncOpensearchTimeoutSecondErr := env.GetEnvDuration("HETEROLOG_ASYNC_OPENSEARCH_TIMEOUT_SECOND", opensearch.DefaultOpenSearchTimeout)
-	if asyncOpensearchTimeoutSecondErr != nil {
-		environmentErrors = append(environmentErrors, asyncOpensearchTimeoutSecondErr)
-	}
-	asyncOpensearchSkipVerifySsl, asyncOpensearchSkipVerifySslErr := env.GetEnvBool("HETEROLOG_ASYNC_OPENSEARCH_SKIP_VERIFY_SSL", opensearch.DefaultOpenSearchSkipVerify)
-	if asyncOpensearchSkipVerifySslErr != nil {
-		environmentErrors = append(environmentErrors, asyncOpensearchSkipVerifySslErr)
-	}
-	enableAsyncOpensearchCompressRequest, enableAsyncOpensearchCompressRequestErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_OPENSEARCH_COMPRESS_REQUEST", opensearch.DefaultCompressRequest)
-	if enableAsyncOpensearchCompressRequestErr != nil {
-		environmentErrors = append(environmentErrors, enableAsyncOpensearchCompressRequestErr)
-	}
-	return opensearch.OpenSearchClientConfig{
-		Endpoint:        env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_ENDPOINT", opensearch.DefaultOpenSearchEndpoint),
-		Timeout:         asyncOpensearchTimeoutSecond,
-		SkipVerifySSL:   asyncOpensearchSkipVerifySsl,
-		Auth:            buildAsyncOpenSearchAuthConfig(env),
-		CompressRequest: enableAsyncOpensearchCompressRequest,
-	}, errors.Join(environmentErrors...)
+	return loadOpenSearchClientEnv(env, asyncOpenSearchClientEnvKeys, defaultOpenSearchClientConfig)
 }
 
+// Delivery専用のOpenSearch設定を読み込みます。sync/asyncの設定は継承しません。
 func loadDeliveryOpenSearchClientConfig(env pkgenv.Lookup) (opensearch.OpenSearchClientConfig, error) {
-	var environmentErrors []error
-	deliveryOpensearchTimeoutSecond, deliveryOpensearchTimeoutSecondErr := env.GetEnvDuration("HETEROLOG_DELIVERY_OPENSEARCH_TIMEOUT_SECOND", opensearch.DefaultOpenSearchTimeout)
-	if deliveryOpensearchTimeoutSecondErr != nil {
-		environmentErrors = append(environmentErrors, deliveryOpensearchTimeoutSecondErr)
-	}
-	deliveryOpensearchSkipVerifySsl, deliveryOpensearchSkipVerifySslErr := env.GetEnvBool("HETEROLOG_DELIVERY_OPENSEARCH_SKIP_VERIFY_SSL", opensearch.DefaultOpenSearchSkipVerify)
-	if deliveryOpensearchSkipVerifySslErr != nil {
-		environmentErrors = append(environmentErrors, deliveryOpensearchSkipVerifySslErr)
-	}
-	enableDeliveryOpensearchCompressRequest, enableDeliveryOpensearchCompressRequestErr := env.GetEnvBool("HETEROLOG_ENABLE_DELIVERY_OPENSEARCH_COMPRESS_REQUEST", opensearch.DefaultCompressRequest)
-	if enableDeliveryOpensearchCompressRequestErr != nil {
-		environmentErrors = append(environmentErrors, enableDeliveryOpensearchCompressRequestErr)
-	}
-	return opensearch.OpenSearchClientConfig{
-		Endpoint:        env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_ENDPOINT", opensearch.DefaultOpenSearchEndpoint),
-		Timeout:         deliveryOpensearchTimeoutSecond,
-		SkipVerifySSL:   deliveryOpensearchSkipVerifySsl,
-		Auth:            buildDeliveryOpenSearchAuthConfig(env),
-		CompressRequest: enableDeliveryOpensearchCompressRequest,
-	}, errors.Join(environmentErrors...)
+	return loadOpenSearchClientEnv(env, deliveryOpenSearchClientEnvKeys, defaultOpenSearchClientConfig)
 }
 
 func loadLokiClientConfig(env pkgenv.Lookup) (lokicfg.LokiClientConfig, error) {
@@ -5906,81 +5704,15 @@ func loadDeliveryCloudWatchLogsClientConfig(env pkgenv.Lookup) (cloudwatchlogscf
 }
 
 func loadClickHouseClientConfig(env pkgenv.Lookup) (clickhousecfg.ClientConfig, error) {
-	var environmentErrors []error
-	clickhouseTimeoutSecond, clickhouseTimeoutSecondErr := env.GetEnvDuration("HETEROLOG_CLICKHOUSE_TIMEOUT_SECOND", clickhousecfg.DefaultTimeout)
-	if clickhouseTimeoutSecondErr != nil {
-		environmentErrors = append(environmentErrors, clickhouseTimeoutSecondErr)
-	}
-	clickhouseHeaders, clickhouseHeadersErr := loadHeaderEnv(env, "HETEROLOG_CLICKHOUSE_HEADERS", nil)
-	if clickhouseHeadersErr != nil {
-		environmentErrors = append(environmentErrors, clickhouseHeadersErr)
-	}
-	enableClickhouseCompressRequest, enableClickhouseCompressRequestErr := env.GetEnvBool("HETEROLOG_ENABLE_CLICKHOUSE_COMPRESS_REQUEST", clickhousecfg.DefaultCompressRequest)
-	if enableClickhouseCompressRequestErr != nil {
-		environmentErrors = append(environmentErrors, enableClickhouseCompressRequestErr)
-	}
-	return clickhousecfg.ClientConfig{
-		Endpoint:        env.GetEnvString("HETEROLOG_CLICKHOUSE_ENDPOINT", clickhousecfg.DefaultEndpoint),
-		Database:        env.GetEnvString("HETEROLOG_CLICKHOUSE_DATABASE", clickhousecfg.DefaultDatabase),
-		Table:           env.GetEnvString("HETEROLOG_CLICKHOUSE_TABLE", clickhousecfg.DefaultTable),
-		Timeout:         clickhouseTimeoutSecond,
-		Username:        env.GetEnvString("HETEROLOG_CLICKHOUSE_USERNAME", clickhousecfg.DefaultUsername),
-		Password:        env.GetEnvString("HETEROLOG_CLICKHOUSE_PASSWORD", clickhousecfg.DefaultPassword),
-		Headers:         clickhouseHeaders,
-		CompressRequest: enableClickhouseCompressRequest,
-	}, errors.Join(environmentErrors...)
+	return loadClickHouseClientEnv(env, clickHouseClientEnvKeys, defaultClickHouseClientConfig)
 }
 
 func loadAsyncClickHouseClientConfig(env pkgenv.Lookup) (clickhousecfg.ClientConfig, error) {
-	var environmentErrors []error
-	asyncClickhouseTimeoutSecond, asyncClickhouseTimeoutSecondErr := env.GetEnvDuration("HETEROLOG_ASYNC_CLICKHOUSE_TIMEOUT_SECOND", clickhousecfg.DefaultTimeout)
-	if asyncClickhouseTimeoutSecondErr != nil {
-		environmentErrors = append(environmentErrors, asyncClickhouseTimeoutSecondErr)
-	}
-	asyncClickhouseHeaders, asyncClickhouseHeadersErr := loadHeaderEnv(env, "HETEROLOG_ASYNC_CLICKHOUSE_HEADERS", nil)
-	if asyncClickhouseHeadersErr != nil {
-		environmentErrors = append(environmentErrors, asyncClickhouseHeadersErr)
-	}
-	enableAsyncClickhouseCompressRequest, enableAsyncClickhouseCompressRequestErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_CLICKHOUSE_COMPRESS_REQUEST", clickhousecfg.DefaultCompressRequest)
-	if enableAsyncClickhouseCompressRequestErr != nil {
-		environmentErrors = append(environmentErrors, enableAsyncClickhouseCompressRequestErr)
-	}
-	return clickhousecfg.ClientConfig{
-		Endpoint:        env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_ENDPOINT", clickhousecfg.DefaultEndpoint),
-		Database:        env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_DATABASE", clickhousecfg.DefaultDatabase),
-		Table:           env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_TABLE", clickhousecfg.DefaultTable),
-		Timeout:         asyncClickhouseTimeoutSecond,
-		Username:        env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_USERNAME", clickhousecfg.DefaultUsername),
-		Password:        env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_PASSWORD", clickhousecfg.DefaultPassword),
-		Headers:         asyncClickhouseHeaders,
-		CompressRequest: enableAsyncClickhouseCompressRequest,
-	}, errors.Join(environmentErrors...)
+	return loadClickHouseClientEnv(env, asyncClickHouseClientEnvKeys, defaultClickHouseClientConfig)
 }
 
 func loadDeliveryClickHouseClientConfig(env pkgenv.Lookup) (clickhousecfg.ClientConfig, error) {
-	var environmentErrors []error
-	deliveryClickhouseTimeoutSecond, deliveryClickhouseTimeoutSecondErr := env.GetEnvDuration("HETEROLOG_DELIVERY_CLICKHOUSE_TIMEOUT_SECOND", clickhousecfg.DefaultTimeout)
-	if deliveryClickhouseTimeoutSecondErr != nil {
-		environmentErrors = append(environmentErrors, deliveryClickhouseTimeoutSecondErr)
-	}
-	deliveryClickhouseHeaders, deliveryClickhouseHeadersErr := loadHeaderEnv(env, "HETEROLOG_DELIVERY_CLICKHOUSE_HEADERS", nil)
-	if deliveryClickhouseHeadersErr != nil {
-		environmentErrors = append(environmentErrors, deliveryClickhouseHeadersErr)
-	}
-	enableDeliveryClickhouseCompressRequest, enableDeliveryClickhouseCompressRequestErr := env.GetEnvBool("HETEROLOG_ENABLE_DELIVERY_CLICKHOUSE_COMPRESS_REQUEST", clickhousecfg.DefaultCompressRequest)
-	if enableDeliveryClickhouseCompressRequestErr != nil {
-		environmentErrors = append(environmentErrors, enableDeliveryClickhouseCompressRequestErr)
-	}
-	return clickhousecfg.ClientConfig{
-		Endpoint:        env.GetEnvString("HETEROLOG_DELIVERY_CLICKHOUSE_ENDPOINT", clickhousecfg.DefaultEndpoint),
-		Database:        env.GetEnvString("HETEROLOG_DELIVERY_CLICKHOUSE_DATABASE", clickhousecfg.DefaultDatabase),
-		Table:           env.GetEnvString("HETEROLOG_DELIVERY_CLICKHOUSE_TABLE", clickhousecfg.DefaultTable),
-		Timeout:         deliveryClickhouseTimeoutSecond,
-		Username:        env.GetEnvString("HETEROLOG_DELIVERY_CLICKHOUSE_USERNAME", clickhousecfg.DefaultUsername),
-		Password:        env.GetEnvString("HETEROLOG_DELIVERY_CLICKHOUSE_PASSWORD", clickhousecfg.DefaultPassword),
-		Headers:         deliveryClickhouseHeaders,
-		CompressRequest: enableDeliveryClickhouseCompressRequest,
-	}, errors.Join(environmentErrors...)
+	return loadClickHouseClientEnv(env, deliveryClickHouseClientEnvKeys, defaultClickHouseClientConfig)
 }
 
 // LoadConfigは、process environmentと、HETEROLOG_ENV_PATHが指す環境設定fileから
