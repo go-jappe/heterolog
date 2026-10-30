@@ -441,8 +441,11 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 - 出力先は、`BatchSize` 個のspanがたまるか、前に送ってから `ExportInterval` が過ぎるとbatchを送ります。送っている間、spanは待ち行列で待ちます。
 - `otlp` は、batchをprotobuf（`Content-Type: application/x-protobuf`）で、`Compression` が `none` でなければgzipで圧縮し、`OTLP.Headers` を付けて、`OTLP.Endpoint` へそのままPOSTします（`/v1/traces` は足しません）。`OTLP.Timeout` は1回の要求の上限です。ログの出力先と同じく、リダイレクトは追わず、送り直しません。
 - 失敗した要求は、ログの出力先とは異なり、[OTLPの仕様](https://opentelemetry.io/docs/specs/otlp/)の規則で `OTLP.Retries` 回まで送り直します。送り直すのは、ステータス429・502・503・504と、応答を受け取れなかった失敗（接続の拒否、切断、タイムアウトなど）だけです。仕様は、400・408・500など、ほかのステータスの送り直しを禁じています。
-- 送り直す前に待つ時間は、`OTLP.RetryBaseDelay` から1回ごとに2倍にして `OTLP.RetryMaxDelay` までに抑え、その半分から全部までの間で無作為に選びます。多くのprocessが同時に送り直さないようにするためです。応答に `Retry-After` があれば、`OTLP.RetryMaxDelay` までの範囲でそれを使います。
+- 送り直す前に待つ時間は、`OTLP.RetryBaseDelay` から1回ごとに2倍にして `OTLP.RetryMaxDelay` までに抑え、その半分から全部までの間で無作為に選びます。多くのprocessが同時に送り直さないようにするためです。応答に `Retry-After` があれば、それを使います。`OTLP.RetryMaxDelay` より長い場合は、仕様がそれに従うよう求めているため、送り直しません。
+- 受信側が要求を大きすぎると拒否した場合（413）は、spanを半分に分け、それぞれを別の要求で送ります。1件になるまで分け、1件でも大きすぎるspanは失敗にします。
+- 送り直しても送れなかった要求の失敗が、送り直しを許す理由によるものだった場合は、同じbatchの残りの要求（分けた後半など）は送らず、同じ失敗にします。
 - 部分的な成功（partial success）の応答は、受け付けられなかったspanを失敗として数え、送り直しません。
+- `OTLP.CircuitBreaker` を有効にすると、ログの出力先と同じcircuit breakerが、一時的な失敗が続いたときにしばらく送るのを止めます。15秒以内の間隔で3回以上続いた失敗が1分続くと、30秒の間は要求を送らずに失敗させ、その後、受信側が回復したかを確かめるために1件だけ送ります。そのメトリクスの `backend` は `otlp_traces` です。
 - `file` と `stdout` は、batchをOTLP JSONの1行として書きます。trace IDとspan IDは16進数、列挙は数値、64-bitの整数と時刻は文字列です。`file` は、ないディレクトリを作って `File.Path` へ追記します。ファイルはローテーションも削除もしません。
 - 送り直しても送れなかったspanは捨てます。ディスクには残しません。
 - 配送のerrorは、`WithTelemetryErrorHandler` で渡した関数に渡します。渡さなければ、1件ずつ標準のloggerへ1行で書きます。対象は、送り直しても送れなかったbatch、部分的な成功で受け付けられなかったspan、捨てたspanです。待ち行列が一杯で捨てたspanは、出力先ごとに1つのerrorにまとめ、`ExportInterval` に1回までしか知らせません。`Shutdown` を始めた後に終わったspanは、最初の1回だけ知らせます。関数は並行に呼ばれることがあり、返るまでその出力先への送信を待たせます。関数のpanicは回復し、標準のloggerへ書きます。OpenTelemetry SDKのerror handlerへ渡すには、`otel.Handle` を渡します。
@@ -466,6 +469,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 | `HETEROLOG_TRACES_OTLP_TIMEOUT_SECOND` | `OTLP.Timeout` | `10` |
 | `HETEROLOG_TRACES_OTLP_RETRIES` | `OTLP.Retries` | `3` |
 | `HETEROLOG_TRACES_OTLP_RETRY_BASE_DELAY_MILLISECOND`、`HETEROLOG_TRACES_OTLP_RETRY_MAX_DELAY_MILLISECOND` | `OTLP.RetryBaseDelay`、`OTLP.RetryMaxDelay` | `1000`、`5000` |
+| `HETEROLOG_ENABLE_TRACES_OTLP_CIRCUIT_BREAKER` | `OTLP.CircuitBreaker` | `false` |
 | `HETEROLOG_TRACES_FILE_DIR` | `File.Path` のディレクトリ。`File.Path` はその中の `spans.jsonl` です。ログのディレクトリと同じく、`HETEROLOG_SYSTEM_LOG_DIR` と `HETEROLOG_TARGET` を基準に解決します。 | `/traces` |
 
 - resourceは、ロガーと同じキーから作ります。`HETEROLOG_APP_NAME`（`service.name`）、`HETEROLOG_APP_ENV`、`HETEROLOG_RUNTIME_TYPE`、`HETEROLOG_INSTANCE_ID`、`HETEROLOG_CLOUD_PROVIDER`、`HETEROLOG_CLOUD_PROVIDER_REGION` と、プロセスのホスト名とOSです。
@@ -501,8 +505,8 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 | `heterolog_spool_replay_records_total` | Counter | `backend`・`outcome` | spoolから読み戻して送り直したrecordの数を、結果ごとに数えます。結果は `success`・`retryable`（spoolへ戻し、後でまた送り直します）・`dead`・`quarantine` です。応答をrecordへ対応付けられない場合はfile全体を隔離し、そのrecordをすべて `quarantine` として数えます。 |
 | `heterolog_file_dropped_entries_total` | Counter | なし | fileロガーが過負荷時の方針 `drop` で破棄したentryの数です。 |
 | `heterolog_trace_spans_total` | Counter | `exporter`（`otlp`・`file`・`stdout`）、`outcome` | `NewTelemetry` の出力先が扱ったspanの数を、結果ごとに数えます。結果は、`success`、`failure`（送り直しても送れなかったspanと、部分的な成功で受け付けられなかったspan）、`dropped`（待ち行列に入らなかったspanと、`Shutdown` を始めた後に終わったspan）です。 |
-| `heterolog_trace_export_duration_seconds` | Histogram | `exporter`、`outcome`（`success`・`failure`） | spanの1つのbatchを送るのにかかった秒数です。送り直しとその間の待ち時間を含みます。部分的な成功は `success` です。 |
-| `heterolog_trace_export_retries_total` | Counter | `exporter`、`reason` | `otlp` の出力先が送り直した回数を、`http_status` や `net_timeout` などの理由ごとに数えます。 |
+| `heterolog_trace_export_duration_seconds` | Histogram | `exporter`、`outcome`（`success`・`failure`） | spanの1つのbatchを送るのにかかった秒数です。送り直しとその間の待ち時間を含みます。batchのspanが1件も届かなかった場合は `failure` です。 |
+| `heterolog_trace_export_retries_total` | Counter | `exporter`、`reason` | `otlp` の出力先が送り直した回数を、`http_status` や `net_timeout` などの理由ごとに数えます。大きすぎた要求を分けた回数は `request_too_large` です。 |
 | `heterolog_internal_logs_total` | Counter | `level`（`error`・`warn`・`info`・`debug`） | 内部ログの通知先（`OnErrorConfig` など）へ渡した内部ログ（書き込みの失敗や遅いリクエストなど）の数を、levelごとに数えます。[内部ログの通知](#内部ログの通知)を参照してください。 |
 
 ### span

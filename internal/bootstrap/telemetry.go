@@ -47,7 +47,7 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 		return telemetryruntime.New(nil, nil), nil
 	}
 	options := loggerruntime.ResolveOptions(opts)
-	exporters, err := newTraceExporters(cfg, options.Meter)
+	destinations, err := newTraceDestinations(cfg, options.Meter)
 	if err != nil {
 		return nil, err
 	}
@@ -55,20 +55,20 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 		QueueSize:      cfg.Traces.QueueSize,
 		BatchSize:      cfg.Traces.BatchSize,
 		ExportInterval: cfg.Traces.ExportInterval,
-	}, exporters, options.Meter, options.TelemetryErrorHandler)
+	}, destinations, options.Meter, options.TelemetryErrorHandler)
 	return telemetryruntime.New(tracing.NewTracer(pipeline, cfg.Traces.SamplingRatio), pipeline), nil
 }
 
-// newTraceExportersは、cfgで選んだ送り先を作ります。作れない送り先があれば、作った
+// newTraceDestinationsは、cfgで選んだ送り先を作ります。作れない送り先があれば、作った
 // 送り先を閉じてerrorを返します。
-func newTraceExporters(cfg pkgtelemetry.Config, meter pkgobserver.Meter) ([]traces.Exporter, error) {
+func newTraceDestinations(cfg pkgtelemetry.Config, meter pkgobserver.Meter) ([]traces.Destination, error) {
 	resource := otlp.NewResource(cfg.Resource)
-	exporters := make([]traces.Exporter, 0, len(cfg.Traces.Exporters))
+	destinations := make([]traces.Destination, 0, len(cfg.Traces.Exporters))
 	for _, name := range cfg.Traces.Exporters {
 		switch name {
 		case pkgtelemetry.TraceExporterOTLP:
 			otlpCfg := cfg.Traces.OTLP
-			exporters = append(exporters, otlphttp.New(otlphttp.Config{
+			destinations = append(destinations, traces.Destination{Exporter: otlphttp.New(otlphttp.Config{
 				Endpoint:       otlpCfg.Endpoint,
 				Headers:        otlpCfg.Headers,
 				Compression:    otlpCfg.Compression,
@@ -76,24 +76,25 @@ func newTraceExporters(cfg pkgtelemetry.Config, meter pkgobserver.Meter) ([]trac
 				Retries:        otlpCfg.Retries,
 				RetryBaseDelay: otlpCfg.RetryBaseDelay,
 				RetryMaxDelay:  otlpCfg.RetryMaxDelay,
-			}, resource, meter))
+				CircuitBreaker: otlpCfg.CircuitBreaker,
+			}, resource, meter)})
 		case pkgtelemetry.TraceExporterStdout:
-			exporters = append(exporters, jsonlines.NewStdout(resource))
+			destinations = append(destinations, traces.Destination{Exporter: jsonlines.NewStdout(resource)})
 		case pkgtelemetry.TraceExporterFile:
 			exporter, err := jsonlines.OpenFile(cfg.Traces.File.Path, resource)
 			if err != nil {
-				return nil, errors.Join(fmt.Errorf("create the file trace exporter: %w", err), closeTraceExporters(exporters))
+				return nil, errors.Join(fmt.Errorf("create the file trace exporter: %w", err), closeTraceDestinations(destinations))
 			}
-			exporters = append(exporters, exporter)
+			destinations = append(destinations, traces.Destination{Exporter: exporter})
 		}
 	}
-	return exporters, nil
+	return destinations, nil
 }
 
-func closeTraceExporters(exporters []traces.Exporter) error {
+func closeTraceDestinations(destinations []traces.Destination) error {
 	var errs []error
-	for _, exporter := range exporters {
-		errs = append(errs, exporter.Close())
+	for _, destination := range destinations {
+		errs = append(errs, destination.Exporter.Close())
 	}
 	return errors.Join(errs...)
 }

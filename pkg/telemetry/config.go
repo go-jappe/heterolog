@@ -81,9 +81,17 @@ type OTLPTracesConfig struct {
 	// RetryBaseDelay and RetryMaxDelay set the wait before each resend: the
 	// wait doubles from RetryBaseDelay with each resend, up to RetryMaxDelay,
 	// and a random wait between half of it and all of it is chosen. The
-	// Retry-After of a response is used instead, up to RetryMaxDelay.
+	// Retry-After of a response is used instead; when it is longer than
+	// RetryMaxDelay, the request is not resent.
 	RetryBaseDelay time.Duration
 	RetryMaxDelay  time.Duration
+	// CircuitBreaker stops sending for a while after requests keep failing
+	// temporarily: when at least 3 failures in a row, each within 15 seconds
+	// of the previous one, have lasted a minute, requests fail without being
+	// sent for 30 seconds, and then one request is sent to check whether the
+	// receiver has recovered. The same breaker as that of the log
+	// destinations is used.
+	CircuitBreaker bool
 }
 
 // FileTracesConfig configures the file destination of spans.

@@ -61,6 +61,7 @@ func loadTracesConfig(env pkgenv.Lookup) (TracesConfig, error) {
 	retryMaxDelay, retryMaxDelayErr := env.GetEnvDurationMillisecond(
 		"HETEROLOG_TRACES_OTLP_RETRY_MAX_DELAY_MILLISECOND", defaults.OTLP.RetryMaxDelay,
 	)
+	circuitBreaker, circuitBreakerErr := env.GetEnvBool("HETEROLOG_ENABLE_TRACES_OTLP_CIRCUIT_BREAKER", defaults.OTLP.CircuitBreaker)
 	cfg.Traces.OTLP = pkgtelemetry.OTLPTracesConfig{
 		Endpoint:       env.GetEnvString("HETEROLOG_TRACES_OTLP_ENDPOINT", defaults.OTLP.Endpoint),
 		Headers:        headers,
@@ -69,12 +70,13 @@ func loadTracesConfig(env pkgenv.Lookup) (TracesConfig, error) {
 		Retries:        retries,
 		RetryBaseDelay: retryBaseDelay,
 		RetryMaxDelay:  retryMaxDelay,
+		CircuitBreaker: circuitBreaker,
 	}
 
 	cfg.FileDir = env.GetEnvString("HETEROLOG_TRACES_FILE_DIR", defaultTracesFileDir)
 	return cfg, errors.Join(
 		samplingRatioErr, queueSizeErr, batchSizeErr, exportIntervalErr,
-		headersErr, timeoutErr, retriesErr, retryBaseDelayErr, retryMaxDelayErr,
+		headersErr, timeoutErr, retriesErr, retryBaseDelayErr, retryMaxDelayErr, circuitBreakerErr,
 	)
 }
 

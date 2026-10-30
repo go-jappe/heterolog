@@ -63,6 +63,15 @@ func (e *fakeExporter) snapshot() ([][]string, int) {
 
 func spanNamed(name string) tracing.SpanData { return tracing.SpanData{Name: name} }
 
+// destinationsは、failure storeのない送り先にします。
+func destinations(exporters ...Exporter) []Destination {
+	out := make([]Destination, len(exporters))
+	for i, exporter := range exporters {
+		out[i] = Destination{Exporter: exporter}
+	}
+	return out
+}
+
 // errorRecorderは、Pipelineが知らせたerrorを記録します。
 type errorRecorder struct {
 	mu   sync.Mutex
@@ -90,7 +99,7 @@ func TestPipelineSendsFullBatchesAndTheRestAtShutdown(t *testing.T) {
 	meter := observertest.NewMeter()
 	exporter := &fakeExporter{name: "a"}
 	errs := &errorRecorder{}
-	p := NewPipeline(Config{QueueSize: 10, BatchSize: 2, ExportInterval: time.Hour}, []Exporter{exporter}, meter, errs.report)
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 2, ExportInterval: time.Hour}, destinations(exporter), meter, errs.report)
 	for _, name := range []string{"1", "2", "3"} {
 		p.Enqueue(spanNamed(name))
 	}
@@ -121,7 +130,7 @@ func TestPipelineSendsFullBatchesAndTheRestAtShutdown(t *testing.T) {
 
 func TestPipelineSendsAfterTheInterval(t *testing.T) {
 	exporter := &fakeExporter{name: "a"}
-	p := NewPipeline(Config{QueueSize: 10, BatchSize: 10, ExportInterval: 10 * time.Millisecond}, []Exporter{exporter}, nil, nil)
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 10, ExportInterval: 10 * time.Millisecond}, destinations(exporter), nil, nil)
 	defer p.Shutdown(context.Background())
 	p.Enqueue(spanNamed("1"))
 	deadline := time.Now().Add(5 * time.Second)
@@ -141,7 +150,7 @@ func TestPipelineDropsWhenTheQueueIsFullWithoutBlockingOtherExporters(t *testing
 	slow := &fakeExporter{name: "slow", block: make(chan struct{})}
 	fast := &fakeExporter{name: "fast"}
 	errs := &errorRecorder{}
-	p := NewPipeline(Config{QueueSize: 2, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{slow, fast}, meter, errs.report)
+	p := NewPipeline(Config{QueueSize: 2, BatchSize: 1, ExportInterval: time.Hour}, destinations(slow, fast), meter, errs.report)
 
 	// slowは1件目を送る途中で止まるため、待ち行列に入るのは次の2件までです。fastの待ち行列も
 	// 2件のため、fastが受け取るのを待ってから次を入れます。
@@ -173,7 +182,7 @@ func TestPipelineDropsWhenTheQueueIsFullWithoutBlockingOtherExporters(t *testing
 func TestPipelineReportsDroppedSpansAtMostOncePerInterval(t *testing.T) {
 	blocked := &fakeExporter{name: "blocked", block: make(chan struct{})}
 	errs := &errorRecorder{}
-	p := NewPipeline(Config{QueueSize: 1, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{blocked}, nil, errs.report)
+	p := NewPipeline(Config{QueueSize: 1, BatchSize: 1, ExportInterval: time.Hour}, destinations(blocked), nil, errs.report)
 	w := p.workers[0]
 	// 前に知らせたばかりなら、intervalが過ぎるまで知らせず、終わるときにまとめて知らせます。
 	w.lastDropReport = time.Now()
@@ -219,10 +228,12 @@ func waitFor(t *testing.T, cond func() bool) {
 func TestPipelineCountsFailuresAndSurvivesPanics(t *testing.T) {
 	meter := observertest.NewMeter()
 	failing := &fakeExporter{name: "failing", err: errors.New("down")}
-	partial := &fakeExporter{name: "partial", err: &PartialFailureError{Failed: 1, Err: errors.New("rejected")}}
+	partial := &fakeExporter{name: "partial", err: &ExportError{Failures: []SpanFailure{
+		{Start: 0, End: 1, Disposition: DispositionQuarantine, Rejected: 1, Err: errors.New("rejected")},
+	}}}
 	panicking := &fakeExporter{name: "panicking", panic: true}
 	errs := &errorRecorder{}
-	p := NewPipeline(Config{QueueSize: 10, BatchSize: 2, ExportInterval: time.Hour}, []Exporter{failing, partial, panicking}, meter, errs.report)
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 2, ExportInterval: time.Hour}, destinations(failing, partial, panicking), meter, errs.report)
 	for _, name := range []string{"1", "2", "3"} {
 		p.Enqueue(spanNamed(name))
 	}
@@ -235,7 +246,7 @@ func TestPipelineCountsFailuresAndSurvivesPanics(t *testing.T) {
 	}{
 		{"failing", telemetry.OutcomeFailure, 3},
 		{"failing", telemetry.OutcomeSuccess, 0},
-		// partialは、2件と1件のbatchそれぞれで1件ずつ受け付けられませんでした。
+		// partialは、2件と1件のbatchそれぞれで1件ずつ届きませんでした。
 		{"partial", telemetry.OutcomeFailure, 2},
 		{"partial", telemetry.OutcomeSuccess, 1},
 		{"panicking", telemetry.OutcomeFailure, 3},
@@ -257,8 +268,8 @@ func TestPipelineCountsFailuresAndSurvivesPanics(t *testing.T) {
 		"the failing trace exporter could not send 2 spans: down",
 		"the panicking trace exporter could not send 1 spans: trace exporter panicking panicked: exporter bug",
 		"the panicking trace exporter could not send 2 spans: trace exporter panicking panicked: exporter bug",
-		"the partial trace exporter could not send 1 of 1 spans: 1 spans were not accepted: rejected",
-		"the partial trace exporter could not send 1 of 2 spans: 1 spans were not accepted: rejected",
+		"the partial trace exporter could not send 1 of 2 spans: rejected",
+		"the partial trace exporter could not send 1 spans: rejected",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("reported errors =\n%q\nwant\n%q", got, want)
@@ -271,7 +282,7 @@ func TestPipelineSurvivesPanicsOfTheErrorHandlerAndLogsWithoutOne(t *testing.T) 
 	defer log.SetOutput(os.Stderr)
 
 	failing := &fakeExporter{name: "failing", err: errors.New("down")}
-	p := NewPipeline(Config{QueueSize: 10, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{failing}, nil,
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 1, ExportInterval: time.Hour}, destinations(failing), nil,
 		func(error) { panic("handler bug") })
 	p.Enqueue(spanNamed("1"))
 	p.Enqueue(spanNamed("2"))
@@ -286,7 +297,7 @@ func TestPipelineSurvivesPanicsOfTheErrorHandlerAndLogsWithoutOne(t *testing.T) 
 	}
 
 	buf.Reset()
-	p = NewPipeline(Config{QueueSize: 10, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{failing}, nil, nil)
+	p = NewPipeline(Config{QueueSize: 10, BatchSize: 1, ExportInterval: time.Hour}, destinations(failing), nil, nil)
 	p.Enqueue(spanNamed("3"))
 	if err := p.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
@@ -298,7 +309,7 @@ func TestPipelineSurvivesPanicsOfTheErrorHandlerAndLogsWithoutOne(t *testing.T) 
 
 func TestShutdownStopsWaitingWhenTheContextEnds(t *testing.T) {
 	blocked := &fakeExporter{name: "blocked", block: make(chan struct{})}
-	p := NewPipeline(Config{QueueSize: 10, BatchSize: 1, ExportInterval: time.Hour}, []Exporter{blocked}, nil, nil)
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 1, ExportInterval: time.Hour}, destinations(blocked), nil, nil)
 	p.Enqueue(spanNamed("1"))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
@@ -312,5 +323,111 @@ func TestShutdownStopsWaitingWhenTheContextEnds(t *testing.T) {
 	}
 	if batches, closed := blocked.snapshot(); len(batches) != 1 || closed != 1 {
 		t.Errorf("batches %v, closed %d; want the span sent and the exporter closed", batches, closed)
+	}
+}
+
+// fakeStoreは、保存したspanの名前と扱いを記録します。errを返すこともできます。
+type fakeStore struct {
+	err    error
+	events *[]string
+
+	mu     sync.Mutex
+	stored []string
+}
+
+func (s *fakeStore) Store(_ context.Context, batch []tracing.SpanData, failures []SpanFailure) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, failure := range failures {
+		for _, span := range batch[failure.Start:failure.End] {
+			s.stored = append(s.stored, span.Name+":"+failure.Disposition.Outcome())
+		}
+	}
+	return s.err
+}
+
+func (s *fakeStore) Shutdown(context.Context) error {
+	*s.events = append(*s.events, "store shutdown")
+	return nil
+}
+
+// closingExporterは、Closeを呼ばれた順をeventsへ記録します。
+type closingExporter struct {
+	*fakeExporter
+	events *[]string
+}
+
+func (e closingExporter) Close() error {
+	*e.events = append(*e.events, "exporter close")
+	return e.fakeExporter.Close()
+}
+
+func TestPipelineStoresFailedSpansAndReportsOnlyThoseNotResent(t *testing.T) {
+	var events []string
+	exporter := closingExporter{fakeExporter: &fakeExporter{name: "otlp", err: &ExportError{Failures: []SpanFailure{
+		{Start: 0, End: 1, Disposition: DispositionRetry, Err: errors.New("unavailable")},
+		{Start: 1, End: 2, Disposition: DispositionDead, StatusCode: 400, Err: errors.New("bad request")},
+	}}}, events: &events}
+	store := &fakeStore{events: &events}
+	meter := observertest.NewMeter()
+	errs := &errorRecorder{}
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 3, ExportInterval: time.Hour},
+		[]Destination{{Exporter: exporter, Store: store}}, meter, errs.report)
+	for _, name := range []string{"retry", "dead", "sent"} {
+		p.Enqueue(spanNamed(name))
+	}
+	if err := p.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"retry:retryable", "dead:dead"}; !slices.Equal(store.stored, want) {
+		t.Errorf("stored = %v, want %v", store.stored, want)
+	}
+	for _, tc := range []struct {
+		outcome string
+		want    int64
+	}{
+		{telemetry.OutcomeSuccess, 1},
+		{telemetry.OutcomeRetryable, 1},
+		{telemetry.OutcomeDead, 1},
+		{telemetry.OutcomeFailure, 0},
+	} {
+		if got := spanCount(meter, "otlp", tc.outcome); got != tc.want {
+			t.Errorf("%s spans = %d, want %d", tc.outcome, got, tc.want)
+		}
+	}
+	// 送り直すspanは届く見込みがあるため知らせず、送り直さないspanだけを知らせます。
+	want := []string{"the otlp trace exporter could not send 1 of 3 spans: bad request; they were stored as dead and are not resent"}
+	if got := errs.snapshot(); !slices.Equal(got, want) {
+		t.Errorf("reported errors = %q, want %q", got, want)
+	}
+	// failure storeの送り直しは送り先の接続を使うため、storeを止めてから送り先を閉じます。
+	if want := []string{"store shutdown", "exporter close"}; !slices.Equal(events, want) {
+		t.Errorf("shutdown order = %v, want %v", events, want)
+	}
+}
+
+func TestPipelineReportsSpansThatCouldNotBeStored(t *testing.T) {
+	var events []string
+	exporter := &fakeExporter{name: "otlp", err: errors.New("unavailable")}
+	store := &fakeStore{err: errors.New("disk full"), events: &events}
+	meter := observertest.NewMeter()
+	errs := &errorRecorder{}
+	p := NewPipeline(Config{QueueSize: 10, BatchSize: 2, ExportInterval: time.Hour},
+		[]Destination{{Exporter: exporter, Store: store}}, meter, errs.report)
+	p.Enqueue(spanNamed("1"))
+	p.Enqueue(spanNamed("2"))
+	if err := p.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// ExportErrorでないerrorは、すべてのspanを送り直す扱いで保存しようとします。
+	if want := []string{"1:retryable", "2:retryable"}; !slices.Equal(store.stored, want) {
+		t.Errorf("stored = %v, want %v", store.stored, want)
+	}
+	if got := spanCount(meter, "otlp", telemetry.OutcomeFailure); got != 2 {
+		t.Errorf("failure spans = %d, want 2", got)
+	}
+	want := []string{"the otlp trace exporter could not send 2 spans: unavailable, and they could not be stored: disk full"}
+	if got := errs.snapshot(); !slices.Equal(got, want) {
+		t.Errorf("reported errors = %q, want %q", got, want)
 	}
 }

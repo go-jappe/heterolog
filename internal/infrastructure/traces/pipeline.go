@@ -1,6 +1,7 @@
 // Package tracesは、NewTelemetryのtraceの配送の仕組みです。終わったspanを送り先
 // （exporter）ごとの待ち行列で受け取り、batchにまとめて送ります。送り先ごとに待ち行列と
-// goroutineを分け、遅い送り先がほかの送り先を待たせないようにします。
+// goroutineを分け、遅い送り先がほかの送り先を待たせないようにします。送れなかったspanは、
+// 送り先にfailure storeがあればそこへ保存し、なければ捨てます。
 //
 // 配送の仕組みは、自分の送信（batchの送信、HTTPの要求、再試行）のspanを作りません。
 // 自分のspanを送るためにまたspanを作る繰り返しを避けるためです。様子はmetrics
@@ -29,24 +30,19 @@ type Exporter interface {
 	// Nameは、metricsのexporter属性の値（otlp・file・stdoutなど）です。
 	Name() string
 	// Exportは、spansを送ります。spansは、Exportが返った後に再利用されるため、
-	// 保持しません。一部のspanだけを送れなかった場合は、*PartialFailureErrorを返します。
+	// 保持しません。送れなかったspanの範囲と扱いが分かる場合は、*ExportErrorを返します。
+	// ほかのerrorは、すべてのspanを送れなかったことを表します。
 	Export(ctx context.Context, spans []tracing.SpanData) error
 	// Closeは、送り先の資源（fileなど）を手放します。最後のExportの後に1回だけ呼ばれます。
 	Close() error
 }
 
-// PartialFailureErrorは、batchのうちFailed件のspanを送れなかったことを表します。
-// 残りのspanは送れています。
-type PartialFailureError struct {
-	Failed int
-	Err    error
+// Destinationは、spanの送り先と、そこへ送れなかったspanを保存するfailure storeの組です。
+// Storeがnilなら、送れなかったspanは捨てます。
+type Destination struct {
+	Exporter Exporter
+	Store    FailureStore
 }
-
-func (e *PartialFailureError) Error() string {
-	return fmt.Sprintf("%d spans were not accepted: %v", e.Failed, e.Err)
-}
-
-func (e *PartialFailureError) Unwrap() error { return e.Err }
 
 // Configは、待ち行列とbatchの設定です。値の範囲は、pkg/telemetryの検証で確かめます。
 type Config struct {
@@ -77,15 +73,16 @@ type Pipeline struct {
 	closeErr     error
 }
 
-// NewPipelineは、exportersへspanを送るPipelineを作り、送り先ごとのgoroutineを始めます。
+// NewPipelineは、destinationsへspanを送るPipelineを作り、送り先ごとのgoroutineを始めます。
 // 止めるにはShutdownを呼びます。reportがnilなら、errorを標準のloggerへ1行ずつ書きます。
-func NewPipeline(cfg Config, exporters []Exporter, meter pkgobserver.Meter, report ErrorHandler) *Pipeline {
+func NewPipeline(cfg Config, destinations []Destination, meter pkgobserver.Meter, report ErrorHandler) *Pipeline {
 	meter = observer.EnsureMeter(meter)
 	report = safeErrorHandler(report)
 	p := &Pipeline{meter: meter, report: report, done: make(chan struct{})}
-	for _, exporter := range exporters {
+	for _, destination := range destinations {
 		w := &worker{
-			exporter: exporter,
+			exporter: destination.Exporter,
+			store:    destination.Store,
 			meter:    meter,
 			report:   report,
 			queue:    make(chan tracing.SpanData, cfg.QueueSize),
@@ -121,8 +118,10 @@ func (p *Pipeline) Enqueue(span tracing.SpanData) {
 }
 
 // Shutdownは、新しいspanの受け付けを止め、待ち行列のspanを送り終えるのを待ちます。
-// ctxが終わった場合は待つのをやめてctx.Err()を返しますが、送信は続けます。2回目からの
-// 呼び出しも、同じ終了を待ちます。送り先を閉じたときのerrorを返します。
+// 送り終えた送り先は、failure storeを止めてから閉じます。failure storeの送り直しが、
+// 送り先の接続を使うためです。ctxが終わった場合は待つのをやめてctx.Err()を返しますが、
+// 送信は続けます。2回目からの呼び出しも、同じ終了を待ちます。failure storeを止めたときと
+// 送り先を閉じたときのerrorを返します。
 func (p *Pipeline) Shutdown(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -138,6 +137,11 @@ func (p *Pipeline) Shutdown(ctx context.Context) error {
 			var errs []error
 			for _, w := range p.workers {
 				<-w.done
+				if w.store != nil {
+					if err := w.store.Shutdown(context.Background()); err != nil {
+						errs = append(errs, fmt.Errorf("shut down the failure store of the %s trace exporter: %w", w.exporter.Name(), err))
+					}
+				}
 				if err := w.exporter.Close(); err != nil {
 					errs = append(errs, fmt.Errorf("close %s trace exporter: %w", w.exporter.Name(), err))
 				}
@@ -157,6 +161,7 @@ func (p *Pipeline) Shutdown(ctx context.Context) error {
 // workerは、1つの送り先の待ち行列とbatchを受け持ちます。
 type worker struct {
 	exporter Exporter
+	store    FailureStore
 	meter    pkgobserver.Meter
 	report   ErrorHandler
 	queue    chan tracing.SpanData
@@ -224,8 +229,9 @@ func (w *worker) run() {
 	}
 }
 
-// exportは、batchを送り、結果を数え、送れなかったspanを知らせます。送り先のpanicは
-// 失敗として扱い、goroutineを止めません。
+// exportは、batchを送り、結果を数えます。送れなかったspanは、failure storeがあれば
+// 保存します。後で送り直さないspanは届かないため、error handlerへ知らせます。送り先の
+// panicは失敗として扱い、goroutineを止めません。
 func (w *worker) export(batch []tracing.SpanData) {
 	ctx := context.Background()
 	name := w.exporter.Name()
@@ -238,25 +244,51 @@ func (w *worker) export(batch []tracing.SpanData) {
 		}()
 		return w.exporter.Export(ctx, batch)
 	}()
-	outcome := telemetry.OutcomeSuccess
+	var failures []SpanFailure
 	failed := 0
-	var partial *PartialFailureError
-	switch {
-	case err == nil:
-	case errors.As(err, &partial):
-		failed = min(max(partial.Failed, 0), len(batch))
-		w.report(fmt.Errorf("the %s trace exporter could not send %d of %d spans: %w", name, failed, len(batch), err))
-	default:
+	if err != nil {
+		failures = exportFailures(err, len(batch))
+		for _, failure := range failures {
+			failed += failure.Failed()
+		}
+	}
+	outcome := telemetry.OutcomeSuccess
+	if err != nil && failed >= len(batch) {
 		outcome = telemetry.OutcomeFailure
-		failed = len(batch)
-		w.report(fmt.Errorf("the %s trace exporter could not send %d spans: %w", name, failed, err))
 	}
 	w.meter.Histogram(telemetry.TraceExportDuration).Record(ctx, time.Since(start).Seconds(),
 		pkgobserver.Attr{Key: telemetry.AttrExporter, Value: name},
 		pkgobserver.Attr{Key: telemetry.AttrOutcome, Value: outcome},
 	)
 	recordSpans(ctx, w.meter, name, telemetry.OutcomeSuccess, len(batch)-failed)
-	recordSpans(ctx, w.meter, name, telemetry.OutcomeFailure, failed)
+	if err == nil {
+		return
+	}
+	if w.store == nil {
+		recordSpans(ctx, w.meter, name, telemetry.OutcomeFailure, failed)
+		w.report(w.sendError(failed, len(batch), err))
+		return
+	}
+	if storeErr := w.store.Store(ctx, batch, failures); storeErr != nil {
+		recordSpans(ctx, w.meter, name, telemetry.OutcomeFailure, failed)
+		w.report(fmt.Errorf("%w, and they could not be stored: %w", w.sendError(failed, len(batch), err), storeErr))
+		return
+	}
+	for _, failure := range failures {
+		recordSpans(ctx, w.meter, name, failure.Disposition.Outcome(), failure.Failed())
+		if failure.Disposition != DispositionRetry {
+			w.report(fmt.Errorf("%w; they were stored as %s and are not resent",
+				w.sendError(failure.Failed(), len(batch), failure.Err), failure.Disposition.Outcome()))
+		}
+	}
+}
+
+// sendErrorは、batchのtotal件のうちfailed件を送れなかったことを表すerrorを返します。
+func (w *worker) sendError(failed, total int, err error) error {
+	if failed < total {
+		return fmt.Errorf("the %s trace exporter could not send %d of %d spans: %w", w.exporter.Name(), failed, total, err)
+	}
+	return fmt.Errorf("the %s trace exporter could not send %d spans: %w", w.exporter.Name(), failed, err)
 }
 
 func recordSpans(ctx context.Context, meter pkgobserver.Meter, exporter, outcome string, count int) {

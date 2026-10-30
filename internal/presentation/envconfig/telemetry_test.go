@@ -40,6 +40,7 @@ func TestTelemetryConfigReadsTheTraceSettings(t *testing.T) {
 		"HETEROLOG_TRACES_OTLP_ENDPOINT=https://collector.example/v1/traces",
 		`HETEROLOG_TRACES_OTLP_HEADERS={"Authorization":"Bearer token"}`,
 		"HETEROLOG_TRACES_OTLP_RETRIES=0",
+		"HETEROLOG_ENABLE_TRACES_OTLP_CIRCUIT_BREAKER=true",
 		"HETEROLOG_SYSTEM_LOG_DIR="+logDir,
 		"HETEROLOG_TARGET=api",
 	))
@@ -55,7 +56,7 @@ func TestTelemetryConfigReadsTheTraceSettings(t *testing.T) {
 			traces.SamplingRatio, traces.ExportInterval, traces.QueueSize)
 	}
 	if traces.OTLP.Endpoint != "https://collector.example/v1/traces" || traces.OTLP.Headers["Authorization"] != "Bearer token" ||
-		traces.OTLP.Retries != 0 || traces.OTLP.Timeout != 10*time.Second {
+		traces.OTLP.Retries != 0 || traces.OTLP.Timeout != 10*time.Second || !traces.OTLP.CircuitBreaker {
 		t.Errorf("OTLP = %+v", traces.OTLP)
 	}
 	if want := filepath.Join(logDir, "api", "traces", "spans.jsonl"); traces.File.Path != want {
