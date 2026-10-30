@@ -505,6 +505,15 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 - A metric keeps up to `CardinalityLimit` attribute sets. When it is reached, the values of new sets are added to one set with the attribute `otel.metric.overflow=true`, which counts toward the limit, as in the OpenTelemetry SDK.
 - Sums and histograms start when the `Telemetry` is constructed. The metrics of the `Meter` have the instrumentation scope `github.com/go-jappe/heterolog` and the same resource as the spans of the `Tracer`.
 
+### Metrics from the OpenTelemetry SDK
+
+`otelexport.NewMetricExporter(tel)` returns an `sdkmetric.Exporter` to pass to an SDK reader, such as `sdkmetric.NewPeriodicReader`. The reader decides when the SDK collects, and each collection is queued in the `Telemetry`, which sends it with the metrics of its own `Meter`.
+
+- The exporter asks the SDK for cumulative temporality for every instrument and uses the default aggregation of the SDK.
+- Exponential histograms and summaries are not sent. `Export` sends the other metrics and returns an error wrapping `otelexport.ErrUnsupportedMetric`, which the SDK passes to its error handler.
+- The metrics keep the resource and instrumentation scope of the SDK. Metrics with an empty resource are sent with the resource of the `Telemetry`.
+- Shut down the `MeterProvider` before the `Telemetry`, so that its last collection reaches the `Telemetry` before `Shutdown` sends the last metrics.
+
 ### Delivery
 
 - Every `ExportInterval`, the values of the `Meter` are collected and queued for each destination, which keeps up to `QueueSize` collections and has its own goroutine. A collection that does not fit in the queue of a destination is dropped for that destination; because the values are cumulative, the next collection still has the totals.

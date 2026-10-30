@@ -505,6 +505,15 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 - 1つのメトリクスは、属性の組を `CardinalityLimit` 個まで持ちます。上限に達した後に現れた組の値は、OpenTelemetry SDKと同じく、`otel.metric.overflow=true` の属性を持つ1つの組へまとめます。まとめる組も上限に数えます。
 - sumとhistogramは、`Telemetry` を作った時刻から集計します。`Meter` のメトリクスのinstrumentation scopeは `github.com/go-jappe/heterolog` で、resourceは `Tracer` のspanと同じです。
 
+### OpenTelemetry SDKのメトリクス
+
+`otelexport.NewMetricExporter(tel)` は、`sdkmetric.NewPeriodicReader` などSDKのreaderへ渡す `sdkmetric.Exporter` を返します。SDKがいつ集めるかはreaderが決め、集めた回ごとに `Telemetry` の待ち行列へ入れ、`Telemetry` 自身の `Meter` のメトリクスとともに送ります。
+
+- exporterは、すべての計装で累積値（cumulative）をSDKに求め、SDKの既定の集計を使います。
+- exponential histogramとsummaryは送りません。`Export` は、ほかのメトリクスを送り、`otelexport.ErrUnsupportedMetric` を包んだerrorを返します。SDKはそれを自分のerror handlerへ渡します。
+- メトリクスは、SDKのresourceとinstrumentation scopeを保ちます。resourceが空のメトリクスは、`Telemetry` のresourceで送ります。
+- `MeterProvider` を `Telemetry` より先に止めてください。最後に集めた回が、`Shutdown` が最後のメトリクスを送る前に `Telemetry` へ届くようにするためです。
+
 ### 配送
 
 - `ExportInterval` ごとに `Meter` の値を集め、出力先ごとの待ち行列へ入れます。待ち行列は `QueueSize` 回分までで、出力先ごとにgoroutineを持ちます。待ち行列に入らない回は、その出力先では捨てます。値は累積値のため、次の回に合計が残ります。

@@ -346,6 +346,7 @@ tel.Meter().Counter("orders_total").Add(ctx, 1, heterolog.ObserverAttr{Key: "reg
 
 - 環境変数からは、`HETEROLOG_ENABLE_METRICS=true` と `HETEROLOG_METRICS_OTLP_ENDPOINT` を設定します。
 - 値は `ExportInterval`（既定は1分）ごとに集め、累積値（cumulative）として送ります。そのため、捨てたり失ったりした回があっても、次の回に合計が残ります。
+- OpenTelemetry SDKのメトリクスも、SDKのreaderへ `otelexport.NewMetricExporter(tel)` を渡せば、同じように送れます。
 - 送れなかったメトリクスは、ログやspanと同じspoolとfailure archiveへ渡します。結果の分からない送信は、失うより送り直すため、同じ値が2回届くことがあります。累積値なので、2回目は同じ時刻の同じ値です。
 
 詳しくは[メトリクスの送信](docs/reference.ja.md#メトリクスの送信)を参照してください。

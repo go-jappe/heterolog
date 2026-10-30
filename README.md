@@ -346,6 +346,7 @@ tel.Meter().Counter("orders_total").Add(ctx, 1, heterolog.ObserverAttr{Key: "reg
 
 - From the environment, set `HETEROLOG_ENABLE_METRICS=true` and `HETEROLOG_METRICS_OTLP_ENDPOINT`.
 - The values are collected every `ExportInterval` (one minute by default) and sent as cumulative values, so a collection that is dropped or lost still leaves the totals in the next one.
+- Metrics from the OpenTelemetry SDK are sent the same way through `otelexport.NewMetricExporter(tel)`, passed to an SDK reader.
 - Metrics that could not be sent go to the same spool and failure archive as logs and spans. Because an uncertain send is resent rather than lost, the same value can arrive twice; with cumulative values, the second one is the same value at the same time.
 
 See [Sending metrics](docs/reference.md#sending-metrics) for details.

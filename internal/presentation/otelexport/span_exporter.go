@@ -1,19 +1,18 @@
-// Package otelexportは、OpenTelemetry SDKから届くspanの入口です。SDKのspanをSpanDataに
-// 変え、NewTelemetryのTracerと同じ配送の仕組みへ渡します。SDKをlinkしないprogramに
-// SDKを持ち込まないよう、root packageの隣の公開package otelexportだけがimportします。
+// Package otelexportは、OpenTelemetry SDKから届くspanとmetricsの入口です。SDKのspanと
+// metricsを変換し、NewTelemetryのTracerとMeterと同じ配送の仕組みへ渡します。SDKをlink
+// しないprogramにSDKを持ち込まないよう、root packageの隣の公開package otelexportだけが
+// importします。
 package otelexport
 
 import (
 	"context"
 	"errors"
-	"sync"
 	"sync/atomic"
 
 	"github.com/go-jappe/heterolog/internal/application/tracing"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -21,24 +20,16 @@ import (
 // ErrExporterShutdownは、Shutdownの後にExportSpansが呼ばれたことを表します。
 var ErrExporterShutdown = errors.New("heterolog span exporter is shut down")
 
-// maxCachedResourcesは、変換したResourceを覚えておく数の上限です。TracerProviderは
-// 1つのResourceを使い続けるため、通常はTracerProviderの数だけ覚えます。
-const maxCachedResources = 64
-
 // SpanExporterは、sdktrace.SpanExporterの実装です。
 type SpanExporter struct {
-	sink     tracing.SpanSink
-	shutdown atomic.Bool
-
-	// muは、resourcesを守ります。resourcesは、SDKのResourceを変換した結果です。
-	// 同じResourceのspanに同じpointerを付け、送るときに1つのResourceSpansへまとめます。
-	mu        sync.Mutex
-	resources map[*resource.Resource]*tracing.Resource
+	sink      tracing.SpanSink
+	shutdown  atomic.Bool
+	resources resourceCache
 }
 
 // NewSpanExporterは、spanをsinkへ渡すSpanExporterを返します。
 func NewSpanExporter(sink tracing.SpanSink) *SpanExporter {
-	return &SpanExporter{sink: sink, resources: make(map[*resource.Resource]*tracing.Resource)}
+	return &SpanExporter{sink: sink}
 }
 
 // ExportSpansは、spansを配送の仕組みの待ち行列へ入れます。送り終わるのを待たずに返り、
@@ -49,7 +40,7 @@ func (e *SpanExporter) ExportSpans(_ context.Context, spans []sdktrace.ReadOnlyS
 	}
 	for _, span := range spans {
 		data := toSpanData(span)
-		data.Resource = e.toResource(span.Resource())
+		data.Resource = e.resources.convert(span.Resource())
 		e.sink.Enqueue(data)
 	}
 	return nil
@@ -103,24 +94,6 @@ func toSpanData(span sdktrace.ReadOnlySpan) tracing.SpanData {
 		})
 	}
 	return data
-}
-
-// toResourceは、SDKのResourceを変換します。nilと空のResourceは、NewTelemetryに設定した
-// Resourceで送るため、nilにします。
-func (e *SpanExporter) toResource(r *resource.Resource) *tracing.Resource {
-	if r == nil || r.Len() == 0 {
-		return nil
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if converted, ok := e.resources[r]; ok {
-		return converted
-	}
-	converted := &tracing.Resource{Attrs: toAttrs(r.Attributes()), SchemaURL: r.SchemaURL()}
-	if len(e.resources) < maxCachedResources {
-		e.resources[r] = converted
-	}
-	return converted
 }
 
 // toAttrsは、属性を、型を保ったGoの値（bool・int64・float64・stringと、それらのslice）に

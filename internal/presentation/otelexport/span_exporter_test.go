@@ -83,9 +83,13 @@ func TestSpanExporterConvertsSDKSpans(t *testing.T) {
 	}
 }
 
-func TestSpanExporterKeepsTheTelemetryResourceForEmptyResources(t *testing.T) {
-	if got := NewSpanExporter(&recordingSink{}).toResource(resource.Empty()); got != nil {
-		t.Errorf("toResource(empty) = %+v, want nil", got)
+func TestResourceCacheKeepsTheTelemetryResourceForEmptyResources(t *testing.T) {
+	var cache resourceCache
+	if got := cache.convert(resource.Empty()); got != nil {
+		t.Errorf("convert(empty) = %+v, want nil", got)
+	}
+	if got := cache.convert(nil); got != nil {
+		t.Errorf("convert(nil) = %+v, want nil", got)
 	}
 }
 
