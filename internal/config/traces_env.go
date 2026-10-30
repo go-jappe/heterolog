@@ -112,6 +112,7 @@ func mapTelemetryFailureStoreConfig(a *AppConfig, checkpointSource archiveCheckp
 		Store:            newFailureStoreConfig(a, checkpointSource, storageowner.Telemetry, fs.FailureHandler, logconfig.LogBodyConfig{}),
 		Replay:           fs.Replay,
 		ReplaySupervisor: fs.ReplaySupervisor,
+		MaxAge:           fs.MaxAge,
 	}
 }
 

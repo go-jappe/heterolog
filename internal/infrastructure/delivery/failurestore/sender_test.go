@@ -115,3 +115,25 @@ func TestReplaySenderRetriesEverythingAfterAPanicOrAnUnknownError(t *testing.T) 
 		}
 	}
 }
+
+func TestReplaySenderKeepsRecordsOlderThanTheMaxAgeAsDead(t *testing.T) {
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	exporter := &recordingExporter{}
+	sender := replaySender[string]{exporter: exporter, decode: testCodec.Decode, clock: clock.NewFixedClock(now), maxAge: time.Hour}
+	old, fresh, unknown := record(t, "old"), record(t, "fresh"), record(t, "unknown")
+	old.OccurredAt = now.Add(-2 * time.Hour)
+	fresh.OccurredAt = now.Add(-time.Minute)
+	report, err := sender.Send(context.Background(), []spool.SpoolRecord{old, fresh, unknown})
+	if err != nil || report.Validate(3) != nil {
+		t.Fatalf("Send = %+v, %v", report, err)
+	}
+	// 上限を過ぎたrecordは送らずにdeadにし、時刻の分からないrecordは送ります。
+	if len(exporter.sent) != 2 || exporter.sent[0] != "fresh" || exporter.sent[1] != "unknown" {
+		t.Errorf("sent = %v, want fresh and unknown", exporter.sent)
+	}
+	for _, outcome := range report {
+		if outcome.InputIndex == 0 && (outcome.Status != spool.RecordOutcomeStatusPermanent || !errors.Is(outcome.Err, ErrTooOld)) {
+			t.Errorf("old record = %+v, want permanent with ErrTooOld", outcome)
+		}
+	}
+}

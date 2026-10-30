@@ -135,6 +135,9 @@ func TestValidateChecksTheFailureStore(t *testing.T) {
 		{"Traces.OTLP.FailureStore.Replay.Runner.Interval", telemetry.ErrNonPositiveSetting, func(c *telemetry.FailureStoreConfig) {
 			c.Replay.Runner.Interval = 0
 		}},
+		{"Traces.OTLP.FailureStore.MaxAge", telemetry.ErrNegativeSetting, func(c *telemetry.FailureStoreConfig) {
+			c.MaxAge = -time.Second
+		}},
 	} {
 		err := withStore(tc.change).Validate()
 		var fieldErr *telemetry.FieldError

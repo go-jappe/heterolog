@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery"
@@ -49,6 +50,9 @@ type Config struct {
 	// ReplayとReplaySupervisorは、spoolから送り直すrunnerと、その再起動の設定です。
 	Replay           pkgspoolrunner.BackendSpoolRunnerConfig
 	ReplaySupervisor pkgspoolsupervisor.RunnerSupervisorConfig
+	// MaxAgeは、spoolのrecordを送り直す期間の上限で、失敗した時刻から数えます。0なら上限は
+	// ありません。
+	MaxAge time.Duration
 }
 
 // Codecは、送るものをfailure storeのrecordにする方法と、recordから戻す方法です。
@@ -301,7 +305,7 @@ func startReplay[T any](cfg Config, opts Options[T], writer *spoolstorehandler.S
 		SpoolConfig:      spoolCfg,
 		RunnerConfig:     cfg.Replay,
 		SupervisorConfig: cfg.ReplaySupervisor,
-		Sender:           replaySender[T]{exporter: opts.Exporter, decode: opts.Codec.Decode, clock: opts.Clock},
+		Sender:           replaySender[T]{exporter: opts.Exporter, decode: opts.Codec.Decode, clock: opts.Clock, maxAge: cfg.MaxAge},
 		OnWarn:           warnHandler(report),
 	}, observer.NopTracer{}, opts.Meter)
 	if err != nil {

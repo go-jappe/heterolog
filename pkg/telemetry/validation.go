@@ -182,6 +182,12 @@ func (c FailureStoreConfig) validate(field string) error {
 	if c.usesSpool() {
 		errs = append(errs, positive(field+".Replay.Runner.Interval", c.Replay.Runner.Interval))
 	}
+	if c.MaxAge < 0 {
+		errs = append(errs, &FieldError{
+			Field: field + ".MaxAge", Value: c.MaxAge, Err: ErrNegativeSetting,
+			Detail: fmt.Sprintf("must not be negative, got %v", c.MaxAge),
+		})
+	}
 	return errors.Join(errs...)
 }
 

@@ -210,6 +210,7 @@ func newFailureStore[T any](ctx context.Context, cfg pkgtelemetry.FailureStoreCo
 		Store:            cfg.Store,
 		Replay:           cfg.Replay,
 		ReplaySupervisor: cfg.ReplaySupervisor,
+		MaxAge:           cfg.MaxAge,
 	}, opts)
 	if err != nil || store == nil {
 		return nil, err

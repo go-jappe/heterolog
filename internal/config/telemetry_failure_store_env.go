@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"time"
 
 	"github.com/go-jappe/heterolog/internal/config/failure"
 	"github.com/go-jappe/heterolog/internal/config/filelifecycle"
@@ -36,16 +37,18 @@ type telemetryFailureStoreKeys struct {
 	PurgeDone, DoneAge, DoneDirSize, PurgeDead, DeadAge, DeadDirSize                              string
 	PurgeQuarantine, QuarantineAge, QuarantineDirSize, PurgeInterval, SizeEstimateCache           string
 	FullScanEveryNChecks, FullScanMaxInterval, FinalizeRetryDelay, FinalizeEntries, MaxRetryAfter string
+	MaxResendAge                                                                                  string
 
 	DefaultSpoolDir, DefaultArchiveDir string
 }
 
 // TelemetryFailureStoreConfigは、traceやmetricsの送り先のfailure storeと、spoolから送り直す
-// 設定です。
+// 設定です。MaxAgeは、spoolのものを送り直す期間の上限です。
 type TelemetryFailureStoreConfig struct {
 	FailureHandler   failure.FailureHandlerConfig
 	Replay           pkgspoolrunner.BackendSpoolRunnerConfig
 	ReplaySupervisor pkgspoolsupervisor.RunnerSupervisorConfig
+	MaxAge           time.Duration
 }
 
 // loadTelemetryFailureStoreConfigは、送り先のfailure storeの設定を、keysのkeyから読み込みます。
@@ -75,7 +78,9 @@ func loadTelemetryFailureStoreConfig(env pkgenv.Lookup, keys telemetryFailureSto
 	if containsDurableType(cfg.DurableType, failure.DurableTypeSpool) {
 		result.Replay, replayErr = loadTelemetrySpoolRunnerConfig(env, keys)
 		maxRestarts, maxRestartsErr := env.GetEnvInt("HETEROLOG_MAX_RESTART_SPOOL_TIMES", spoolsupervisor.DefaultMaxRestart)
-		replayErr = errors.Join(replayErr, maxRestartsErr)
+		maxAge, maxAgeErr := env.GetEnvDuration(keys.MaxResendAge, 0)
+		result.MaxAge = maxAge
+		replayErr = errors.Join(replayErr, maxRestartsErr, maxAgeErr)
 		result.ReplaySupervisor = pkgspoolsupervisor.RunnerSupervisorConfig{
 			RestartDelay: spoolsupervisor.DefaultRestartDelay,
 			MaxRestarts:  maxRestarts,
@@ -261,6 +266,7 @@ var tracesOTLPFailureStoreKeys = telemetryFailureStoreKeys{
 	FinalizeRetryDelay:          "HETEROLOG_TRACES_OTLP_SPOOL_RUNNER_RETRY_FINALIZE_DELAY_MILLISECOND",
 	FinalizeEntries:             "HETEROLOG_MAX_TRACES_OTLP_SPOOL_FINALIZE_FAILURE_ENTRIES",
 	MaxRetryAfter:               "HETEROLOG_TRACES_OTLP_SPOOL_RUNNER_MAX_RETRY_AFTER_SECOND",
+	MaxResendAge:                "HETEROLOG_TRACES_OTLP_SPOOL_MAX_RESEND_AGE_SECOND",
 	DefaultSpoolDir:             "traces_otlp",
 	DefaultArchiveDir:           "traces_otlp_failure_archives",
 }
@@ -314,6 +320,7 @@ var metricsOTLPFailureStoreKeys = telemetryFailureStoreKeys{
 	FinalizeRetryDelay:          "HETEROLOG_METRICS_OTLP_SPOOL_RUNNER_RETRY_FINALIZE_DELAY_MILLISECOND",
 	FinalizeEntries:             "HETEROLOG_MAX_METRICS_OTLP_SPOOL_FINALIZE_FAILURE_ENTRIES",
 	MaxRetryAfter:               "HETEROLOG_METRICS_OTLP_SPOOL_RUNNER_MAX_RETRY_AFTER_SECOND",
+	MaxResendAge:                "HETEROLOG_METRICS_OTLP_SPOOL_MAX_RESEND_AGE_SECOND",
 	DefaultSpoolDir:             "metrics_otlp",
 	DefaultArchiveDir:           "metrics_otlp_failure_archives",
 }
@@ -367,6 +374,7 @@ var metricsVictoriaMetricsFailureStoreKeys = telemetryFailureStoreKeys{
 	FinalizeRetryDelay:          "HETEROLOG_METRICS_VICTORIAMETRICS_SPOOL_RUNNER_RETRY_FINALIZE_DELAY_MILLISECOND",
 	FinalizeEntries:             "HETEROLOG_MAX_METRICS_VICTORIAMETRICS_SPOOL_FINALIZE_FAILURE_ENTRIES",
 	MaxRetryAfter:               "HETEROLOG_METRICS_VICTORIAMETRICS_SPOOL_RUNNER_MAX_RETRY_AFTER_SECOND",
+	MaxResendAge:                "HETEROLOG_METRICS_VICTORIAMETRICS_SPOOL_MAX_RESEND_AGE_SECOND",
 	DefaultSpoolDir:             "metrics_victoriametrics",
 	DefaultArchiveDir:           "metrics_victoriametrics_failure_archives",
 }

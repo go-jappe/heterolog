@@ -133,6 +133,11 @@ type FailureStoreConfig struct {
 	Replay spoolrunner.BackendSpoolRunnerConfig
 	// ReplaySupervisor configures the restarts of that worker.
 	ReplaySupervisor spoolsupervisor.RunnerSupervisorConfig
+	// MaxAge is the longest time that data waits in the spool to be resent,
+	// measured from the failure that put it there. Older data is kept as dead
+	// without being sent, because many receivers, such as Prometheus, reject
+	// samples that are too old. 0 resends data of any age.
+	MaxAge time.Duration
 }
 
 // Enabled reports whether Store keeps or writes the data that could not be

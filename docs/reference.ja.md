@@ -462,6 +462,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 - ログと異なり、接続が切れた場合など、結果の分からないspanは、quarantineへ移さずに送り直します。欠落より重複を優先するためです。そのため、送り直したspanが2回届くことがあります。そのspanは同じtrace IDとspan IDを持ちます。
 - 受信側がほかのステータスで拒否したspanはdeadに、部分的な成功を返した要求のspanは、どれが受け付けられたか分からないためquarantineに残します。どちらも送り直さず、error handlerへ知らせます。
 - `DurableTypeFileArchive` では、ログと同じローテーション、圧縮、保持期間、object storageへのuploadで、spanをfailure archiveへ追記します。uploadできなかった圧縮fileを残すspoolとarchiveは、設定にかかわらず、loggerの契約の代わりに `telemetry` が所有するため、loggerのディレクトリと共有しません。`DurableTypeNone` で `EnableDegrade` なら、spanをstdoutへ書きます。
+- `FailureStore.MaxAge` は、spoolのものを送り直す期間の上限で、spoolに入れた失敗の時刻から数えます。上限を過ぎたものは、古いものを拒否する受信先のために、送らずにdeadとして残します。既定の0なら、いつのものでも送り直します。
 - storeの過負荷の扱い（ディスクの空き容量、activeのspoolの大きさ、メモリの逼迫に対する `drop`・`degrade`）は、ログと同じです。
 - storeの内部ログの通知先（`HandlerConfig`）は使いません。storeのerrorと警告は、`WithTelemetryErrorHandler` で渡した関数へ渡します。
 - spoolとfailure archiveは、それぞれ専用のディレクトリです。同じprocessで、ログの出力先や別の `Telemetry` が、同じディレクトリを同時に使うことはできません。
@@ -486,7 +487,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 | `HETEROLOG_TRACES_OTLP_RETRIES` | `OTLP.Retries` | `3` |
 | `HETEROLOG_TRACES_OTLP_RETRY_BASE_DELAY_MILLISECOND`、`HETEROLOG_TRACES_OTLP_RETRY_MAX_DELAY_MILLISECOND` | `OTLP.RetryBaseDelay`、`OTLP.RetryMaxDelay` | `1000`、`5000` |
 | `HETEROLOG_ENABLE_TRACES_OTLP_CIRCUIT_BREAKER` | `OTLP.CircuitBreaker` | `false` |
-| `HETEROLOG_TRACES_OTLP_DURABLE_TYPES` と、出力先の名前の位置に `TRACES_OTLP` を入れたほかのfailure storeのキー（`HETEROLOG_TRACES_OTLP_FAILURE_SPOOL_DIR`、`HETEROLOG_TRACES_OTLP_SPOOL_RUNNER_INTERVAL_MILLISECOND` など） | `OTLP.FailureStore`。`HETEROLOG_LOKI_*` などログの出力先のキーと同じ意味と既定値です。ただし、`*_HANDLER` のキーはありません。failure archiveがuploadできなかった圧縮fileは、`HETEROLOG_OBJECT_STORAGE_COMPRESSED_LOG_FILE_UPLOAD_FAILURE_*` の保存先の、`telemetry` の下へ入れます。ディレクトリは `traces_otlp`（spool）と `traces_otlp_failure_archives` で、ログの出力先と同じく解決します。spoolのworkerの再起動は、`HETEROLOG_MAX_RESTART_SPOOL_TIMES` に従います。 | `spool` |
+| `HETEROLOG_TRACES_OTLP_DURABLE_TYPES` と、出力先の名前の位置に `TRACES_OTLP` を入れたほかのfailure storeのキー（`HETEROLOG_TRACES_OTLP_FAILURE_SPOOL_DIR`、`HETEROLOG_TRACES_OTLP_SPOOL_RUNNER_INTERVAL_MILLISECOND` など） | `OTLP.FailureStore`。`HETEROLOG_LOKI_*` などログの出力先のキーと同じ意味と既定値です。ただし、`*_HANDLER` のキーはなく、`HETEROLOG_TRACES_OTLP_SPOOL_MAX_RESEND_AGE_SECOND` で `OTLP.FailureStore.MaxAge`（既定は `0`）を指定します。failure archiveがuploadできなかった圧縮fileは、`HETEROLOG_OBJECT_STORAGE_COMPRESSED_LOG_FILE_UPLOAD_FAILURE_*` の保存先の、`telemetry` の下へ入れます。ディレクトリは `traces_otlp`（spool）と `traces_otlp_failure_archives` で、ログの出力先と同じく解決します。spoolのworkerの再起動は、`HETEROLOG_MAX_RESTART_SPOOL_TIMES` に従います。 | `spool` |
 | `HETEROLOG_TRACES_FILE_DIR` | `File.Path` のディレクトリ。`File.Path` はその中の `spans.jsonl` です。ログのディレクトリと同じく、`HETEROLOG_SYSTEM_LOG_DIR` と `HETEROLOG_TARGET` を基準に解決します。 | `/traces` |
 
 - resourceは、ロガーと同じキーから作ります。`HETEROLOG_APP_NAME`（`service.name`）、`HETEROLOG_APP_ENV`、`HETEROLOG_RUNTIME_TYPE`、`HETEROLOG_INSTANCE_ID`、`HETEROLOG_CLOUD_PROVIDER`、`HETEROLOG_CLOUD_PROVIDER_REGION` と、プロセスのホスト名とOSです。
@@ -529,7 +530,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 `Metrics.OTLP.FailureStore` と `Metrics.VictoriaMetrics.FailureStore` は、`otlp` と `victoriametrics` が送れなかったメトリクスを、[送れなかったspan](#送れなかったspan)と同じ設定と動きで、ログの出力先と同じfailure storeに残します。各recordは、1つのメトリクスと、そのすべてのdata pointを、resourceとscopeを含むOTLP JSONで持ちます。recordと、spoolとfailure archiveのメトリクスのbackendは、`otlp_metrics` か `victoriametrics` です。どちらのrecordもOTLP JSONで、spoolのworkerが出力先の形式で送り直します。
 
 - 結果の分からないメトリクスは、quarantineへ移さずに送り直します。欠落より重複を優先するためです。そのため、同じ値が2回届くことがあります。値は累積値のため、2回目は同じ系列の同じ時刻の同じ値です。重複したsampleを除く受信先は1つだけを残し、問い合わせで計算する合計は変わりません。heterologは使いませんが、差分（delta）の値なら、増えた分が2回足されます。
-- 送り直した値は、その後に集めた値より古くなります。系列の最新より古いsampleや、一定の時間より古いsampleを拒否する受信先（out-of-orderの取り込みを有効にしていないPrometheusなど）は、ステータスで拒否するため、送り直さずにdeadとして残します。
+- 送り直した値は、その後に集めた値より古くなります。系列の最新より古いsampleや、一定の時間より古いsampleを拒否する受信先（out-of-orderの取り込みを有効にしていないPrometheusなど）は、ステータスで拒否するため、送り直さずにdeadとして残します。`FailureStore.MaxAge` を指定すれば、上限より古い値は送らずにdeadとして残します。
 
 ### 環境変数
 
