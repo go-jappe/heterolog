@@ -47,7 +47,8 @@ func TestLoggerStatusListsOutputsDirectoriesAndMetrics(t *testing.T) {
 		got.Inspection.Backends[0].Name != "file" || got.Inspection.Backends[1].Name != "stdout" || got.Inspection.Backends[0].Spool != nil {
 		t.Errorf("status = %+v, want the file and stdout outputs without spools", got.Inspection.Backends)
 	}
-	want := status.DirectoryInspection{Path: filepath.Join(root, "status-test", "logs"), Role: "log", Backend: "file", LimitBytes: 10 << 20, MinFreeBytes: 1 << 20}
+	// directoryのpathは、symbolic linkを解決した実体のpathです（TMPDIRがlinkでも同じ）。
+	want := status.DirectoryInspection{Path: filepath.Join(resolvedForTest(t, root), "status-test", "logs"), Role: "log", Backend: "file", LimitBytes: 10 << 20, MinFreeBytes: 1 << 20}
 	if len(got.Inspection.Directories) != 1 || got.Inspection.Directories[0] != want {
 		t.Errorf("directories = %+v, want %+v", got.Inspection.Directories, want)
 	}
@@ -75,7 +76,7 @@ func TestTelemetryStatusListsDestinationsWithTheirSpools(t *testing.T) {
 		t.Fatalf("backend = %+v, want otlp_traces with a spool", backend)
 	}
 	spool := backend.Spool
-	wantRoot := filepath.Join(spoolDir, "checkout", "spool", "traces_otlp")
+	wantRoot := filepath.Join(resolvedForTest(t, spoolDir), "checkout", "spool", "traces_otlp")
 	if spool.Root != wantRoot || spool.StateDirs["active"] != filepath.Join(wantRoot, "active") || len(spool.StateDirs) != 5 ||
 		spool.ActiveLimitBytes != 1<<30 {
 		t.Errorf("spool = %+v, want the spool under %s", spool, wantRoot)
@@ -89,4 +90,14 @@ func TestTelemetryStatusListsDestinationsWithTheirSpools(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 		spool = tel.Status(ctx).Inspection.Backends[0].Spool
 	}
+}
+
+// resolvedForTestは、pathのsymbolic linkを解決した実体のpathを返します。
+func resolvedForTest(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
 }
