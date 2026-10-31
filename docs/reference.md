@@ -204,6 +204,14 @@ Examples with curl are in [Changing the level and sampling while running](../REA
 - `AdminHandlerConfig.Status` and `AdminServerConfig.Status` (`AdminStatusConfig`) set the interval and the thresholds; a zero field uses the default (`DefaultAdminStatusConfig`), and a negative duration or a percentage outside 0 to 100 is `ErrAdminInvalidStatusConfig`. From the environment configuration: `HETEROLOG_ADMIN_STATUS_DIRECTORY_SCAN_INTERVAL_SECOND` (0 turns the scans off), `HETEROLOG_ADMIN_STATUS_DISK_FREE_WARNING_PERCENT`, `HETEROLOG_ADMIN_STATUS_DISK_FREE_CRITICAL_PERCENT`, `HETEROLOG_ADMIN_STATUS_DIRECTORY_SIZE_WARNING_PERCENT`, `HETEROLOG_ADMIN_STATUS_BACKEND_FAILURE_WARNING_PERCENT`, and `HETEROLOG_ADMIN_STATUS_SLOW_REQUEST_SECOND`.
 - A successful `GET /status` is not recorded in the audit log; a path that does not exist is `404` and recorded as rejected, like the other paths.
 
+### Browser page of the admin API
+
+`GET /` of the admin API returns an HTML page, with `GET /ui.css` and `GET /ui.js` as its parts, that calls the API from the browser: a Status tab (the report of `GET /status`, refreshed every 5 seconds when enabled, with the warnings on top and the rows they concern in red or yellow), a Settings tab (the level and sampling of each output, saved with `PATCH /settings` and so recorded in the audit log), and a Config tab (`GET /config`, with a path filter). The page is in English, with a switch to Japanese that the browser remembers.
+
+- The three files are served without the token and are not recorded in the audit log: they contain no settings and no status. Every other path still needs the token, and the page asks for it on first use and keeps it in the browser's session storage, so it is sent only to the same origin and is forgotten when the tab closes ("Forget token" removes it earlier).
+- The page loads nothing from other sites. Its `Content-Security-Policy` allows scripts, styles and requests from its own origin only, and it is sent with `Cache-Control: no-store`.
+- When `NewAdminHandler` is mounted under a path of your own server, mount it with a trailing slash (for example `http.StripPrefix("/admin", handler)` and open `/admin/`), because the page refers to the API by relative paths.
+
 ### Audit log of the admin API
 
 The admin API records every change request in an audit log, written by a delivery logger of its own, so that the changes can be checked later and are not hidden by the level and sampling that the API itself changes.

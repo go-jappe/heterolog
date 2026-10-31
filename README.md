@@ -52,7 +52,7 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 - A local spool for logs that could not be sent, replayed automatically and following `Retry-After` across restarts.
 - Overload protection with a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
 - Configuration in code, or from `HETEROLOG_` environment variables and an env file.
-- Level and sampling changes while running, in code or through a token-protected HTTP API, which also reports the configuration in use.
+- Level and sampling changes while running, in code or through a token-protected HTTP API, which also reports the configuration in use and the status of the process, destinations, spools and disks, with warnings, and serves a browser page for all of it.
 - Traces: a `Tracer`, and an exporter for the OpenTelemetry SDK, that send spans to an OTLP/HTTP receiver, OpenSearch (for its Trace Analytics), ClickHouse (in the table of the OpenTelemetry Collector), a file, or stdout in batches with retries. Spans that could not be sent go to the same spool and failure archive as logs. The loggers can record their own work as spans.
 - Metrics: a `Meter` that sends counters, gauges, and histograms to an OTLP/HTTP receiver, VictoriaMetrics, a file, or stdout, with the same retries, spool, and failure archive.
 - A CLI that recovers the log files of a stopped application.
@@ -303,6 +303,7 @@ Every request returns the settings of every logger. For example, this is the std
 - To serve the API from your own HTTP server, use `NewAdminHandler` with the same audit logger. In code, `runtime.OutputSettings()` returns the settings and `runtime.UpdateOutputSettings(changes)` changes them.
 - Only the level and sampling can change while running; destinations and storage cannot. The delivery logger has no such settings.
 - `GET /config` returns the configuration each member was created with, as JSON with `snake_case` keys, and `GET /config/<path>` returns one value of it (`GET /config?path=...&path=...` several). Tokens, passwords, and keys are shown as `***`. Delivery loggers and telemetries added to `AdminMembers` are reported too.
+- The same server serves a browser page at `/`: open `http://127.0.0.1:9100/`, enter the token (kept in the browser's session storage, so it is gone when the tab closes), and view the status with its warnings, change the level and sampling, and read the configuration. The page is English with a Japanese switch and loads nothing from other sites.
 - `GET /status` returns the CPU and memory of the process, the records, request durations and retries of every destination, the state of each spool (files per state, resend, last purge) and the directories in use with their free disk space, together with `warnings` (a disk nearly full, a slow or failing destination, a stopped resend, and so on), critical ones first. File counts come from a background scan every 5 minutes (`HETEROLOG_ADMIN_STATUS_DIRECTORY_SCAN_INTERVAL_SECOND`, 0 turns it off) and are approximate. See [Status of the loggers](docs/reference.md#status-of-the-loggers).
 
 See [Changing settings while running](docs/reference.md#changing-settings-while-running) for details.

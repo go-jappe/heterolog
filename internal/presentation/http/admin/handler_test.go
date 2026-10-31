@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"slices"
 	"strings"
 	"sync"
@@ -577,5 +578,65 @@ func TestNewHandlerRejectsAStatusConfigOutOfRange(t *testing.T) {
 	}
 	if err := ValidateStatusConfig(pkgadmin.DefaultStatusConfig()); err != nil {
 		t.Errorf("ValidateStatusConfig(defaults) = %v, want nil", err)
+	}
+}
+
+// ブラウザ画面のfileは、tokenなしで返し、監査logに記録しません。scriptとstyleは同じ
+// 配信元に限ります。
+func TestHandlerServesTheBrowserPageWithoutAToken(t *testing.T) {
+	handler, audit := newHandlerForTest(t, map[string]pkglogger.SettingsController{"app": newControllerForTest(t)})
+	for path, want := range map[string]string{"/": "text/html", "/ui.css": "text/css", "/ui.js": "text/javascript"} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusOK || !strings.HasPrefix(recorder.Header().Get("Content-Type"), want) ||
+			!strings.Contains(recorder.Header().Get("Content-Security-Policy"), "script-src 'self'") ||
+			recorder.Header().Get("Cache-Control") != "no-store" || recorder.Body.Len() == 0 {
+			t.Errorf("GET %s = %d %v, want 200 %s with a CSP", path, recorder.Code, recorder.Header(), want)
+		}
+	}
+	page := httptest.NewRecorder()
+	handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/", nil))
+	for _, want := range []string{`<script src="ui.js">`, `href="ui.css"`, `id="token"`, `data-tab="status"`} {
+		if !strings.Contains(page.Body.String(), want) {
+			t.Errorf("the page lacks %s", want)
+		}
+	}
+	script := httptest.NewRecorder()
+	handler.ServeHTTP(script, httptest.NewRequest(http.MethodGet, "/ui.js", nil))
+	for _, want := range []string{`"status"`, `"settings"`, `"config"`, `sessionStorage`, `Authorization`} {
+		if !strings.Contains(script.Body.String(), want) {
+			t.Errorf("the script lacks %s", want)
+		}
+	}
+	post := httptest.NewRecorder()
+	handler.ServeHTTP(post, httptest.NewRequest(http.MethodPost, "/", nil))
+	if post.Code != http.StatusMethodNotAllowed {
+		t.Errorf("POST / = %d, want 405", post.Code)
+	}
+	if got := audit.snapshot(); len(got) != 0 {
+		t.Errorf("audit records after the page = %q, want none", got)
+	}
+	// 画面のfile以外は、これまでどおりtokenが要ります。
+	status, _, _ := requestForTest(t, handler, http.MethodGet, "/index.html", "", "")
+	if status != http.StatusUnauthorized {
+		t.Errorf("GET /index.html without a token = %d, want 401", status)
+	}
+}
+
+// 画面のJavaScriptの構文を、nodeがあれば確かめます。
+func TestBrowserPageScriptParses(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	script, err := uiFiles.ReadFile("ui/ui.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(node, "--check", "-")
+	cmd.Stdin = strings.NewReader(string(script))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("node --check: %v\n%s", err, out)
 	}
 }

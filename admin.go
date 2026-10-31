@@ -102,8 +102,11 @@ type AdminServer struct {
 //	GET   /config/<path>  returns one value of that configuration
 //	GET   /status         returns the status of the process and every member
 //	GET   /status/<path>  returns one value of that status
+//	GET   /               serves a browser page that uses the API (with /ui.css and /ui.js)
 //
-// Every request must send "Authorization: Bearer <Token>". PATCH requests are
+// Every request except the three files of the browser page must send
+// "Authorization: Bearer <Token>"; the page asks for the token and keeps it in
+// the browser's session storage. PATCH requests are
 // processed one at a time, and a PATCH checks all of its changes before
 // applying any of them. Changes take effect from the next entry and are kept
 // in memory only, so a restart returns to the configured settings.

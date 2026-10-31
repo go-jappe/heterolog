@@ -100,8 +100,9 @@ func statusServiceConfig(cfg pkgadmin.StatusConfig) status.Config {
 //	GET   /config?path=<path>&path=<path>  複数のpathの先の値をまとめて返します
 //	GET   /status          processと全memberの様子と、注意すべき状態を返します
 //	GET   /status/<path>   statusの文書のpathの先の値だけを返します（?pathも同じ）
+//	GET   /                ブラウザ画面（HTML）。/ui.cssと/ui.jsがその部品です
 //
-// すべての要求で「Authorization: Bearer <Token>」が必要です。PATCHは一つずつ順に処理し、
+// ブラウザ画面のfile以外のすべての要求で「Authorization: Bearer <Token>」が必要です。PATCHは一つずつ順に処理し、
 // 全loggerの全変更を検証してから反映して、一つでも不正なら何も反映しません。要求、変更を
 // 始める時点の設定、変更後の設定はauditへ監査logとして記録し、拒否した要求も記録します。
 // 記録しないのは、成功したGETだけです。変更は次のlogから反映し、メモリ上だけに保持します。
@@ -253,6 +254,11 @@ type (
 const warningAuditUndelivered = "some audit records of this request were not delivered to every audit output"
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// ブラウザ画面のfileは、tokenを持たないため認証の前に返します。画面はAPIを呼ぶだけで、
+	// 設定もstatusも含みません。
+	if h.serveUI(w, r) {
+		return
+	}
 	// 要求IDは、応答のheaderと監査logの両方に含め、利用者が自分の要求の記録を探せる
 	// ようにします。
 	request := outputsettings.Request{ID: uuid.NewString(), RemoteAddr: r.RemoteAddr}

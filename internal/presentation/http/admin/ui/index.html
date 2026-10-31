@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>heterolog admin</title>
+<link rel="stylesheet" href="ui.css">
+</head>
+<body>
+<header>
+  <h1>heterolog admin</h1>
+  <div class="controls">
+    <label><span data-i18n="token">Admin token</span> <input id="token" type="password" autocomplete="off" size="40"></label>
+    <button id="connect" data-i18n="connect">Connect</button>
+    <button id="disconnect" data-i18n="disconnect">Forget token</button>
+    <span class="lang"><button data-lang="en">English</button><button data-lang="ja">日本語</button></span>
+  </div>
+  <p id="message" class="message" hidden></p>
+</header>
+<nav>
+  <button class="tab" data-tab="status" data-i18n="tab_status">Status</button>
+  <button class="tab" data-tab="settings" data-i18n="tab_settings">Settings</button>
+  <button class="tab" data-tab="config" data-i18n="tab_config">Config</button>
+</nav>
+<main>
+  <section id="status" class="panel" hidden>
+    <div class="toolbar">
+      <button id="status-refresh" data-i18n="refresh">Refresh</button>
+      <label><input id="status-auto" type="checkbox" checked> <span data-i18n="auto_refresh">Refresh every 5 s</span></label>
+      <span id="status-updated" class="muted"></span>
+    </div>
+    <div id="status-body"></div>
+  </section>
+  <section id="settings" class="panel" hidden>
+    <div class="toolbar">
+      <button id="settings-refresh" data-i18n="refresh">Refresh</button>
+      <button id="settings-save" data-i18n="save">Save changes</button>
+      <span id="settings-result" class="muted"></span>
+    </div>
+    <div id="settings-body"></div>
+  </section>
+  <section id="config" class="panel" hidden>
+    <div class="toolbar">
+      <button id="config-refresh" data-i18n="refresh">Refresh</button>
+      <label><span data-i18n="config_path">Path</span> <input id="config-path" type="text" size="50" placeholder="loggers/app/config/timeout"></label>
+    </div>
+    <pre id="config-body"></pre>
+  </section>
+</main>
+<script src="ui.js"></script>
+</body>
+</html>

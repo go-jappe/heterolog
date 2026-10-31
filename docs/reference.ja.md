@@ -204,6 +204,14 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 - `AdminHandlerConfig.Status` と `AdminServerConfig.Status`（`AdminStatusConfig`）で間隔と閾値を設定します。0の項目は既定値（`DefaultAdminStatusConfig`）で、負の時間や0から100でない割合は `ErrAdminInvalidStatusConfig` です。環境設定では、`HETEROLOG_ADMIN_STATUS_DIRECTORY_SCAN_INTERVAL_SECOND`（0でscanを止めます）、`HETEROLOG_ADMIN_STATUS_DISK_FREE_WARNING_PERCENT`、`HETEROLOG_ADMIN_STATUS_DISK_FREE_CRITICAL_PERCENT`、`HETEROLOG_ADMIN_STATUS_DIRECTORY_SIZE_WARNING_PERCENT`、`HETEROLOG_ADMIN_STATUS_BACKEND_FAILURE_WARNING_PERCENT`、`HETEROLOG_ADMIN_STATUS_SLOW_REQUEST_SECOND` です。
 - 成功した `GET /status` は監査ログに記録しません。存在しないパスは `404` で、ほかのパスと同じく拒否として記録します。
 
+### 管理用APIのブラウザ画面
+
+管理用APIの `GET /` は、ブラウザからAPIを呼ぶHTMLの画面を返します（`GET /ui.css` と `GET /ui.js` がその部品です）。状態のタブ（`GET /status` の報告。有効にすると5秒ごとに更新し、注意を上に、該当する行を赤か黄で示します）、設定の変更のタブ（出力先ごとのレベルとサンプリング。`PATCH /settings` で保存するため、監査ログに記録されます）、設定の一覧のタブ（`GET /config`。パスで絞り込めます）があります。画面は英語で、日本語への切り替えをブラウザが覚えます。
+
+- この3つのファイルは、トークンなしで返し、監査ログに記録しません。設定も状態も含まないためです。ほかのパスにはこれまでどおりトークンが要り、画面は最初に使うときにトークンを求めて、ブラウザのsession storageに置きます。そのため、同じ配信元にだけ送り、タブを閉じると消えます（「tokenを消す」で先に消せます）。
+- 画面は、ほかのサイトから何も読み込みません。`Content-Security-Policy` で、script・style・要求を自分の配信元だけに限り、`Cache-Control: no-store` で返します。
+- `NewAdminHandler` を自分のサーバーのパスの下に組み込む場合は、末尾に `/` を付けて組み込みます（例: `http.StripPrefix("/admin", handler)` で `/admin/` を開く）。画面が相対パスでAPIを参照するためです。
+
 ### 管理用APIの監査ログ
 
 管理用APIは、変更の要求をすべて監査ログに記録します。監査ログは専用の送達確認ロガーが書くため、あとから変更を確かめられ、管理用APIが変えるレベルやサンプリングで記録が隠れることもありません。
