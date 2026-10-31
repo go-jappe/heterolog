@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/go-jappe/heterolog/internal/application/metrics"
+	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/application/outputsettings"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/otel"
@@ -23,6 +25,7 @@ type Runtime struct {
 	*lifecycle
 	outputs *outputsettings.Registry
 	config  pkglogger.LoggerConfig
+	meter   *metrics.Meter
 }
 
 // AsyncRuntimeは、非同期でbest effortに送るloggerを持ちます。Shutdownは、受け付けた処理と
@@ -32,6 +35,7 @@ type AsyncRuntime struct {
 	*lifecycle
 	outputs *outputsettings.Registry
 	config  pkglogger.AsyncBestEffortMultiLoggerConfig
+	meter   *metrics.Meter
 }
 
 // DeliveryRuntimeは、出力先ごとの送信結果を返すloggerを持ちます。NewDeliveryで作ります。
@@ -39,6 +43,7 @@ type DeliveryRuntime struct {
 	pkglogger.DeliveryLogger
 	*lifecycle
 	config pkglogger.DeliveryLoggerConfig
+	meter  *metrics.Meter
 }
 
 var (
@@ -62,7 +67,7 @@ func New(ctx context.Context, builder Builder, cfg pkglogger.LoggerConfig, opts 
 	if err := validateOutputSettings("logger", cfg); err != nil {
 		return nil, err
 	}
-	o := ResolveOptions(opts)
+	o, meter := resolveOptionsWithInternalMeter(opts)
 	if cfg.Resource == nil {
 		cfg.Resource = &otel.Resource{}
 	}
@@ -75,7 +80,7 @@ func New(ctx context.Context, builder Builder, cfg pkglogger.LoggerConfig, opts 
 	if err != nil {
 		return nil, err
 	}
-	return &Runtime{Logger: logger, lifecycle: &lifecycle{closer: logger}, outputs: outputs, config: cfg}, nil
+	return &Runtime{Logger: logger, lifecycle: &lifecycle{closer: logger}, outputs: outputs, config: cfg, meter: meter}, nil
 }
 
 // NewAsyncは、builderで、非同期でbest effortに送るloggerを作ります。
@@ -86,7 +91,7 @@ func NewAsync(ctx context.Context, builder Builder, cfg pkglogger.AsyncBestEffor
 	if err := validateOutputSettings("async logger", cfg.ToLoggerConfig()); err != nil {
 		return nil, err
 	}
-	o := ResolveOptions(opts)
+	o, meter := resolveOptionsWithInternalMeter(opts)
 	if cfg.Resource == nil {
 		cfg.Resource = &otel.Resource{}
 	}
@@ -99,7 +104,7 @@ func NewAsync(ctx context.Context, builder Builder, cfg pkglogger.AsyncBestEffor
 	if err != nil {
 		return nil, err
 	}
-	return &AsyncRuntime{AsyncLogger: logger, lifecycle: &lifecycle{closer: logger}, outputs: outputs, config: cfg}, nil
+	return &AsyncRuntime{AsyncLogger: logger, lifecycle: &lifecycle{closer: logger}, outputs: outputs, config: cfg, meter: meter}, nil
 }
 
 // NewDeliveryは、builderで、出力先ごとの送信結果を返すloggerを作ります。Delivery loggerには
@@ -108,7 +113,7 @@ func NewDelivery(ctx context.Context, builder Builder, cfg pkglogger.DeliveryLog
 	if err := validateConstructor(ctx, builder); err != nil {
 		return nil, err
 	}
-	o := ResolveOptions(opts)
+	o, meter := resolveOptionsWithInternalMeter(opts)
 	if o.Spool != nil {
 		return nil, ErrDeliverySpoolUnsupported
 	}
@@ -119,8 +124,22 @@ func NewDelivery(ctx context.Context, builder Builder, cfg pkglogger.DeliveryLog
 	if err != nil {
 		return nil, err
 	}
-	return &DeliveryRuntime{DeliveryLogger: logger, lifecycle: &lifecycle{closer: logger}, config: cfg}, nil
+	return &DeliveryRuntime{DeliveryLogger: logger, lifecycle: &lifecycle{closer: logger}, config: cfg, meter: meter}, nil
 }
+
+// resolveOptionsWithInternalMeterは、optsを解決し、loggerのmetricsを利用者のMeterと
+// 内部のMeterの両方へ記録するようにします。内部のMeterは、statusの報告が出力先ごとの
+// 送信の結果や所要時間を読むためのもので、利用者がMeterを渡さなくても記録します。
+func resolveOptionsWithInternalMeter(opts []Option) (Options, *metrics.Meter) {
+	o := ResolveOptions(opts)
+	meter := metrics.NewMeter(metrics.Config{CardinalityLimit: internalMeterCardinalityLimit}, nil)
+	o.Meter = observer.TeeMeter(meter, o.Meter)
+	return o, meter
+}
+
+// internalMeterCardinalityLimitは、内部のMeterの1つのmetricが持つ属性の組の上限です。
+// loggerのmetricsの属性は出力先と結果の組だけなので、数十で足ります。
+const internalMeterCardinalityLimit = 256
 
 // validateConstructorは、constructorに共通の引数を検証します。
 func validateConstructor(ctx context.Context, builder Builder) error {

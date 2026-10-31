@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/application/metrics"
+	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/application/telemetrydata"
 	"github.com/go-jappe/heterolog/internal/application/telemetryruntime"
 	"github.com/go-jappe/heterolog/internal/application/tracing"
@@ -58,9 +59,13 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 		return nil, err
 	}
 	options := loggerruntime.ResolveOptions(opts)
+	// 配送の仕組みのmetricsは、利用者のMeterと、statusの報告が読む内部のMeterの両方へ
+	// 記録します。
+	internalMeter := metrics.NewMeter(metrics.Config{CardinalityLimit: 256}, nil)
+	options.Meter = observer.TeeMeter(internalMeter, options.Meter)
 	report := delivery.NewErrorHandler(options.TelemetryErrorHandler)
 	resource := otlpcommon.NewResource(cfg.Resource)
-	parts := telemetryruntime.Parts{Config: cfg}
+	parts := telemetryruntime.Parts{Config: cfg, InternalMeter: internalMeter}
 	if len(cfg.Traces.Exporters) > 0 {
 		destinations, err := newTraceDestinations(ctx, cfg, resource, options.Meter, report)
 		if err != nil {

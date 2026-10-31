@@ -39,9 +39,12 @@ type MetricDelivery interface {
 type Parts struct {
 	// Configは、telemetryを作った設定です。管理用APIが設定の文書を作るために返します。
 	Config pkgtelemetry.Config
-	Tracer pkgobserver.Tracer
-	Spans  Delivery
-	Meter  pkgobserver.Meter
+	// InternalMeterは、配送の仕組みが自分のmetrics（送ったspanの数など）を記録する内部の
+	// Meterです。statusの報告が読みます。nilなら、Metricsは何も返しません。
+	InternalMeter *metrics.Meter
+	Tracer        pkgobserver.Tracer
+	Spans         Delivery
+	Meter         pkgobserver.Meter
 	// Metricsは、Meterの値と、MetricSinkへ届いたmetricsを送ります。
 	Metrics MetricDelivery
 }
@@ -55,6 +58,15 @@ type Runtime struct {
 // Newは、partsを持つRuntimeを返します。
 func New(parts Parts) *Runtime {
 	return &Runtime{parts: parts}
+}
+
+// Metricsは、配送の仕組みが記録したmetricsの累積値を返します。statusの報告が、送り先
+// ごとの結果と所要時間を読むために使います。
+func (r *Runtime) Metrics() []metrics.Metric {
+	if r.parts.InternalMeter == nil {
+		return nil
+	}
+	return r.parts.InternalMeter.Collect()
 }
 
 // Configurationは、このtelemetryを作った設定を返します。管理用APIが設定の文書を作るための

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/configview"
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
+	"github.com/go-jappe/heterolog/internal/application/metrics"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgspool "github.com/go-jappe/heterolog/pkg/spool"
 )
@@ -101,5 +102,33 @@ func TestRuntimesReturnTheirConfiguration(t *testing.T) {
 	}
 	if got := delivery.Configuration(); got.Kind != configview.KindDeliveryLogger || got.Value.(pkglogger.DeliveryLoggerConfig).MaxLogEntryBytes != 99 {
 		t.Errorf("DeliveryRuntime.Configuration() = %+v, want kind delivery_logger with max_log_entry_bytes 99", got)
+	}
+}
+
+// loggerは、利用者がMeterを渡さなくても内部のMeterへmetricsを記録し、Metricsで返します。
+// 渡した場合は、両方へ記録します。
+func TestRuntimesRecordMetricsInTheirInternalMeter(t *testing.T) {
+	ctx := context.Background()
+	builder := &recordingBuilder{}
+	user := metrics.NewMeter(metrics.Config{}, nil)
+	runtime, err := loggerruntime.New(ctx, builder, pkglogger.LoggerConfig{Stdout: &pkglogger.StdoutLoggerConfig{RuntimeConfig: pkglogger.RuntimeConfig{LogLevel: pkglogger.LogLevelInfo}}},
+		loggerruntime.WithObservers(nil, user))
+	if err != nil {
+		t.Fatal(err)
+	}
+	builder.options.Meter.Counter("heterolog_backend_records_total").Add(ctx, 2)
+	if got := runtime.Metrics(); len(got) != 1 || got[0].Points[0].Int != 2 {
+		t.Errorf("Metrics() = %+v, want the counter at 2", got)
+	}
+	if got := user.Collect(); len(got) != 1 || got[0].Points[0].Int != 2 {
+		t.Errorf("user meter = %+v, want the counter at 2 as well", got)
+	}
+	delivery, err := loggerruntime.NewDelivery(ctx, builder, pkglogger.DeliveryLoggerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	builder.options.Meter.Counter("heterolog_backend_records_total").Add(ctx, 1)
+	if got := delivery.Metrics(); len(got) != 1 || got[0].Points[0].Int != 1 {
+		t.Errorf("delivery Metrics() = %+v, want the counter at 1 without WithObservers", got)
 	}
 }
