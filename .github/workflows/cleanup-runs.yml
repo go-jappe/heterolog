@@ -1,0 +1,56 @@
+name: Cleanup runs
+
+on:
+  schedule:
+    - cron: "0 18 * * 0" # 毎週月曜 03:00 JST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "削除せず対象だけ表示する"
+        type: boolean
+        default: true
+
+permissions:
+  actions: write
+
+concurrency:
+  group: cleanup-runs
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      # workflowとbranchの組ごとに、最新の成功1件と最新の失敗1件を残します。
+      # 実行中・待機中のrunには触れません。
+      - name: Delete old workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPO/actions/runs?per_page=100" \
+            --jq '.workflow_runs[] | [.id, .workflow_id, .head_branch, .status, (.conclusion // ""), .created_at] | @tsv' \
+            | sort -t$'\t' -k6,6r > runs.tsv
+          declare -A kept
+          deleted=0
+          while IFS=$'\t' read -r id wf branch status conclusion created; do
+            [ "$status" = "completed" ] || continue
+            case "$conclusion" in
+              success) kind=success ;;
+              failure|timed_out|startup_failure) kind=failure ;;
+              *) kind=other ;;
+            esac
+            key="$wf/$branch/$kind"
+            if [ "$kind" != other ] && [ -z "${kept[$key]:-}" ]; then
+              kept[$key]=1
+              continue
+            fi
+            echo "delete $id ($branch, $conclusion, $created)"
+            if [ "$DRY_RUN" != "true" ]; then
+              gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null
+            fi
+            deleted=$((deleted + 1))
+          done < runs.tsv
+          echo "対象: $deleted 件 (dry_run=$DRY_RUN)"
