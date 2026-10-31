@@ -61,6 +61,19 @@ func (d Dir) String() string {
 	return d.root
 }
 
+// DirAtは、NewRootDirで解決済みのrootをDirにします。検査はしません。statusの報告など、
+// 既に使っているspoolの場所を示すために使います。
+func DirAt(root string) Dir { return Dir{root: root} }
+
+// StateDirsは、状態ごとのdirectoryを返します。
+func (d Dir) StateDirs() map[spool.State]StateDir {
+	dirs := make(map[spool.State]StateDir, 5)
+	for _, state := range []spool.State{spool.StateActive, spool.StateProcessing, spool.StateDone, spool.StateDead, spool.StateQuarantine} {
+		dirs[state] = d.stateDir(state)
+	}
+	return dirs
+}
+
 func (d Dir) ActiveDir() StateDir     { return d.stateDir(spool.StateActive) }
 func (d Dir) ProcessingDir() StateDir { return d.stateDir(spool.StateProcessing) }
 func (d Dir) DoneDir() StateDir       { return d.stateDir(spool.StateDone) }

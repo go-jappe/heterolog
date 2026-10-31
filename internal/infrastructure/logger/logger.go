@@ -121,12 +121,14 @@ type topLevelLoggerRuntime struct {
 	appendLogMaintenanceRuntime *appendLogMaintenanceRuntime
 	failureSpoolPipelines       *failureSpoolPipelineSet
 	compressedLogSpoolRuntimes  *compressedLogSpoolRuntimes
-	closeMu                     sync.Mutex
-	closeController             shutdown.Controller
-	closeStage                  topLevelLoggerCloseStage
-	appendLogMaintenanceErr     error
-	failureSpoolPipelinesErr    error
-	completedCloseErrors        []error
+	// statusLayoutは、statusの報告に載せる出力先とdirectoryです。
+	statusLayout             loggerStatusLayout
+	closeMu                  sync.Mutex
+	closeController          shutdown.Controller
+	closeStage               topLevelLoggerCloseStage
+	appendLogMaintenanceErr  error
+	failureSpoolPipelinesErr error
+	completedCloseErrors     []error
 }
 
 func (l *topLevelLoggerRuntime) closeAttempt() error {
@@ -196,12 +198,14 @@ type topLevelAsyncLoggerRuntime struct {
 	appendLogMaintenanceRuntime *appendLogMaintenanceRuntime
 	failureSpoolPipelines       *failureSpoolPipelineSet
 	compressedLogSpoolRuntimes  *compressedLogSpoolRuntimes
-	closeMu                     sync.Mutex
-	closeController             shutdown.Controller
-	closeStage                  topLevelLoggerCloseStage
-	appendLogMaintenanceErr     error
-	failureSpoolPipelinesErr    error
-	completedCloseErrors        []error
+	// statusLayoutは、statusの報告に載せる出力先とdirectoryです。
+	statusLayout             loggerStatusLayout
+	closeMu                  sync.Mutex
+	closeController          shutdown.Controller
+	closeStage               topLevelLoggerCloseStage
+	appendLogMaintenanceErr  error
+	failureSpoolPipelinesErr error
+	completedCloseErrors     []error
 }
 
 // topLevelDeliveryLoggerRuntimeは、applicationへ公開するDelivery top-level Loggerと、
@@ -213,6 +217,7 @@ type topLevelDeliveryLoggerRuntime struct {
 	internalLogDestinations     *deliveryInternalLogDestinationRuntime
 	appendLogMaintenanceRuntime *appendLogMaintenanceRuntime
 	compressedLogSpoolRuntimes  *compressedLogSpoolRuntimes
+	statusLayout                loggerStatusLayout
 	closeMu                     sync.Mutex
 	closeController             shutdown.Controller
 	closeStage                  topLevelLoggerCloseStage
@@ -789,7 +794,7 @@ func newLoggerCore(
 		internalLogDestinations:     internalDestinations,
 		appendLogMaintenanceRuntime: appendLogMaintenanceRuntime,
 		failureSpoolPipelines:       failureSpoolPipelines,
-		compressedLogSpoolRuntimes:  &compressedLogSpoolRuntimes{runtimes: spoolOwners.OwnedRuntimes()},
+		compressedLogSpoolRuntimes:  &compressedLogSpoolRuntimes{runtimes: spoolOwners.OwnedRuntimes()}, statusLayout: newLoggerStatusLayout(cfg, internalDestinations.dedicatedFileConfig()),
 	}
 	if err := appendLogMaintenanceRuntime.Start(ctx); err != nil {
 		closeErr := result.Close()
@@ -1025,7 +1030,7 @@ func newAsyncLoggerCore(
 		internalLogDestinations:     internalDestinations,
 		appendLogMaintenanceRuntime: appendLogMaintenanceRuntime,
 		failureSpoolPipelines:       failureSpoolPipelines,
-		compressedLogSpoolRuntimes:  &compressedLogSpoolRuntimes{runtimes: spoolOwners.OwnedRuntimes()},
+		compressedLogSpoolRuntimes:  &compressedLogSpoolRuntimes{runtimes: spoolOwners.OwnedRuntimes()}, statusLayout: newLoggerStatusLayout(cfg.ToLoggerConfig(), internalDestinations.dedicatedFileConfig()),
 	}
 	if err := appendLogMaintenanceRuntime.Start(ctx); err != nil {
 		closeErr := result.Close()
@@ -1202,6 +1207,7 @@ func NewDeliveryLogger(
 		internalLogDestinations:        internalDestinations,
 		appendLogMaintenanceRuntime:    appendLogMaintenanceRuntime,
 		compressedLogSpoolRuntimes:     &compressedLogSpoolRuntimes{runtimes: spoolOwners.OwnedRuntimes()},
+		statusLayout:                   newDeliveryStatusLayout(cfg, internalDestinations.dedicatedFileConfig()),
 	}
 	if err := appendLogMaintenanceRuntime.Start(ctx); err != nil {
 		err = errors.Join(err, result.Close())

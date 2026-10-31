@@ -12,6 +12,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/loggerruntime"
 	"github.com/go-jappe/heterolog/internal/application/metrics"
 	"github.com/go-jappe/heterolog/internal/application/observer"
+	"github.com/go-jappe/heterolog/internal/application/status"
 	"github.com/go-jappe/heterolog/internal/application/telemetrydata"
 	"github.com/go-jappe/heterolog/internal/application/telemetryruntime"
 	"github.com/go-jappe/heterolog/internal/application/tracing"
@@ -77,6 +78,9 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 			ExportInterval: cfg.Traces.ExportInterval,
 		}, destinations, options.Meter, report)
 		parts.Tracer, parts.Spans = tracing.NewTracer(pipeline, cfg.Traces.SamplingRatio), pipeline
+		for _, destination := range destinations {
+			parts.Backends = append(parts.Backends, statusBackend(status.SignalTraces, destination.Exporter.Name(), destination.Store))
+		}
 	}
 	if len(cfg.Metrics.Exporters) > 0 {
 		destinations, err := newMetricDestinations(ctx, cfg, resource, options.Meter, report)
@@ -92,6 +96,9 @@ func NewTelemetry(ctx context.Context, cfg pkgtelemetry.Config, opts ...loggerru
 			ExportInterval: cfg.Metrics.ExportInterval,
 			QueueSize:      cfg.Metrics.QueueSize,
 		}, meter, destinations, options.Meter, report)
+		for _, destination := range destinations {
+			parts.Backends = append(parts.Backends, statusBackend(status.SignalMetrics, destination.Exporter.Name(), destination.Store))
+		}
 	}
 	return telemetryruntime.New(parts), nil
 }
@@ -296,6 +303,19 @@ func httpExporterConfig(cfg pkgtelemetry.HTTPConfig) otlphttp.Config {
 		Timeout:     cfg.Timeout,
 		Retry:       retryConfig(cfg.Retries, cfg.RetryBaseDelay, cfg.RetryMaxDelay, cfg.CircuitBreaker),
 	}
+}
+
+// statusBackendは、statusの報告に載せる送り先を作ります。failure storeがあれば、その
+// backendの名前とspoolの様子を使い、なければexporterの名前を送り先の名前にします。
+func statusBackend(signal, exporter string, store any) telemetryruntime.Backend {
+	backend := telemetryruntime.Backend{Name: exporter, Exporter: exporter, Signal: signal}
+	if named, ok := store.(interface{ Backend() string }); ok && !observer.IsNilInterface(store) {
+		backend.Name = named.Backend()
+	}
+	if inspector, ok := store.(status.SpoolInspector); ok && !observer.IsNilInterface(store) {
+		backend.Spool = inspector
+	}
+	return backend
 }
 
 // retryConfigは、公開の設定の送り直しとcircuit breakerの項目を、送り先の設定にします。

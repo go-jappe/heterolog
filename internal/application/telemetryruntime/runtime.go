@@ -10,6 +10,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/configview"
 	"github.com/go-jappe/heterolog/internal/application/metrics"
 	"github.com/go-jappe/heterolog/internal/application/observer"
+	"github.com/go-jappe/heterolog/internal/application/status"
 	"github.com/go-jappe/heterolog/internal/application/tracing"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
 	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
@@ -42,11 +43,23 @@ type Parts struct {
 	// InternalMeterは、配送の仕組みが自分のmetrics（送ったspanの数など）を記録する内部の
 	// Meterです。statusの報告が読みます。nilなら、Metricsは何も返しません。
 	InternalMeter *metrics.Meter
-	Tracer        pkgobserver.Tracer
-	Spans         Delivery
-	Meter         pkgobserver.Meter
+	// Backendsは、statusの報告に載せる送り先です。
+	Backends []Backend
+	Tracer   pkgobserver.Tracer
+	Spans    Delivery
+	Meter    pkgobserver.Meter
 	// Metricsは、Meterの値と、MetricSinkへ届いたmetricsを送ります。
 	Metrics MetricDelivery
+}
+
+// Backendは、statusの報告に載せる一つの送り先です。NameとExporterは、metricsのbackend属性
+// とexporter属性の値で、Signalはstatus.SignalTracesかstatus.SignalMetricsです。Spoolは、
+// failure storeがspoolを使う場合のその様子で、使わなければnilです。
+type Backend struct {
+	Name     string
+	Exporter string
+	Signal   string
+	Spool    status.SpoolInspector
 }
 
 // Runtimeは、NewTelemetryが返すtelemetryです。zero値は、何も記録しないtelemetryとして
@@ -67,6 +80,20 @@ func (r *Runtime) Metrics() []metrics.Metric {
 		return nil
 	}
 	return r.parts.InternalMeter.Collect()
+}
+
+// Statusは、このtelemetryの様子の材料（内部のMeterのmetricsと、送り先ごとのspool）を
+// 返します。管理用APIのstatusの報告が使います。
+func (r *Runtime) Status(ctx context.Context) status.MemberStatus {
+	member := status.MemberStatus{Kind: configview.KindTelemetry, Metrics: r.Metrics()}
+	for _, backend := range r.parts.Backends {
+		inspection := status.BackendInspection{Name: backend.Name, Exporter: backend.Exporter, Signal: backend.Signal}
+		if backend.Spool != nil {
+			inspection.Spool = backend.Spool.SpoolInspection(ctx)
+		}
+		member.Inspection.Backends = append(member.Inspection.Backends, inspection)
+	}
+	return member
 }
 
 // Configurationは、このtelemetryを作った設定を返します。管理用APIが設定の文書を作るための

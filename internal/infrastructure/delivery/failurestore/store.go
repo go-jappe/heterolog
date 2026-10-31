@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-jappe/heterolog/internal/application/status"
 	"slices"
 	"sync"
 	"time"
@@ -280,7 +281,10 @@ func errorText(err error) string {
 // replayRuntimeは、spoolから送り直すrunnerの実行と、spoolのdirectoryの使用権です。
 type replayRuntime struct {
 	// supervisorは、送り直すrunnerの状態（Snapshot）を、statusの報告のために保持します。
+	// rootとoverloadは、同じ報告に載せるspoolの場所と上限です。
 	supervisor  *logspool.RunnerSupervisor
+	root        fsstorespool.Dir
+	overload    pkgdurable.SpoolOverloadPolicyConfig
 	cancel      context.CancelFunc
 	forceCancel context.CancelFunc
 	done        chan struct{}
@@ -322,7 +326,10 @@ func startReplay[T any](cfg Config, opts Options[T], writer *spoolstorehandler.S
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	operationCtx, forceCancel := context.WithCancel(context.Background())
-	r := &replayRuntime{supervisor: supervisor, cancel: cancel, forceCancel: forceCancel, done: make(chan struct{})}
+	r := &replayRuntime{
+		supervisor: supervisor, root: root, overload: spoolCfg.OverloadPolicyConfig,
+		cancel: cancel, forceCancel: forceCancel, done: make(chan struct{}),
+	}
 	go func() {
 		defer close(r.done)
 		defer lease.Release()
@@ -332,6 +339,34 @@ func startReplay[T any](cfg Config, opts Options[T], writer *spoolstorehandler.S
 		}
 	}()
 	return r, nil
+}
+
+// Backendは、failure storeのmetricsのbackend属性と、recordのbackendの値です。
+func (s *Store[T]) Backend() string { return s.backend }
+
+// SpoolInspectionは、statusの報告に載せるspoolの様子を返します。spoolを使わない
+// Storeはnilを返します。
+func (s *Store[T]) SpoolInspection(ctx context.Context) *status.SpoolInspection {
+	if s == nil || s.replay == nil {
+		return nil
+	}
+	stateDirs := map[string]string{}
+	for state, dir := range s.replay.root.StateDirs() {
+		stateDirs[string(state)] = dir.Path()
+	}
+	inspection := &status.SpoolInspection{
+		Root:             s.replay.root.String(),
+		StateDirs:        stateDirs,
+		Replay:           logspool.ReplayStatusOf(s.replay.supervisor),
+		ActiveLimitBytes: s.replay.overload.MaxDirSize,
+		MinFreeBytes:     s.replay.overload.MinAvailableDiskSpace,
+	}
+	if s.writer != nil && s.writer.MemoryMonitor != nil {
+		if critical, err := s.writer.MemoryMonitor.IsCritical(ctx); err == nil {
+			inspection.MemoryCritical = &critical
+		}
+	}
+	return inspection
 }
 
 // stopは、runnerに止まるよう求め、止まるのを待ちます。ctxが終わった場合は、開始済みの
