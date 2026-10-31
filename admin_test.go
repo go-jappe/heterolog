@@ -216,3 +216,48 @@ func TestAdminAPIReportsTheConfigurationOfEveryMember(t *testing.T) {
 		t.Errorf("GET /config/.../channel = %d %q, want 200 \"#ops\"", status, body)
 	}
 }
+
+// 公開APIで渡したloggerの様子を、GET /statusが返すことを確かめます。報告の中身は
+// internal/application/statusとinternal/bootstrapで試験します。
+func TestAdminAPIReportsTheStatusOfEveryMember(t *testing.T) {
+	ctx := context.Background()
+	runtime, err := heterolog.New(ctx, heterolog.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = runtime.Close() }()
+	audit, err := heterolog.NewDelivery(ctx, heterolog.DefaultDeliveryConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = audit.Close() }()
+	handler, err := heterolog.NewAdminHandler(heterolog.AdminHandlerConfig{
+		Token:   adminTokenForTest,
+		Members: heterolog.AdminMembers{Loggers: map[string]heterolog.SettingsController{"app": runtime}},
+		Status:  heterolog.AdminStatusConfig{DisableDirectoryScan: true},
+	}, audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := testutil.CaptureStdout(t, func() {
+		if err := runtime.Info(ctx, "hello"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(output, "hello") {
+		t.Fatalf("stdout = %q, want the log line", output)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/status", nil)
+	request.Header.Set("Authorization", "Bearer "+adminTokenForTest)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /status = %d %s, want 200", recorder.Code, recorder.Body)
+	}
+	body := recorder.Body.String()
+	for _, want := range []string{`"process": {`, `"uptime_seconds"`, `"app": {`, `"name": "stdout"`, `"records": {`, `"warnings": []`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET /status lacks %s:\n%s", want, body)
+		}
+	}
+}

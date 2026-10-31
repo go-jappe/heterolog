@@ -188,9 +188,21 @@ HTTP API（管理用API）は、curlなどのツールから呼べます。
 - `PATCH` は1件ずつ順に処理し、処理中に届いた要求は、前の要求が終わるまで待ちます。`PATCH` は、すべてのロガーのすべての変更を検証してから反映します。本文は64KiBまでで、未知の項目は拒否します。
 - どの応答にも、監査ログでの要求IDを `X-Request-Id` ヘッダーで返します。
 - 専用のサーバーは、アドレスのホストが空の場合（例: `:9100`）は127.0.0.1で待ち受けます。ほかのアドレスで待ち受ける場合は、ホストを明示し、TLSの証明書と鍵を設定します。トークンをネットワーク上に平文で流さないためです。
-- 環境設定では、`HETEROLOG_ADMIN_ADDR` でサーバーを有効にし、`HETEROLOG_ADMIN_TOKEN`・`HETEROLOG_ADMIN_TLS_CERT_FILE`・`HETEROLOG_ADMIN_TLS_KEY_FILE` とともに設定します。`LoadEnvConfig` が検証し、`env.AdminServerConfig()` が返します。
+- 環境設定では、`HETEROLOG_ADMIN_ADDR` でサーバーを有効にし、`HETEROLOG_ADMIN_TOKEN`・`HETEROLOG_ADMIN_TLS_CERT_FILE`・`HETEROLOG_ADMIN_TLS_KEY_FILE` とともに設定します。`LoadEnvConfig` が検証し、`env.AdminServerConfig()` が、[GET /status](#ロガーの状態)の設定とともに返します。
 
 curlを使った例は、READMEの[稼働中にログレベルとサンプリングを変える](../README.ja.md#稼働中にログレベルとサンプリングを変える)にあります。
+
+### ロガーの状態
+
+管理用APIの `GET /status` は、プロセス・ロガー・telemetryの様子を報告し、注意すべき状態を判定します。報告は一つのJSONの文書で、`/config` と同じく `GET /status/<path>` と `GET /status?path=<path>&path=<path>` でその一部を返します。
+
+- `process`: `started_at`・`uptime_seconds`・`goroutines`・`max_procs`。`cpu` は、`window_seconds` の間にプロセスが使ったCPU時間の割合 `percent`（1つのcoreを使い切ると100。最初の要求は起動からの平均）と `user_seconds`・`system_seconds`。`memory` は、プロセスの `rss_bytes`・`heap_bytes`・`sys_bytes` と、[メモリ逼迫の監視器](#メモリ逼迫の監視器)と同じ読み取りによるホストまたはcgroupの `used_bytes`・`limit_bytes`・`available_bytes`・`ratio`・`source`。CPU時間を読めない環境では `cpu` はnullです。
+- `members`: `AdminMembers` のうちheterologが作ったメンバーごとに、`kind` と、出力先（送り先）ごとの `backends`。`records`（起動からの送ったレコード数を結果ごとに: `success`・`retryable`・`dead`・`quarantine`・`failure`・`dropped`）、`requests`（`count`・`failures`・`average_seconds`・`max_seconds`。再試行とその待ち時間を含みます。送信をしない出力先ではnull）、`retries`、`circuit_breaker`（`open`・`opened`・`closed`・`rejected_requests`。breakerのない出力先ではnull）、`failure_store`（行き先ごとのレコード数: `spooled`・`archived`・`degraded`・`dropped`・`failed`）、spoolを使う出力先では `spool`（`root`、状態ごとの `states`（`active`・`processing`・`done`・`dead`・`quarantine` それぞれ `files`・`bytes`・`scanned_at`）、`replay`（`state` はidle・running・restarting・stopped、`started_at`・`last_run_at`・`last_purge_at`・`restart_count`・`last_error`・`last_run` の件数）、`replay_totals`、`memory_critical`）。数は、[メトリクス](#メトリクス)と同じ計測によるもので、`WithObservers` を使うかどうかによらず各ロガーのmeterに記録します。
+- `directories`: 使っているログ・エラーログ・デバッグログ・failure archive・spoolのディレクトリ（`role`・`path`・`member`・`backend`）ごとに、`usage`（`files`・`bytes`・`scanned_at`・`error`）、`limit_bytes`（設定した大きさの上限。0なら上限なし）、`min_free_bytes`（設定したディスクの空きの下限。0なら下限なし）、`disk`（そのファイルシステムの `free_bytes` と `total_bytes`。読めなければnull）。spoolは、全体（`spool`、状態の合計）と `active` のディレクトリ（`spool_active`、過負荷の上限付き）を載せます。
+- `warnings`: それぞれ `severity`（`critical` か `warning`）・`code`・`target`（`<member>/<backend>` かパス）・`message` で、criticalを先に並べます。種類と閾値の既定値は、`disk_free_low`（空きが10%未満）、`disk_free_critical`（5%未満）、`disk_below_min_free`（設定した下限未満。書き込みを拒否します）、`directory_size_near_limit`（上限の90%）、`directory_size_over_limit`、`backend_slow`（送信の平均が5秒超）、`backend_failures`（送れなかったレコードが10%超）、`circuit_breaker_open`、`spool_replay_stopped`（spoolにファイルが待っているのに再送が動いていない）、`spool_failed_records`（deadかquarantineのファイルがある）、`spool_memory_critical` です。
+- ファイル数と大きさは、`GET /status` を呼んだときに、前回から `DirectoryScanInterval`（既定5分）以上過ぎていれば背景で始めるscanの結果です。要求はscanを始めて前回の結果を返すため、数は概算で、起動後の最初の要求では数がありません。`DisableDirectoryScan` でscanを止められます。CPU・メモリ・ディスクの空きの読み取りは負荷が小さく、要求のたびに行います。
+- `AdminHandlerConfig.Status` と `AdminServerConfig.Status`（`AdminStatusConfig`）で間隔と閾値を設定します。0の項目は既定値（`DefaultAdminStatusConfig`）で、負の時間や0から100でない割合は `ErrAdminInvalidStatusConfig` です。環境設定では、`HETEROLOG_ADMIN_STATUS_DIRECTORY_SCAN_INTERVAL_SECOND`（0でscanを止めます）、`HETEROLOG_ADMIN_STATUS_DISK_FREE_WARNING_PERCENT`、`HETEROLOG_ADMIN_STATUS_DISK_FREE_CRITICAL_PERCENT`、`HETEROLOG_ADMIN_STATUS_DIRECTORY_SIZE_WARNING_PERCENT`、`HETEROLOG_ADMIN_STATUS_BACKEND_FAILURE_WARNING_PERCENT`、`HETEROLOG_ADMIN_STATUS_SLOW_REQUEST_SECOND` です。
+- 成功した `GET /status` は監査ログに記録しません。存在しないパスは `404` で、ほかのパスと同じく拒否として記録します。
 
 ### 管理用APIの監査ログ
 

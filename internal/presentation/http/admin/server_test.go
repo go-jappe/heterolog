@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jappe/heterolog/internal/application/status"
 	"github.com/go-jappe/heterolog/internal/testutil/boundedwait"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -68,7 +69,7 @@ func TestServerConfigListenAddress(t *testing.T) {
 func TestStartServerServesTheAdminAPIOnLoopback(t *testing.T) {
 	controller := newControllerForTest(t)
 	server, err := StartServer(pkgadmin.ServerConfig{Addr: ":0", Token: tokenForTest},
-		pkgadmin.Members{Loggers: map[string]pkglogger.SettingsController{"app": controller}}, &auditLoggerForTest{})
+		pkgadmin.Members{Loggers: map[string]pkglogger.SettingsController{"app": controller}}, &auditLoggerForTest{}, status.Probes{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +114,7 @@ func TestStartServerRejectsUnsafeConfigurations(t *testing.T) {
 		{"short token", pkgadmin.ServerConfig{Addr: "127.0.0.1:0", Token: "short"}, ErrTokenTooShort},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			server, err := StartServer(tt.cfg, pkgadmin.Members{Loggers: loggers}, &auditLoggerForTest{})
+			server, err := StartServer(tt.cfg, pkgadmin.Members{Loggers: loggers}, &auditLoggerForTest{}, status.Probes{})
 			if server != nil {
 				_ = server.Close()
 			}
@@ -171,7 +172,7 @@ func writeSelfSignedCertificateForTest(t *testing.T) (certFile, keyFile string, 
 func TestStartServerServesHTTPSWithTheGivenCertificate(t *testing.T) {
 	certFile, keyFile, pool := writeSelfSignedCertificateForTest(t)
 	server, err := StartServer(pkgadmin.ServerConfig{Addr: "127.0.0.1:0", Token: tokenForTest, TLSCertFile: certFile, TLSKeyFile: keyFile},
-		pkgadmin.Members{Loggers: map[string]pkglogger.SettingsController{"app": newControllerForTest(t)}}, &auditLoggerForTest{})
+		pkgadmin.Members{Loggers: map[string]pkglogger.SettingsController{"app": newControllerForTest(t)}}, &auditLoggerForTest{}, status.Probes{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +234,7 @@ func TestStartServerRespondsAfterSlowAuditAndQueuedPatch(t *testing.T) {
 	release := sync.OnceFunc(func() { close(audit.release) })
 	defer release()
 	server, err := startServer(pkgadmin.ServerConfig{Addr: "127.0.0.1:0", Token: tokenForTest},
-		pkgadmin.Members{Loggers: map[string]pkglogger.SettingsController{"app": controller}}, audit, responseWriteTimeout)
+		pkgadmin.Members{Loggers: map[string]pkglogger.SettingsController{"app": controller}}, audit, status.Probes{}, responseWriteTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}

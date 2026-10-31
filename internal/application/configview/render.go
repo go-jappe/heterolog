@@ -50,7 +50,7 @@ var (
 //     します。関数・channelのfieldと、公開されたfieldを持たない構造体のfield
 //     （LiveSettingsなど）は省きます。
 //   - secretFieldNamesの名前の文字列のfieldは、空でなければMaskedにします。
-//   - time.Durationは"1m30s"のような文字列、time.TimeはRFC 3339の文字列にします。
+//   - time.Durationは"1m30s"のような文字列、time.TimeはUTCのRFC 3339の文字列にします。
 //     ほかの整数の型でfmt.Stringerを実装するもの（LogLevelなど）も、String()の文字列に
 //     します。
 //   - nilのpointerとinterfaceはnullにします。interfaceの値は、このmoduleの型なら写し、
@@ -102,7 +102,7 @@ func render(v reflect.Value, fieldName string, depth int, visiting map[uintptr]b
 		return render(elem, fieldName, depth+1, visiting)
 	case reflect.Struct:
 		if v.Type() == timeType {
-			return v.Interface().(time.Time).Format(time.RFC3339Nano), true
+			return v.Interface().(time.Time).UTC().Format(time.RFC3339Nano), true
 		}
 		return renderStruct(v, depth, visiting)
 	case reflect.Slice, reflect.Array:

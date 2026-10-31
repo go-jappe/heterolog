@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-jappe/heterolog/internal/application/outputsettings"
+	"github.com/go-jappe/heterolog/internal/bootstrap"
 	"github.com/go-jappe/heterolog/internal/presentation/http/admin"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
@@ -33,6 +34,9 @@ var (
 	// ErrAdminDuplicateName reports a name used in more than one map of
 	// AdminMembers.
 	ErrAdminDuplicateName = admin.ErrDuplicateName
+	// ErrAdminInvalidStatusConfig reports an AdminStatusConfig with a negative
+	// duration or a percentage outside 0 to 100.
+	ErrAdminInvalidStatusConfig = admin.ErrInvalidStatusConfig
 	// ErrAdminServerAddrRequired reports an AdminServerConfig without Addr.
 	ErrAdminServerAddrRequired = admin.ErrServerAddrRequired
 	// ErrAdminServerInsecure reports an admin server that would listen on a
@@ -63,6 +67,17 @@ type AdminHandlerConfig = pkgadmin.HandlerConfig
 // whose configuration it reports. A name must not appear in more than one map.
 type AdminMembers = pkgadmin.Members
 
+// AdminStatusConfig configures GET /status of the admin API: the interval of
+// the directory scans, whether they run at all, and the thresholds of the
+// warnings. A zero field uses the default of DefaultAdminStatusConfig.
+type AdminStatusConfig = pkgadmin.StatusConfig
+
+// DefaultAdminStatusConfig returns the default settings of GET /status: a
+// directory scan every 5 minutes, disk warnings below 10% and 5% free,
+// directory warnings from 90% of the limit, and backend warnings above 10%
+// failed records or 5 seconds per request on average.
+func DefaultAdminStatusConfig() AdminStatusConfig { return pkgadmin.DefaultStatusConfig() }
+
 // AdminServerConfig configures StartAdminServer. Addr is the TCP address to
 // listen on; with an empty host, such as ":9100", the server listens on
 // 127.0.0.1 only. Listening on a non-loopback address requires TLSCertFile and
@@ -85,6 +100,8 @@ type AdminServer struct {
 //	PATCH /settings       changes the fields given in the JSON body
 //	GET   /config         returns the configuration of every member
 //	GET   /config/<path>  returns one value of that configuration
+//	GET   /status         returns the status of the process and every member
+//	GET   /status/<path>  returns one value of that status
 //
 // Every request must send "Authorization: Bearer <Token>". PATCH requests are
 // processed one at a time, and a PATCH checks all of its changes before
@@ -103,6 +120,17 @@ type AdminServer struct {
 // one request, as {"values": {"<path>": ...}}. It returns
 // ErrAdminDuplicateName if a name is used in more than one map of
 // cfg.Members.
+//
+// GET /status returns the CPU, memory and goroutines of the process, and for
+// every member the records, request durations, retries, circuit breaker,
+// failure store and spool of each destination, the directories in use with
+// their size limits and free disk space, and the warnings judged from them
+// (disk nearly full, a destination slow or failing, a spool whose resend
+// stopped, and so on), critical ones first. The file counts come from a
+// background scan at the interval of cfg.Status and are approximate; they are
+// reported with the time of the scan. GET /status/<path> and ?path= work as
+// for /config. It returns ErrAdminInvalidStatusConfig if cfg.Status is out of
+// range.
 //
 // audit records the audit log of the API: each change request, the settings
 // when the change starts and after it, and every rejected request; only a
@@ -126,7 +154,7 @@ func NewAdminHandler(cfg AdminHandlerConfig, audit *DeliveryRuntime) (http.Handl
 		return nil, ErrAdminAuditLoggerRequired
 	}
 	cfg.Members = adminMembers(cfg.Members)
-	return admin.NewHandler(cfg, audit)
+	return admin.NewHandler(cfg, audit, bootstrap.StatusProbes())
 }
 
 // StartAdminServer starts a dedicated HTTP server for the admin API of
@@ -139,7 +167,7 @@ func StartAdminServer(cfg AdminServerConfig, members AdminMembers, audit *Delive
 	if audit == nil || audit.DeliveryLogger == nil {
 		return nil, ErrAdminAuditLoggerRequired
 	}
-	server, err := admin.StartServer(cfg, adminMembers(members), audit)
+	server, err := admin.StartServer(cfg, adminMembers(members), audit, bootstrap.StatusProbes())
 	if err != nil {
 		return nil, err
 	}

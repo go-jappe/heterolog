@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-jappe/heterolog/internal/application/status"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -27,7 +28,7 @@ var (
 // ValidateServerConfigは、StartServerと同じ規則で設定を確かめます。errorにtokenは含めません。
 func ValidateServerConfig(cfg pkgadmin.ServerConfig) error {
 	_, err := listenAddress(cfg)
-	return err
+	return errors.Join(err, ValidateStatusConfig(cfg.Status))
 }
 
 // listenAddressは、設定を確かめ、待ち受けるaddressを返します。
@@ -78,18 +79,18 @@ const defaultResponseWriteTimeout = 10 * time.Second
 // membersは、APIで使う名前と、設定を読み取り・変更するloggerや設定を返すtelemetryの
 // 対応で、auditは監査logの記録先です。cfgがhostを明示してTLSを有効にしない限り、loopback addressで待ち受けます。
 // 止めるにはShutdownかCloseを呼びます。auditは閉じないため、serverを止めた後で閉じます。
-func StartServer(cfg pkgadmin.ServerConfig, members pkgadmin.Members, audit pkglogger.DeliveryLogger) (*Server, error) {
-	return startServer(cfg, members, audit, defaultResponseWriteTimeout)
+func StartServer(cfg pkgadmin.ServerConfig, members pkgadmin.Members, audit pkglogger.DeliveryLogger, probes status.Probes) (*Server, error) {
+	return startServer(cfg, members, audit, probes, defaultResponseWriteTimeout)
 }
 
 // startServerは、応答の書き込み期限をresponseWriteTimeoutにして、StartServerの処理を
 // 行います。試験は短い期限を渡します。
-func startServer(cfg pkgadmin.ServerConfig, members pkgadmin.Members, audit pkglogger.DeliveryLogger, responseWriteTimeout time.Duration) (*Server, error) {
+func startServer(cfg pkgadmin.ServerConfig, members pkgadmin.Members, audit pkglogger.DeliveryLogger, probes status.Probes, responseWriteTimeout time.Duration) (*Server, error) {
 	address, err := listenAddress(cfg)
 	if err != nil {
 		return nil, err
 	}
-	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: cfg.Token, Members: members}, audit)
+	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: cfg.Token, Members: members, Status: cfg.Status}, audit, probes)
 	if err != nil {
 		return nil, err
 	}

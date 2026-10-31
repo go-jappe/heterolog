@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/configview"
 	"github.com/go-jappe/heterolog/internal/application/outputsettings"
+	"github.com/go-jappe/heterolog/internal/application/status"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/google/uuid"
@@ -31,7 +32,64 @@ var (
 	ErrTokenTooShort = fmt.Errorf("admin token must be at least %d bytes", pkgadmin.MinTokenLength)
 	// ErrDuplicateNameは、Membersの二つのmapに同じ名前があることを表します。
 	ErrDuplicateName = errors.New("admin API member name is used more than once")
+	// ErrInvalidStatusConfigは、StatusConfigの値が範囲外（負の間隔、0から100でない
+	// percent）であることを表します。
+	ErrInvalidStatusConfig = errors.New("invalid admin API status config")
 )
+
+// ValidateStatusConfigは、StatusConfigの値の範囲を確かめます。0は既定値を使うため、
+// 負の値と100を超えるpercentだけを拒否します。
+func ValidateStatusConfig(cfg pkgadmin.StatusConfig) error {
+	var errs []error
+	if cfg.DirectoryScanInterval < 0 {
+		errs = append(errs, fmt.Errorf("%w: DirectoryScanInterval must not be negative", ErrInvalidStatusConfig))
+	}
+	if cfg.SlowRequest < 0 {
+		errs = append(errs, fmt.Errorf("%w: SlowRequest must not be negative", ErrInvalidStatusConfig))
+	}
+	for name, percent := range map[string]float64{
+		"DiskFreeWarningPercent": cfg.DiskFreeWarningPercent, "DiskFreeCriticalPercent": cfg.DiskFreeCriticalPercent,
+		"DirectorySizeWarningPercent": cfg.DirectorySizeWarningPercent, "BackendFailureWarningPercent": cfg.BackendFailureWarningPercent,
+	} {
+		if percent < 0 || percent > 100 {
+			errs = append(errs, fmt.Errorf("%w: %s must be between 0 and 100", ErrInvalidStatusConfig, name))
+		}
+	}
+	slices.SortFunc(errs, func(a, b error) int { return strings.Compare(a.Error(), b.Error()) })
+	return errors.Join(errs...)
+}
+
+// statusServiceConfigは、公開のStatusConfigを、statusのServiceの設定にします。0の項目は
+// 既定値です。
+func statusServiceConfig(cfg pkgadmin.StatusConfig) status.Config {
+	defaults := pkgadmin.DefaultStatusConfig()
+	pick := func(value, fallback float64) float64 {
+		if value == 0 {
+			return fallback
+		}
+		return value
+	}
+	result := status.Config{
+		ScanInterval: cfg.DirectoryScanInterval,
+		Thresholds: status.Thresholds{
+			DiskFreeWarningRatio:      pick(cfg.DiskFreeWarningPercent, defaults.DiskFreeWarningPercent) / 100,
+			DiskFreeCriticalRatio:     pick(cfg.DiskFreeCriticalPercent, defaults.DiskFreeCriticalPercent) / 100,
+			DirectorySizeWarningRatio: pick(cfg.DirectorySizeWarningPercent, defaults.DirectorySizeWarningPercent) / 100,
+			FailureRateWarningRatio:   pick(cfg.BackendFailureWarningPercent, defaults.BackendFailureWarningPercent) / 100,
+			SlowRequest:               cfg.SlowRequest,
+		},
+	}
+	if result.ScanInterval == 0 {
+		result.ScanInterval = defaults.DirectoryScanInterval
+	}
+	if cfg.DisableDirectoryScan {
+		result.ScanInterval = 0
+	}
+	if result.Thresholds.SlowRequest == 0 {
+		result.Thresholds.SlowRequest = defaults.SlowRequest
+	}
+	return result
+}
 
 // NewHandlerは、管理用APIのhttp.Handlerを返します。
 //
@@ -40,6 +98,8 @@ var (
 //	GET   /config          全loggerとtelemetryを作った設定を返します
 //	GET   /config/<path>   設定の文書のpathの先の値だけを返します
 //	GET   /config?path=<path>&path=<path>  複数のpathの先の値をまとめて返します
+//	GET   /status          processと全memberの様子と、注意すべき状態を返します
+//	GET   /status/<path>   statusの文書のpathの先の値だけを返します（?pathも同じ）
 //
 // すべての要求で「Authorization: Bearer <Token>」が必要です。PATCHは一つずつ順に処理し、
 // 全loggerの全変更を検証してから反映して、一つでも不正なら何も反映しません。要求、変更を
@@ -51,9 +111,16 @@ var (
 // /configの文書には、Membersのうちconfigview.Sourceを実装するもの（heterologが作った
 // loggerとtelemetry）だけが入ります。秘密の値は伏せます。Membersの二つのmapに同じ名前が
 // あれば、ErrDuplicateNameを返します。
-func NewHandler(cfg pkgadmin.HandlerConfig, audit pkglogger.DeliveryLogger) (http.Handler, error) {
+//
+// /statusの報告には、status.Memberを実装するmemberだけが入ります。probesは、CPU・memory・
+// directoryのscan・diskの空きの読み取りで、nilの項目はその値を報告しません。cfg.Statusの
+// 値が範囲外なら、ErrInvalidStatusConfigを返します。
+func NewHandler(cfg pkgadmin.HandlerConfig, audit pkglogger.DeliveryLogger, probes status.Probes) (http.Handler, error) {
 	if len(cfg.Token) < pkgadmin.MinTokenLength {
 		return nil, ErrTokenTooShort
+	}
+	if err := ValidateStatusConfig(cfg.Status); err != nil {
+		return nil, err
 	}
 	service, err := outputsettings.NewService(cfg.Members.Loggers, audit)
 	if err != nil {
@@ -67,7 +134,32 @@ func NewHandler(cfg pkgadmin.HandlerConfig, audit pkglogger.DeliveryLogger) (htt
 	if err != nil {
 		return nil, err
 	}
-	return &handler{tokenDigest: sha256.Sum256([]byte(cfg.Token)), service: service, config: config}, nil
+	return &handler{
+		tokenDigest: sha256.Sum256([]byte(cfg.Token)),
+		service:     service,
+		config:      config,
+		status:      status.NewService(statusMembers(cfg.Members), probes, statusServiceConfig(cfg.Status)),
+	}, nil
+}
+
+// statusMembersは、Membersのうち様子を報告できるものを、名前ごとに集めます。
+func statusMembers(members pkgadmin.Members) map[string]status.Member {
+	result := map[string]status.Member{}
+	add := func(name string, member any) {
+		if m, ok := member.(status.Member); ok {
+			result[name] = m
+		}
+	}
+	for name, logger := range members.Loggers {
+		add(name, logger)
+	}
+	for name, logger := range members.DeliveryLoggers {
+		add(name, logger)
+	}
+	for name, telemetry := range members.Telemetries {
+		add(name, telemetry)
+	}
+	return result
 }
 
 // configSourcesは、Membersのうち設定を示せるものを、名前ごとに集めます。
@@ -104,6 +196,7 @@ type handler struct {
 	tokenDigest [sha256.Size]byte
 	service     *outputsettings.Service
 	config      *configview.Service
+	status      *status.Service
 }
 
 // 管理用APIのJSONの文書です。
@@ -174,7 +267,15 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/config" || strings.HasPrefix(r.URL.Path, "/config/") {
-		h.serveConfig(w, r, request)
+		h.serveDocument(w, r, request, "/config", h.config.Document)
+		return
+	}
+	if r.URL.Path == "/status" || strings.HasPrefix(r.URL.Path, "/status/") {
+		h.serveDocument(w, r, request, "/status", func() map[string]any {
+			report := h.status.Report(r.Context())
+			document, _ := configview.Render(report).(map[string]any)
+			return document
+		})
 		return
 	}
 	if r.URL.Path != "/settings" {
@@ -194,18 +295,18 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// serveConfigは、/configの文書か、/config/<path>の先の値か、/config?path=...で指定した
-// 複数のpathの先の値を返します。pathの各要素は文書のkeyか配列の添字で、一つでも辿れ
-// なければ404にし、辿れなかったpathを理由に含めます。
-func (h *handler) serveConfig(w http.ResponseWriter, r *http.Request, request outputsettings.Request) {
+// serveDocumentは、prefixの文書か、prefix/<path>の先の値か、prefix?path=...で指定した
+// 複数のpathの先の値を返します。文書はdocumentで作ります。pathの各要素は文書のkeyか配列の
+// 添字で、一つでも辿れなければ404にし、辿れなかったpathを理由に含めます。
+func (h *handler) serveDocument(w http.ResponseWriter, r *http.Request, request outputsettings.Request, prefix string, document func() map[string]any) {
 	if r.Method != http.MethodGet {
 		const reason = "method not allowed"
 		w.Header().Set("Allow", "GET")
 		writeError(w, http.StatusMethodNotAllowed, reason, h.service.Reject(r.Context(), request, reason))
 		return
 	}
-	if rest, ok := strings.CutPrefix(r.URL.Path, "/config/"); ok {
-		value, found := h.config.Value(strings.Split(rest, "/"))
+	if rest, ok := strings.CutPrefix(r.URL.Path, prefix+"/"); ok {
+		value, found := configview.Lookup(document(), strings.Split(rest, "/"))
 		if !found {
 			const reason = "not found"
 			writeError(w, http.StatusNotFound, reason, h.service.Reject(r.Context(), request, reason))
@@ -215,14 +316,15 @@ func (h *handler) serveConfig(w http.ResponseWriter, r *http.Request, request ou
 		return
 	}
 	paths := r.URL.Query()["path"]
+	doc := document()
 	if len(paths) == 0 {
-		writeJSON(w, http.StatusOK, h.config.Document())
+		writeJSON(w, http.StatusOK, doc)
 		return
 	}
 	values := make(map[string]any, len(paths))
 	var missing []string
 	for _, path := range paths {
-		value, found := h.config.Value(strings.Split(strings.Trim(path, "/"), "/"))
+		value, found := configview.Lookup(doc, strings.Split(strings.Trim(path, "/"), "/"))
 		if !found {
 			missing = append(missing, path)
 			continue

@@ -5757,7 +5757,8 @@ func loadConfig(source envSource) (AppConfig, error) {
 		"HETEROLOG_ENABLE_ARCHIVE_CHECKPOINT_AUTO_RECOVERY",
 		true,
 	)
-	errs = append(errs, runtimeErr, fsstoreErr, appendLogRunnerErr, archiveCheckpointAutoRecoveryErr)
+	adminServer, adminServerErr := loadAdminServerConfig(env)
+	errs = append(errs, runtimeErr, fsstoreErr, appendLogRunnerErr, archiveCheckpointAutoRecoveryErr, adminServerErr)
 
 	appCfg := AppConfig{
 		RuntimeEnv:                    LoadRuntimeEnv(env),
@@ -5770,7 +5771,7 @@ func loadConfig(source envSource) (AppConfig, error) {
 		// Slackの遅延閾値は出力先の選択とは無関係なapplication共通設定なので、
 		// Slack loggerが選択されているかにかかわらず初期化します。
 		Slack:       loadSlackAppConfig(),
-		AdminServer: loadAdminServerConfig(env),
+		AdminServer: adminServer,
 	}
 
 	// 明示的に必要な構成だけ読み込む。

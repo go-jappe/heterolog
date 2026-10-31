@@ -33,7 +33,7 @@ jobs:
         if: runner.os == 'Linux'
         run: >-
           go test -race . ./internal/application/logging ./internal/application/loggerruntime ./internal/bootstrap
-          ./internal/application/outputsettings
+          ./internal/application/outputsettings ./internal/application/status ./internal/application/observer ./internal/infrastructure/status
           ./internal/presentation/envconfig ./internal/presentation/http/admin ./internal/presentation/sloghandler
           ./internal/infrastructure/logger ./internal/infrastructure/logger/multi ./internal/infrastructure/logger/slack
           ./internal/infrastructure/logger/handler ./pkg/logger

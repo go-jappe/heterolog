@@ -210,5 +210,14 @@ func newAdminServerConfig(cfg appconfig.AdminServerConfig) (pkgadmin.ServerConfi
 		Token:       cfg.Token,
 		TLSCertFile: cfg.TLSCertFile,
 		TLSKeyFile:  cfg.TLSKeyFile,
+		Status: pkgadmin.StatusConfig{
+			DirectoryScanInterval:        cfg.Status.DirectoryScanInterval,
+			DisableDirectoryScan:         cfg.Status.DirectoryScanInterval <= 0,
+			DiskFreeWarningPercent:       cfg.Status.DiskFreeWarningPercent,
+			DiskFreeCriticalPercent:      cfg.Status.DiskFreeCriticalPercent,
+			DirectorySizeWarningPercent:  cfg.Status.DirectorySizeWarningPercent,
+			BackendFailureWarningPercent: cfg.Status.BackendFailureWarningPercent,
+			SlowRequest:                  cfg.Status.SlowRequest,
+		},
 	}, true
 }

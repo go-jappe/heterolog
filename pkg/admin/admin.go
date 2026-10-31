@@ -6,6 +6,8 @@
 package admin
 
 import (
+	"time"
+
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/telemetry"
 )
@@ -34,6 +36,51 @@ type HandlerConfig struct {
 	Token string
 	// Members are the loggers and telemetries the API serves.
 	Members Members
+	// Status configures GET /status. The zero value uses the defaults of
+	// DefaultStatusConfig.
+	Status StatusConfig
+}
+
+// StatusConfig configures the status report of GET /status: how often the
+// directories are scanned, and the thresholds of its warnings. A zero field
+// uses the default of DefaultStatusConfig.
+type StatusConfig struct {
+	// DirectoryScanInterval is the least time between two scans that count the
+	// files of the spool, log and failure archive directories. A scan starts in
+	// the background when GET /status finds the last one older than this, so
+	// the counts are approximate. DisableDirectoryScan turns the scans off; the
+	// counts are then reported as not scanned.
+	DirectoryScanInterval time.Duration
+	DisableDirectoryScan  bool
+	// DiskFreeWarningPercent and DiskFreeCriticalPercent are the free space of
+	// a file system, in percent of its size, below which a warning or a
+	// critical warning is reported.
+	DiskFreeWarningPercent  float64
+	DiskFreeCriticalPercent float64
+	// DirectorySizeWarningPercent is the use of a directory, in percent of its
+	// configured limit, from which a warning is reported; over the limit is
+	// critical.
+	DirectorySizeWarningPercent float64
+	// BackendFailureWarningPercent is the share of records that could not be
+	// sent to a destination, in percent, above which a warning is reported.
+	BackendFailureWarningPercent float64
+	// SlowRequest is the average duration of the requests to a destination
+	// above which a warning is reported.
+	SlowRequest time.Duration
+}
+
+// DefaultStatusConfig returns the default status settings: a scan every 5
+// minutes, disk warnings at 10% and 5% free, directory warnings at 90% of the
+// limit, backend warnings at 10% failures and requests slower than 5 seconds.
+func DefaultStatusConfig() StatusConfig {
+	return StatusConfig{
+		DirectoryScanInterval:        5 * time.Minute,
+		DiskFreeWarningPercent:       10,
+		DiskFreeCriticalPercent:      5,
+		DirectorySizeWarningPercent:  90,
+		BackendFailureWarningPercent: 10,
+		SlowRequest:                  5 * time.Second,
+	}
 }
 
 // ServerConfig configures the dedicated admin API server.
@@ -49,4 +96,6 @@ type ServerConfig struct {
 	// its private key. Setting both serves HTTPS.
 	TLSCertFile string
 	TLSKeyFile  string
+	// Status configures GET /status, as in HandlerConfig.
+	Status StatusConfig
 }

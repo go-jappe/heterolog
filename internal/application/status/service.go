@@ -80,13 +80,14 @@ func NewService(members map[string]Member, probes Probes, cfg Config) *Service {
 // 過ぎていれば背景で次のscanを始めます。
 func (s *Service) Report(ctx context.Context) Report {
 	now := s.now()
-	report := Report{GeneratedAt: now, Members: make(map[string]MemberReport, len(s.members))}
+	// 空のsliceは、JSONでnullでなく[]になるよう、nilにしません。
+	report := Report{GeneratedAt: now, Members: make(map[string]MemberReport, len(s.members)), Directories: []Directory{}, Warnings: []Warning{}}
 	report.Process = s.process(ctx, now)
 	var paths []string
 	for _, name := range slices.Sorted(maps.Keys(s.members)) {
 		member := s.members[name].Status(ctx)
 		index := indexMetrics(member.Metrics)
-		result := MemberReport{Kind: member.Kind}
+		result := MemberReport{Kind: member.Kind, Backends: []Backend{}}
 		for _, inspection := range backendsOf(index, member.Inspection) {
 			backend := deriveBackend(index, inspection)
 			if inspection.Spool != nil {

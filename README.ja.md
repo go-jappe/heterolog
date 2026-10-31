@@ -254,6 +254,10 @@ curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/con
 curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
   "http://127.0.0.1:9100/config?path=loggers/app/config/timeout&path=loggers/app/config/max_log_entry_bytes"
 
+# 状態を表示する: CPUとメモリ、すべての出力先、spool、ディレクトリ、注意
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/status
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/status/warnings
+
 # stdoutにDEBUGのログを書く
 curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
   -d '{"loggers":{"app":{"outputs":{"stdout":{"level":"DEBUG"}}}}}' \
@@ -299,6 +303,7 @@ curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
 - 自分のHTTPサーバーで提供する場合は、同じ監査用ロガーを渡して `NewAdminHandler` を使います。コードでは、`runtime.OutputSettings()` が設定を返し、`runtime.UpdateOutputSettings(changes)` が設定を変えます。
 - 稼働中に変えられるのはレベルとサンプリングだけで、出力先や保存先は変えられません。Deliveryのロガーには、この設定はありません。
 - `GET /config` は、各メンバーを作ったときの設定を、`snake_case` のキーのJSONで返し、`GET /config/<path>` はその中の一つの値を返します（`GET /config?path=...&path=...` なら複数）。トークン・パスワード・鍵は `***` で表示します。`AdminMembers` に加えたDeliveryのロガーとtelemetryの設定も返します。
+- `GET /status` は、プロセスのCPUとメモリ、出力先ごとの送ったレコード数・送信の所要時間・再試行の回数、spoolの状態（状態ごとのファイル数、再送、前回のpurge）、使っているディレクトリとそのディスクの空きを返し、`warnings`（ディスクの空きが少ない、出力先が遅いか失敗している、再送が止まっている、など）をcriticalから順に付けます。ファイル数は、5分ごと（`HETEROLOG_ADMIN_STATUS_DIRECTORY_SCAN_INTERVAL_SECOND`、0で無効）の背景のscanの結果で、概算です。詳しくは[ロガーの状態](docs/reference.ja.md#ロガーの状態)を見てください。
 
 詳しくは[稼働中の設定変更](docs/reference.ja.md#稼働中の設定変更)を参照してください。
 

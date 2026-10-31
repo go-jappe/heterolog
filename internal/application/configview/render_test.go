@@ -184,11 +184,8 @@ func TestServiceGroupsLoggersAndTelemetries(t *testing.T) {
 			t.Errorf("document does not contain %s:\n%s", want, raw)
 		}
 	}
-	if got, ok := service.Value([]string{"loggers", "app", "config", "password"}); !ok || got != Masked {
-		t.Errorf("Value(password) = %v, %v; want %q", got, ok, Masked)
-	}
-	if got, ok := service.Value([]string{"loggers", "nope"}); ok {
-		t.Errorf("Value(unknown logger) = %v, want not found", got)
+	if got, ok := Lookup(service.Document(), []string{"loggers", "app", "config", "password"}); !ok || got != Masked {
+		t.Errorf("Lookup(password) = %v, %v; want %q", got, ok, Masked)
 	}
 	if _, err := NewService(map[string]Source{"x": sourceForTest{Kind: "other"}}); !errors.Is(err, ErrUnknownKind) {
 		t.Errorf("NewService(unknown kind) error = %v, want ErrUnknownKind", err)

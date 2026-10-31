@@ -254,6 +254,10 @@ curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/con
 curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
   "http://127.0.0.1:9100/config?path=loggers/app/config/timeout&path=loggers/app/config/max_log_entry_bytes"
 
+# Show the status: CPU and memory, every destination, spools, directories, and warnings
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/status
+curl -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" http://127.0.0.1:9100/status/warnings
+
 # Write DEBUG logs to stdout
 curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
   -d '{"loggers":{"app":{"outputs":{"stdout":{"level":"DEBUG"}}}}}' \
@@ -299,6 +303,7 @@ Every request returns the settings of every logger. For example, this is the std
 - To serve the API from your own HTTP server, use `NewAdminHandler` with the same audit logger. In code, `runtime.OutputSettings()` returns the settings and `runtime.UpdateOutputSettings(changes)` changes them.
 - Only the level and sampling can change while running; destinations and storage cannot. The delivery logger has no such settings.
 - `GET /config` returns the configuration each member was created with, as JSON with `snake_case` keys, and `GET /config/<path>` returns one value of it (`GET /config?path=...&path=...` several). Tokens, passwords, and keys are shown as `***`. Delivery loggers and telemetries added to `AdminMembers` are reported too.
+- `GET /status` returns the CPU and memory of the process, the records, request durations and retries of every destination, the state of each spool (files per state, resend, last purge) and the directories in use with their free disk space, together with `warnings` (a disk nearly full, a slow or failing destination, a stopped resend, and so on), critical ones first. File counts come from a background scan every 5 minutes (`HETEROLOG_ADMIN_STATUS_DIRECTORY_SCAN_INTERVAL_SECOND`, 0 turns it off) and are approximate. See [Status of the loggers](docs/reference.md#status-of-the-loggers).
 
 See [Changing settings while running](docs/reference.md#changing-settings-while-running) for details.
 

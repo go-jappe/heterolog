@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-jappe/heterolog/internal/application/configview"
 	"github.com/go-jappe/heterolog/internal/application/outputsettings"
+	"github.com/go-jappe/heterolog/internal/application/status"
 	pkgadmin "github.com/go-jappe/heterolog/pkg/admin"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
@@ -105,7 +106,7 @@ func (l *auditLoggerForTest) snapshot() []string {
 func newHandlerForTest(t *testing.T, loggers map[string]pkglogger.SettingsController) (http.Handler, *auditLoggerForTest) {
 	t.Helper()
 	audit := &auditLoggerForTest{}
-	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{Loggers: loggers}}, audit)
+	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{Loggers: loggers}}, audit, status.Probes{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,13 +127,13 @@ func requestForTest(t *testing.T, handler http.Handler, method, path, token, bod
 
 func TestNewHandlerRejectsAShortTokenNoLoggersAndNoAuditLogger(t *testing.T) {
 	loggers := map[string]pkglogger.SettingsController{"app": newControllerForTest(t)}
-	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: "short", Members: pkgadmin.Members{Loggers: loggers}}, &auditLoggerForTest{}); !errors.Is(err, ErrTokenTooShort) {
+	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: "short", Members: pkgadmin.Members{Loggers: loggers}}, &auditLoggerForTest{}, status.Probes{}); !errors.Is(err, ErrTokenTooShort) {
 		t.Errorf("NewHandler(short token) error = %v, want ErrTokenTooShort", err)
 	}
-	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest}, &auditLoggerForTest{}); !errors.Is(err, outputsettings.ErrNoLoggers) {
+	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest}, &auditLoggerForTest{}, status.Probes{}); !errors.Is(err, outputsettings.ErrNoLoggers) {
 		t.Errorf("NewHandler(no loggers) error = %v, want ErrNoLoggers", err)
 	}
-	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{Loggers: loggers}}, nil); !errors.Is(err, outputsettings.ErrNoAuditLogger) {
+	if _, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{Loggers: loggers}}, nil, status.Probes{}); !errors.Is(err, outputsettings.ErrNoAuditLogger) {
 		t.Errorf("NewHandler(no audit logger) error = %v, want ErrNoAuditLogger", err)
 	}
 }
@@ -416,7 +417,7 @@ func TestHandlerServesTheConfigWithSecretsMasked(t *testing.T) {
 		Loggers:         map[string]pkglogger.SettingsController{"app": app, "plain": newControllerForTest(t)},
 		DeliveryLoggers: map[string]pkglogger.DeliveryLogger{"audit": audit},
 		Telemetries:     map[string]pkgtelemetry.Telemetry{"tel": tel},
-	}}, &auditLoggerForTest{})
+	}}, &auditLoggerForTest{}, status.Probes{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +458,7 @@ func TestHandlerServesSeveralConfigValuesInOneRequest(t *testing.T) {
 	}}
 	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{
 		Loggers: map[string]pkglogger.SettingsController{"app": app},
-	}}, &auditLoggerForTest{})
+	}}, &auditLoggerForTest{}, status.Probes{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -506,8 +507,75 @@ func TestNewHandlerRejectsANameUsedTwice(t *testing.T) {
 	_, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{
 		Loggers:     map[string]pkglogger.SettingsController{"app": app},
 		Telemetries: map[string]pkgtelemetry.Telemetry{"app": app},
-	}}, &auditLoggerForTest{})
+	}}, &auditLoggerForTest{}, status.Probes{})
 	if !errors.Is(err, ErrDuplicateName) {
 		t.Errorf("NewHandler(name used twice) error = %v, want ErrDuplicateName", err)
+	}
+}
+
+// statusMemberForTestは、様子を報告できるControllerの代わりです。
+type statusMemberForTest struct {
+	controllerForTest
+	member status.MemberStatus
+}
+
+func (m *statusMemberForTest) Status(context.Context) status.MemberStatus { return m.member }
+
+func TestHandlerServesTheStatusWithWarnings(t *testing.T) {
+	app := &statusMemberForTest{controllerForTest: newControllerForTest(t), member: status.MemberStatus{
+		Kind: "logger",
+		Inspection: status.Inspection{Backends: []status.BackendInspection{{Name: "opensearch", Spool: &status.SpoolInspection{
+			Root: "/spool/opensearch", StateDirs: map[string]string{"active": "/spool/opensearch/active"},
+			Replay: status.Replay{State: "running"},
+		}}}},
+	}}
+	handler, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{
+		Loggers: map[string]pkglogger.SettingsController{"app": app, "plain": newControllerForTest(t)},
+	}, Status: pkgadmin.StatusConfig{DisableDirectoryScan: true}}, &auditLoggerForTest{}, status.Probes{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, body, _ := requestForTest(t, handler, http.MethodGet, "/status", tokenForTest, "")
+	if code != http.StatusOK {
+		t.Fatalf("GET /status = %d %s, want 200", code, body)
+	}
+	for _, want := range []string{
+		`"generated_at"`, `"process": {`, `"goroutines"`, `"members": {`, `"app": {`, `"kind": "logger"`,
+		`"name": "opensearch"`, `"spool": {`, `"root": "/spool/opensearch"`, `"replay": {`, `"state": "running"`,
+		`"directories": [`, `"role": "spool"`, `"warnings": []`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("GET /status lacks %s:\n%s", want, body)
+		}
+	}
+	// 様子を報告できないControllerは、membersに入りません。
+	if strings.Contains(body, `"plain"`) {
+		t.Errorf("GET /status contains the plain controller:\n%s", body)
+	}
+	code, body, _ = requestForTest(t, handler, http.MethodGet, "/status/members/app/backends/0/spool/replay/state", tokenForTest, "")
+	if code != http.StatusOK || strings.TrimSpace(body) != `"running"` {
+		t.Errorf("GET /status/.../state = %d %q, want 200 \"running\"", code, body)
+	}
+	code, body, _ = requestForTest(t, handler, http.MethodGet, "/status?path=process/max_procs&path=members/app/kind", tokenForTest, "")
+	if code != http.StatusOK || !strings.Contains(body, `"members/app/kind": "logger"`) || !strings.Contains(body, `"process/max_procs": `) {
+		t.Errorf("GET /status?path=... = %d %s, want both values", code, body)
+	}
+}
+
+func TestNewHandlerRejectsAStatusConfigOutOfRange(t *testing.T) {
+	loggers := map[string]pkglogger.SettingsController{"app": newControllerForTest(t)}
+	for name, cfg := range map[string]pkgadmin.StatusConfig{
+		"negative interval": {DirectoryScanInterval: -time.Second},
+		"percent over 100":  {DiskFreeWarningPercent: 101},
+		"negative percent":  {BackendFailureWarningPercent: -1},
+		"negative slow":     {SlowRequest: -time.Second},
+	} {
+		_, err := NewHandler(pkgadmin.HandlerConfig{Token: tokenForTest, Members: pkgadmin.Members{Loggers: loggers}, Status: cfg}, &auditLoggerForTest{}, status.Probes{})
+		if !errors.Is(err, ErrInvalidStatusConfig) {
+			t.Errorf("NewHandler(%s) error = %v, want ErrInvalidStatusConfig", name, err)
+		}
+	}
+	if err := ValidateStatusConfig(pkgadmin.DefaultStatusConfig()); err != nil {
+		t.Errorf("ValidateStatusConfig(defaults) = %v, want nil", err)
 	}
 }

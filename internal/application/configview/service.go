@@ -66,8 +66,3 @@ func NewService(sources map[string]Source) (*Service, error) {
 func (s *Service) Document() map[string]any {
 	return maps.Clone(s.document)
 }
-
-// Valueは、文書のpathの先の値を返します。pathは、Lookupのとおりです。
-func (s *Service) Value(path []string) (any, bool) {
-	return Lookup(s.document, path)
-}

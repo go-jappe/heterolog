@@ -58,7 +58,7 @@ const (
 // Evaluateは、報告から注意すべき状態を判定し、criticalを先に、同じ重さならTargetと
 // Codeの順に並べて返します。
 func Evaluate(report *Report, th Thresholds) []Warning {
-	var warnings []Warning
+	warnings := []Warning{}
 	add := func(severity, code, target, message string) {
 		warnings = append(warnings, Warning{Severity: severity, Code: code, Target: target, Message: message})
 	}
