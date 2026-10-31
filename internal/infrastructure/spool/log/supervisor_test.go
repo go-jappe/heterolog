@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	lifecyclereport "github.com/go-jappe/heterolog/internal/infrastructure/spool/log/lifecycle/report"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -136,6 +137,17 @@ func TestRunnerSupervisorReportSpoolRunnerRunStoresSnapshotAndForwards(t *testin
 	require.Len(t, forwarded.calls, 1)
 	assert.Equal(t, report, forwarded.calls[0].report)
 	assert.ErrorIs(t, forwarded.calls[0].err, runErr)
+	// purgeを実行していない周期では、最後のpurgeの時刻は変わりません。
+	assert.True(t, snapshot.LastPurgeAt.IsZero(), "no purge ran")
+
+	purged := RunReport{LifecycleReport: lifecyclereport.RunReport{
+		DeadPurgeReport: lifecyclereport.PurgeReport{ByAge: lifecyclereport.PurgeStepReport{Executed: true}},
+	}}
+	supervisor.ReportSpoolRunnerRun(context.Background(), purged, nil)
+	purgedAt := supervisor.Snapshot().LastPurgeAt
+	assert.False(t, purgedAt.IsZero(), "a purge ran")
+	supervisor.ReportSpoolRunnerRun(context.Background(), report, nil)
+	assert.Equal(t, purgedAt, supervisor.Snapshot().LastPurgeAt, "a cycle without a purge keeps the time")
 }
 
 func TestRunnerSupervisorRunStopsOnCanceledContextBeforeRunnerStart(t *testing.T) {

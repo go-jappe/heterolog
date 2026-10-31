@@ -279,6 +279,8 @@ func errorText(err error) string {
 
 // replayRuntimeは、spoolから送り直すrunnerの実行と、spoolのdirectoryの使用権です。
 type replayRuntime struct {
+	// supervisorは、送り直すrunnerの状態（Snapshot）を、statusの報告のために保持します。
+	supervisor  *logspool.RunnerSupervisor
 	cancel      context.CancelFunc
 	forceCancel context.CancelFunc
 	done        chan struct{}
@@ -320,7 +322,7 @@ func startReplay[T any](cfg Config, opts Options[T], writer *spoolstorehandler.S
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	operationCtx, forceCancel := context.WithCancel(context.Background())
-	r := &replayRuntime{cancel: cancel, forceCancel: forceCancel, done: make(chan struct{})}
+	r := &replayRuntime{supervisor: supervisor, cancel: cancel, forceCancel: forceCancel, done: make(chan struct{})}
 	go func() {
 		defer close(r.done)
 		defer lease.Release()

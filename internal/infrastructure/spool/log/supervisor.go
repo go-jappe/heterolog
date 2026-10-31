@@ -132,6 +132,9 @@ type RunnerSupervisorSnapshot struct {
 	// LastRunErrは、最後に通知された周期のerrorです。errors.Is・errors.Asで判定できます。
 	LastRunErr        error
 	LastRunReportedAt time.Time
+	// LastPurgeAtは、最後にdone・dead・quarantineのいずれかのpurgeを実行した周期の
+	// 通知時刻です。processの起動後に一度も実行していなければzero valueです。
+	LastPurgeAt time.Time
 }
 
 func NewRunnerSupervisor(
@@ -217,11 +220,16 @@ func (s *RunnerSupervisor) ReportSpoolRunnerRun(
 	report RunReport,
 	err error,
 ) {
+	now := time.Now()
 	s.mu.Lock()
 	s.snapshot.LastRunReport = report
 	s.snapshot.LastRunError = errorText(err)
 	s.snapshot.LastRunErr = err
-	s.snapshot.LastRunReportedAt = time.Now()
+	s.snapshot.LastRunReportedAt = now
+	if lifecycle := report.LifecycleReport; lifecycle.DonePurgeReport.Executed() ||
+		lifecycle.DeadPurgeReport.Executed() || lifecycle.QuarantinePurgeReport.Executed() {
+		s.snapshot.LastPurgeAt = now
+	}
 	s.mu.Unlock()
 
 	if s.Reporter != nil {
