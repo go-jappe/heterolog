@@ -3,6 +3,10 @@ name: Cleanup runs
 on:
   schedule:
     - cron: "0 18 * * 0" # 毎週月曜 03:00 JST
+  # このfileを変更してpushした時は、削除せず対象だけ表示します。
+  push:
+    branches: [main]
+    paths: [.github/workflows/cleanup-runs.yml]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -27,11 +31,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          # 本削除は定期実行と、dry_runを外した手動実行の時だけです。
+          DO_DELETE: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false) }}
         run: |
           set -euo pipefail
           gh api --paginate "repos/$REPO/actions/runs?per_page=100" \
-            --jq '.workflow_runs[] | [.id, .workflow_id, .head_branch, .status, (.conclusion // ""), .created_at] | @tsv' \
+            --jq '.workflow_runs[] | [.id, .workflow_id, ((.head_branch // "") | if . == "" then "-" else . end), .status, ((.conclusion // "") | if . == "" then "-" else . end), .created_at] | @tsv' \
             | sort -t$'\t' -k6,6r > runs.tsv
           declare -A kept
           deleted=0
@@ -48,9 +53,9 @@ jobs:
               continue
             fi
             echo "delete $id ($branch, $conclusion, $created)"
-            if [ "$DRY_RUN" != "true" ]; then
+            if [ "$DO_DELETE" = "true" ]; then
               gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null
             fi
             deleted=$((deleted + 1))
           done < runs.tsv
-          echo "対象: $deleted 件 (dry_run=$DRY_RUN)"
+          echo "対象: $deleted 件 (delete=$DO_DELETE)"
