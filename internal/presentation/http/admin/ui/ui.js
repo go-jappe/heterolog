@@ -9,9 +9,10 @@ const STRINGS = {
     refresh: "Refresh", auto_refresh: "Refresh every 5 s", save: "Save changes", config_path: "Path",
     need_token: "Enter the admin token and press Connect.", unauthorized: "Unauthorized: check the token.",
     failed: "Request failed", saved: "Saved.", no_changes: "No changes to save.", updated: "Updated",
-    process: "Process", warnings: "Warnings", no_warnings: "No warnings", members: "Members", directories: "Directories",
+    process: "Process", warnings: "Warnings", no_warnings: "No warnings", loggers: "Loggers", telemetries: "Telemetries", directories: "Directories",
+    kind_logger: "synchronous logger", kind_async_logger: "asynchronous logger", kind_delivery_logger: "delivery logger", kind_telemetry: "telemetry",
     uptime: "Uptime", cpu: "CPU", memory: "Memory (RSS / heap)", host_memory: "Host memory used / limit", goroutines: "Goroutines",
-    backend: "Destination", records: "Records ok / failed", requests: "Requests (avg / max)", retries: "Retries",
+    backend: "Destination", records: "Records sent / failed", requests: "Requests avg / max (count)", retries: "Retries",
     breaker: "Circuit breaker", open: "open", closed: "closed", spool: "Spool active / dead / quarantine", replay: "Resend",
     last_purge: "Last purge", path: "Path", role: "Role", usage: "Files / size", limit: "Limit", disk_free: "Disk free / total",
     not_scanned: "not scanned yet", logger: "Logger", output: "Output", level: "Level", sampling: "Sampling",
@@ -24,9 +25,10 @@ const STRINGS = {
     refresh: "更新", auto_refresh: "5秒ごとに更新", save: "変更を保存", config_path: "path",
     need_token: "管理用tokenを入れて「接続」を押してください。", unauthorized: "認証に失敗しました。tokenを確かめてください。",
     failed: "要求に失敗しました", saved: "保存しました。", no_changes: "変更はありません。", updated: "更新",
-    process: "process", warnings: "注意", no_warnings: "注意すべき状態はありません", members: "member", directories: "directory",
+    process: "process", warnings: "注意", no_warnings: "注意すべき状態はありません", loggers: "logger", telemetries: "telemetry", directories: "directory",
+    kind_logger: "同期logger", kind_async_logger: "非同期logger", kind_delivery_logger: "delivery logger", kind_telemetry: "telemetry",
     uptime: "起動からの時間", cpu: "CPU", memory: "memory（RSS / heap）", host_memory: "hostのmemory 使用 / 上限", goroutines: "goroutine",
-    backend: "出力先", records: "record 成功 / 失敗", requests: "送信（平均 / 最大）", retries: "再試行",
+    backend: "出力先", records: "record 送った / 失敗", requests: "送信 平均 / 最大（回数）", retries: "再試行",
     breaker: "circuit breaker", open: "開", closed: "閉", spool: "spool active / dead / quarantine", replay: "再送",
     last_purge: "前回のpurge", path: "path", role: "role", usage: "file数 / 大きさ", limit: "上限", disk_free: "diskの空き / 総量",
     not_scanned: "未scan", logger: "logger", output: "出力先", level: "level", sampling: "sampling",
@@ -141,24 +143,13 @@ function renderStatus(report) {
   ];
   body.append(el("table", {}, processRows.map(([k, v]) => el("tr", {}, el("th", {}, k), el("td", {}, v)))));
 
-  body.append(el("h2", {}, t("members")));
-  for (const [name, member] of Object.entries(report.members || {})) {
-    body.append(el("h3", {}, name + " (" + member.kind + ")"));
-    const head = el("tr", {}, [t("backend"), t("records"), t("requests"), t("retries"), t("breaker"), t("spool"), t("replay"), t("last_purge")].map((h) => el("th", {}, h)));
-    const rows = (member.backends || []).map((b) => {
-      const r = b.records || {};
-      const failed = (r.retryable || 0) + (r.dead || 0) + (r.quarantine || 0) + (r.failure || 0);
-      const req = b.requests ? fmtSeconds(b.requests.average_seconds) + " / " + fmtSeconds(b.requests.max_seconds) + " (" + b.requests.count + ")" : "-";
-      const breaker = b.circuit_breaker ? (b.circuit_breaker.open ? t("open") : t("closed")) : "-";
-      const s = b.spool;
-      const spool = s ? [s.states.active, s.states.dead, s.states.quarantine].map((u) => (u && u.scanned_at && !u.scanned_at.startsWith("0001-") ? u.files : "?")).join(" / ") : "-";
-      const replay = s ? s.replay.state + (s.replay.last_error ? " (" + s.replay.last_error + ")" : "") : "-";
-      return el("tr", { class: warningClassFor(warnings, name + "/" + b.name) },
-        el("td", {}, b.name), el("td", { class: "num" }, (r.success || 0) + " / " + failed), el("td", {}, req),
-        el("td", { class: "num" }, b.retries || 0), el("td", {}, breaker), el("td", {}, spool), el("td", {}, replay),
-        el("td", {}, s ? fmtTime(s.replay.last_purge_at) : "-"));
-    });
-    body.append(el("table", {}, head, rows));
+  // loggerとtelemetryは別の見出しに分け、名前と種類を見出しにします。
+  const members = Object.entries(report.members || {}).sort();
+  for (const group of ["loggers", "telemetries"]) {
+    const entries = members.filter(([, m]) => (m.kind === "telemetry") === (group === "telemetries"));
+    if (entries.length === 0) continue;
+    body.append(el("h2", {}, t(group)));
+    for (const [name, member] of entries) renderMember(body, name, member, warnings);
   }
 
   body.append(el("h2", {}, t("directories")));
@@ -174,6 +165,26 @@ function renderStatus(report) {
   });
   body.append(el("table", {}, dirHead, dirRows));
   document.getElementById("status-updated").textContent = t("updated") + ": " + new Date().toLocaleTimeString();
+}
+
+// renderMemberは、一つのloggerかtelemetryの出力先の表を描きます。
+function renderMember(body, name, member, warnings) {
+  body.append(el("h3", {}, name + " — " + t("kind_" + member.kind)));
+  const head = el("tr", {}, [t("backend"), t("records"), t("requests"), t("retries"), t("breaker"), t("spool"), t("replay"), t("last_purge")].map((h) => el("th", {}, h)));
+  const rows = (member.backends || []).map((b) => {
+    const r = b.records || {};
+    const failed = (r.retryable || 0) + (r.dead || 0) + (r.quarantine || 0) + (r.failure || 0);
+    const req = b.requests ? fmtSeconds(b.requests.average_seconds) + " / " + fmtSeconds(b.requests.max_seconds) + " (" + b.requests.count + ")" : "-";
+    const breaker = b.circuit_breaker ? (b.circuit_breaker.open ? t("open") : t("closed")) : "-";
+    const s = b.spool;
+    const spool = s ? [s.states.active, s.states.dead, s.states.quarantine].map((u) => (u && u.scanned_at && !u.scanned_at.startsWith("0001-") ? u.files : "?")).join(" / ") : "-";
+    const replay = s ? s.replay.state + (s.replay.last_error ? " (" + s.replay.last_error + ")" : "") : "-";
+    return el("tr", { class: warningClassFor(warnings, name + "/" + b.name) },
+      el("td", {}, b.name), el("td", { class: "num" }, (r.success || 0) + " / " + failed), el("td", {}, req),
+      el("td", { class: "num" }, b.retries || 0), el("td", {}, breaker), el("td", {}, spool), el("td", {}, replay),
+      el("td", {}, s ? fmtTime(s.replay.last_purge_at) : "-"));
+  });
+  body.append(el("table", {}, head, rows));
 }
 
 async function loadStatus() {
