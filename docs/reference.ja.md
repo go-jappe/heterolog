@@ -628,7 +628,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 
 | メトリクス | 種類 | 属性 | 意味 |
 |---|---|---|---|
-| `heterolog_backend_records_total` | Counter | `backend`・`outcome` | OpenSearch・Loki・ClickHouse・CloudWatch Logs・Slackへ送ったrecordの数を、結果ごとに数えます。結果は `success` か、[失敗の分類](#失敗の分類) の `retryable`・`dead`・`quarantine` です。Slackは、送れなかったrecordを次のbatchへ残し、送るたびに `retryable` として数えます。bufferが一杯で捨てたrecordは `dropped` です。Slackへの送達（delivery）の失敗は `dead` です。fileロガーは、1件の書き込みごとに `success` か `failure` として数えます。過負荷時の方針 `drop` で破棄したentryは、代わりに `heterolog_file_dropped_entries_total` に数えます。 |
+| `heterolog_backend_records_total` | Counter | `backend`・`outcome` | OpenSearch・Loki・ClickHouse・CloudWatch Logs・Slackへ送ったrecordの数を、結果ごとに数えます。結果は `success` か、[失敗の分類](#失敗の分類) の `retryable`・`dead`・`quarantine` です。Slackは、送れなかったrecordを次のbatchへ残し、送るたびに `retryable` として数えます。bufferが一杯で捨てたrecordは `dropped` です。Slackへの送達（delivery）の失敗は `dead` です。fileとstdoutのロガーは、1件の書き込みごとに `success` か `failure` として数えます。fileロガーが過負荷時の方針 `drop` で破棄したentryは、代わりに `heterolog_file_dropped_entries_total` に数えます。 |
 | `heterolog_backend_request_duration_seconds` | Histogram | `backend`・`outcome`（`success`・`failure`） | 1回のリクエストにかかった時間です。retry clientの再試行と、その間の待ち時間を含みます。一部のrecordだけを拒否した応答は `success` で、そのrecordは `heterolog_backend_records_total` に数えます。 |
 | `heterolog_backend_flush_records` | Histogram | `backend` | bufferからまとめて送る1回分のrecordの数です。 |
 | `heterolog_backend_flush_bytes` | Histogram | `backend` | bufferからまとめて送る1回分のbyte数です。`BufferFlushBytes` と比べるために数えた値です。Slackは記録しません。 |

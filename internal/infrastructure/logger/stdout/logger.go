@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"github.com/go-jappe/heterolog/internal/infrastructure/telemetry"
 	"log"
 	"os"
 
@@ -100,9 +101,20 @@ func (s *StdoutLogger) logWithMeta(ctx context.Context, meta *infralogging.LogEn
 		message := fmt.Sprintf(MsgFailedWriteStdout, err)
 		internalErr := &errors.StdoutLoggerInternalError{Op: OperationWriteError, Err: err}
 		s.reportWriteError(ctx, internalErr, s.InternalErrorEntry(message, "", err))
+		s.recordWrite(ctx, telemetry.OutcomeFailure)
 		return internalErr
 	}
+	s.recordWrite(ctx, telemetry.OutcomeSuccess)
 	return nil
+}
+
+// recordWriteは、通常の書き込み1件の結果をmetricsに数えます。内部ログの通知専用の
+// instanceの書き込みは数えません。
+func (s *StdoutLogger) recordWrite(ctx context.Context, outcome string) {
+	if s.notificationOnly {
+		return
+	}
+	telemetry.RecordRecords(ctx, s.Meter, s.BackendName(), outcome, 1)
 }
 
 // reportWriteErrorは、stdout・stderrへの書き込みの失敗をOnErrorへ通知します。このloggerの

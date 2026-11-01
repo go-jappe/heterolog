@@ -255,7 +255,7 @@ func TestAdminAPIReportsTheStatusOfEveryMember(t *testing.T) {
 		t.Fatalf("GET /status = %d %s, want 200", recorder.Code, recorder.Body)
 	}
 	body := recorder.Body.String()
-	for _, want := range []string{`"process": {`, `"uptime_seconds"`, `"app": {`, `"name": "stdout"`, `"records": {`, `"warnings": []`} {
+	for _, want := range []string{`"process": {`, `"uptime_seconds"`, `"app": {`, `"name": "stdout"`, `"records": {`, `"success": 1`, `"warnings": []`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("GET /status lacks %s:\n%s", want, body)
 		}
