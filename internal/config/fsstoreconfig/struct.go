@@ -20,4 +20,7 @@ type CommonFileSystemStoreConfig struct {
 	// EncryptionRecipientは、fileを暗号化する公開鍵（HETEROLOG_ENCRYPTION_RECIPIENT）です。
 	// 全出力先で共通で、出力先ごとのENABLE_*_ENCRYPTで暗号化する出力先を選びます。
 	EncryptionRecipient string
+	// SpoolEncryptionKeyFileは、spool fileを暗号化する対称鍵のfile
+	// （HETEROLOG_SPOOL_ENCRYPTION_KEY_FILE）です。出力先ごとのENABLE_*_SPOOL_ENCRYPTで選びます。
+	SpoolEncryptionKeyFile string
 }

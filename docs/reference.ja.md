@@ -319,15 +319,16 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 
 ### 暗号化
 
-ログファイル、出力先のfailure archive（`.jsonl`）、トレースとメトリクスのOTLP/JSONのファイルは、公開鍵で暗号化できます。spoolは暗号化しません。送り直しのためにプロセスがspoolを読む必要があり、spoolを読める鍵はプロセスから届く所に置くしかないためです。
+ログファイル、出力先のfailure archive（`.jsonl`）、トレースとメトリクスのOTLP/JSONのファイルは、公開鍵で暗号化できます。spoolは、送り直しのためにプロセスが読む必要があるので、代わりに対称鍵で暗号化できます。両者は守れるものが違います（下記）。
 
 - アプリケーションに渡すのは公開鍵だけです（`HETEROLOG_ENCRYPTION_RECIPIENT`、コードではファイルの設定の `EncryptionConfig.Recipient`）。秘密鍵はアプリケーションに渡しません。`log-decrypt keygen` が秘密鍵を0600のファイルに書き、`log-decrypt decrypt` がそれでファイルを読みます。[log-decrypt CLI](#log-decrypt-cli)を参照してください。
 - 暗号化は出力先ごとに選びます: `HETEROLOG_ENABLE_LOG_FILE_ENCRYPT`、`HETEROLOG_ENABLE_ASYNC_LOG_FILE_ENCRYPT`、`HETEROLOG_ENABLE_DELIVERY_LOG_FILE_ENCRYPT`（管理用APIの監査ログもこれに従います）、ログの出力先ごとのfailure archiveの `HETEROLOG_ENABLE_<出力先>_DURABLE_FILE_ARCHIVE_ENCRYPT`（例: `HETEROLOG_ENABLE_OPENSEARCH_DURABLE_FILE_ARCHIVE_ENCRYPT`）、`HETEROLOG_ENABLE_TRACES_FILE_ENCRYPT`、`HETEROLOG_ENABLE_METRICS_FILE_ENCRYPT`、トレースとメトリクスの送り先のfailure archiveの `HETEROLOG_ENABLE_TRACES_OTLP_DURABLE_FILE_ARCHIVE_ENCRYPT` などです。公開鍵はすべてで共通です。公開鍵がないまま、または読めない公開鍵で出力先を有効にすると、構築のerrorになります。
-- 守れるもの: ディスク・バックアップ・volumeのsnapshot・オブジェクトストレージ（圧縮ログとarchiveのアップロードは暗号化したbyte列をそのまま送ります）のファイルは、アプリケーションのコンテナに入られても、秘密鍵がなければ読めません。守れないもの: プロセスのメモリにある記録、stdoutに出る記録、spoolです。
+- 守れるもの: ディスク・バックアップ・volumeのsnapshot・オブジェクトストレージ（圧縮ログとarchiveのアップロードは暗号化したbyte列をそのまま送ります）のファイルは、アプリケーションのコンテナに入られても、秘密鍵がなければ読めません。守れないもの: プロセスのメモリにある記録と、stdoutに出る記録です。
 - 暗号化したファイルは圧縮しません。暗号文は圧縮できないためです。出力先で暗号化と圧縮を両方有効にすると、その出力先の圧縮の設定は無視します。同期・非同期のfile loggerとfailure archiveは構築時に内部ログの通知先へ警告を出し、Delivery file loggerのlifecycle runnerは警告なしに圧縮を飛ばします。
 - ファイルはsegmentの並びです。segmentは、ファイルを開くたび（起動時と各ローテーション）にheader（magic `HLOGENC1`、公開鍵のID、HPKEのカプセル化した鍵）で始まり、記録ごとのchunk（4 byteの長さと暗号文）が続きます。既存のファイルを開くと新しいsegmentを足すので、再起動に鍵は要りません。暗号はGoの標準ライブラリのHPKE（RFC 9180）で、DHKEM(X25519, HKDF-SHA256)・HKDF-SHA256・AES-256-GCMです。nonceはHPKEの文脈の通し番号なので、chunkの欠落・並べ替え・改変は復号で失敗します。ファイル名は変わりません（`.log`・`.jsonl`）。ローテーション・保持・アップロード・ログ復旧CLIは、暗号化したファイルもほかと同じに扱います。
 - 停止で途中まで書かれた記録や、暗号化を有効にする前に書いた平文の部分があっても、残りは読めます。復号は次のsegmentまで読み飛ばし、読み飛ばしたbyte数を報告します。
 - 鍵を変えるには、新しい鍵の組を作って新しい公開鍵を設定します。新しいsegmentは新しい鍵を使い、古いファイルは古い秘密鍵で復号します（秘密鍵のファイルには、1行に1つずつ複数の鍵を置けます）。
+- spoolのファイル（`.hlogspool`）は、プロセスが持つ対称鍵で暗号化します。`log-decrypt keygen --spool-key` が鍵のファイルを書き、`HETEROLOG_SPOOL_ENCRYPTION_KEY_FILE`（コードでは `durable.SpoolConfig` の `SpoolEncryptionConfig.KeyFile`）でその場所を渡し、`HETEROLOG_ENABLE_<出力先>_SPOOL_ENCRYPT`（例: `HETEROLOG_ENABLE_OPENSEARCH_SPOOL_ENCRYPT`、`HETEROLOG_ENABLE_ASYNC_LOKI_SPOOL_ENCRYPT`）や `HETEROLOG_ENABLE_TRACES_OTLP_SPOOL_ENCRYPT` などでspoolを選びます。各ファイルは1つのAES-256-GCMの暗号文（magic `HLOGSYM1`・鍵のID・nonce・暗号文）です。鍵はプロセスが読むので、守れるのはプロセスの外にあるspoolの複製（盗まれたディスク、バックアップ、スナップショット）だけです。プロセスの権限を持つ相手は、プロセスと同じように鍵を読めます。鍵のファイルはspoolを作るときに読み、ない・読めない場合は構築のerrorです。ファイルの最初の鍵で書き、すべての鍵で読むので、鍵を変えるには新しい鍵を先頭に置き、古い鍵で書いたファイルがなくなるまで古い鍵を残します。暗号化を有効にする前に書いたファイルはそのまま読みます。鍵のないプロセスが暗号化したファイルを読むと、decodeできないファイルと同じ扱いになります（削除せずquarantineへ移し、`log-decrypt decrypt --spool-key` で読めます）。圧縮ログのアップロード失敗のspoolは、（暗号化されていることもある）ログファイルの複製を置くもので、独自の暗号化はありません。
 
 ### object storageへのアップロード
 
@@ -781,10 +782,13 @@ go build -o log-decrypt ./cmd/log-decrypt
 ./log-decrypt keygen --identity /secure/place/heterolog.key
 ./log-decrypt decrypt --identity /secure/place/heterolog.key /var/log/my-service/logs/app.log > app.log.txt
 ./log-decrypt decrypt --identity /secure/place/heterolog.key --output-dir ./plain /var/log/my-service/logs/*.log
+./log-decrypt keygen --spool-key /etc/my-service/spool.key
+./log-decrypt decrypt --spool-key /etc/my-service/spool.key /var/lib/my-service/spool/opensearch/dead/2026/06/11/00/05/05321_123456789.hlogspool
 ```
 
-- `keygen` は、新しい秘密鍵をidentity file（0600。既存のファイルは上書きしません）に書き、identity fileの場所、鍵のID、環境設定に置く `HETEROLOG_ENCRYPTION_RECIPIENT=hlog-pub1-...` の行を表示します。identity fileはアプリケーションの外に置いてください。
-- `decrypt` は、平文をstdout、`--output`（入力が1つのとき）、または `--output-dir` の下の入力と同じ名前のファイルに書きます。既存の出力ファイルは上書きしません。報告（segment・記録・byte数と、読み飛ばした箇所）はstderrに出すので、stdoutの平文に混ざりません。
+- `keygen --identity` は、新しい秘密鍵をidentity file（0600。既存のファイルは上書きしません）に書き、identity fileの場所、鍵のID、環境設定に置く `HETEROLOG_ENCRYPTION_RECIPIENT=hlog-pub1-...` の行を表示します。identity fileはアプリケーションの外に置いてください。
+- `keygen --spool-key` は、spoolのファイル用の新しい対称鍵を鍵のファイル（0600）に書き、`HETEROLOG_SPOOL_ENCRYPTION_KEY_FILE=...` の行を表示します。このファイルはアプリケーションに渡します。
+- `decrypt` は、平文をstdout、`--output`（入力が1つのとき）、または `--output-dir` の下の入力と同じ名前のファイルに書きます。既存の出力ファイルは上書きしません。報告（segment・記録・byte数と、読み飛ばした箇所）はstderrに出すので、stdoutの平文に混ざりません。ファイルの種類は先頭のbyteで判断します。ログファイル・failure archive・OTLPのファイルには `--identity`、spoolのファイルには `--spool-key` が要り、両方を渡すこともできます。
 - 壊れたbyte列、停止で途中まで書かれた記録、暗号化を有効にする前の平文、identity fileにない鍵で暗号化したsegmentは読み飛ばし、位置と理由を列挙します。そのときの終了codeは3です。暗号化したsegmentで始まらないファイル、identity fileがない、読み書きのerrorは1、指定の誤りは2で終わります。
 - identity fileには、1行に1つずつ複数の秘密鍵を置けます（`#` のcomment可）。segmentの鍵のIDで鍵を選びます。`keygen` は、公開鍵と鍵のIDをcommentとして鍵の上に書きます。
 - このコマンドは渡されたファイルだけを読むので、別の機械に複製したファイルでも動きます。アプリケーションの環境設定は要りません。

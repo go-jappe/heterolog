@@ -161,6 +161,8 @@ type FileArchiveOverloadPolicyConfig struct {
 
 type SpoolConfig struct {
 	Dir string // 例: /var/lib/{appname}/spool/{Dir} (Dir部分: backend名など)
+	// EnableEncryptは、共通の対称鍵でspool fileを暗号化します。
+	EnableEncrypt bool
 
 	OverloadPolicyConfig SpoolOverloadPolicyConfig
 	HandlerConfig        internalerror.RoutingConfig

@@ -84,7 +84,7 @@ func (s *StateStore) ReconcileProcessingTerminal(
 		if savedState != "" {
 			return savedState, fmt.Errorf("%w: results are split between %s and %s", ErrTerminalRecoveryConflict, savedState, state)
 		}
-		savedRecords, err = decodeSpoolRecords(body)
+		savedRecords, err = s.decodeSpoolFile(body)
 		if err != nil {
 			// 原因は包まない。保存済み結果のdecode errorはpkgspool.ErrInvalidSpoolFileに一致し、
 			// processing fileをquarantineしてよいという分類になるが、競合ではすべてのfileを残す。
@@ -115,7 +115,7 @@ func (s *StateStore) ReconcileProcessingTerminal(
 	if err := errors.Join(readErr, closeErr); err != nil {
 		return savedState, fmt.Errorf("verify finalized processing file: %w", err)
 	}
-	current, err := decodeSpoolRecords(sourceBody)
+	current, err := s.decodeSpoolFile(sourceBody)
 	if err != nil || !sameStoredRecords(records, current) {
 		return savedState, fmt.Errorf("%w: processing contents changed before cleanup", ErrTerminalRecoveryConflict)
 	}

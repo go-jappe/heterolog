@@ -50,7 +50,7 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 - Three loggers with different guarantees: synchronous (returns errors), asynchronous (best effort), and delivery (reports the result for each destination).
 - A `log/slog` handler.
 - Log files with rotation, compression (gzip, zstd, lz4, xz), retention, and upload to S3 or S3-compatible storage such as Backblaze B2.
-- Optional encryption of the log files, failure archives and trace/metric files with a public key: the process holds no key that can read them, and a CLI decrypts them with the private key.
+- Optional encryption of the log files, failure archives and trace/metric files with a public key: the process holds no key that can read them, and a CLI decrypts them with the private key. The spool can be encrypted with a symmetric key against offline copies.
 - A local spool for logs that could not be sent, replayed automatically and following `Retry-After` across restarts.
 - Overload protection with a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
 - Configuration in code, or from `HETEROLOG_` environment variables and an env file.
@@ -331,7 +331,7 @@ go build -o log-decrypt ./cmd/log-decrypt
 ./log-decrypt decrypt --identity /secure/place/heterolog.key /var/log/my-service/logs/app.log
 ```
 
-Set `HETEROLOG_ENCRYPTION_RECIPIENT` to the printed public key, and enable the encryption per output with `HETEROLOG_ENABLE_LOG_FILE_ENCRYPT`, `HETEROLOG_ENABLE_<DESTINATION>_DURABLE_FILE_ARCHIVE_ENCRYPT`, `HETEROLOG_ENABLE_TRACES_FILE_ENCRYPT` and the like; in code, set `EncryptionConfig` of the file settings. Encrypted files are not compressed. The spool is not encrypted, because the process must read it to resend; see [Encryption](docs/reference.md#encryption) for what the encryption protects and how the files are laid out.
+Set `HETEROLOG_ENCRYPTION_RECIPIENT` to the printed public key, and enable the encryption per output with `HETEROLOG_ENABLE_LOG_FILE_ENCRYPT`, `HETEROLOG_ENABLE_<DESTINATION>_DURABLE_FILE_ARCHIVE_ENCRYPT`, `HETEROLOG_ENABLE_TRACES_FILE_ENCRYPT` and the like; in code, set `EncryptionConfig` of the file settings. Encrypted files are not compressed. The spool, which the process must read back to resend, can be encrypted separately with a symmetric key that the process holds (`log-decrypt keygen --spool-key`, `HETEROLOG_SPOOL_ENCRYPTION_KEY_FILE`, `HETEROLOG_ENABLE_<DESTINATION>_SPOOL_ENCRYPT`); that protects the spool files outside the process, such as on a stolen disk or in a backup, but not against someone with the privileges of the process. See [Encryption](docs/reference.md#encryption) for what each protects and how the files are laid out.
 
 ## Traces
 

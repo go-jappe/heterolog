@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/cipherfile"
 	"os"
 	"strings"
 	"time"
@@ -47,6 +48,8 @@ type SpoolStore struct {
 	clock   clock.Clock
 	Config  SpoolStoreConfigProvider
 	RootDir spool.Dir // 保存先ルートパス ex.) /var/lib/heterolog/spool/opensearch
+	// cipherは、spool fileを暗号化する鍵です。nilなら平文で書きます。
+	cipher *cipherfile.SpoolCipher
 
 	OnError logging.LoggerErrorHandler
 	OnWarn  logging.LoggerHandlerFunc
@@ -91,10 +94,16 @@ func NewSpoolStore(
 		return nil, err
 	}
 
+	cipher, err := cipherfile.ResolveSpoolCipher(cfg.Encryption())
+	if err != nil {
+		return nil, err
+	}
+
 	return &SpoolStore{
 		clock:   timeSource,
 		Config:  cfg,
 		RootDir: rootDir,
+		cipher:  cipher,
 		Tracer:  tracer,
 		Meter:   meter,
 	}, nil
@@ -119,6 +128,9 @@ func (s *SpoolStore) StoreByState(
 	body, err := buildSpoolNDJSON(records)
 	if err != nil {
 		return fmt.Errorf("failed to build spool ndjson: %w", err)
+	}
+	if body, err = s.cipher.Seal(body); err != nil {
+		return fmt.Errorf("failed to encrypt spool file: %w", err)
 	}
 
 	return s.writeStateBody(ctx, state, storedAt, body)

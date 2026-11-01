@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	encfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"os"
 	"path/filepath"
 	"testing"
@@ -290,6 +291,10 @@ type integrationSpoolConfig struct {
 func (c integrationSpoolConfig) SpoolPath() string { return c.spoolPath }
 func (c integrationSpoolConfig) Target() string    { return c.target }
 func (c integrationSpoolConfig) Dir() string       { return c.dir }
+
+func (c integrationSpoolConfig) Encryption() encfsstore.SpoolEncryptionConfig {
+	return encfsstore.SpoolEncryptionConfig{}
+}
 func (c integrationSpoolConfig) FileNameFormat() string {
 	return ""
 }

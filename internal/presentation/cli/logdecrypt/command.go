@@ -17,8 +17,9 @@ import (
 // Dependenciesは、鍵の生成と復号の処理を注入し、CLIの検証で実際の鍵やfileに触れないように
 // します。
 type Dependencies struct {
-	Keygen  func(identityPath string) (recipient, keyID string, err error)
-	Decrypt func(identityPath, inputPath string, output io.Writer) (cipherfile.Report, error)
+	Keygen      func(identityPath string) (recipient, keyID string, err error)
+	SpoolKeygen func(keyPath string) (keyID string, err error)
+	Decrypt     func(identityPath, keyPath, inputPath string, output io.Writer) (cipherfile.Report, error)
 }
 
 // 終了codeです。復号できたが読み飛ばした箇所があるfileは、errorとは別のcodeで知らせます。
@@ -52,28 +53,46 @@ func Run(args []string, stdout, stderr io.Writer, deps Dependencies) int {
 
 func usage(w io.Writer) {
 	fmt.Fprintln(w, "Usage: log-decrypt keygen --identity <file>")
-	fmt.Fprintln(w, "       log-decrypt decrypt --identity <file> [--output <file> | --output-dir <dir>] <encrypted file>...")
+	fmt.Fprintln(w, "       log-decrypt keygen --spool-key <file>")
+	fmt.Fprintln(w, "       log-decrypt decrypt [--identity <file>] [--spool-key <file>] [--output <file> | --output-dir <dir>] <encrypted file>...")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "keygen writes a new private key to the identity file (mode 0600, never overwritten) and prints")
-	fmt.Fprintln(w, "the public key to set as HETEROLOG_ENCRYPTION_RECIPIENT. Keep the identity file outside the")
-	fmt.Fprintln(w, "application: the loggers only need the public key.")
+	fmt.Fprintln(w, "keygen --identity writes a new private key to the identity file (mode 0600, never overwritten)")
+	fmt.Fprintln(w, "and prints the public key to set as HETEROLOG_ENCRYPTION_RECIPIENT. Keep the identity file")
+	fmt.Fprintln(w, "outside the application: the loggers only need the public key.")
+	fmt.Fprintln(w, "keygen --spool-key writes a new symmetric key for the spool files to the key file (mode 0600),")
+	fmt.Fprintln(w, "to give to the application as HETEROLOG_SPOOL_ENCRYPTION_KEY_FILE.")
 	fmt.Fprintln(w, "decrypt writes the plaintext of each encrypted file to stdout, to --output (one input), or to")
-	fmt.Fprintln(w, "--output-dir under the input's file name. Damaged bytes and segments without a matching key")
+	fmt.Fprintln(w, "--output-dir under the input's file name. Log files, failure archives and OTLP files need")
+	fmt.Fprintln(w, "--identity; spool files need --spool-key. Damaged bytes and segments without a matching key")
 	fmt.Fprintln(w, "are skipped and reported on stderr; the exit code is then 3.")
 }
 
 func runKeygen(args []string, stdout, stderr io.Writer, deps Dependencies) int {
-	var identityPath string
+	var identityPath, keyPath string
 	flags := flag.NewFlagSet("log-decrypt keygen", flag.ContinueOnError)
 	var flagOutput bytes.Buffer
 	flags.SetOutput(&flagOutput)
-	flags.StringVar(&identityPath, "identity", "", "File to write the private key to (required)")
+	flags.StringVar(&identityPath, "identity", "", "File to write the private key of the public-key encryption to")
+	flags.StringVar(&keyPath, "spool-key", "", "File to write the symmetric key of the spool encryption to")
 	if code, done := parseFlags(flags, args, &flagOutput, stdout, stderr); done {
 		return code
 	}
-	if identityPath == "" || flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "log-decrypt keygen: --identity <file> is required and takes no other arguments")
+	if (identityPath == "") == (keyPath == "") || flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "log-decrypt keygen: give exactly one of --identity <file> and --spool-key <file>, and no other arguments")
 		return exitUsage
+	}
+	if keyPath != "" {
+		if deps.SpoolKeygen == nil {
+			fmt.Fprintln(stderr, "log-decrypt keygen: the command is not configured")
+			return exitError
+		}
+		keyID, err := deps.SpoolKeygen(keyPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "log-decrypt keygen: %v\n", err)
+			return exitError
+		}
+		fmt.Fprintf(stdout, "spool key file: %s\nkey id: %s\nHETEROLOG_SPOOL_ENCRYPTION_KEY_FILE=%s\n", keyPath, keyID, keyPath)
+		return exitOK
 	}
 	if deps.Keygen == nil {
 		fmt.Fprintln(stderr, "log-decrypt keygen: the command is not configured")
@@ -89,11 +108,12 @@ func runKeygen(args []string, stdout, stderr io.Writer, deps Dependencies) int {
 }
 
 func runDecrypt(args []string, stdout, stderr io.Writer, deps Dependencies) int {
-	var identityPath, outputPath, outputDir string
+	var identityPath, keyPath, outputPath, outputDir string
 	flags := flag.NewFlagSet("log-decrypt decrypt", flag.ContinueOnError)
 	var flagOutput bytes.Buffer
 	flags.SetOutput(&flagOutput)
-	flags.StringVar(&identityPath, "identity", "", "File holding the private key(s) (required)")
+	flags.StringVar(&identityPath, "identity", "", "File holding the private key(s) for log files, failure archives and OTLP files")
+	flags.StringVar(&keyPath, "spool-key", "", "File holding the symmetric key(s) for spool files")
 	flags.StringVar(&outputPath, "output", "", "File to write the plaintext to (one input only; default: stdout)")
 	flags.StringVar(&outputDir, "output-dir", "", "Directory to write one plaintext file per input, named as the input")
 	if code, done := parseFlags(flags, args, &flagOutput, stdout, stderr); done {
@@ -101,8 +121,8 @@ func runDecrypt(args []string, stdout, stderr io.Writer, deps Dependencies) int 
 	}
 	inputs := flags.Args()
 	switch {
-	case identityPath == "":
-		fmt.Fprintln(stderr, "log-decrypt decrypt: --identity <file> is required")
+	case identityPath == "" && keyPath == "":
+		fmt.Fprintln(stderr, "log-decrypt decrypt: --identity <file> or --spool-key <file> is required")
 		return exitUsage
 	case len(inputs) == 0:
 		fmt.Fprintln(stderr, "log-decrypt decrypt: give at least one encrypted file")
@@ -120,14 +140,14 @@ func runDecrypt(args []string, stdout, stderr io.Writer, deps Dependencies) int 
 	}
 	code := exitOK
 	for _, input := range inputs {
-		fileCode := decryptOne(input, identityPath, outputPath, outputDir, stdout, stderr, deps)
+		fileCode := decryptOne(input, identityPath, keyPath, outputPath, outputDir, stdout, stderr, deps)
 		code = max(code, fileCode)
 	}
 	return code
 }
 
 // decryptOneは、inputを復号します。出力先のfileは、すでにあれば上書きしません。
-func decryptOne(input, identityPath, outputPath, outputDir string, stdout, stderr io.Writer, deps Dependencies) int {
+func decryptOne(input, identityPath, keyPath, outputPath, outputDir string, stdout, stderr io.Writer, deps Dependencies) int {
 	var output io.Writer = stdout
 	var file *os.File
 	if outputPath != "" || outputDir != "" {
@@ -143,7 +163,7 @@ func decryptOne(input, identityPath, outputPath, outputDir string, stdout, stder
 		}
 		output = file
 	}
-	report, err := deps.Decrypt(identityPath, input, output)
+	report, err := deps.Decrypt(identityPath, keyPath, input, output)
 	if file != nil {
 		err = errors.Join(err, file.Close())
 	}

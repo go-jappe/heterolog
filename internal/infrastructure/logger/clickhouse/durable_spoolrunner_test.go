@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	encfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -336,6 +337,10 @@ type clickHouseLoggerSpoolTestConfig struct {
 func (c clickHouseLoggerSpoolTestConfig) SpoolPath() string { return c.spoolPath }
 func (c clickHouseLoggerSpoolTestConfig) Target() string    { return c.target }
 func (c clickHouseLoggerSpoolTestConfig) Dir() string       { return c.dir }
+
+func (c clickHouseLoggerSpoolTestConfig) Encryption() encfsstore.SpoolEncryptionConfig {
+	return encfsstore.SpoolEncryptionConfig{}
+}
 func (c clickHouseLoggerSpoolTestConfig) FileNameFormat() string {
 	return ""
 }

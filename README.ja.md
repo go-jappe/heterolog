@@ -50,7 +50,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - 保証の異なる3種類のロガー: 同期（errorを返す）、非同期（best effort）、Delivery（出力先ごとの結果を返す）。
 - `log/slog` のハンドラー。
 - ログファイルのローテーション、圧縮（gzip・zstd・lz4・xz）、保持、S3またはBackblaze B2などのS3互換のストレージへのアップロード。
-- ログファイル・failure archive・トレースとメトリクスのファイルの、公開鍵による暗号化（任意）。プロセスは読める鍵を持たず、秘密鍵を持つCLIで復号します。
+- ログファイル・failure archive・トレースとメトリクスのファイルの、公開鍵による暗号化（任意）。プロセスは読める鍵を持たず、秘密鍵を持つCLIで復号します。spoolは、オフラインの複製に対して対称鍵で暗号化できます。
 - 送れなかったログを保存するローカルのspool。自動で送り直し、`Retry-After` には再起動後も従います。
 - 空き容量の閾値、任意のメモリ逼迫の監視器、`drop`・`degrade` の方針による過負荷の保護。
 - コードでの設定、または `HETEROLOG_` 環境変数と環境設定ファイルからの設定。
@@ -331,7 +331,7 @@ go build -o log-decrypt ./cmd/log-decrypt
 ./log-decrypt decrypt --identity /secure/place/heterolog.key /var/log/my-service/logs/app.log
 ```
 
-表示された公開鍵を `HETEROLOG_ENCRYPTION_RECIPIENT` に設定し、暗号化する出力先を `HETEROLOG_ENABLE_LOG_FILE_ENCRYPT`、`HETEROLOG_ENABLE_<出力先>_DURABLE_FILE_ARCHIVE_ENCRYPT`、`HETEROLOG_ENABLE_TRACES_FILE_ENCRYPT` などで選びます。コードでは、ファイルの設定の `EncryptionConfig` に指定します。暗号化したファイルは圧縮しません。spoolは、送り直しのためにプロセスが読む必要があるので暗号化しません。何を守れるかとファイルの形式は[暗号化](docs/reference.ja.md#暗号化)にあります。
+表示された公開鍵を `HETEROLOG_ENCRYPTION_RECIPIENT` に設定し、暗号化する出力先を `HETEROLOG_ENABLE_LOG_FILE_ENCRYPT`、`HETEROLOG_ENABLE_<出力先>_DURABLE_FILE_ARCHIVE_ENCRYPT`、`HETEROLOG_ENABLE_TRACES_FILE_ENCRYPT` などで選びます。コードでは、ファイルの設定の `EncryptionConfig` に指定します。暗号化したファイルは圧縮しません。送り直しのためにプロセスが読み戻すspoolは、プロセスが持つ対称鍵で別に暗号化できます（`log-decrypt keygen --spool-key`、`HETEROLOG_SPOOL_ENCRYPTION_KEY_FILE`、`HETEROLOG_ENABLE_<出力先>_SPOOL_ENCRYPT`）。これはディスクの盗難やバックアップなど、プロセスの外にあるspoolのファイルを守るもので、プロセスの権限を持つ相手からは守れません。それぞれ何を守れるかとファイルの形式は[暗号化](docs/reference.ja.md#暗号化)にあります。
 
 ## トレース
 

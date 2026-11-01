@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	encfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -643,6 +644,10 @@ type openSearchLoggerSpoolIntegrationConfig struct {
 func (c openSearchLoggerSpoolIntegrationConfig) SpoolPath() string { return c.spoolPath }
 func (c openSearchLoggerSpoolIntegrationConfig) Target() string    { return c.target }
 func (c openSearchLoggerSpoolIntegrationConfig) Dir() string       { return c.dir }
+
+func (c openSearchLoggerSpoolIntegrationConfig) Encryption() encfsstore.SpoolEncryptionConfig {
+	return encfsstore.SpoolEncryptionConfig{}
+}
 func (c openSearchLoggerSpoolIntegrationConfig) FileNameFormat() string {
 	return ""
 }

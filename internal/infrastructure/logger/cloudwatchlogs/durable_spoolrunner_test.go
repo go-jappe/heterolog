@@ -680,6 +680,10 @@ type cloudWatchLogsLoggerSpoolTestConfig struct {
 func (c cloudWatchLogsLoggerSpoolTestConfig) SpoolPath() string { return c.spoolPath }
 func (c cloudWatchLogsLoggerSpoolTestConfig) Target() string    { return c.target }
 func (c cloudWatchLogsLoggerSpoolTestConfig) Dir() string       { return c.dir }
+
+func (c cloudWatchLogsLoggerSpoolTestConfig) Encryption() pkgfsstore.SpoolEncryptionConfig {
+	return pkgfsstore.SpoolEncryptionConfig{}
+}
 func (c cloudWatchLogsLoggerSpoolTestConfig) FileNameFormat() string {
 	return ""
 }

@@ -3,6 +3,7 @@ package worker
 import (
 	"errors"
 	"fmt"
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/cipherfile"
 	"io"
 	"os"
 	"path/filepath"
@@ -26,7 +27,8 @@ const terminalSpoolFileMode = 0o600
 // データと権限を同期してから公開し、呼び出し元が元fileを処分できるようにする前に
 // directoryを同期します。directory同期のerrorでも公開済みのfileは残り、再試行では
 // 上書きせずに検証して同期します。
-func writeSpoolFileAtPath(rootDirectory, finalPath string, body []byte) error {
+// bodyは暗号化済みの本文で、既存fileとの照合はcipherで復号して行います。
+func writeSpoolFileAtPath(rootDirectory, finalPath string, body []byte, cipher *cipherfile.SpoolCipher) error {
 	if filepath.Ext(finalPath) != spooldir.SpoolExt {
 		return fmt.Errorf("path is not a spool file: %s", finalPath)
 	}
@@ -34,7 +36,7 @@ func writeSpoolFileAtPath(rootDirectory, finalPath string, body []byte) error {
 	if err := spooldir.EnsureDirectoryNoSymlinks(rootDirectory, dir); err != nil {
 		return fmt.Errorf("failed to create destination dir: %w", err)
 	}
-	if found, err := reuseTerminalSpoolFile(finalPath, body); found || err != nil {
+	if found, err := reuseTerminalSpoolFile(finalPath, body, cipher); found || err != nil {
 		return err
 	}
 	f, err := os.CreateTemp(dir, "."+filepath.Base(finalPath)+".*"+tmpFileSuffix)
@@ -60,7 +62,7 @@ func writeSpoolFileAtPath(rootDirectory, finalPath string, body []byte) error {
 	}
 	if err := infrafsstore.RenameFileNoReplace(tmpPath, finalPath); err != nil {
 		if errors.Is(err, os.ErrExist) {
-			if found, reuseErr := reuseTerminalSpoolFile(finalPath, body); found || reuseErr != nil {
+			if found, reuseErr := reuseTerminalSpoolFile(finalPath, body, cipher); found || reuseErr != nil {
 				return reuseErr
 			}
 		}
@@ -69,7 +71,7 @@ func writeSpoolFileAtPath(rootDirectory, finalPath string, body []byte) error {
 	return infrafsstore.SyncDirectory(dir)
 }
 
-func reuseTerminalSpoolFile(path string, requestedBody []byte) (bool, error) {
+func reuseTerminalSpoolFile(path string, requestedBody []byte, cipher *cipherfile.SpoolCipher) (bool, error) {
 	file, before, err := infrafsstore.OpenRegularFile(path, os.O_RDWR)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -82,7 +84,7 @@ func reuseTerminalSpoolFile(path string, requestedBody []byte) (bool, error) {
 	if err != nil {
 		return true, fmt.Errorf("read existing terminal spool file: %w", err)
 	}
-	if !sameTerminalSpoolRecords(body, requestedBody) {
+	if !sameTerminalSpoolRecords(body, requestedBody, cipher) {
 		return true, fmt.Errorf("%w: %s", ErrTerminalSpoolConflict, path)
 	}
 	if err := file.Sync(); err != nil {
@@ -101,9 +103,11 @@ func reuseTerminalSpoolFile(path string, requestedBody []byte) (bool, error) {
 	return true, infrafsstore.SyncDirectory(filepath.Dir(path))
 }
 
-func sameTerminalSpoolRecords(storedBody, requestedBody []byte) bool {
-	stored, storedErr := decodeSpoolRecords(storedBody)
-	requested, requestedErr := decodeSpoolRecords(requestedBody)
+// 両方の本文は暗号化されていることがあり（nonceが違うのでbyte列は一致しません）、
+// 復号したrecordで比べます。
+func sameTerminalSpoolRecords(storedBody, requestedBody []byte, cipher *cipherfile.SpoolCipher) bool {
+	stored, storedErr := decodeSpoolBody(storedBody, cipher)
+	requested, requestedErr := decodeSpoolBody(requestedBody, cipher)
 	if storedErr != nil || requestedErr != nil || len(stored) != len(requested) {
 		return false
 	}

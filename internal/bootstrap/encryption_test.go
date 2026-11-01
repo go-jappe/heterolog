@@ -55,7 +55,7 @@ func TestFileLoggersEncryptLogFiles(t *testing.T) {
 				t.Fatalf("the log file is readable: %q", contents)
 			}
 			var plain bytes.Buffer
-			report, err := bootstrap.DecryptFile(identityPath, paths[0], &plain)
+			report, err := bootstrap.DecryptFile(identityPath, "", paths[0], &plain)
 			if err != nil {
 				t.Fatal(err)
 			}

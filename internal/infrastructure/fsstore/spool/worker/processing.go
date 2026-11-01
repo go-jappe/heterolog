@@ -57,9 +57,10 @@ func (s *StateStore) ReadProcessingRecords(
 		return nil, err
 	}
 
-	records, err := decodeSpoolRecords(result.Body)
+	records, err := s.decodeSpoolFile(result.Body)
 	if err != nil {
-		// decodeSpoolRecords 側で ErrInvalidSpoolFile 系に分類済み。
+		// decodeSpoolRecords 側で ErrInvalidSpoolFile 系に分類済み。鍵がない暗号化したfileも
+		// 同じ扱いで、fileは残ります。
 		return nil, fmt.Errorf("%w: %w", pkgspool.ErrDecodeProcessingSpoolFile, err)
 	}
 
@@ -302,8 +303,11 @@ func (s *StateStore) StoreProcessingRecordsToState(
 	if err != nil {
 		return fmt.Errorf("%w: %w", pkgspool.ErrBuildSpoolNDJSON, err)
 	}
+	if body, err = s.cipher.Seal(body); err != nil {
+		return fmt.Errorf("%w: %w", pkgspool.ErrWriteSplitSpoolFile, err)
+	}
 
-	if err := writeSpoolFileAtPath(s.RootDir.String(), finalPath, body); err != nil {
+	if err := writeSpoolFileAtPath(s.RootDir.String(), finalPath, body, s.cipher); err != nil {
 		return fmt.Errorf("%w: %w", pkgspool.ErrWriteSplitSpoolFile, err)
 	}
 

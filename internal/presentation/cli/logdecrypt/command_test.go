@@ -26,17 +26,36 @@ func realDependencies() Dependencies {
 			}
 			return identity.Recipient().String(), identity.KeyID(), nil
 		},
-		Decrypt: func(identityPath, inputPath string, output io.Writer) (cipherfile.Report, error) {
-			identities, err := cipherfile.LoadIdentityFile(identityPath)
+		SpoolKeygen: func(path string) (string, error) {
+			key, err := cipherfile.GenerateKey()
 			if err != nil {
-				return cipherfile.Report{}, err
+				return "", err
+			}
+			if err := cipherfile.WriteKeyFile(path, key); err != nil {
+				return "", err
+			}
+			return key.KeyID(), nil
+		},
+		Decrypt: func(identityPath, keyPath, inputPath string, output io.Writer) (cipherfile.Report, error) {
+			var identities []*cipherfile.Identity
+			var keys []*cipherfile.Key
+			var err error
+			if identityPath != "" {
+				if identities, err = cipherfile.LoadIdentityFile(identityPath); err != nil {
+					return cipherfile.Report{}, err
+				}
+			}
+			if keyPath != "" {
+				if keys, err = cipherfile.LoadKeyFile(keyPath); err != nil {
+					return cipherfile.Report{}, err
+				}
 			}
 			input, err := os.Open(inputPath)
 			if err != nil {
 				return cipherfile.Report{}, err
 			}
 			defer input.Close()
-			return cipherfile.Decrypt(input, identities, output)
+			return cipherfile.DecryptAny(input, identities, keys, output)
 		},
 	}
 }
@@ -158,8 +177,9 @@ func TestDecryptReportsSkippedBytes(t *testing.T) {
 
 func TestUsageErrors(t *testing.T) {
 	deps := Dependencies{
-		Keygen: func(string) (string, string, error) { return "", "", errors.New("must not run") },
-		Decrypt: func(string, string, io.Writer) (cipherfile.Report, error) {
+		Keygen:      func(string) (string, string, error) { return "", "", errors.New("must not run") },
+		SpoolKeygen: func(string) (string, error) { return "", errors.New("must not run") },
+		Decrypt: func(string, string, string, io.Writer) (cipherfile.Report, error) {
 			return cipherfile.Report{}, errors.New("must not run")
 		},
 	}
@@ -167,6 +187,7 @@ func TestUsageErrors(t *testing.T) {
 		{},
 		{"unknown"},
 		{"keygen"},
+		{"keygen", "--identity", "x", "--spool-key", "y"},
 		{"keygen", "--identity", "x", "extra"},
 		{"decrypt", "a.log"},
 		{"decrypt", "--identity", "id"},
@@ -185,5 +206,35 @@ func TestUsageErrors(t *testing.T) {
 		if code != exitOK || !strings.Contains(stdout, "Usage: log-decrypt keygen") {
 			t.Errorf("Run(%q) exit %d, stdout %q", args, code, stdout)
 		}
+	}
+}
+
+func TestSpoolKeygenAndDecrypt(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "spool.key")
+	code, stdout, stderr := run(t, realDependencies(), "keygen", "--spool-key", keyPath)
+	if code != exitOK || !strings.Contains(stdout, "HETEROLOG_SPOOL_ENCRYPTION_KEY_FILE="+keyPath) || !strings.Contains(stdout, "key id: ") {
+		t.Fatalf("spool keygen exit %d, stdout %q, stderr %s", code, stdout, stderr)
+	}
+	keys, err := cipherfile.LoadKeyFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := filepath.Join(dir, "batch.hlogspool")
+	sealed, err := cipherfile.SealSymmetric(keys[0], []byte("{\"n\":1}\n{\"n\":2}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(input, sealed, 0o600)
+	code, stdout, stderr = run(t, realDependencies(), "decrypt", "--spool-key", keyPath, input)
+	if code != exitOK || stdout != "{\"n\":1}\n{\"n\":2}\n" || !strings.Contains(stderr, "1 segments, 2 records") {
+		t.Fatalf("spool decrypt exit %d, stdout %q, stderr %s", code, stdout, stderr)
+	}
+	// 秘密鍵しか渡さなければ、spool fileは鍵がないものとして読み飛ばされます。
+	identity := filepath.Join(dir, "identity")
+	run(t, realDependencies(), "keygen", "--identity", identity)
+	code, stdout, stderr = run(t, realDependencies(), "decrypt", "--identity", identity, input)
+	if code != exitIncomplete || stdout != "" || !strings.Contains(stderr, "no identity for key id") {
+		t.Fatalf("spool decrypt without the key exit %d, stdout %q, stderr %s", code, stdout, stderr)
 	}
 }

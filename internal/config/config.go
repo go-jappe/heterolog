@@ -258,10 +258,11 @@ func loadFsstoreConfig(env pkgenv.Lookup) (fsstoreconfig.CommonFileSystemStoreCo
 		SpoolPath:             env.GetEnvString("HETEROLOG_SYSTEM_LIB_DIR", appstatepath.DefaultAppStateBaseDir()),
 		// TargetはCLIで上書きされ得るため、ここではbase directoryだけを保持する。
 		// failure archiveとarchive checkpointはmapper後に最終RuntimeConfig.Targetを付与する。
-		AppStatePath:        env.GetEnvString("HETEROLOG_APP_STATE_DIR", appstatepath.DefaultAppStateBaseDir()),
-		FileNameFormat:      fsstore.FileNameFormat,
-		FileDateFormat:      fsstore.FileDateFormat,
-		EncryptionRecipient: env.GetEnvString("HETEROLOG_ENCRYPTION_RECIPIENT", ""),
+		AppStatePath:           env.GetEnvString("HETEROLOG_APP_STATE_DIR", appstatepath.DefaultAppStateBaseDir()),
+		FileNameFormat:         fsstore.FileNameFormat,
+		FileDateFormat:         fsstore.FileDateFormat,
+		EncryptionRecipient:    env.GetEnvString("HETEROLOG_ENCRYPTION_RECIPIENT", ""),
+		SpoolEncryptionKeyFile: env.GetEnvString("HETEROLOG_SPOOL_ENCRYPTION_KEY_FILE", ""),
 	}, errors.Join(environmentErrors...)
 }
 
@@ -3736,8 +3737,13 @@ func loadOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandl
 			if useMemoryPressureOpensearchSpoolOverloadErr != nil {
 				environmentErrors = append(environmentErrors, useMemoryPressureOpensearchSpoolOverloadErr)
 			}
+			enableOpensearchSpoolEncrypt, enableOpensearchSpoolEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_OPENSEARCH_SPOOL_ENCRYPT", false)
+			if enableOpensearchSpoolEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableOpensearchSpoolEncryptErr)
+			}
 			return failure.SpoolConfig{
-				Dir: env.GetEnvString("HETEROLOG_OPENSEARCH_FAILURE_SPOOL_DIR", opensearch.DefaultFailureSpoolDir),
+				Dir:           env.GetEnvString("HETEROLOG_OPENSEARCH_FAILURE_SPOOL_DIR", opensearch.DefaultFailureSpoolDir),
+				EnableEncrypt: enableOpensearchSpoolEncrypt,
 				OverloadPolicyConfig: failure.SpoolOverloadPolicyConfig{
 					OverloadPolicy:               failure.ParseOverloadPolicy(env.GetEnvString("HETEROLOG_OPENSEARCH_SPOOL_OVERLOAD_POLICY", string(failure.DefaultSpoolOverloadPolicy)), failure.DefaultSpoolOverloadPolicy),
 					SpillDestination:             failure.ParseSpillDestination(env.GetEnvString("HETEROLOG_OPENSEARCH_SPOOL_SECONDARY_DESTINATION", string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),
@@ -3884,8 +3890,13 @@ func loadAsyncOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.Failure
 			if useMemoryPressureAsyncOpensearchSpoolOverloadErr != nil {
 				environmentErrors = append(environmentErrors, useMemoryPressureAsyncOpensearchSpoolOverloadErr)
 			}
+			enableAsyncOpensearchSpoolEncrypt, enableAsyncOpensearchSpoolEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_OPENSEARCH_SPOOL_ENCRYPT", false)
+			if enableAsyncOpensearchSpoolEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableAsyncOpensearchSpoolEncryptErr)
+			}
 			return failure.SpoolConfig{
-				Dir: env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_FAILURE_SPOOL_DIR", opensearch.DefaultAsyncFailureSpoolDir),
+				Dir:           env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_FAILURE_SPOOL_DIR", opensearch.DefaultAsyncFailureSpoolDir),
+				EnableEncrypt: enableAsyncOpensearchSpoolEncrypt,
 				OverloadPolicyConfig: failure.SpoolOverloadPolicyConfig{
 					OverloadPolicy:               failure.ParseOverloadPolicy(env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_SPOOL_OVERLOAD_POLICY", string(failure.DefaultAsyncSpoolOverloadPolicy)), failure.DefaultAsyncSpoolOverloadPolicy),
 					SpillDestination:             failure.ParseSpillDestination(env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_SPOOL_SECONDARY_DESTINATION", string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),
@@ -4207,8 +4218,13 @@ func loadLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandlerConf
 			if useMemoryPressureLokiSpoolOverloadErr != nil {
 				environmentErrors = append(environmentErrors, useMemoryPressureLokiSpoolOverloadErr)
 			}
+			enableLokiSpoolEncrypt, enableLokiSpoolEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_LOKI_SPOOL_ENCRYPT", false)
+			if enableLokiSpoolEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableLokiSpoolEncryptErr)
+			}
 			return failure.SpoolConfig{
-				Dir: env.GetEnvString("HETEROLOG_LOKI_FAILURE_SPOOL_DIR", lokicfg.DefaultLokiFailureSpoolDir),
+				Dir:           env.GetEnvString("HETEROLOG_LOKI_FAILURE_SPOOL_DIR", lokicfg.DefaultLokiFailureSpoolDir),
+				EnableEncrypt: enableLokiSpoolEncrypt,
 				OverloadPolicyConfig: failure.SpoolOverloadPolicyConfig{
 					OverloadPolicy:               failure.ParseOverloadPolicy(env.GetEnvString("HETEROLOG_LOKI_SPOOL_OVERLOAD_POLICY", string(failure.DefaultSpoolOverloadPolicy)), failure.DefaultSpoolOverloadPolicy),
 					SpillDestination:             failure.ParseSpillDestination(env.GetEnvString("HETEROLOG_LOKI_SPOOL_SECONDARY_DESTINATION", string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),
@@ -4348,8 +4364,13 @@ func loadAsyncLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandle
 			if useMemoryPressureAsyncLokiSpoolOverloadErr != nil {
 				environmentErrors = append(environmentErrors, useMemoryPressureAsyncLokiSpoolOverloadErr)
 			}
+			enableAsyncLokiSpoolEncrypt, enableAsyncLokiSpoolEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_LOKI_SPOOL_ENCRYPT", false)
+			if enableAsyncLokiSpoolEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableAsyncLokiSpoolEncryptErr)
+			}
 			return failure.SpoolConfig{
-				Dir: env.GetEnvString("HETEROLOG_ASYNC_LOKI_FAILURE_SPOOL_DIR", lokicfg.DefaultAsyncLokiFailureSpoolDir),
+				Dir:           env.GetEnvString("HETEROLOG_ASYNC_LOKI_FAILURE_SPOOL_DIR", lokicfg.DefaultAsyncLokiFailureSpoolDir),
+				EnableEncrypt: enableAsyncLokiSpoolEncrypt,
 				OverloadPolicyConfig: failure.SpoolOverloadPolicyConfig{
 					OverloadPolicy:               failure.ParseOverloadPolicy(env.GetEnvString("HETEROLOG_ASYNC_LOKI_SPOOL_OVERLOAD_POLICY", string(failure.DefaultSpoolOverloadPolicy)), failure.DefaultSpoolOverloadPolicy),
 					SpillDestination:             failure.ParseSpillDestination(env.GetEnvString("HETEROLOG_ASYNC_LOKI_SPOOL_SECONDARY_DESTINATION", string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),
@@ -4660,8 +4681,13 @@ func loadCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureH
 			if useMemoryPressureCloudwatchSpoolOverloadErr != nil {
 				environmentErrors = append(environmentErrors, useMemoryPressureCloudwatchSpoolOverloadErr)
 			}
+			enableCloudwatchSpoolEncrypt, enableCloudwatchSpoolEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_CLOUDWATCH_SPOOL_ENCRYPT", false)
+			if enableCloudwatchSpoolEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableCloudwatchSpoolEncryptErr)
+			}
 			return failure.SpoolConfig{
-				Dir: env.GetEnvString("HETEROLOG_CLOUDWATCH_FAILURE_SPOOL_DIR", cloudwatchlogscfg.DefaultCloudWatchLogsFailureSpoolDir),
+				Dir:           env.GetEnvString("HETEROLOG_CLOUDWATCH_FAILURE_SPOOL_DIR", cloudwatchlogscfg.DefaultCloudWatchLogsFailureSpoolDir),
+				EnableEncrypt: enableCloudwatchSpoolEncrypt,
 				OverloadPolicyConfig: failure.SpoolOverloadPolicyConfig{
 					OverloadPolicy:               failure.ParseOverloadPolicy(env.GetEnvString("HETEROLOG_CLOUDWATCH_SPOOL_OVERLOAD_POLICY", string(failure.DefaultSpoolOverloadPolicy)), failure.DefaultSpoolOverloadPolicy),
 					SpillDestination:             failure.ParseSpillDestination(env.GetEnvString("HETEROLOG_CLOUDWATCH_SPOOL_SECONDARY_DESTINATION", string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),
@@ -4794,8 +4820,13 @@ func loadAsyncCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.Fai
 			if useMemoryPressureAsyncCloudwatchSpoolOverloadErr != nil {
 				environmentErrors = append(environmentErrors, useMemoryPressureAsyncCloudwatchSpoolOverloadErr)
 			}
+			enableAsyncCloudwatchSpoolEncrypt, enableAsyncCloudwatchSpoolEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_CLOUDWATCH_SPOOL_ENCRYPT", false)
+			if enableAsyncCloudwatchSpoolEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableAsyncCloudwatchSpoolEncryptErr)
+			}
 			return failure.SpoolConfig{
-				Dir: env.GetEnvString("HETEROLOG_ASYNC_CLOUDWATCH_FAILURE_SPOOL_DIR", cloudwatchlogscfg.DefaultAsyncCloudWatchLogsFailureSpoolDir),
+				Dir:           env.GetEnvString("HETEROLOG_ASYNC_CLOUDWATCH_FAILURE_SPOOL_DIR", cloudwatchlogscfg.DefaultAsyncCloudWatchLogsFailureSpoolDir),
+				EnableEncrypt: enableAsyncCloudwatchSpoolEncrypt,
 				OverloadPolicyConfig: failure.SpoolOverloadPolicyConfig{
 					OverloadPolicy:               failure.ParseOverloadPolicy(env.GetEnvString("HETEROLOG_ASYNC_CLOUDWATCH_SPOOL_OVERLOAD_POLICY", string(failure.DefaultSpoolOverloadPolicy)), failure.DefaultSpoolOverloadPolicy),
 					SpillDestination:             failure.ParseSpillDestination(env.GetEnvString("HETEROLOG_ASYNC_CLOUDWATCH_SPOOL_SECONDARY_DESTINATION", string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),
@@ -5068,8 +5099,13 @@ func loadClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandl
 			if useMemoryPressureClickhouseSpoolOverloadErr != nil {
 				environmentErrors = append(environmentErrors, useMemoryPressureClickhouseSpoolOverloadErr)
 			}
+			enableClickhouseSpoolEncrypt, enableClickhouseSpoolEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_CLICKHOUSE_SPOOL_ENCRYPT", false)
+			if enableClickhouseSpoolEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableClickhouseSpoolEncryptErr)
+			}
 			return failure.SpoolConfig{
-				Dir: env.GetEnvString("HETEROLOG_CLICKHOUSE_FAILURE_SPOOL_DIR", clickhousecfg.DefaultClickHouseFailureSpoolDir),
+				Dir:           env.GetEnvString("HETEROLOG_CLICKHOUSE_FAILURE_SPOOL_DIR", clickhousecfg.DefaultClickHouseFailureSpoolDir),
+				EnableEncrypt: enableClickhouseSpoolEncrypt,
 				OverloadPolicyConfig: failure.SpoolOverloadPolicyConfig{
 					OverloadPolicy:               failure.ParseOverloadPolicy(env.GetEnvString("HETEROLOG_CLICKHOUSE_SPOOL_OVERLOAD_POLICY", string(failure.DefaultSpoolOverloadPolicy)), failure.DefaultSpoolOverloadPolicy),
 					SpillDestination:             failure.ParseSpillDestination(env.GetEnvString("HETEROLOG_CLICKHOUSE_SPOOL_SECONDARY_DESTINATION", string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),
@@ -5202,8 +5238,13 @@ func loadAsyncClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.Failure
 			if useMemoryPressureAsyncClickhouseSpoolOverloadErr != nil {
 				environmentErrors = append(environmentErrors, useMemoryPressureAsyncClickhouseSpoolOverloadErr)
 			}
+			enableAsyncClickhouseSpoolEncrypt, enableAsyncClickhouseSpoolEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_CLICKHOUSE_SPOOL_ENCRYPT", false)
+			if enableAsyncClickhouseSpoolEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableAsyncClickhouseSpoolEncryptErr)
+			}
 			return failure.SpoolConfig{
-				Dir: env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_FAILURE_SPOOL_DIR", clickhousecfg.DefaultAsyncClickHouseFailureSpoolDir),
+				Dir:           env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_FAILURE_SPOOL_DIR", clickhousecfg.DefaultAsyncClickHouseFailureSpoolDir),
+				EnableEncrypt: enableAsyncClickhouseSpoolEncrypt,
 				OverloadPolicyConfig: failure.SpoolOverloadPolicyConfig{
 					OverloadPolicy:               failure.ParseOverloadPolicy(env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_SPOOL_OVERLOAD_POLICY", string(failure.DefaultSpoolOverloadPolicy)), failure.DefaultSpoolOverloadPolicy),
 					SpillDestination:             failure.ParseSpillDestination(env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_SPOOL_SECONDARY_DESTINATION", string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),

@@ -38,7 +38,7 @@ func TestSpoolWorkerRejectsDestinationBucketAliases(t *testing.T) {
 			case "quarantine":
 				err = store.MoveProcessingToQuarantine(context.Background(), source, pkgspool.QuarantineReasonInvalidSpoolFile)
 			case "write-records":
-				err = writeSpoolFileAtPath(store.RootDir.String(), filepath.Join(destination, rel), []byte(regularSpoolBody))
+				err = writeSpoolFileAtPath(store.RootDir.String(), filepath.Join(destination, rel), []byte(regularSpoolBody), nil)
 			}
 			require.Error(t, err)
 			body, err := os.ReadFile(source)

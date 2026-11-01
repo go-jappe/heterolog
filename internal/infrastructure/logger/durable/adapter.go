@@ -1,6 +1,7 @@
 package durable
 
 import (
+	"github.com/go-jappe/heterolog/pkg/fsstore"
 	"time"
 
 	loggerhandler "github.com/go-jappe/heterolog/internal/infrastructure/logger/handler"
@@ -99,21 +100,27 @@ func (a DeliveryDurableStoreConfigAdapter) FileArchiveConfig() FileArchiveConfig
 }
 
 type SpoolConfigAdapter struct {
-	spoolPath string
-	target    string
-	dir       string
-	overload  spoolstore.SpoolStoreOverloadPolicyConfigProvider
-	handler   loggerhandler.ConfigProvider
+	spoolPath  string
+	target     string
+	dir        string
+	overload   spoolstore.SpoolStoreOverloadPolicyConfigProvider
+	handler    loggerhandler.ConfigProvider
+	encryption fsstore.SpoolEncryptionConfig
 }
 
 func NewSpoolConfigAdapter(cfg pkgdurable.SpoolConfig) SpoolConfigAdapter {
 	return SpoolConfigAdapter{
-		spoolPath: cfg.SpoolPath,
-		target:    cfg.Target,
-		dir:       cfg.Dir,
-		overload:  NewSpoolOverloadPolicyConfigAdapter(cfg.OverloadPolicyConfig),
-		handler:   loggerhandler.NewConfigAdapter(cfg.HandlerConfig),
+		spoolPath:  cfg.SpoolPath,
+		target:     cfg.Target,
+		dir:        cfg.Dir,
+		overload:   NewSpoolOverloadPolicyConfigAdapter(cfg.OverloadPolicyConfig),
+		handler:    loggerhandler.NewConfigAdapter(cfg.HandlerConfig),
+		encryption: cfg.Encryption,
 	}
+}
+
+func (a SpoolConfigAdapter) Encryption() fsstore.SpoolEncryptionConfig {
+	return a.encryption
 }
 
 func (a SpoolConfigAdapter) SpoolPath() string { return a.spoolPath }

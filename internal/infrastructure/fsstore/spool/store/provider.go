@@ -1,5 +1,7 @@
 package store
 
+import "github.com/go-jappe/heterolog/pkg/fsstore"
+
 type SpoolStoreConfigProvider interface {
 	// SpoolPathはspool rootを組み立てるbase directoryです。例: /var/lib
 	SpoolPath() string
@@ -13,4 +15,6 @@ type SpoolStoreConfigProvider interface {
 	// /var/lib/heterolog/spool/opensearch_asyncとなり、その直下にactive、processing、
 	// done、dead、quarantineを配置します。
 	Dir() string
+	// Encryptionは、spool fileの対称鍵による暗号化の設定です。
+	Encryption() fsstore.SpoolEncryptionConfig
 }

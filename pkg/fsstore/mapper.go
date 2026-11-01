@@ -48,6 +48,23 @@ type EncryptionConfig struct {
 	Recipient string
 }
 
+// SpoolEncryptionConfig configures the encryption of the spool files of a
+// destination with a symmetric key that the process holds, because the
+// process reads the spool back to resend its records. It protects the files
+// outside the process (disks, backups, snapshots), not against someone who
+// has the privileges of the process: they can read the key as the process
+// does. Each spool file is one AES-256-GCM ciphertext.
+type SpoolEncryptionConfig struct {
+	// Enabled encrypts the spool files written from now on. Files written
+	// before are read as they are.
+	Enabled bool
+	// KeyFile is the file with the key(s), as written by "log-decrypt keygen
+	// --spool-key": one key per line ("hlog-key1-..."), the first one used to
+	// write and all of them to read. It is required when Enabled is true, and
+	// it is read when the spool is created.
+	KeyFile string
+}
+
 // ArchiveCheckpointConfig holds the destination of the records of completed log
 // file uploads, which inline and runner modes share, and the logical source
 // identity before the file role is determined. The factory adds

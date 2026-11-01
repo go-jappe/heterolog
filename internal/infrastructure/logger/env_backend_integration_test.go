@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	encfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"io"
 	"net/http"
 	"net/url"
@@ -978,6 +979,10 @@ type loggerEnvBackendSpoolConfig struct {
 func (c loggerEnvBackendSpoolConfig) SpoolPath() string { return c.spoolPath }
 func (c loggerEnvBackendSpoolConfig) Target() string    { return c.target }
 func (c loggerEnvBackendSpoolConfig) Dir() string       { return c.dir }
+
+func (c loggerEnvBackendSpoolConfig) Encryption() encfsstore.SpoolEncryptionConfig {
+	return encfsstore.SpoolEncryptionConfig{}
+}
 func (c loggerEnvBackendSpoolConfig) FileNameFormat() string {
 	return ""
 }

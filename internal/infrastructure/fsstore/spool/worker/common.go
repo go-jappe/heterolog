@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/cipherfile"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -225,6 +226,22 @@ func (s *StateStore) validateSpoolFilePathUnderState(
 
 	return cleanPath, rel, nil
 }
+
+// decodeSpoolFileは、読み込んだspool fileの本文を、暗号化されていれば復号してからrecordに
+// します。
+func (s *StateStore) decodeSpoolFile(body []byte) ([]pkgspool.SpoolRecord, error) {
+	return decodeSpoolBody(body, s.cipher)
+}
+
+// decodeSpoolBodyは、cipherで復号（平文ならそのまま）してからdecodeSpoolRecordsを呼びます。
+func decodeSpoolBody(body []byte, cipher *cipherfile.SpoolCipher) ([]pkgspool.SpoolRecord, error) {
+	plain, err := cipher.Open(body)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", pkgspool.ErrInvalidSpoolFile, err)
+	}
+	return decodeSpoolRecords(plain)
+}
+
 func decodeSpoolRecords(body []byte) ([]pkgspool.SpoolRecord, error) {
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil, pkgspool.ErrEmptySpoolFile

@@ -2,6 +2,7 @@ package worker
 
 import (
 	"errors"
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/cipherfile"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/spool"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logger/logging"
 	pkgobserver "github.com/go-jappe/heterolog/pkg/observer"
@@ -10,6 +11,8 @@ import (
 type StateStore struct {
 	RootDir spool.Dir
 	Config  ConfigProvider
+	// cipherは、spool fileを暗号化する鍵です。nilなら平文で書き、暗号化したfileは読めません。
+	cipher *cipherfile.SpoolCipher
 
 	OnError logging.LoggerErrorHandler // 通知用の関数　内部エラー発生時にハンドル
 	OnWarn  logging.LoggerHandlerFunc
@@ -33,8 +36,14 @@ func NewStateStore(cfg ConfigProvider) (*StateStore, error) {
 		return nil, err
 	}
 
+	cipher, err := cipherfile.ResolveSpoolCipher(cfg.Encryption())
+	if err != nil {
+		return nil, err
+	}
+
 	return &StateStore{
 		RootDir: rootDir,
 		Config:  cfg,
+		cipher:  cipher,
 	}, nil
 }

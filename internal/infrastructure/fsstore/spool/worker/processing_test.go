@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	encfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,10 @@ type processingTestConfig struct {
 func (c processingTestConfig) SpoolPath() string { return c.spoolPath }
 func (c processingTestConfig) Target() string    { return "test-app" }
 func (c processingTestConfig) Dir() string       { return "opensearch" }
+
+func (c processingTestConfig) Encryption() encfsstore.SpoolEncryptionConfig {
+	return encfsstore.SpoolEncryptionConfig{}
+}
 
 func TestMoveProcessingToQuarantinePreservesReasonInManagedFileName(t *testing.T) {
 	t.Parallel()

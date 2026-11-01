@@ -1399,9 +1399,10 @@ func newFailureStoreConfig(
 				ErrorTraceDepthDebugMode: logBody.ErrorTraceDepthDebugMode,
 			},
 			SpoolConfig: durable.SpoolConfig{
-				SpoolPath: a.FsstoreConfig.SpoolPath,
-				Target:    a.RuntimeConfig.Target,
-				Dir:       fh.Fsstore.SpoolConfig.Dir,
+				SpoolPath:  a.FsstoreConfig.SpoolPath,
+				Target:     a.RuntimeConfig.Target,
+				Dir:        fh.Fsstore.SpoolConfig.Dir,
+				Encryption: fsstore.SpoolEncryptionConfig{Enabled: fh.Fsstore.SpoolConfig.EnableEncrypt, KeyFile: a.FsstoreConfig.SpoolEncryptionKeyFile},
 				OverloadPolicyConfig: durable.SpoolOverloadPolicyConfig{
 					OverloadPolicy:                fh.Fsstore.SpoolConfig.OverloadPolicyConfig.OverloadPolicy,
 					SpillDestination:              fh.Fsstore.SpoolConfig.OverloadPolicyConfig.SpillDestination,

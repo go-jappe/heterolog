@@ -32,6 +32,7 @@ type telemetryFailureStoreKeys struct {
 	UploadEnabled, UploadType, UploadS3Bucket, UploadS3Prefix, UploadS3Destinations           string
 
 	SpoolDir, SpoolOverloadPolicy, SpoolSecondaryDestination, SpoolMaxActiveDirSize                  string
+	SpoolEncrypt                                                                                     string
 	SpoolBacklogWarnAfterDays, SpoolMaxScannedCacheUsage, SpoolCacheLifetime, SpoolUseMemoryPressure string
 
 	RunnerInterval, RunnerStopOnError                                                             string
@@ -144,8 +145,10 @@ func loadTelemetryFailureSpoolConfig(env pkgenv.Lookup, keys telemetryFailureSto
 	maxDirSize, maxDirSizeErr := env.GetEnvUint64Scaled(keys.SpoolMaxActiveDirSize, failure.DefaultSpoolActiveMaxDirSizeMB, BytesPerMegabyte)
 	backlogWarnAfterDays, backlogWarnAfterDaysErr := env.GetEnvInt(keys.SpoolBacklogWarnAfterDays, failure.DefaultSpoolActiveBacklogWarnAfterDays)
 	useMemoryPressure, useMemoryPressureErr := env.GetEnvBool(keys.SpoolUseMemoryPressure, failure.DefaultUseMemoryPressureForOverload)
+	encrypt, encryptErr := env.GetEnvBool(keys.SpoolEncrypt, false)
 	return failure.SpoolConfig{
-		Dir: env.GetEnvString(keys.SpoolDir, keys.DefaultSpoolDir),
+		Dir:           env.GetEnvString(keys.SpoolDir, keys.DefaultSpoolDir),
+		EnableEncrypt: encrypt,
 		OverloadPolicyConfig: failure.SpoolOverloadPolicyConfig{
 			OverloadPolicy:               failure.ParseOverloadPolicy(env.GetEnvString(keys.SpoolOverloadPolicy, string(failure.DefaultSpoolOverloadPolicy)), failure.DefaultSpoolOverloadPolicy),
 			SpillDestination:             failure.ParseSpillDestination(env.GetEnvString(keys.SpoolSecondaryDestination, string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),
@@ -156,7 +159,7 @@ func loadTelemetryFailureSpoolConfig(env pkgenv.Lookup, keys telemetryFailureSto
 			UseMemoryPressureForOverload: useMemoryPressure,
 		},
 		HandlerConfig: internalerror.RoutingConfig{},
-	}, errors.Join(maxCallsErr, cacheLifetimeErr, maxDirSizeErr, backlogWarnAfterDaysErr, useMemoryPressureErr)
+	}, errors.Join(maxCallsErr, cacheLifetimeErr, maxDirSizeErr, backlogWarnAfterDaysErr, useMemoryPressureErr, encryptErr)
 }
 
 func loadTelemetrySpoolRunnerConfig(env pkgenv.Lookup, keys telemetryFailureStoreKeys) (pkgspoolrunner.BackendSpoolRunnerConfig, error) {
@@ -247,6 +250,7 @@ var tracesOTLPFailureStoreKeys = telemetryFailureStoreKeys{
 	UploadS3Prefix:              "HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_PREFIX",
 	UploadS3Destinations:        "HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_DESTINATIONS",
 	SpoolDir:                    "HETEROLOG_TRACES_OTLP_FAILURE_SPOOL_DIR",
+	SpoolEncrypt:                "HETEROLOG_ENABLE_TRACES_OTLP_SPOOL_ENCRYPT",
 	SpoolOverloadPolicy:         "HETEROLOG_TRACES_OTLP_SPOOL_OVERLOAD_POLICY",
 	SpoolSecondaryDestination:   "HETEROLOG_TRACES_OTLP_SPOOL_SECONDARY_DESTINATION",
 	SpoolMaxActiveDirSize:       "HETEROLOG_MAX_TRACES_OTLP_SPOOL_FILE_ACTIVE_DIR_SIZE_MB",
@@ -302,6 +306,7 @@ var tracesOpenSearchFailureStoreKeys = telemetryFailureStoreKeys{
 	UploadS3Prefix:              "HETEROLOG_TRACES_OPENSEARCH_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_PREFIX",
 	UploadS3Destinations:        "HETEROLOG_TRACES_OPENSEARCH_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_DESTINATIONS",
 	SpoolDir:                    "HETEROLOG_TRACES_OPENSEARCH_FAILURE_SPOOL_DIR",
+	SpoolEncrypt:                "HETEROLOG_ENABLE_TRACES_OPENSEARCH_SPOOL_ENCRYPT",
 	SpoolOverloadPolicy:         "HETEROLOG_TRACES_OPENSEARCH_SPOOL_OVERLOAD_POLICY",
 	SpoolSecondaryDestination:   "HETEROLOG_TRACES_OPENSEARCH_SPOOL_SECONDARY_DESTINATION",
 	SpoolMaxActiveDirSize:       "HETEROLOG_MAX_TRACES_OPENSEARCH_SPOOL_FILE_ACTIVE_DIR_SIZE_MB",
@@ -357,6 +362,7 @@ var tracesClickHouseFailureStoreKeys = telemetryFailureStoreKeys{
 	UploadS3Prefix:              "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_PREFIX",
 	UploadS3Destinations:        "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_DESTINATIONS",
 	SpoolDir:                    "HETEROLOG_TRACES_CLICKHOUSE_FAILURE_SPOOL_DIR",
+	SpoolEncrypt:                "HETEROLOG_ENABLE_TRACES_CLICKHOUSE_SPOOL_ENCRYPT",
 	SpoolOverloadPolicy:         "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_OVERLOAD_POLICY",
 	SpoolSecondaryDestination:   "HETEROLOG_TRACES_CLICKHOUSE_SPOOL_SECONDARY_DESTINATION",
 	SpoolMaxActiveDirSize:       "HETEROLOG_MAX_TRACES_CLICKHOUSE_SPOOL_FILE_ACTIVE_DIR_SIZE_MB",
@@ -412,6 +418,7 @@ var metricsOTLPFailureStoreKeys = telemetryFailureStoreKeys{
 	UploadS3Prefix:              "HETEROLOG_METRICS_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_PREFIX",
 	UploadS3Destinations:        "HETEROLOG_METRICS_OTLP_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_DESTINATIONS",
 	SpoolDir:                    "HETEROLOG_METRICS_OTLP_FAILURE_SPOOL_DIR",
+	SpoolEncrypt:                "HETEROLOG_ENABLE_METRICS_OTLP_SPOOL_ENCRYPT",
 	SpoolOverloadPolicy:         "HETEROLOG_METRICS_OTLP_SPOOL_OVERLOAD_POLICY",
 	SpoolSecondaryDestination:   "HETEROLOG_METRICS_OTLP_SPOOL_SECONDARY_DESTINATION",
 	SpoolMaxActiveDirSize:       "HETEROLOG_MAX_METRICS_OTLP_SPOOL_FILE_ACTIVE_DIR_SIZE_MB",
@@ -467,6 +474,7 @@ var metricsVictoriaMetricsFailureStoreKeys = telemetryFailureStoreKeys{
 	UploadS3Prefix:              "HETEROLOG_METRICS_VICTORIAMETRICS_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_PREFIX",
 	UploadS3Destinations:        "HETEROLOG_METRICS_VICTORIAMETRICS_DURABLE_FILE_ARCHIVE_OBJECT_STORAGE_S3_DESTINATIONS",
 	SpoolDir:                    "HETEROLOG_METRICS_VICTORIAMETRICS_FAILURE_SPOOL_DIR",
+	SpoolEncrypt:                "HETEROLOG_ENABLE_METRICS_VICTORIAMETRICS_SPOOL_ENCRYPT",
 	SpoolOverloadPolicy:         "HETEROLOG_METRICS_VICTORIAMETRICS_SPOOL_OVERLOAD_POLICY",
 	SpoolSecondaryDestination:   "HETEROLOG_METRICS_VICTORIAMETRICS_SPOOL_SECONDARY_DESTINATION",
 	SpoolMaxActiveDirSize:       "HETEROLOG_MAX_METRICS_VICTORIAMETRICS_SPOOL_FILE_ACTIVE_DIR_SIZE_MB",

@@ -85,6 +85,9 @@ type SpoolConfig struct {
 
 	OverloadPolicyConfig SpoolOverloadPolicyConfig
 	HandlerConfig        handler.HandlerConfig
+	// Encryption encrypts the spool files with a symmetric key. See
+	// fsstore.SpoolEncryptionConfig.
+	Encryption fsstore.SpoolEncryptionConfig
 }
 
 // SpoolOverloadPolicyConfig configures how processing is decided on overload.
