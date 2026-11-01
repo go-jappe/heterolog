@@ -31,6 +31,8 @@ type FileWriteStoreConfigProvider interface {
 	Rotation() FileRotationConfigProvider
 	Duration() DurationConfigProvider
 	Retry() RetryConfigProvider
+	// Encryptionは、書くfileの暗号化の設定です。
+	Encryption() fsstore.EncryptionConfig
 }
 
 type FsstoreLayoutConfigProvider interface {
@@ -50,8 +52,12 @@ type FsstoreLayoutConfigProvider interface {
 
 type FileLifecycleConfigProvider interface {
 	FileRotationConfigProvider
+	// EnableFileCompressは、暗号化が有効なら、設定にかかわらずfalseです。
 	EnableFileCompress() bool
 	CompressFormat() fsstore.CompressFormat
+	// CompressionSuppressedByEncryptionは、圧縮の設定が有効でも暗号化のために圧縮しないことを
+	// 返します。loggerは構築時にこれを警告します。
+	CompressionSuppressedByEncryption() bool
 }
 
 type FileRotationConfigProvider interface {

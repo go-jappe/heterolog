@@ -111,6 +111,7 @@ type FileArchiveConfig struct {
 	MaxDirSize                 uint64
 	EnableFileCompress         bool
 	CompressFormat             fsstore.CompressFormat
+	EnableFileEncrypt          bool                     // 共通の公開鍵でarchiveを暗号化します。
 	FileRotation               fsstore.FileRotationType // daily weekly monthly
 	FileRotationDayOfWeek      time.Weekday
 	MaxWriteRetries            int
@@ -139,6 +140,7 @@ type DeliveryFileArchiveConfig struct {
 	MaxDirSize                 uint64
 	EnableFileCompress         bool
 	CompressFormat             fsstore.CompressFormat
+	EnableFileEncrypt          bool                     // 共通の公開鍵でarchiveを暗号化します。
 	FileRotation               fsstore.FileRotationType // daily weekly monthly
 	FileRotationDayOfWeek      time.Weekday
 	MaxWriteRetries            int

@@ -23,6 +23,29 @@ type Config struct {
 	// CompressionCodec is a custom compression format added programmatically. If
 	// it is nil, the built-in codec for Lifecycle.CompressFormat is used.
 	CompressionCodec CompressionCodec
+	// Encryption encrypts the log files with a public key. See EncryptionConfig.
+	Encryption EncryptionConfig
+}
+
+// EncryptionConfig configures the encryption of the files that a logger
+// writes: log files, failure archives and the OTLP JSON files of traces and
+// metrics. The files are encrypted with a public key, so the process that
+// writes them cannot read them back; they are decrypted elsewhere, with the
+// private key, by the log-decrypt command. A file is a sequence of segments,
+// one per open of the file, each holding one encrypted chunk per record.
+//
+// Encrypted files are not compressed: when Enabled is true, the compression
+// settings of the same files (EnableFileCompress) are ignored, because
+// encrypted data does not compress; the file loggers and failure archives
+// report a warning at construction.
+type EncryptionConfig struct {
+	// Enabled encrypts the files. Files written before it was enabled are not
+	// encrypted; log-decrypt reports their bytes as skipped.
+	Enabled bool
+	// Recipient is the public key, as printed by "log-decrypt keygen"
+	// ("hlog-pub1-..."). It is required when Enabled is true. The private key
+	// is never given to the logger.
+	Recipient string
 }
 
 // ArchiveCheckpointConfig holds the destination of the records of completed log
@@ -92,6 +115,9 @@ type DeliveryFileLifecycleStoreConfig struct {
 	Retry     RetryConfig
 	// CompressionCodec has the same contract as Config.CompressionCodec.
 	CompressionCodec CompressionCodec
+	// Encryption is the encryption of the written files, as in
+	// DeliveryFileWriteConfig; the runner does not compress encrypted files.
+	Encryption EncryptionConfig
 }
 
 type DeliveryFileWriteConfig struct {
@@ -99,6 +125,8 @@ type DeliveryFileWriteConfig struct {
 	Rotation FileRotationConfig
 	Duration DurationConfig
 	Retry    RetryConfig
+	// Encryption encrypts the log files with a public key. See EncryptionConfig.
+	Encryption EncryptionConfig
 }
 
 // DeliveryFileLifecycleRunnerConfig is the configuration for the lifecycle

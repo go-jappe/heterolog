@@ -4,11 +4,14 @@ package jsonlines
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/cipherfile"
 )
 
 // metricsのexporter属性の値です。
@@ -41,8 +44,9 @@ func NewStdout[T any](marshal Marshal[T]) *Exporter[T] {
 }
 
 // OpenFileは、pathのfileへ追記するExporterを返します。ないdirectoryは作ります。
-// fileはrotationしません。
-func OpenFile[T any](path string, marshal Marshal[T]) (*Exporter[T], error) {
+// fileはrotationしません。recipientがあれば、暗号化の新しいsegmentを始め、batchごとに
+// 1つのchunkとして暗号化して書きます。
+func OpenFile[T any](path string, marshal Marshal[T], recipient *cipherfile.Recipient) (*Exporter[T], error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, fmt.Errorf("create the directory of %s: %w", path, err)
 	}
@@ -50,7 +54,17 @@ func OpenFile[T any](path string, marshal Marshal[T]) (*Exporter[T], error) {
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
-	return New(FileExporterName, file, file, marshal), nil
+	if recipient == nil {
+		return New(FileExporterName, file, file, marshal), nil
+	}
+	header, sealer, err := cipherfile.NewSealer(recipient)
+	if err != nil {
+		return nil, errors.Join(err, file.Close())
+	}
+	if _, err := file.Write(header); err != nil {
+		return nil, errors.Join(fmt.Errorf("write the encryption header of %s: %w", path, err), file.Close())
+	}
+	return New(FileExporterName, cipherfile.NewWriter(file, sealer), file, marshal), nil
 }
 
 func (e *Exporter[T]) Name() string { return e.name }

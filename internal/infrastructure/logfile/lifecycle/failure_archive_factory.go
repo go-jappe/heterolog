@@ -231,6 +231,7 @@ func newFailureArchiveLifecycleConfigAdapter(
 			FileDateFormat: source.FileDateFormat(),
 		},
 		CompressionCodec: compressionCodec,
+		Encryption:       source.Encryption(),
 		Lifecycle: pkgfsstore.FileLifecycleConfig{
 			EnableRotate:       source.EnableRotate(),
 			RotationType:       source.RotationType(),

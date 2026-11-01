@@ -1,12 +1,15 @@
 package failurearchive
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/cipherfile"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	applicationpath "github.com/go-jappe/heterolog/pkg/path"
 	"github.com/go-jappe/heterolog/pkg/path/pathidentity"
@@ -23,6 +26,63 @@ type FileStore struct {
 	FileNameRetryable       logpattern.FileNamePattern
 	ActiveFilePathRetryable string // 現在使用中のファイルパス。閉じる際に必要。
 	Config                  FileArchiveConfigProvider
+	// Recipientは、archiveを暗号化する公開鍵です。nilなら平文で書きます。sealerは、
+	// 系列ごとに今開いているfileのsegmentの暗号化の文脈で、OpenActiveFileが差し替えます。
+	Recipient       *cipherfile.Recipient
+	sealerRetryable *cipherfile.Sealer
+	sealerPermanent *cipherfile.Sealer
+}
+
+// OpenActiveFileは、categoryの系列のactive fileをpathに開きます。暗号化が有効なら、
+// 新しいsegmentのheaderを書き、以後のFrameがその文脈で暗号化します。平文では、最後の
+// recordが改行で終わっていることを確かめます（暗号化したfileは、切れた末尾があっても
+// 次のsegmentから読めるため、確かめません）。
+func (fs *FileStore) OpenActiveFile(path string, category FailureCategory) (*os.File, error) {
+	sealerSlot, err := fs.sealerSlot(category)
+	if err != nil {
+		return nil, err
+	}
+	if fs.Recipient == nil {
+		*sealerSlot = nil
+		return OpenFile(path)
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0640)
+	if err != nil {
+		return nil, err
+	}
+	header, sealer, err := cipherfile.NewSealer(fs.Recipient)
+	if err != nil {
+		return nil, errors.Join(err, file.Close())
+	}
+	if _, err := file.Write(header); err != nil {
+		return nil, errors.Join(fmt.Errorf("write the encryption header of %s: %w", path, err), file.Close())
+	}
+	*sealerSlot = sealer
+	return file, nil
+}
+
+// Frameは、categoryのactive fileに書く1 record（改行まで）を、暗号化が有効なら1つのchunkに
+// します。呼び出し元はMuを保持します。
+func (fs *FileStore) Frame(category FailureCategory, record []byte) ([]byte, error) {
+	sealerSlot, err := fs.sealerSlot(category)
+	if err != nil {
+		return nil, err
+	}
+	if *sealerSlot == nil {
+		return record, nil
+	}
+	return (*sealerSlot).Seal(record)
+}
+
+func (fs *FileStore) sealerSlot(category FailureCategory) (**cipherfile.Sealer, error) {
+	switch category {
+	case FailureCategoryRetryable:
+		return &fs.sealerRetryable, nil
+	case FailureCategoryPermanent:
+		return &fs.sealerPermanent, nil
+	default:
+		return nil, fmt.Errorf("unsupported failure archive category: %q", category)
+	}
 }
 
 // ログファイルのパスを取得・更新古いパスを返却

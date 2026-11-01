@@ -35,7 +35,7 @@ func (fh *FsArchiveHandler) openRetryableFile(ctx context.Context, at time.Time)
 				return "", err
 			}
 			path := fh.Fsstore.ActiveFilePathRetryable
-			file, err := failurearchive.OpenFile(path)
+			file, err := fh.Fsstore.OpenActiveFile(path, failurearchive.FailureCategoryRetryable)
 			if err != nil {
 				fh.Fsstore.ActiveFilePathRetryable = previousPath
 				return "", err
@@ -75,7 +75,7 @@ func (fh *FsArchiveHandler) openPermanentFile(ctx context.Context, at time.Time)
 				return "", err
 			}
 			path := fh.Fsstore.ActiveFilePathPermanent
-			file, err := failurearchive.OpenFile(path)
+			file, err := fh.Fsstore.OpenActiveFile(path, failurearchive.FailureCategoryPermanent)
 			if err != nil {
 				fh.Fsstore.ActiveFilePathPermanent = previousPath
 				return "", err

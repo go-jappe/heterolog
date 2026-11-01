@@ -222,7 +222,10 @@ type FileArchiveConfig struct {
 	CompressFormat     fsstore.CompressFormat
 	// CompressionCodec is a custom compression format added programmatically.
 	// When it is nil, the built-in codec for CompressFormat is used.
-	CompressionCodec  fsstore.CompressionCodec
+	CompressionCodec fsstore.CompressionCodec
+	// Encryption encrypts the archive files with a public key. See
+	// fsstore.EncryptionConfig.
+	Encryption        fsstore.EncryptionConfig
 	RotationType      fsstore.FileRotationType // daily weekly monthly
 	RotationDayOfWeek time.Weekday
 	// MaxWriteRetries is how many times a failed file operation, such as a write
@@ -269,7 +272,9 @@ type DeliveryFileArchiveConfig struct {
 	CompressFormat     fsstore.CompressFormat
 	// CompressionCodec has the same contract as
 	// FileArchiveConfig.CompressionCodec.
-	CompressionCodec  fsstore.CompressionCodec
+	CompressionCodec fsstore.CompressionCodec
+	// Encryption has the same contract as FileArchiveConfig.Encryption.
+	Encryption        fsstore.EncryptionConfig
 	RotationType      fsstore.FileRotationType // daily weekly monthly
 	RotationDayOfWeek time.Weekday
 	// MaxWriteRetries is how many times a failed file operation, such as a write

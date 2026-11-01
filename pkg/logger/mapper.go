@@ -392,7 +392,8 @@ func (c *DeliveryFileLoggerConfig) LifecycleRunnerConfig() *fsstore.DeliveryFile
 	runner := c.LifecycleRunnerSettings
 	return &fsstore.DeliveryFileLifecycleRunnerConfig{
 		FsstoreConfig: fsstore.DeliveryFileLifecycleStoreConfig{
-			Layout: c.FsstoreConfig.Layout,
+			Layout:     c.FsstoreConfig.Layout,
+			Encryption: c.FsstoreConfig.Encryption,
 			Lifecycle: fsstore.DeliveryFileLifecycleConfig{
 				EnableRotate:       c.FsstoreConfig.Rotation.EnableRotate,
 				RotationType:       c.FsstoreConfig.Rotation.RotationType,

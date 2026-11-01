@@ -15,6 +15,7 @@ type ConfigAdapter struct {
 	DurationConfig         DurationConfigProvider
 	RetryConfig            RetryConfigProvider
 	CompressionCodecConfig fsstore.CompressionCodec
+	EncryptionConfig       fsstore.EncryptionConfig
 }
 
 var _ CompressionCodecProvider = (*ConfigAdapter)(nil)
@@ -22,11 +23,12 @@ var _ CompressionCodecProvider = (*ConfigAdapter)(nil)
 func NewConfigAdapter(cfg fsstore.Config) ConfigProvider {
 	adapter := &ConfigAdapter{
 		FsstoreLayoutConfig:    NewFsstoreConfigAdapter(cfg.Layout),
-		LifecycleConfig:        NewFileLifecycleConfigAdapter(cfg.Lifecycle),
+		LifecycleConfig:        newFileLifecycleConfigAdapter(cfg.Lifecycle, cfg.Encryption),
 		PurgeConfig:            NewFilePurgeConfigAdapter(cfg.Lifecycle),
 		DurationConfig:         NewDurationConfigAdapter(cfg.Duration),
 		RetryConfig:            NewRetryConfigAdapter(cfg.Retry),
 		CompressionCodecConfig: cfg.CompressionCodec,
+		EncryptionConfig:       cfg.Encryption,
 	}
 	// error/debugの個別設定がnilなら通常logのPurgeConfigを使うことを、ここで確定します。
 	adapter.ErrorPurgeConfig = resolveLogFileRolePurgeConfig(adapter.PurgeConfig, cfg.Lifecycle.ErrorPurge, adapter.Layout(), adapter.Layout().ErrorLogDir())
@@ -61,6 +63,9 @@ func (a *ConfigAdapter) Retry() RetryConfigProvider {
 func (a *ConfigAdapter) CompressionCodec() fsstore.CompressionCodec {
 	return a.CompressionCodecConfig
 }
+func (a *ConfigAdapter) Encryption() fsstore.EncryptionConfig {
+	return a.EncryptionConfig
+}
 
 type DeliveryFileLifecycleStoreConfigAdapter struct {
 	FsstoreLayoutConfig    FsstoreLayoutConfigProvider
@@ -71,6 +76,7 @@ type DeliveryFileLifecycleStoreConfigAdapter struct {
 	DurationConfig         DurationConfigProvider
 	RetryConfig            RetryConfigProvider
 	CompressionCodecConfig fsstore.CompressionCodec
+	EncryptionConfig       fsstore.EncryptionConfig
 }
 
 var _ CompressionCodecProvider = (*DeliveryFileLifecycleStoreConfigAdapter)(nil)
@@ -78,11 +84,12 @@ var _ CompressionCodecProvider = (*DeliveryFileLifecycleStoreConfigAdapter)(nil)
 func NewDeliveryFileLifecycleStoreConfigAdapter(cfg fsstore.DeliveryFileLifecycleStoreConfig) ConfigProvider {
 	adapter := &DeliveryFileLifecycleStoreConfigAdapter{
 		FsstoreLayoutConfig:    NewFsstoreConfigAdapter(cfg.Layout),
-		LifecycleConfig:        NewDeliveryFileLifecycleConfigAdapter(cfg.Lifecycle),
+		LifecycleConfig:        newDeliveryFileLifecycleConfigAdapter(cfg.Lifecycle, cfg.Encryption),
 		PurgeConfig:            NewDeliveryFilePurgeConfigAdapter(cfg.Lifecycle),
 		DurationConfig:         NewDurationConfigAdapter(cfg.Duration),
 		RetryConfig:            NewRetryConfigAdapter(cfg.Retry),
 		CompressionCodecConfig: cfg.CompressionCodec,
+		EncryptionConfig:       cfg.Encryption,
 	}
 	// Deliveryも個別設定の省略をここで解決し、利用側へnilを渡しません。
 	adapter.ErrorPurgeConfig = resolveLogFileRolePurgeConfig(adapter.PurgeConfig, cfg.Lifecycle.ErrorPurge, adapter.Layout(), adapter.Layout().ErrorLogDir())
@@ -117,12 +124,16 @@ func (a *DeliveryFileLifecycleStoreConfigAdapter) Retry() RetryConfigProvider {
 func (a *DeliveryFileLifecycleStoreConfigAdapter) CompressionCodec() fsstore.CompressionCodec {
 	return a.CompressionCodecConfig
 }
+func (a *DeliveryFileLifecycleStoreConfigAdapter) Encryption() fsstore.EncryptionConfig {
+	return a.EncryptionConfig
+}
 
 type DeliveryFileWriteStoreConfigAdapter struct {
 	FsstoreLayoutConfig FsstoreLayoutConfigProvider
 	RotationConfig      FileRotationConfigProvider
 	DurationConfig      DurationConfigProvider
 	RetryConfig         RetryConfigProvider
+	EncryptionConfig    fsstore.EncryptionConfig
 }
 
 func NewDeliveryFileWriteStoreConfigAdapter(cfg fsstore.DeliveryFileWriteConfig) FileWriteStoreConfigProvider {
@@ -131,7 +142,11 @@ func NewDeliveryFileWriteStoreConfigAdapter(cfg fsstore.DeliveryFileWriteConfig)
 		RotationConfig:      NewFileRotationConfigAdapter(cfg.Rotation),
 		DurationConfig:      NewDurationConfigAdapter(cfg.Duration),
 		RetryConfig:         NewRetryConfigAdapter(cfg.Retry),
+		EncryptionConfig:    cfg.Encryption,
 	}
+}
+func (a *DeliveryFileWriteStoreConfigAdapter) Encryption() fsstore.EncryptionConfig {
+	return a.EncryptionConfig
 }
 
 func (a *DeliveryFileWriteStoreConfigAdapter) Layout() FsstoreLayoutConfigProvider {
@@ -230,9 +245,16 @@ type FileLifecycleConfigAdapter struct {
 	MaxFileSizeConfig           uint64
 	EnableFileCompressConfig    bool
 	CompressFormatConfig        fsstore.CompressFormat
+	// EncryptionEnabledConfigは、fileを暗号化することです。暗号文は圧縮できないため、
+	// trueならEnableFileCompressはfalseになります。
+	EncryptionEnabledConfig bool
 }
 
 func NewFileLifecycleConfigAdapter(cfg fsstore.FileLifecycleConfig) FileLifecycleConfigProvider {
+	return newFileLifecycleConfigAdapter(cfg, fsstore.EncryptionConfig{})
+}
+
+func newFileLifecycleConfigAdapter(cfg fsstore.FileLifecycleConfig, encryption fsstore.EncryptionConfig) *FileLifecycleConfigAdapter {
 	return &FileLifecycleConfigAdapter{
 		EnableRotateConfig:          cfg.EnableRotate,
 		FileRotationTypeConfig:      cfg.RotationType,
@@ -240,6 +262,7 @@ func NewFileLifecycleConfigAdapter(cfg fsstore.FileLifecycleConfig) FileLifecycl
 		MaxFileSizeConfig:           cfg.MaxFileSize,
 		EnableFileCompressConfig:    cfg.EnableFileCompress,
 		CompressFormatConfig:        cfg.CompressFormat,
+		EncryptionEnabledConfig:     encryption.Enabled,
 	}
 }
 
@@ -285,13 +308,20 @@ func (a FileLifecycleConfigAdapter) MaxFileSize() uint64 {
 	return a.MaxFileSizeConfig
 }
 func (a FileLifecycleConfigAdapter) EnableFileCompress() bool {
-	return a.EnableFileCompressConfig
+	return a.EnableFileCompressConfig && !a.EncryptionEnabledConfig
 }
 func (a FileLifecycleConfigAdapter) CompressFormat() fsstore.CompressFormat {
 	return a.CompressFormatConfig
 }
+func (a FileLifecycleConfigAdapter) CompressionSuppressedByEncryption() bool {
+	return a.EnableFileCompressConfig && a.EncryptionEnabledConfig
+}
 
 func NewDeliveryFileLifecycleConfigAdapter(cfg fsstore.DeliveryFileLifecycleConfig) FileLifecycleConfigProvider {
+	return newDeliveryFileLifecycleConfigAdapter(cfg, fsstore.EncryptionConfig{})
+}
+
+func newDeliveryFileLifecycleConfigAdapter(cfg fsstore.DeliveryFileLifecycleConfig, encryption fsstore.EncryptionConfig) *FileLifecycleConfigAdapter {
 	return &FileLifecycleConfigAdapter{
 		EnableRotateConfig:          cfg.EnableRotate,
 		FileRotationTypeConfig:      cfg.RotationType,
@@ -299,6 +329,7 @@ func NewDeliveryFileLifecycleConfigAdapter(cfg fsstore.DeliveryFileLifecycleConf
 		MaxFileSizeConfig:           cfg.MaxFileSize,
 		EnableFileCompressConfig:    cfg.EnableFileCompress,
 		CompressFormatConfig:        cfg.CompressFormat,
+		EncryptionEnabledConfig:     encryption.Enabled,
 	}
 }
 

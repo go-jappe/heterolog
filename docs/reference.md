@@ -16,6 +16,7 @@ This document describes the behavior of heterolog in detail: what each API retur
 - [Metrics and traces](#metrics-and-traces)
 - [Destination notes](#destination-notes)
 - [Log recovery CLI](#log-recovery-cli)
+- [Log decrypt CLI](#log-decrypt-cli)
 - [Testing](#testing)
 
 ## Writing logs
@@ -315,6 +316,18 @@ The audit logger built from the environment uses the settings of the delivery lo
 - When a damaged compressed file is found while compressing right after rotation or resuming interrupted work, the original log is kept, the damaged file is deleted, and the original log is compressed again, so shutdown never keeps waiting for the same failure to be retried.
 - On POSIX systems, compressed output is created with permissions no broader than those of the source file. Existing temporary outputs and additional restrictions from the umask are kept.
 - On Windows, before compressed data is written, the existing private-file policy is applied, which allows access only to the current user, SYSTEM, and Administrators.
+
+### Encryption
+
+The log files, the failure archives (`.jsonl`) of the destinations, and the OTLP JSON files of traces and metrics can be encrypted with a public key. The spool is not encrypted: the process must read it to resend its records, so a key that reads the spool would have to be reachable from the process.
+
+- The application is given only the public key (`HETEROLOG_ENCRYPTION_RECIPIENT`, or `EncryptionConfig.Recipient` of the file settings in code). The private key never reaches the application; `log-decrypt keygen` writes it to a file with mode 0600, and `log-decrypt decrypt` reads the files with it. See [Log decrypt CLI](#log-decrypt-cli).
+- The encryption is chosen per output: `HETEROLOG_ENABLE_LOG_FILE_ENCRYPT`, `HETEROLOG_ENABLE_ASYNC_LOG_FILE_ENCRYPT`, `HETEROLOG_ENABLE_DELIVERY_LOG_FILE_ENCRYPT` (also used by the audit log of the admin API), `HETEROLOG_ENABLE_<DESTINATION>_DURABLE_FILE_ARCHIVE_ENCRYPT` for the failure archive of each log destination (for example `HETEROLOG_ENABLE_OPENSEARCH_DURABLE_FILE_ARCHIVE_ENCRYPT`), `HETEROLOG_ENABLE_TRACES_FILE_ENCRYPT`, `HETEROLOG_ENABLE_METRICS_FILE_ENCRYPT`, and `HETEROLOG_ENABLE_TRACES_OTLP_DURABLE_FILE_ARCHIVE_ENCRYPT` and the like for the failure archives of the trace and metric destinations. The public key is shared by all of them. Enabling an output without a public key, or with one that cannot be read, is a construction error.
+- What it protects: the files on disk, in backups and volume snapshots, and in object storage (compressed-log uploads and archive uploads send the encrypted bytes as they are) cannot be read without the private key, even by someone who gets into the container of the application. What it does not protect: the records while they are in the memory of the process, the records on stdout, and the spool.
+- Encrypted files are not compressed, because encrypted data does not compress. When an output has both encryption and compression enabled, the compression settings of that output are ignored; the synchronous and asynchronous file loggers and the failure archives report a warning through the internal log handlers at construction, and the lifecycle runner of the delivery file logger skips the compression without a warning.
+- A file is a sequence of segments. A segment starts each time the file is opened (at start and at each rotation) with a header (the magic `HLOGENC1`, the ID of the public key, and the encapsulated key of HPKE), followed by one chunk per record (a 4-byte length and the ciphertext). Opening an existing file appends a new segment, so a restart needs no key. The ciphers are HPKE (RFC 9180) with DHKEM(X25519, HKDF-SHA256), HKDF-SHA256 and AES-256-GCM from the Go standard library; the nonces are the sequence numbers of the HPKE context, so a missing, reordered, or altered chunk fails to decrypt. The file names do not change (`.log`, `.jsonl`); rotation, retention, uploads and the log recovery CLI treat encrypted files like any other.
+- A record that was cut short by a crash, or a plaintext part written before the encryption was enabled, does not hide the rest of the file: the decryption skips to the next segment and reports the skipped bytes.
+- To change the key, generate a new pair and set the new public key; new segments use it, and old files are decrypted with the old private key (an identity file may hold several keys, one per line).
 
 ### Uploading to object storage
 
@@ -758,6 +771,23 @@ go build -o log-recovery ./cmd/log-recovery
 - The fileArchive for backend send failures (`retryable`, `permanent`) is not deleted automatically by default either: the limits on kept generations, age, and directory size (`HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_BACKUPS`, `HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_AGE`, `HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_DIR_SIZE_MB`) are all 0 (unlimited). Old files are deleted only by the conditions set to a non-zero value, and the allowed values are at least 2 generations, at least 1 day, and at least 10 MB and at least the maximum file size.
 - `MaxFileBackups`, `MaxFileAge`, and `MaxDirSize` of `durable.FileArchiveConfig` set in code also mean unlimited when 0. To keep deleting automatically with the previous defaults (60 generations, 60 days, 2048 MB), set these values explicitly.
 - So that the disk is not filled even without limits, new failures are not saved to the fileArchive while the free space is below `HETEROLOG_MIN_AVAILABLE_DISK_SPACE_GB`; they are handled by `*_DURABLE_FILE_ARCHIVE_OVERLOAD_POLICY` (`drop` discards them, `degrade` saves them to stdout). When a fileArchive is used, this threshold cannot be 0.
+
+## Log decrypt CLI
+
+`log-decrypt` makes the key pair for the [encryption](#encryption) of the files and decrypts the files with the private key.
+
+```sh
+go build -o log-decrypt ./cmd/log-decrypt
+./log-decrypt keygen --identity /secure/place/heterolog.key
+./log-decrypt decrypt --identity /secure/place/heterolog.key /var/log/my-service/logs/app.log > app.log.txt
+./log-decrypt decrypt --identity /secure/place/heterolog.key --output-dir ./plain /var/log/my-service/logs/*.log
+```
+
+- `keygen` writes a new private key to the identity file (mode 0600; an existing file is not overwritten) and prints the identity file, the key ID, and the line `HETEROLOG_ENCRYPTION_RECIPIENT=hlog-pub1-...` to set in the environment configuration. Keep the identity file outside the application.
+- `decrypt` writes the plaintext to stdout, to `--output` (one input), or to `--output-dir` under the name of each input. An existing output file is not overwritten. The report (segments, records, bytes, and skipped parts) goes to stderr, so the plaintext on stdout stays clean.
+- Damaged bytes, records cut short by a crash, plaintext written before the encryption was enabled, and segments encrypted for a key the identity file does not hold are skipped and listed with their offsets and reasons; the exit code is then 3. A file that does not start with an encrypted segment, a missing identity file, and read or write errors exit with 1; usage errors with 2.
+- The identity file may hold several private keys, one per line, with `#` comments; the key ID in each segment selects the key. `keygen` writes the public key and key ID as comments above the key.
+- The command reads only the files it is given, so it can run on a copy of the files on another machine; it does not need the environment configuration of the application.
 
 ## Testing
 

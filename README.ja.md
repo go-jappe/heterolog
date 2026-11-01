@@ -21,6 +21,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - [出力先で失敗したとき](#出力先で失敗したとき)
 - [稼働中にログレベルとサンプリングを変える](#稼働中にログレベルとサンプリングを変える)
 - [ログファイル](#ログファイル)
+- [ファイルの暗号化](#ファイルの暗号化)
 - [トレース](#トレース)
 - [メトリクス](#メトリクス)
 - [終了処理](#終了処理)
@@ -49,6 +50,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - 保証の異なる3種類のロガー: 同期（errorを返す）、非同期（best effort）、Delivery（出力先ごとの結果を返す）。
 - `log/slog` のハンドラー。
 - ログファイルのローテーション、圧縮（gzip・zstd・lz4・xz）、保持、S3またはBackblaze B2などのS3互換のストレージへのアップロード。
+- ログファイル・failure archive・トレースとメトリクスのファイルの、公開鍵による暗号化（任意）。プロセスは読める鍵を持たず、秘密鍵を持つCLIで復号します。
 - 送れなかったログを保存するローカルのspool。自動で送り直し、`Retry-After` には再起動後も従います。
 - 空き容量の閾値、任意のメモリ逼迫の監視器、`drop`・`degrade` の方針による過負荷の保護。
 - コードでの設定、または `HETEROLOG_` 環境変数と環境設定ファイルからの設定。
@@ -319,6 +321,18 @@ curl -X PATCH -H "Authorization: Bearer $HETEROLOG_ADMIN_TOKEN" \
 
 ローテーション・保持・圧縮・アップロードの詳細は[詳細の文書](docs/reference.ja.md#ログファイル)にあります。
 
+## ファイルの暗号化
+
+ログファイル、出力先のfailure archive、トレースとメトリクスのファイルは、公開鍵で暗号化できます。アプリケーションに渡すのは公開鍵だけなので、プロセスも、そのコンテナに入った人も、ディスク・バックアップ・オブジェクトストレージにあるファイルを読めません。復号は、秘密鍵を持つ別の場所で `log-decrypt` コマンドが行います。
+
+```sh
+go build -o log-decrypt ./cmd/log-decrypt
+./log-decrypt keygen --identity /secure/place/heterolog.key   # HETEROLOG_ENCRYPTION_RECIPIENT=hlog-pub1-... を表示します
+./log-decrypt decrypt --identity /secure/place/heterolog.key /var/log/my-service/logs/app.log
+```
+
+表示された公開鍵を `HETEROLOG_ENCRYPTION_RECIPIENT` に設定し、暗号化する出力先を `HETEROLOG_ENABLE_LOG_FILE_ENCRYPT`、`HETEROLOG_ENABLE_<出力先>_DURABLE_FILE_ARCHIVE_ENCRYPT`、`HETEROLOG_ENABLE_TRACES_FILE_ENCRYPT` などで選びます。コードでは、ファイルの設定の `EncryptionConfig` に指定します。暗号化したファイルは圧縮しません。spoolは、送り直しのためにプロセスが読む必要があるので暗号化しません。何を守れるかとファイルの形式は[暗号化](docs/reference.ja.md#暗号化)にあります。
+
 ## トレース
 
 `NewTelemetry` は、spanを、OpenTelemetry CollectorやGrafana TempoなどのOTLP/HTTPの受信先、OpenSearch、ClickHouse、file、stdoutへ送ります。その `Tracer` はアプリケーションのspanを記録し、`WithObservers` でロガーへ渡すと、ロガーの処理も子のspanとして記録します。
@@ -390,7 +404,7 @@ go build -o log-recovery ./cmd/log-recovery
 ./log-recovery --target my-service --application-stopped --env-file /path/to/logging.env
 ```
 
-検証の内容と指定方法は[ログ復旧CLI](docs/reference.ja.md#ログ復旧cli)を、何を復旧するかと運用の手順は[手動でのログ復旧](docs/manual-log-recovery.txt)を参照してください。
+検証の内容と指定方法は[ログ復旧CLI](docs/reference.ja.md#ログ復旧cli)を、何を復旧するかと運用の手順は[手動でのログ復旧](docs/manual-log-recovery.txt)を参照してください。暗号化したファイルはそのまま扱います。読むのは[log-decrypt CLI](docs/reference.ja.md#log-decrypt-cli)です。
 
 ## テスト
 

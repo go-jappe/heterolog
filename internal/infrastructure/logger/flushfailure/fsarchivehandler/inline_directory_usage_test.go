@@ -234,7 +234,7 @@ func TestInlineDirectorySizeCountsProtectedFilesButDoesNotDeleteThem(t *testing.
 func TestWriteArchiveJSONLReportsPartialWriteBytesOnError(t *testing.T) {
 	sentinel := errors.New("partial write")
 	partial := &partialArchiveWriter{limit: 7, err: sentinel}
-	written, err := writeArchiveJSONL(partial, map[string]any{"payload": "long-enough"})
+	written, err := writeArchiveJSONL(partial, nil, map[string]any{"payload": "long-enough"})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("writeArchiveJSONL error = %v, want %v", err, sentinel)
 	}

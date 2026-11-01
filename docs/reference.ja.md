@@ -16,6 +16,7 @@
 - [メトリクスとトレース](#メトリクスとトレース)
 - [出力先ごとの注意](#出力先ごとの注意)
 - [ログ復旧CLI](#ログ復旧cli)
+- [log-decrypt CLI](#log-decrypt-cli)
 - [テスト](#テスト)
 
 ## ログの書き込み
@@ -315,6 +316,18 @@ curlを使った例は、READMEの[稼働中にログレベルとサンプリン
 - ローテーション直後の圧縮や中断した処理の再開で破損した圧縮済みファイルを見つけた場合も、元ログを残して破損したファイルを削除し、元ログから再圧縮します。そのため、終了処理が同じ失敗の再試行を待ち続けることはありません。
 - POSIX環境の圧縮出力は、圧縮元のファイル権限より広くならないように作成します。既存の一時出力やumaskによる追加の制限も保持します。
 - Windowsでは圧縮データを書き込む前に、現在のユーザー・SYSTEM・Administratorsだけにアクセスを許可する既存のprivate-file方針を適用します。
+
+### 暗号化
+
+ログファイル、出力先のfailure archive（`.jsonl`）、トレースとメトリクスのOTLP/JSONのファイルは、公開鍵で暗号化できます。spoolは暗号化しません。送り直しのためにプロセスがspoolを読む必要があり、spoolを読める鍵はプロセスから届く所に置くしかないためです。
+
+- アプリケーションに渡すのは公開鍵だけです（`HETEROLOG_ENCRYPTION_RECIPIENT`、コードではファイルの設定の `EncryptionConfig.Recipient`）。秘密鍵はアプリケーションに渡しません。`log-decrypt keygen` が秘密鍵を0600のファイルに書き、`log-decrypt decrypt` がそれでファイルを読みます。[log-decrypt CLI](#log-decrypt-cli)を参照してください。
+- 暗号化は出力先ごとに選びます: `HETEROLOG_ENABLE_LOG_FILE_ENCRYPT`、`HETEROLOG_ENABLE_ASYNC_LOG_FILE_ENCRYPT`、`HETEROLOG_ENABLE_DELIVERY_LOG_FILE_ENCRYPT`（管理用APIの監査ログもこれに従います）、ログの出力先ごとのfailure archiveの `HETEROLOG_ENABLE_<出力先>_DURABLE_FILE_ARCHIVE_ENCRYPT`（例: `HETEROLOG_ENABLE_OPENSEARCH_DURABLE_FILE_ARCHIVE_ENCRYPT`）、`HETEROLOG_ENABLE_TRACES_FILE_ENCRYPT`、`HETEROLOG_ENABLE_METRICS_FILE_ENCRYPT`、トレースとメトリクスの送り先のfailure archiveの `HETEROLOG_ENABLE_TRACES_OTLP_DURABLE_FILE_ARCHIVE_ENCRYPT` などです。公開鍵はすべてで共通です。公開鍵がないまま、または読めない公開鍵で出力先を有効にすると、構築のerrorになります。
+- 守れるもの: ディスク・バックアップ・volumeのsnapshot・オブジェクトストレージ（圧縮ログとarchiveのアップロードは暗号化したbyte列をそのまま送ります）のファイルは、アプリケーションのコンテナに入られても、秘密鍵がなければ読めません。守れないもの: プロセスのメモリにある記録、stdoutに出る記録、spoolです。
+- 暗号化したファイルは圧縮しません。暗号文は圧縮できないためです。出力先で暗号化と圧縮を両方有効にすると、その出力先の圧縮の設定は無視します。同期・非同期のfile loggerとfailure archiveは構築時に内部ログの通知先へ警告を出し、Delivery file loggerのlifecycle runnerは警告なしに圧縮を飛ばします。
+- ファイルはsegmentの並びです。segmentは、ファイルを開くたび（起動時と各ローテーション）にheader（magic `HLOGENC1`、公開鍵のID、HPKEのカプセル化した鍵）で始まり、記録ごとのchunk（4 byteの長さと暗号文）が続きます。既存のファイルを開くと新しいsegmentを足すので、再起動に鍵は要りません。暗号はGoの標準ライブラリのHPKE（RFC 9180）で、DHKEM(X25519, HKDF-SHA256)・HKDF-SHA256・AES-256-GCMです。nonceはHPKEの文脈の通し番号なので、chunkの欠落・並べ替え・改変は復号で失敗します。ファイル名は変わりません（`.log`・`.jsonl`）。ローテーション・保持・アップロード・ログ復旧CLIは、暗号化したファイルもほかと同じに扱います。
+- 停止で途中まで書かれた記録や、暗号化を有効にする前に書いた平文の部分があっても、残りは読めます。復号は次のsegmentまで読み飛ばし、読み飛ばしたbyte数を報告します。
+- 鍵を変えるには、新しい鍵の組を作って新しい公開鍵を設定します。新しいsegmentは新しい鍵を使い、古いファイルは古い秘密鍵で復号します（秘密鍵のファイルには、1行に1つずつ複数の鍵を置けます）。
 
 ### object storageへのアップロード
 
@@ -758,6 +771,23 @@ go build -o log-recovery ./cmd/log-recovery
 - backend送信失敗のfileArchive（`retryable`・`permanent`）も、既定では保持世代数・保持日数・ディレクトリ容量の上限（`HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_BACKUPS`・`HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_AGE`・`HETEROLOG_MAX_*_ENABLE_DURABLE_FILE_ARCHIVE_DIR_SIZE_MB`）がすべて0（上限なし）で、自動削除しません。0以外を指定した条件だけで古いファイルを削除し、指定できる値は世代数2以上・日数1以上・容量10MB以上かつファイル最大サイズ以上です。
 - コードから設定する `durable.FileArchiveConfig` の `MaxFileBackups`・`MaxFileAge`・`MaxDirSize` も、0は上限なしです。以前の既定（60世代・60日・2048MB）で自動削除を続ける場合は、これらの値を明示してください。
 - 上限なしでもディスクを使い切らないよう、空き容量が `HETEROLOG_MIN_AVAILABLE_DISK_SPACE_GB` を下回る間は新しい失敗をfileArchiveへ保存せず、`*_DURABLE_FILE_ARCHIVE_OVERLOAD_POLICY`（`drop`=破棄、`degrade`=標準出力へ退避）に従って処理します。fileArchiveを使う場合、この閾値は0にできません。
+
+## log-decrypt CLI
+
+`log-decrypt` は、ファイルの[暗号化](#暗号化)の鍵の組を作り、秘密鍵でファイルを復号します。
+
+```sh
+go build -o log-decrypt ./cmd/log-decrypt
+./log-decrypt keygen --identity /secure/place/heterolog.key
+./log-decrypt decrypt --identity /secure/place/heterolog.key /var/log/my-service/logs/app.log > app.log.txt
+./log-decrypt decrypt --identity /secure/place/heterolog.key --output-dir ./plain /var/log/my-service/logs/*.log
+```
+
+- `keygen` は、新しい秘密鍵をidentity file（0600。既存のファイルは上書きしません）に書き、identity fileの場所、鍵のID、環境設定に置く `HETEROLOG_ENCRYPTION_RECIPIENT=hlog-pub1-...` の行を表示します。identity fileはアプリケーションの外に置いてください。
+- `decrypt` は、平文をstdout、`--output`（入力が1つのとき）、または `--output-dir` の下の入力と同じ名前のファイルに書きます。既存の出力ファイルは上書きしません。報告（segment・記録・byte数と、読み飛ばした箇所）はstderrに出すので、stdoutの平文に混ざりません。
+- 壊れたbyte列、停止で途中まで書かれた記録、暗号化を有効にする前の平文、identity fileにない鍵で暗号化したsegmentは読み飛ばし、位置と理由を列挙します。そのときの終了codeは3です。暗号化したsegmentで始まらないファイル、identity fileがない、読み書きのerrorは1、指定の誤りは2で終わります。
+- identity fileには、1行に1つずつ複数の秘密鍵を置けます（`#` のcomment可）。segmentの鍵のIDで鍵を選びます。`keygen` は、公開鍵と鍵のIDをcommentとして鍵の上に書きます。
+- このコマンドは渡されたファイルだけを読むので、別の機械に複製したファイルでも動きます。アプリケーションの環境設定は要りません。
 
 ## テスト
 

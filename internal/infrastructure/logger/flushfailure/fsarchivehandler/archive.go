@@ -51,11 +51,26 @@ func (w *countingArchiveWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func writeArchiveJSONL(writer io.Writer, records ...any) (uint64, error) {
+// recordFrameFuncは、JSONLの1行を実際にfileへ書くbyte列（暗号化が有効なら1つのchunk）に
+// します。
+type recordFrameFunc func([]byte) ([]byte, error)
+
+// writeArchiveJSONLは、recordsを1行ずつJSONにし、frameを通してwriterへ書きます。
+// frameがnilなら、JSONの行をそのまま書きます。
+func writeArchiveJSONL(writer io.Writer, frame recordFrameFunc, records ...any) (uint64, error) {
 	counting := &countingArchiveWriter{writer: writer}
-	enc := json.NewEncoder(counting)
 	for _, record := range records {
-		if err := enc.Encode(record); err != nil {
+		line, err := json.Marshal(record)
+		if err != nil {
+			return counting.written, err
+		}
+		line = append(line, '\n')
+		if frame != nil {
+			if line, err = frame(line); err != nil {
+				return counting.written, err
+			}
+		}
+		if _, err := counting.Write(line); err != nil {
 			return counting.written, err
 		}
 	}
@@ -181,7 +196,11 @@ func (f *FsArchiveHandler) appendJSONLLocked(
 
 	writer := f.appendJSONLWriter
 	if writer == nil {
-		writer = writeArchiveJSONL
+		writer = func(w io.Writer, records ...any) (uint64, error) {
+			return writeArchiveJSONL(w, func(line []byte) ([]byte, error) {
+				return f.Fsstore.Frame(failureCategory, line)
+			}, records...)
+		}
 	}
 	written, err := writer(file, records...)
 	if tracker := f.directorySizeTracker(failureCategory); tracker != nil && written > 0 {

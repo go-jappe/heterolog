@@ -21,6 +21,7 @@ This README is an overview. The [reference](docs/reference.md) describes the beh
 - [When a destination fails](#when-a-destination-fails)
 - [Changing the level and sampling while running](#changing-the-level-and-sampling-while-running)
 - [Log files](#log-files)
+- [Encrypting the files](#encrypting-the-files)
 - [Traces](#traces)
 - [Metrics](#metrics)
 - [Shutting down](#shutting-down)
@@ -49,6 +50,7 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 - Three loggers with different guarantees: synchronous (returns errors), asynchronous (best effort), and delivery (reports the result for each destination).
 - A `log/slog` handler.
 - Log files with rotation, compression (gzip, zstd, lz4, xz), retention, and upload to S3 or S3-compatible storage such as Backblaze B2.
+- Optional encryption of the log files, failure archives and trace/metric files with a public key: the process holds no key that can read them, and a CLI decrypts them with the private key.
 - A local spool for logs that could not be sent, replayed automatically and following `Retry-After` across restarts.
 - Overload protection with a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
 - Configuration in code, or from `HETEROLOG_` environment variables and an env file.
@@ -319,6 +321,18 @@ See [Changing settings while running](docs/reference.md#changing-settings-while-
 
 The [reference](docs/reference.md#log-files) describes rotation, retention, compression, and uploads in detail.
 
+## Encrypting the files
+
+The log files, the failure archives of the destinations, and the files of traces and metrics can be encrypted with a public key. The application is given only the public key, so neither the process nor anyone who gets into its container can read the files on disk, in backups, or in object storage; they are decrypted elsewhere, with the private key, by the `log-decrypt` command.
+
+```sh
+go build -o log-decrypt ./cmd/log-decrypt
+./log-decrypt keygen --identity /secure/place/heterolog.key   # prints HETEROLOG_ENCRYPTION_RECIPIENT=hlog-pub1-...
+./log-decrypt decrypt --identity /secure/place/heterolog.key /var/log/my-service/logs/app.log
+```
+
+Set `HETEROLOG_ENCRYPTION_RECIPIENT` to the printed public key, and enable the encryption per output with `HETEROLOG_ENABLE_LOG_FILE_ENCRYPT`, `HETEROLOG_ENABLE_<DESTINATION>_DURABLE_FILE_ARCHIVE_ENCRYPT`, `HETEROLOG_ENABLE_TRACES_FILE_ENCRYPT` and the like; in code, set `EncryptionConfig` of the file settings. Encrypted files are not compressed. The spool is not encrypted, because the process must read it to resend; see [Encryption](docs/reference.md#encryption) for what the encryption protects and how the files are laid out.
+
 ## Traces
 
 `NewTelemetry` sends spans to an OTLP/HTTP receiver, such as the OpenTelemetry Collector or Grafana Tempo, to OpenSearch, to ClickHouse, to a file, or to stdout. Its `Tracer` records the spans of your application, and passed to a logger with `WithObservers`, also the work of the logger as child spans:
@@ -390,7 +404,7 @@ go build -o log-recovery ./cmd/log-recovery
 ./log-recovery --target my-service --application-stopped --env-file /path/to/logging.env
 ```
 
-See [Log recovery CLI](docs/reference.md#log-recovery-cli) for its checks and options, and [manual log recovery](docs/manual-log-recovery.txt) (in Japanese) for what it recovers and how to operate it.
+See [Log recovery CLI](docs/reference.md#log-recovery-cli) for its checks and options, and [manual log recovery](docs/manual-log-recovery.txt) (in Japanese) for what it recovers and how to operate it. It handles encrypted files as they are; the [log-decrypt CLI](docs/reference.md#log-decrypt-cli) reads them.
 
 ## Testing
 

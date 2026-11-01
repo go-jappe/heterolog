@@ -12,6 +12,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/cipherfile"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
@@ -372,7 +373,7 @@ func (l *DeliveryFileLogger) openLogFile(ctx context.Context, fileOperationTime 
 			return "", err
 		}
 		newPath := l.Fsstore.ActiveFilePath
-		file, err := appendlog.OpenFile(newPath)
+		file, err := l.Fsstore.OpenFile(newPath)
 		if err != nil {
 			l.Fsstore.ActiveFilePath = previousPath
 			l.Fsstore.FileName = previousFileName
@@ -531,6 +532,10 @@ func newDeliveryFileLoggerBase(
 	if err != nil {
 		return nil, fmt.Errorf(ErrorMsgCreateLogger, err)
 	}
+	recipient, err := cipherfile.ResolveRecipient(cfg.Fsstore().Encryption())
+	if err != nil {
+		return nil, fmt.Errorf(ErrorMsgInvalidConfigStatus, err)
+	}
 
 	fl := &DeliveryFileLogger{
 		Clock:         clock.NewUTCClock(),
@@ -539,8 +544,9 @@ func newDeliveryFileLoggerBase(
 		config:        cfg,
 		directoryPath: directory,
 		Fsstore: appendlog.FileStore{
-			Tracer: tracer,
-			Meter:  meter,
+			Recipient: recipient,
+			Tracer:    tracer,
+			Meter:     meter,
 		},
 		Tracer: tracer,
 		Meter:  meter,

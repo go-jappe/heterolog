@@ -22,8 +22,14 @@ type FileArchiveConfigProvider interface {
 	MaxDirSize() uint64
 	MaxFileAge() int
 	MaxFileBackups() int
+	// EnableFileCompressは、暗号化が有効なら、設定にかかわらずfalseです。
 	EnableFileCompress() bool
 	CompressFormat() fsstore.CompressFormat
+	// CompressionSuppressedByEncryptionは、圧縮の設定が有効でも暗号化のために圧縮しないことを
+	// 返します。
+	CompressionSuppressedByEncryption() bool
+	// Encryptionは、archive fileの暗号化の設定です。
+	Encryption() fsstore.EncryptionConfig
 	ArchivePath() string      // ex.)/var/lib/{target}　(linuxの場合の例)
 	Dir() string              // ex.)/var/lib/{target}/{dir}/
 	DirCaseRetryable() string // ex.)/var/lib/{target}/{dir}/{retryable}

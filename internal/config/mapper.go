@@ -618,6 +618,12 @@ func newDeliveryInternalLogBatchConfig(
 	}
 }
 
+// newEncryptionConfigは、出力先ごとの暗号化の可否と、共通の公開鍵から暗号化の設定を作ります。
+// 公開鍵は可否にかかわらず渡し、要るかどうかは出力先の構築で判断します。
+func newEncryptionConfig(a *AppConfig, enabled bool) fsstore.EncryptionConfig {
+	return fsstore.EncryptionConfig{Enabled: enabled, Recipient: a.FsstoreConfig.EncryptionRecipient}
+}
+
 func NewFileLoggerConfig(a *AppConfig) *logger.FileLoggerConfig {
 	return &logger.FileLoggerConfig{
 		FsstoreConfig: fsstore.Config{
@@ -649,6 +655,7 @@ func NewFileLoggerConfig(a *AppConfig) *logger.FileLoggerConfig {
 				EnableFileCompress: a.Logger.FileConfig.FileSystemStoreConfig.EnableFileCompress,
 				CompressFormat:     a.Logger.FileConfig.FileSystemStoreConfig.CompressFormat,
 			},
+			Encryption: newEncryptionConfig(a, a.Logger.FileConfig.FileSystemStoreConfig.EnableFileEncrypt),
 			Overload: fsstore.FileArchiveOverloadPolicyConfig{
 				OverloadPolicy:        fsstore.OverloadPolicy(a.Logger.FileConfig.FileSystemStoreConfig.OverloadConfig.OverloadPolicy),
 				SpillDestination:      fsstore.SpillDestination(a.Logger.FileConfig.FileSystemStoreConfig.OverloadConfig.SpillDestination),
@@ -744,6 +751,7 @@ func NewAsyncFileLoggerConfig(a *AppConfig) *logger.FileLoggerConfig {
 				EnableFileCompress: a.AsyncBestEffortMultiLoggerConfig.FileConfig.FileSystemStoreConfig.EnableFileCompress,
 				CompressFormat:     a.AsyncBestEffortMultiLoggerConfig.FileConfig.FileSystemStoreConfig.CompressFormat,
 			},
+			Encryption: newEncryptionConfig(a, a.AsyncBestEffortMultiLoggerConfig.FileConfig.FileSystemStoreConfig.EnableFileEncrypt),
 			Overload: fsstore.FileArchiveOverloadPolicyConfig{
 				OverloadPolicy:        fsstore.OverloadPolicy(a.AsyncBestEffortMultiLoggerConfig.FileConfig.FileSystemStoreConfig.OverloadConfig.OverloadPolicy),
 				SpillDestination:      fsstore.SpillDestination(a.AsyncBestEffortMultiLoggerConfig.FileConfig.FileSystemStoreConfig.OverloadConfig.SpillDestination),
@@ -811,6 +819,7 @@ func NewAsyncFileLoggerConfig(a *AppConfig) *logger.FileLoggerConfig {
 func NewDeliveryFileLoggerConfig(a *AppConfig) *logger.DeliveryFileLoggerConfig {
 	return &logger.DeliveryFileLoggerConfig{
 		FsstoreConfig: fsstore.DeliveryFileWriteConfig{
+			Encryption: newEncryptionConfig(a, a.DeliveryLogger.DeliveryFileConfig.FileSystemStoreConfig.EnableFileEncrypt),
 			Layout: fsstore.FsstoreConfig{
 				Target:                       a.RuntimeConfig.Target,
 				LogPath:                      a.FsstoreConfig.LogPath,
@@ -1363,6 +1372,7 @@ func newFailureStoreConfig(
 				MaxDirSize:                 fh.Fsstore.FileArchiveConfig.MaxDirSize,
 				EnableFileCompress:         fh.Fsstore.FileArchiveConfig.EnableFileCompress,
 				CompressFormat:             fh.Fsstore.FileArchiveConfig.CompressFormat,
+				Encryption:                 newEncryptionConfig(a, fh.Fsstore.FileArchiveConfig.EnableFileEncrypt),
 				RotationType:               fh.Fsstore.FileArchiveConfig.FileRotation,
 				RotationDayOfWeek:          fh.Fsstore.FileArchiveConfig.FileRotationDayOfWeek,
 				MaxWriteRetries:            fh.Fsstore.FileArchiveConfig.MaxWriteRetries,
@@ -1442,6 +1452,7 @@ func newDeliveryFailureStoreConfig(
 			MaxDirSize:                 fh.FileArchiveConfig.MaxDirSize,
 			EnableFileCompress:         fh.FileArchiveConfig.EnableFileCompress,
 			CompressFormat:             fh.FileArchiveConfig.CompressFormat,
+			Encryption:                 newEncryptionConfig(a, fh.FileArchiveConfig.EnableFileEncrypt),
 			RotationType:               fh.FileArchiveConfig.FileRotation,
 			RotationDayOfWeek:          fh.FileArchiveConfig.FileRotationDayOfWeek,
 			MaxWriteRetries:            fh.FileArchiveConfig.MaxWriteRetries,

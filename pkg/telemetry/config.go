@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-jappe/heterolog/pkg/clickhouse"
+	"github.com/go-jappe/heterolog/pkg/fsstore"
 	"github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/opensearch"
@@ -250,6 +251,9 @@ type FileConfig struct {
 	// Path is the file that each batch is appended to as one line of OTLP
 	// JSON. Missing directories are created. The file is not rotated.
 	Path string
+	// Encryption encrypts the file with a public key; each batch is one
+	// encrypted chunk. See fsstore.EncryptionConfig.
+	Encryption fsstore.EncryptionConfig
 }
 
 // MetricExporter names a destination of metrics.

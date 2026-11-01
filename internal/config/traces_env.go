@@ -32,6 +32,8 @@ type TracesConfig struct {
 	Traces pkgtelemetry.TracesConfig
 	// FileDirは、spanのfileを置くdirectoryです。
 	FileDir string
+	// FileEncryptは、spanのfileを共通の公開鍵で暗号化します。
+	FileEncrypt bool
 	// FailureStore、OpenSearchFailureStore、ClickHouseFailureStoreは、otlp、opensearch、
 	// clickhouseの送り先のfailure storeの設定です。保存先のpathなど、ログと共通の項目は、
 	// MapTelemetryConfigが組み立てます。
@@ -117,6 +119,8 @@ func loadTracesConfig(env pkgenv.Lookup) (TracesConfig, error) {
 	cfg.Traces.ClickHouse = clickHouseCfg
 
 	cfg.FileDir = env.GetEnvString("HETEROLOG_TRACES_FILE_DIR", defaultTracesFileDir)
+	fileEncrypt, fileEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_TRACES_FILE_ENCRYPT", false)
+	cfg.FileEncrypt = fileEncrypt
 	failureStore, failureStoreErr := loadTelemetryFailureStoreConfig(env, tracesOTLPFailureStoreKeys)
 	cfg.FailureStore = failureStore
 	openSearchFailureStore, openSearchFailureStoreErr := loadTelemetryFailureStoreConfig(env, tracesOpenSearchFailureStoreKeys)
@@ -125,7 +129,7 @@ func loadTracesConfig(env pkgenv.Lookup) (TracesConfig, error) {
 	cfg.ClickHouseFailureStore = clickHouseFailureStore
 	return cfg, errors.Join(
 		samplingRatioErr, queueSizeErr, batchSizeErr, exportIntervalErr,
-		otlpErr, openSearchErr, clickHouseErr, failureStoreErr, openSearchFailureStoreErr, clickHouseFailureStoreErr,
+		otlpErr, openSearchErr, clickHouseErr, fileEncryptErr, failureStoreErr, openSearchFailureStoreErr, clickHouseFailureStoreErr,
 	)
 }
 
@@ -193,6 +197,7 @@ func MapTelemetryConfig(a AppConfig) pkgtelemetry.Config {
 	if a.Traces.Enabled {
 		cfg.Traces = a.Traces.Traces
 		cfg.Traces.File.Path = filepath.Join(a.FsstoreConfig.LogPath, a.RuntimeConfig.Target, a.Traces.FileDir, tracesFileName)
+		cfg.Traces.File.Encryption = newEncryptionConfig(&a, a.Traces.FileEncrypt)
 		cfg.Traces.OTLP.FailureStore = mapTelemetryFailureStoreConfig(&a, checkpointSourceTracesOTLP, a.Traces.FailureStore)
 		cfg.Traces.OpenSearch.FailureStore = mapTelemetryFailureStoreConfig(
 			&a, checkpointSourceTracesOpenSearch, a.Traces.OpenSearchFailureStore,
@@ -204,6 +209,7 @@ func MapTelemetryConfig(a AppConfig) pkgtelemetry.Config {
 	if a.Metrics.Enabled {
 		cfg.Metrics = a.Metrics.Metrics
 		cfg.Metrics.File.Path = filepath.Join(a.FsstoreConfig.LogPath, a.RuntimeConfig.Target, a.Metrics.FileDir, metricsFileName)
+		cfg.Metrics.File.Encryption = newEncryptionConfig(&a, a.Metrics.FileEncrypt)
 		cfg.Metrics.OTLP.FailureStore = mapTelemetryFailureStoreConfig(&a, checkpointSourceMetricsOTLP, a.Metrics.FailureStore)
 		cfg.Metrics.VictoriaMetrics.FailureStore = mapTelemetryFailureStoreConfig(
 			&a, checkpointSourceMetricsVictoriaMetrics, a.Metrics.VictoriaMetricsFailureStore,

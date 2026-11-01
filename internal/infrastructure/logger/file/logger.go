@@ -12,6 +12,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/appendlog"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/cipherfile"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile"
 	loggercommon "github.com/go-jappe/heterolog/internal/infrastructure/logger/common"
@@ -786,7 +787,7 @@ func (l *FileLogger) openLogFile(ctx context.Context, fileOperationTime time.Tim
 			return "", err
 		}
 		newPath := l.Fsstore.ActiveFilePath
-		file, err := appendlog.OpenFile(newPath)
+		file, err := l.Fsstore.OpenFile(newPath)
 		if err != nil {
 			l.Fsstore.ActiveFilePath = previousPath
 			l.Fsstore.FileName = previousFileName
@@ -1022,6 +1023,10 @@ func newFileLoggerBase(
 	if err != nil {
 		return nil, err
 	}
+	recipient, err := cipherfile.ResolveRecipient(cfg.Fsstore().Encryption())
+	if err != nil {
+		return nil, fmt.Errorf(ErrorMsgInvalidConfigStatus, err)
+	}
 	fl := &FileLogger{
 		Clock:          clock.NewUTCClock(),
 		LogFormatter:   formatter.NewPlainTextFormatter(timestampFormatter),
@@ -1030,9 +1035,10 @@ func newFileLoggerBase(
 		directoryPaths: directories,
 		overload:       overload,
 		Fsstore: appendlog.FileStore{
-			Config: cfg.Fsstore(),
-			Tracer: tracer,
-			Meter:  meter,
+			Config:    cfg.Fsstore(),
+			Recipient: recipient,
+			Tracer:    tracer,
+			Meter:     meter,
 		},
 		// managed uploaderは構築中から通知workerを起動します。公開後にこれらの
 		// 初期値を書き換えず、最初のmaintenance errorから設定済みhandlerへ渡します。
@@ -1141,6 +1147,9 @@ func newFileLoggerBase(
 	if openErr != nil {
 		openErr = fmt.Errorf(ErrorMsgOpenFile, openErr)
 		return nil, errors.Join(openErr, fl.closeOwnedFileResource())
+	}
+	if cfg.Fsstore().Lifecycle().CompressionSuppressedByEncryption() {
+		fl.dispatchWarn(ctx, fl.InternalWarnEntryWithContext(ctx, cipherfile.CompressionSuppressedWarning))
 	}
 
 	return fl, nil

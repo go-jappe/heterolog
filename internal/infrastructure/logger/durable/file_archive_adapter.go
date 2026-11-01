@@ -27,6 +27,7 @@ type FileArchiveConfigAdapter struct {
 	enableFileCompress         bool
 	compressFormat             fsstore.CompressFormat
 	compressionCodec           fsstore.CompressionCodec
+	encryption                 fsstore.EncryptionConfig
 	archivePath                string
 	dir                        string
 	dirCaseRetryable           string
@@ -69,6 +70,7 @@ func NewFileArchiveConfigAdapter(cfg pkgdurable.FileArchiveConfig) FileArchiveCo
 		enableFileCompress:         cfg.EnableFileCompress,
 		compressFormat:             cfg.CompressFormat,
 		compressionCodec:           cfg.CompressionCodec,
+		encryption:                 cfg.Encryption,
 		archivePath:                cfg.FailureFileArchivePath,
 		dir:                        cfg.Dir,
 		dirCaseRetryable:           cfg.DirCaseRetryable,
@@ -121,7 +123,14 @@ func (a FileArchiveConfigAdapter) MaxFileBackups() int {
 	return a.maxFileBackups
 }
 func (a FileArchiveConfigAdapter) EnableFileCompress() bool {
-	return a.enableFileCompress
+	// 暗号文は圧縮できないため、暗号化が有効なら圧縮しません。
+	return a.enableFileCompress && !a.encryption.Enabled
+}
+func (a FileArchiveConfigAdapter) CompressionSuppressedByEncryption() bool {
+	return a.enableFileCompress && a.encryption.Enabled
+}
+func (a FileArchiveConfigAdapter) Encryption() fsstore.EncryptionConfig {
+	return a.encryption
 }
 func (a FileArchiveConfigAdapter) CompressFormat() fsstore.CompressFormat {
 	return a.compressFormat

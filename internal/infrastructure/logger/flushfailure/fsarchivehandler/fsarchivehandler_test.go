@@ -304,6 +304,10 @@ func (c testArchiveConfig) EnableFileCompress() bool {
 func (c testArchiveConfig) CompressFormat() pkgfsstore.CompressFormat {
 	return c.compressFormat
 }
+func (c testArchiveConfig) CompressionSuppressedByEncryption() bool { return false }
+func (c testArchiveConfig) Encryption() pkgfsstore.EncryptionConfig {
+	return pkgfsstore.EncryptionConfig{}
+}
 func (c testArchiveConfig) CompressionCodec() pkgfsstore.CompressionCodec {
 	return c.compressionCodec
 }

@@ -27,6 +27,7 @@ type telemetryFailureStoreKeys struct {
 
 	ArchiveMaxFileSize, ArchiveRotate, ArchiveMaxBackups, ArchiveMaxAge, ArchiveMaxDirSize    string
 	ArchiveCompress, ArchiveCompressFormat, ArchiveLifecycleMode, ArchiveDir, ArchiveRotation string
+	ArchiveEncrypt                                                                            string
 	ArchiveOverloadPolicy, ArchiveSecondaryDestination                                        string
 	UploadEnabled, UploadType, UploadS3Bucket, UploadS3Prefix, UploadS3Destinations           string
 
@@ -96,6 +97,7 @@ func loadTelemetryFailureArchiveConfig(env pkgenv.Lookup, keys telemetryFailureS
 	maxAge, maxAgeErr := env.GetEnvInt(keys.ArchiveMaxAge, failure.DefaultFileArchiveMaxAge)
 	maxDirSize, maxDirSizeErr := env.GetEnvUint64Scaled(keys.ArchiveMaxDirSize, failure.DefaultFileArchiveMaxDirSizeMB, BytesPerMegabyte)
 	compress, compressErr := env.GetEnvBool(keys.ArchiveCompress, failure.DefaultFileArchiveCompressEnabled)
+	encrypt, encryptErr := env.GetEnvBool(keys.ArchiveEncrypt, false)
 	compressFormatKey := keys.ArchiveCompressFormat
 	compressFormat, compressFormatErr := loadLogCompressFormat(
 		env.GetEnvString(compressFormatKey, string(failure.DefaultFileArchiveCompressFormat)),
@@ -122,6 +124,7 @@ func loadTelemetryFailureArchiveConfig(env pkgenv.Lookup, keys telemetryFailureS
 		MaxDirSize:                 maxDirSize,
 		EnableFileCompress:         compress,
 		CompressFormat:             compressFormat,
+		EnableFileEncrypt:          encrypt,
 		FileRotation:               loadLogRotation(env.GetEnvString(keys.ArchiveRotation, string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 		FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
 		MaxWriteRetries:            fsstoreconfig.MaxFileOperationRetries,
@@ -132,7 +135,7 @@ func loadTelemetryFailureArchiveConfig(env pkgenv.Lookup, keys telemetryFailureS
 			SpillDestination: failure.ParseSpillDestination(env.GetEnvString(keys.ArchiveSecondaryDestination, string(failure.SpillDestinationStdout)), failure.SpillDestinationStdout),
 		},
 		HandlerConfig: internalerror.RoutingConfig{},
-	}, errors.Join(maxFileSizeErr, rotateErr, maxBackupsErr, maxAgeErr, maxDirSizeErr, compressErr, compressFormatErr, uploadErr)
+	}, errors.Join(maxFileSizeErr, rotateErr, maxBackupsErr, maxAgeErr, maxDirSizeErr, compressErr, compressFormatErr, encryptErr, uploadErr)
 }
 
 func loadTelemetryFailureSpoolConfig(env pkgenv.Lookup, keys telemetryFailureStoreKeys) (failure.SpoolConfig, error) {
@@ -232,6 +235,7 @@ var tracesOTLPFailureStoreKeys = telemetryFailureStoreKeys{
 	ArchiveMaxDirSize:           "HETEROLOG_MAX_TRACES_OTLP_ENABLE_DURABLE_FILE_ARCHIVE_DIR_SIZE_MB",
 	ArchiveCompress:             "HETEROLOG_ENABLE_TRACES_OTLP_DURABLE_FILE_ARCHIVE_COMPRESS",
 	ArchiveCompressFormat:       "HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
+	ArchiveEncrypt:              "HETEROLOG_ENABLE_TRACES_OTLP_DURABLE_FILE_ARCHIVE_ENCRYPT",
 	ArchiveLifecycleMode:        "HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_LIFECYCLE_MODE",
 	ArchiveDir:                  "HETEROLOG_TRACES_OTLP_FAILURE_ARCHIVE_DIR",
 	ArchiveRotation:             "HETEROLOG_TRACES_OTLP_DURABLE_FILE_ARCHIVE_ROTATION",
@@ -286,6 +290,7 @@ var tracesOpenSearchFailureStoreKeys = telemetryFailureStoreKeys{
 	ArchiveMaxDirSize:           "HETEROLOG_MAX_TRACES_OPENSEARCH_ENABLE_DURABLE_FILE_ARCHIVE_DIR_SIZE_MB",
 	ArchiveCompress:             "HETEROLOG_ENABLE_TRACES_OPENSEARCH_DURABLE_FILE_ARCHIVE_COMPRESS",
 	ArchiveCompressFormat:       "HETEROLOG_TRACES_OPENSEARCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
+	ArchiveEncrypt:              "HETEROLOG_ENABLE_TRACES_OPENSEARCH_DURABLE_FILE_ARCHIVE_ENCRYPT",
 	ArchiveLifecycleMode:        "HETEROLOG_TRACES_OPENSEARCH_DURABLE_FILE_ARCHIVE_LIFECYCLE_MODE",
 	ArchiveDir:                  "HETEROLOG_TRACES_OPENSEARCH_FAILURE_ARCHIVE_DIR",
 	ArchiveRotation:             "HETEROLOG_TRACES_OPENSEARCH_DURABLE_FILE_ARCHIVE_ROTATION",
@@ -340,6 +345,7 @@ var tracesClickHouseFailureStoreKeys = telemetryFailureStoreKeys{
 	ArchiveMaxDirSize:           "HETEROLOG_MAX_TRACES_CLICKHOUSE_ENABLE_DURABLE_FILE_ARCHIVE_DIR_SIZE_MB",
 	ArchiveCompress:             "HETEROLOG_ENABLE_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_COMPRESS",
 	ArchiveCompressFormat:       "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
+	ArchiveEncrypt:              "HETEROLOG_ENABLE_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ENCRYPT",
 	ArchiveLifecycleMode:        "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_LIFECYCLE_MODE",
 	ArchiveDir:                  "HETEROLOG_TRACES_CLICKHOUSE_FAILURE_ARCHIVE_DIR",
 	ArchiveRotation:             "HETEROLOG_TRACES_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ROTATION",
@@ -394,6 +400,7 @@ var metricsOTLPFailureStoreKeys = telemetryFailureStoreKeys{
 	ArchiveMaxDirSize:           "HETEROLOG_MAX_METRICS_OTLP_ENABLE_DURABLE_FILE_ARCHIVE_DIR_SIZE_MB",
 	ArchiveCompress:             "HETEROLOG_ENABLE_METRICS_OTLP_DURABLE_FILE_ARCHIVE_COMPRESS",
 	ArchiveCompressFormat:       "HETEROLOG_METRICS_OTLP_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
+	ArchiveEncrypt:              "HETEROLOG_ENABLE_METRICS_OTLP_DURABLE_FILE_ARCHIVE_ENCRYPT",
 	ArchiveLifecycleMode:        "HETEROLOG_METRICS_OTLP_DURABLE_FILE_ARCHIVE_LIFECYCLE_MODE",
 	ArchiveDir:                  "HETEROLOG_METRICS_OTLP_FAILURE_ARCHIVE_DIR",
 	ArchiveRotation:             "HETEROLOG_METRICS_OTLP_DURABLE_FILE_ARCHIVE_ROTATION",
@@ -448,6 +455,7 @@ var metricsVictoriaMetricsFailureStoreKeys = telemetryFailureStoreKeys{
 	ArchiveMaxDirSize:           "HETEROLOG_MAX_METRICS_VICTORIAMETRICS_ENABLE_DURABLE_FILE_ARCHIVE_DIR_SIZE_MB",
 	ArchiveCompress:             "HETEROLOG_ENABLE_METRICS_VICTORIAMETRICS_DURABLE_FILE_ARCHIVE_COMPRESS",
 	ArchiveCompressFormat:       "HETEROLOG_METRICS_VICTORIAMETRICS_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
+	ArchiveEncrypt:              "HETEROLOG_ENABLE_METRICS_VICTORIAMETRICS_DURABLE_FILE_ARCHIVE_ENCRYPT",
 	ArchiveLifecycleMode:        "HETEROLOG_METRICS_VICTORIAMETRICS_DURABLE_FILE_ARCHIVE_LIFECYCLE_MODE",
 	ArchiveDir:                  "HETEROLOG_METRICS_VICTORIAMETRICS_FAILURE_ARCHIVE_DIR",
 	ArchiveRotation:             "HETEROLOG_METRICS_VICTORIAMETRICS_DURABLE_FILE_ARCHIVE_ROTATION",

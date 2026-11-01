@@ -21,6 +21,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/jsonlines"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/otlphttp"
 	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/retrying"
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/cipherfile"
 	metricsdelivery "github.com/go-jappe/heterolog/internal/infrastructure/metrics"
 	"github.com/go-jappe/heterolog/internal/infrastructure/metrics/victoriametrics"
 	"github.com/go-jappe/heterolog/internal/infrastructure/otlpcommon"
@@ -149,7 +150,11 @@ func newTraceDestinations(
 		case pkgtelemetry.TraceExporterStdout:
 			destinations = append(destinations, traces.Destination{Exporter: jsonlines.NewStdout(traces.MarshalJSON(resource))})
 		case pkgtelemetry.TraceExporterFile:
-			exporter, err := jsonlines.OpenFile(cfg.Traces.File.Path, traces.MarshalJSON(resource))
+			recipient, err := cipherfile.ResolveRecipient(cfg.Traces.File.Encryption)
+			if err != nil {
+				return nil, errors.Join(fmt.Errorf("create the file trace exporter: %w", err), closeAll())
+			}
+			exporter, err := jsonlines.OpenFile(cfg.Traces.File.Path, traces.MarshalJSON(resource), recipient)
 			if err != nil {
 				return nil, errors.Join(fmt.Errorf("create the file trace exporter: %w", err), closeAll())
 			}
@@ -284,7 +289,11 @@ func newMetricDestinations(
 		case pkgtelemetry.MetricExporterStdout:
 			destinations = append(destinations, metricsdelivery.Destination{Exporter: jsonlines.NewStdout(metricsdelivery.MarshalJSON(resource))})
 		case pkgtelemetry.MetricExporterFile:
-			exporter, err := jsonlines.OpenFile(cfg.Metrics.File.Path, metricsdelivery.MarshalJSON(resource))
+			recipient, err := cipherfile.ResolveRecipient(cfg.Metrics.File.Encryption)
+			if err != nil {
+				return nil, errors.Join(fmt.Errorf("create the file metric exporter: %w", err), closeAll())
+			}
+			exporter, err := jsonlines.OpenFile(cfg.Metrics.File.Path, metricsdelivery.MarshalJSON(resource), recipient)
 			if err != nil {
 				return nil, errors.Join(fmt.Errorf("create the file metric exporter: %w", err), closeAll())
 			}

@@ -258,9 +258,10 @@ func loadFsstoreConfig(env pkgenv.Lookup) (fsstoreconfig.CommonFileSystemStoreCo
 		SpoolPath:             env.GetEnvString("HETEROLOG_SYSTEM_LIB_DIR", appstatepath.DefaultAppStateBaseDir()),
 		// TargetはCLIで上書きされ得るため、ここではbase directoryだけを保持する。
 		// failure archiveとarchive checkpointはmapper後に最終RuntimeConfig.Targetを付与する。
-		AppStatePath:   env.GetEnvString("HETEROLOG_APP_STATE_DIR", appstatepath.DefaultAppStateBaseDir()),
-		FileNameFormat: fsstore.FileNameFormat,
-		FileDateFormat: fsstore.FileDateFormat,
+		AppStatePath:        env.GetEnvString("HETEROLOG_APP_STATE_DIR", appstatepath.DefaultAppStateBaseDir()),
+		FileNameFormat:      fsstore.FileNameFormat,
+		FileDateFormat:      fsstore.FileDateFormat,
+		EncryptionRecipient: env.GetEnvString("HETEROLOG_ENCRYPTION_RECIPIENT", ""),
 	}, errors.Join(environmentErrors...)
 }
 
@@ -1915,6 +1916,10 @@ func loadFileConfig(env pkgenv.Lookup) (logconfig.FileConfig, error) {
 	if enableLogFileCompressErr != nil {
 		environmentErrors = append(environmentErrors, enableLogFileCompressErr)
 	}
+	enableLogFileEncrypt, enableLogFileEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_LOG_FILE_ENCRYPT", false)
+	if enableLogFileEncryptErr != nil {
+		environmentErrors = append(environmentErrors, enableLogFileEncryptErr)
+	}
 	enableLogFileSeparateErrorLogs, enableLogFileSeparateErrorLogsErr := env.GetEnvBool("HETEROLOG_ENABLE_LOG_FILE_SEPARATE_ERROR_LOGS", logconfig.DefaultIsSeparateErrorLogsEnabled)
 	if enableLogFileSeparateErrorLogsErr != nil {
 		environmentErrors = append(environmentErrors, enableLogFileSeparateErrorLogsErr)
@@ -1959,6 +1964,7 @@ func loadFileConfig(env pkgenv.Lookup) (logconfig.FileConfig, error) {
 			MaxDirSize:     maxDebugLogFileDirSizeMb,
 		},
 		EnableFileCompress: enableLogFileCompress,
+		EnableFileEncrypt:  enableLogFileEncrypt,
 		CompressFormat:     compressFormat,
 		LifecycleMode:      logconfig.ParseLogFileLifecycleMode(env.GetEnvString("HETEROLOG_LOG_FILE_LIFECYCLE_MODE", string(logconfig.DefaultLogFileLifecycleMode)), logconfig.DefaultLogFileLifecycleMode),
 		OverloadConfig: logconfig.FileOverLoadPolicyConfig{
@@ -2104,6 +2110,10 @@ func loadAsyncFileConfig(env pkgenv.Lookup) (logconfig.FileConfig, error) {
 	if enableAsyncLogFileCompressErr != nil {
 		environmentErrors = append(environmentErrors, enableAsyncLogFileCompressErr)
 	}
+	enableAsyncLogFileEncrypt, enableAsyncLogFileEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_LOG_FILE_ENCRYPT", false)
+	if enableAsyncLogFileEncryptErr != nil {
+		environmentErrors = append(environmentErrors, enableAsyncLogFileEncryptErr)
+	}
 	enableAsyncLogFileSeparateErrorLogs, enableAsyncLogFileSeparateErrorLogsErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_LOG_FILE_SEPARATE_ERROR_LOGS", logconfig.AsyncDefaultIsSeparateErrorLogsEnabled)
 	if enableAsyncLogFileSeparateErrorLogsErr != nil {
 		environmentErrors = append(environmentErrors, enableAsyncLogFileSeparateErrorLogsErr)
@@ -2148,6 +2158,7 @@ func loadAsyncFileConfig(env pkgenv.Lookup) (logconfig.FileConfig, error) {
 			MaxDirSize:     maxAsyncDebugLogFileDirSizeMb,
 		},
 		EnableFileCompress: enableAsyncLogFileCompress,
+		EnableFileEncrypt:  enableAsyncLogFileEncrypt,
 		CompressFormat:     compressFormat,
 		LifecycleMode:      logconfig.ParseLogFileLifecycleMode(env.GetEnvString("HETEROLOG_ASYNC_LOG_FILE_LIFECYCLE_MODE", string(logconfig.DefaultAsyncLogFileLifecycleMode)), logconfig.DefaultAsyncLogFileLifecycleMode),
 		OverloadConfig: logconfig.FileOverLoadPolicyConfig{
@@ -2293,6 +2304,10 @@ func loadDeliveryFileConfig(env pkgenv.Lookup) (logconfig.DeliveryFileConfig, er
 	if enableDeliveryLogFileCompressErr != nil {
 		environmentErrors = append(environmentErrors, enableDeliveryLogFileCompressErr)
 	}
+	enableDeliveryLogFileEncrypt, enableDeliveryLogFileEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_DELIVERY_LOG_FILE_ENCRYPT", false)
+	if enableDeliveryLogFileEncryptErr != nil {
+		environmentErrors = append(environmentErrors, enableDeliveryLogFileEncryptErr)
+	}
 	enableDeliveryLogFileSeparateErrorLogs, enableDeliveryLogFileSeparateErrorLogsErr := env.GetEnvBool("HETEROLOG_ENABLE_DELIVERY_LOG_FILE_SEPARATE_ERROR_LOGS", logconfig.DefaultIsSeparateErrorLogsEnabled)
 	if enableDeliveryLogFileSeparateErrorLogsErr != nil {
 		environmentErrors = append(environmentErrors, enableDeliveryLogFileSeparateErrorLogsErr)
@@ -2339,6 +2354,7 @@ func loadDeliveryFileConfig(env pkgenv.Lookup) (logconfig.DeliveryFileConfig, er
 		RotationType:                       loadLogRotation(env.GetEnvString("HETEROLOG_DELIVERY_LOG_FILE_ROTATION", string(logconfig.DefaultLogFileRotation)), logconfig.DefaultLogFileRotation),
 		RotationDayOfWeek:                  logconfig.DeliveryLogRotationDayOfWeek,
 		EnableFileCompress:                 enableDeliveryLogFileCompress,
+		EnableFileEncrypt:                  enableDeliveryLogFileEncrypt,
 		CompressFormat:                     compressFormat,
 		LifecycleMode:                      logconfig.ParseLogFileLifecycleMode(env.GetEnvString("HETEROLOG_DELIVERY_LOG_FILE_LIFECYCLE_MODE", string(logconfig.DefaultDeliveryLogFileLifecycleMode)), logconfig.DefaultDeliveryLogFileLifecycleMode),
 		WriteLogFileWarnThresholdDuration:  fsstoreconfig.WriteLogFileWarnThresholdDuration,
@@ -3649,6 +3665,10 @@ func loadOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandl
 			if enableOpensearchDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableOpensearchDurableFileArchiveCompressErr)
 			}
+			enableOpensearchDurableFileArchiveEncrypt, enableOpensearchDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_OPENSEARCH_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableOpensearchDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableOpensearchDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_OPENSEARCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_OPENSEARCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -3672,6 +3692,7 @@ func loadOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandl
 				MaxFileAge:                 maxOpensearchEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxOpensearchEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableOpensearchDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableOpensearchDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_OPENSEARCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
@@ -3792,6 +3813,10 @@ func loadAsyncOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.Failure
 			if enableAsyncOpensearchDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableAsyncOpensearchDurableFileArchiveCompressErr)
 			}
+			enableAsyncOpensearchDurableFileArchiveEncrypt, enableAsyncOpensearchDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_OPENSEARCH_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableAsyncOpensearchDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableAsyncOpensearchDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultAsyncFileArchiveCompressFormat)),
 				"HETEROLOG_ASYNC_OPENSEARCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -3815,6 +3840,7 @@ func loadAsyncOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.Failure
 				MaxFileAge:                 maxAsyncOpensearchEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxAsyncOpensearchEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableAsyncOpensearchDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableAsyncOpensearchDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_ASYNC_OPENSEARCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultAsyncFileArchiveRotation)), failure.DefaultAsyncFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultAsyncFileArchiveRotationDayOfWeek,
@@ -3941,6 +3967,10 @@ func loadDeliveryOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.Deli
 			if enableDeliveryOpensearchDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableDeliveryOpensearchDurableFileArchiveCompressErr)
 			}
+			enableDeliveryOpensearchDurableFileArchiveEncrypt, enableDeliveryOpensearchDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_DELIVERY_OPENSEARCH_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableDeliveryOpensearchDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableDeliveryOpensearchDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_DELIVERY_OPENSEARCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -3964,6 +3994,7 @@ func loadDeliveryOpenSearchFailureHandlerConfig(env pkgenv.Lookup) (failure.Deli
 				MaxFileAge:                 maxDeliveryOpensearchEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxDeliveryOpensearchEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableDeliveryOpensearchDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableDeliveryOpensearchDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_DELIVERY_OPENSEARCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
@@ -4105,6 +4136,10 @@ func loadLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandlerConf
 			if enableLokiDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableLokiDurableFileArchiveCompressErr)
 			}
+			enableLokiDurableFileArchiveEncrypt, enableLokiDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_LOKI_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableLokiDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableLokiDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_LOKI_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_LOKI_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -4128,6 +4163,7 @@ func loadLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandlerConf
 				MaxFileAge:                 maxLokiEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxLokiEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableLokiDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableLokiDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_LOKI_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
@@ -4241,6 +4277,10 @@ func loadAsyncLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandle
 			if enableAsyncLokiDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableAsyncLokiDurableFileArchiveCompressErr)
 			}
+			enableAsyncLokiDurableFileArchiveEncrypt, enableAsyncLokiDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_LOKI_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableAsyncLokiDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableAsyncLokiDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_ASYNC_LOKI_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_ASYNC_LOKI_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -4264,6 +4304,7 @@ func loadAsyncLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandle
 				MaxFileAge:                 maxAsyncLokiEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxAsyncLokiEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableAsyncLokiDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableAsyncLokiDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_ASYNC_LOKI_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
@@ -4384,6 +4425,10 @@ func loadDeliveryLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.DeliveryFa
 			if enableDeliveryLokiDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableDeliveryLokiDurableFileArchiveCompressErr)
 			}
+			enableDeliveryLokiDurableFileArchiveEncrypt, enableDeliveryLokiDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_DELIVERY_LOKI_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableDeliveryLokiDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableDeliveryLokiDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_DELIVERY_LOKI_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_DELIVERY_LOKI_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -4407,6 +4452,7 @@ func loadDeliveryLokiFailureHandlerConfig(env pkgenv.Lookup) (failure.DeliveryFa
 				MaxFileAge:                 maxDeliveryLokiEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxDeliveryLokiEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableDeliveryLokiDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableDeliveryLokiDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_DELIVERY_LOKI_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
@@ -4543,6 +4589,10 @@ func loadCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureH
 			if enableCloudwatchDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableCloudwatchDurableFileArchiveCompressErr)
 			}
+			enableCloudwatchDurableFileArchiveEncrypt, enableCloudwatchDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_CLOUDWATCH_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableCloudwatchDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableCloudwatchDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_CLOUDWATCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_CLOUDWATCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -4566,6 +4616,7 @@ func loadCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureH
 				MaxFileAge:                 maxCloudwatchEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxCloudwatchEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableCloudwatchDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableCloudwatchDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_CLOUDWATCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
@@ -4672,6 +4723,10 @@ func loadAsyncCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.Fai
 			if enableAsyncCloudwatchDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableAsyncCloudwatchDurableFileArchiveCompressErr)
 			}
+			enableAsyncCloudwatchDurableFileArchiveEncrypt, enableAsyncCloudwatchDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_CLOUDWATCH_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableAsyncCloudwatchDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableAsyncCloudwatchDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_ASYNC_CLOUDWATCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_ASYNC_CLOUDWATCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -4695,6 +4750,7 @@ func loadAsyncCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.Fai
 				MaxFileAge:                 maxAsyncCloudwatchEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxAsyncCloudwatchEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableAsyncCloudwatchDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableAsyncCloudwatchDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_ASYNC_CLOUDWATCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
@@ -4800,6 +4856,10 @@ func loadDeliveryCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.
 			if enableDeliveryCloudwatchDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableDeliveryCloudwatchDurableFileArchiveCompressErr)
 			}
+			enableDeliveryCloudwatchDurableFileArchiveEncrypt, enableDeliveryCloudwatchDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_DELIVERY_CLOUDWATCH_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableDeliveryCloudwatchDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableDeliveryCloudwatchDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_DELIVERY_CLOUDWATCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_DELIVERY_CLOUDWATCH_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -4823,6 +4883,7 @@ func loadDeliveryCloudWatchLogsFailureHandlerConfig(env pkgenv.Lookup) (failure.
 				MaxFileAge:                 maxDeliveryCloudwatchEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxDeliveryCloudwatchEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableDeliveryCloudwatchDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableDeliveryCloudwatchDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_DELIVERY_CLOUDWATCH_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
@@ -4936,6 +4997,10 @@ func loadClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandl
 			if enableClickhouseDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableClickhouseDurableFileArchiveCompressErr)
 			}
+			enableClickhouseDurableFileArchiveEncrypt, enableClickhouseDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableClickhouseDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableClickhouseDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_CLICKHOUSE_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_CLICKHOUSE_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -4959,6 +5024,7 @@ func loadClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.FailureHandl
 				MaxFileAge:                 maxClickhouseEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxClickhouseEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableClickhouseDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableClickhouseDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
@@ -5065,6 +5131,10 @@ func loadAsyncClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.Failure
 			if enableAsyncClickhouseDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableAsyncClickhouseDurableFileArchiveCompressErr)
 			}
+			enableAsyncClickhouseDurableFileArchiveEncrypt, enableAsyncClickhouseDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_ASYNC_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableAsyncClickhouseDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableAsyncClickhouseDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_ASYNC_CLICKHOUSE_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -5088,6 +5158,7 @@ func loadAsyncClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.Failure
 				MaxFileAge:                 maxAsyncClickhouseEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxAsyncClickhouseEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableAsyncClickhouseDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableAsyncClickhouseDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_ASYNC_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,
@@ -5193,6 +5264,10 @@ func loadDeliveryClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.Deli
 			if enableDeliveryClickhouseDurableFileArchiveCompressErr != nil {
 				environmentErrors = append(environmentErrors, enableDeliveryClickhouseDurableFileArchiveCompressErr)
 			}
+			enableDeliveryClickhouseDurableFileArchiveEncrypt, enableDeliveryClickhouseDurableFileArchiveEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_DELIVERY_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ENCRYPT", false)
+			if enableDeliveryClickhouseDurableFileArchiveEncryptErr != nil {
+				environmentErrors = append(environmentErrors, enableDeliveryClickhouseDurableFileArchiveEncryptErr)
+			}
 			compressFormat, compressFormatErr := loadLogCompressFormat(
 				env.GetEnvString("HETEROLOG_DELIVERY_CLICKHOUSE_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT", string(failure.DefaultFileArchiveCompressFormat)),
 				"HETEROLOG_DELIVERY_CLICKHOUSE_DURABLE_FILE_ARCHIVE_COMPRESS_FORMAT",
@@ -5216,6 +5291,7 @@ func loadDeliveryClickHouseFailureHandlerConfig(env pkgenv.Lookup) (failure.Deli
 				MaxFileAge:                 maxDeliveryClickhouseEnableDurableFileArchiveAge,
 				MaxDirSize:                 maxDeliveryClickhouseEnableDurableFileArchiveDirSizeMb,
 				EnableFileCompress:         enableDeliveryClickhouseDurableFileArchiveCompress,
+				EnableFileEncrypt:          enableDeliveryClickhouseDurableFileArchiveEncrypt,
 				CompressFormat:             compressFormat,
 				FileRotation:               loadLogRotation(env.GetEnvString("HETEROLOG_DELIVERY_CLICKHOUSE_DURABLE_FILE_ARCHIVE_ROTATION", string(failure.DefaultFileArchiveRotation)), failure.DefaultFileArchiveRotation),
 				FileRotationDayOfWeek:      failure.DefaultFileArchiveRotationDayOfWeek,

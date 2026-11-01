@@ -65,7 +65,7 @@ func TestArchiveFailedAppendPreservesEarlierSuccessAndNextRecord(t *testing.T) {
 									return n, err
 								}
 								return n, writeErr
-							}), records...)
+							}), nil, records...)
 						}
 					}
 					if category == failurearchive.FailureCategoryRetryable {
@@ -209,6 +209,6 @@ func (f archiveWriteFunc) Write(p []byte) (int, error) { return f(p) }
 
 func installPartialArchiveWrite(pipeline *FailureArchivePipeline, writeErr error) {
 	pipeline.handler.appendJSONLWriter = func(writer io.Writer, records ...any) (uint64, error) {
-		return writeArchiveJSONL(&partialArchiveWriter{writer: writer, limit: 7, err: writeErr}, records...)
+		return writeArchiveJSONL(&partialArchiveWriter{writer: writer, limit: 7, err: writeErr}, nil, records...)
 	}
 }

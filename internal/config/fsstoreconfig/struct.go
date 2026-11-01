@@ -17,4 +17,7 @@ type CommonFileSystemStoreConfig struct {
 	AppStatePath   string // failure archiveやarchive checkpointを保存するbase path。最終RuntimeConfig.Targetは利用側で付与する
 	FileNameFormat string // 通常log fileに使用する命名規則。failure archiveはJSONL固定
 	FileDateFormat string // 通常logとfailure archiveのfile名に含める日付命名規則
+	// EncryptionRecipientは、fileを暗号化する公開鍵（HETEROLOG_ENCRYPTION_RECIPIENT）です。
+	// 全出力先で共通で、出力先ごとのENABLE_*_ENCRYPTで暗号化する出力先を選びます。
+	EncryptionRecipient string
 }

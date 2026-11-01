@@ -627,6 +627,7 @@ type FileSystemStoreConfig struct {
 	DebugPurge                         *fsstore.FilePurgeConfig
 	EnableFileCompress                 bool
 	CompressFormat                     fsstore.CompressFormat
+	EnableFileEncrypt                  bool // 共通の公開鍵でlog fileを暗号化します。
 	RotationType                       fsstore.FileRotationType
 	RotationDayOfWeek                  time.Weekday
 	SamplingConfig                     SamplingConfig
@@ -666,6 +667,7 @@ type DeliveryFileSystemStoreConfig struct {
 	RotationDayOfWeek            time.Weekday
 	EnableFileCompress           bool
 	CompressFormat               fsstore.CompressFormat
+	EnableFileEncrypt            bool // 共通の公開鍵でlog fileを暗号化します。
 
 	WriteLogFileWarnThresholdDuration  time.Duration
 	WriteLogFileErrorThresholdDuration time.Duration

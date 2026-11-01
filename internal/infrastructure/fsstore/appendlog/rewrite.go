@@ -75,10 +75,14 @@ func (fs *FileStore) executeWriteStringWithRetry(
 ) (uint64, error) {
 	// O_APPENDへの部分書き込みはすでにfileへ反映されています。同じprefixを
 	// 再度appendしないよう、確定したbyte位置をattempt間で保持します。
-	line := msg + "\n"
+	// 暗号化は再試行の前に一度だけ行い、再試行は同じchunkの残りを書きます。
+	line, err := fs.frame(msg + "\n")
+	if err != nil {
+		return 0, err
+	}
 	writtenBytes := 0
 	var finalWriteErr error
-	err := logging.RetryWithLog(
+	err = logging.RetryWithLog(
 		func() error {
 			if finalWriteErr != nil {
 				// 全量書き込みと同時に返されたerrorや不正なbyte数は、同じ行を

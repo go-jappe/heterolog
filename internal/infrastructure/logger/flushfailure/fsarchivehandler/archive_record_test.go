@@ -22,7 +22,7 @@ func TestArchiveFailureRecordSerializesFailureCategory(t *testing.T) {
 				Payload: map[string]any{"id": "failed-record"},
 			})
 			var output bytes.Buffer
-			if _, err := writeArchiveJSONL(&output, record); err != nil {
+			if _, err := writeArchiveJSONL(&output, nil, record); err != nil {
 				t.Fatal(err)
 			}
 			var fields map[string]json.RawMessage

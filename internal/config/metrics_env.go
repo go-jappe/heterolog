@@ -28,6 +28,8 @@ type MetricsConfig struct {
 	Metrics pkgtelemetry.MetricsConfig
 	// FileDirは、metricsのfileを置くdirectoryです。
 	FileDir string
+	// FileEncryptは、metricsのfileを共通の公開鍵で暗号化します。
+	FileEncrypt bool
 	// FailureStoreとVictoriaMetricsFailureStoreは、otlpとvictoriametricsの送り先のfailure
 	// storeの設定です。保存先のpathなど、ログと共通の項目は、MapTelemetryConfigが組み立てます。
 	FailureStore                TelemetryFailureStoreConfig
@@ -81,13 +83,15 @@ func loadMetricsConfig(env pkgenv.Lookup) (MetricsConfig, error) {
 	cfg.Metrics.VictoriaMetrics = victoriaMetricsCfg
 
 	cfg.FileDir = env.GetEnvString("HETEROLOG_METRICS_FILE_DIR", defaultMetricsFileDir)
+	fileEncrypt, fileEncryptErr := env.GetEnvBool("HETEROLOG_ENABLE_METRICS_FILE_ENCRYPT", false)
+	cfg.FileEncrypt = fileEncrypt
 	failureStore, failureStoreErr := loadTelemetryFailureStoreConfig(env, metricsOTLPFailureStoreKeys)
 	cfg.FailureStore = failureStore
 	victoriaMetricsFailureStore, victoriaMetricsFailureStoreErr := loadTelemetryFailureStoreConfig(env, metricsVictoriaMetricsFailureStoreKeys)
 	cfg.VictoriaMetricsFailureStore = victoriaMetricsFailureStore
 	return cfg, errors.Join(
 		exportIntervalErr, queueSizeErr, cardinalityLimitErr, boundsErr,
-		otlpErr, victoriaMetricsErr, failureStoreErr, victoriaMetricsFailureStoreErr,
+		otlpErr, victoriaMetricsErr, fileEncryptErr, failureStoreErr, victoriaMetricsFailureStoreErr,
 	)
 }
 

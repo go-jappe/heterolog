@@ -10,6 +10,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/application/observer"
 	"github.com/go-jappe/heterolog/internal/application/requestctx"
 	checkpointstore "github.com/go-jappe/heterolog/internal/infrastructure/fsstore/checkpoint"
+	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/cipherfile"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/directorylease"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/failurearchive"
 	"github.com/go-jappe/heterolog/internal/infrastructure/fsstore/name/logpattern"
@@ -136,8 +137,13 @@ func NewFailureArchivePipeline(
 		pipeline, err = archivePipeline.cleanupFailedConstruction(err)
 	}()
 
+	recipient, err := cipherfile.ResolveRecipient(cfg.Encryption())
+	if err != nil {
+		return nil, fmt.Errorf(ErrorMsgInvalidConfigStatus, err)
+	}
 	archiveHandler.Fsstore = &failurearchive.FileStore{
-		Config: cfg,
+		Config:    cfg,
+		Recipient: recipient,
 	}
 	archiveHandler.OverloadHandler = overloadHandler
 	// retryable/permanentの初期active fileはClockが返す同じ構築時刻から
@@ -266,6 +272,10 @@ func NewFailureArchivePipeline(
 			return nil, fmt.Errorf("%w: %w", ErrFailureArchiveUploadDestinationReconciliation, err)
 		}
 		archivePipeline.runnerRuntime.start(ctx)
+	}
+
+	if cfg.CompressionSuppressedByEncryption() {
+		archiveHandler.delegateWarn(ctx, archiveHandler.internalCallerWarnEntry(cipherfile.CompressionSuppressedWarning))
 	}
 
 	constructionComplete = true

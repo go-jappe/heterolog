@@ -26,7 +26,7 @@ func TestOpenFileAppendsOneJSONLinePerBatch(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{}\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
-	exporter, err := OpenFile(path, marshalSpans)
+	exporter, err := OpenFile(path, marshalSpans, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestOpenFileReportsAnUnusablePath(t *testing.T) {
 	if err := os.WriteFile(blocker, nil, 0o640); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := OpenFile(filepath.Join(blocker, "spans.jsonl"), marshalSpans); err == nil {
+	if _, err := OpenFile(filepath.Join(blocker, "spans.jsonl"), marshalSpans, nil); err == nil {
 		t.Error("OpenFile under a regular file succeeded")
 	}
 }
