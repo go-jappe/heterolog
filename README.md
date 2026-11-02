@@ -4,6 +4,8 @@
 
 heterolog is a logging library for Go applications whose logs must arrive. One logging call writes to several destinations at once: stdout, files, Slack, OpenSearch, Loki, CloudWatch Logs, and ClickHouse. When a log server cannot be reached, the log is kept on local disk and sent again when the server is back, even after the application restarts. You can use it through the standard `log/slog` package.
 
+It can also send traces and metrics the same way, and it comes with features for operations: changing the log level while running, encrypting log files, and recovering the logs of a stopped application.
+
 - Module path: `github.com/go-jappe/heterolog`
 - Requires Go 1.27.3 or later
 - License: [MIT License](LICENSE)
@@ -46,19 +48,26 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 
 ## Features
 
-- Destinations: stdout, file, Slack, OpenSearch, Loki, CloudWatch Logs, and ClickHouse, in any combination.
-- Three loggers with different guarantees: synchronous (returns errors), asynchronous (best effort), and delivery (reports the result for each destination).
-- A `log/slog` handler.
-- Log files with rotation, compression (gzip, zstd, lz4, xz), retention, and upload to S3 or S3-compatible storage such as Backblaze B2.
-- Optional encryption of the log files, failure archives and trace/metric files with a public key: the process holds no key that can read them, and a CLI decrypts them with the private key. The spool can be encrypted with a symmetric key against offline copies.
-- A local spool for logs that could not be sent, replayed automatically and following `Retry-After` across restarts.
-- Overload protection with a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
-- Configuration in code, or from `HETEROLOG_` environment variables and an env file.
-- Level and sampling changes while running, in code or through a token-protected HTTP API, which also reports the configuration in use and the status of the process, destinations, spools and disks, with warnings, and serves a browser page for all of it.
-- Traces: a `Tracer`, and an exporter for the OpenTelemetry SDK, that send spans to an OTLP/HTTP receiver, OpenSearch (for its Trace Analytics), ClickHouse (in the table of the OpenTelemetry Collector), a file, or stdout in batches with retries. Spans that could not be sent go to the same spool and failure archive as logs. The loggers can record their own work as spans.
-- Metrics: a `Meter` that sends counters, gauges, and histograms to an OTLP/HTTP receiver, VictoriaMetrics, a file, or stdout, with the same retries, spool, and failure archive.
-- A CLI that recovers the log files of a stopped application.
-- Tested on Linux, Windows, and macOS, including case-insensitive file systems.
+**Core**
+
+- **Several destinations at once**: stdout, file, Slack, OpenSearch, Loki, CloudWatch Logs, and ClickHouse, in any combination.
+- **Logs that could not be sent are not lost**: temporary failures are saved to a local spool and sent again automatically, following `Retry-After` across restarts. A log whose outcome is unknown is set aside for a person to check, instead of being sent twice or deleted.
+- **Three loggers for different needs**: synchronous (returns errors), asynchronous (best effort), and delivery (reports the result for each destination).
+- **Works with `log/slog`**: use it as a standard handler.
+- **Configuration in code or from the environment**: `HETEROLOG_` environment variables and an env file. With no settings, it writes to stdout only.
+
+**Operations and more**
+
+- **Level and sampling changes while running**: in code, or through a token-protected HTTP API, without a restart.
+- **Status**: the same API reports the configuration in use and the status of the process, destinations, spools, and disks, with warnings, and serves a browser page for all of it.
+- **Log files**: rotation, compression (gzip, zstd, lz4, xz), retention, and upload to S3 or S3-compatible storage.
+- **Optional encryption**: log files, failure archives, and trace/metric files are encrypted with a public key and decrypted by a CLI with the private key. The spool can be encrypted with a symmetric key.
+- **Overload protection**: a free disk space threshold, an optional memory pressure monitor, and `drop`/`degrade` policies.
+- **Traces**: send spans to an OTLP/HTTP receiver, OpenSearch (for its Trace Analytics), ClickHouse, a file, or stdout, also as an exporter for the OpenTelemetry SDK.
+- **Metrics**: send counters, gauges, and histograms to an OTLP/HTTP receiver, VictoriaMetrics, a file, or stdout.
+  Spans and metrics that could not be sent use the same spool and failure archive as logs.
+- **Recovery CLI**: recovers the log files of a stopped application.
+- **Tested on real systems**: Linux, Windows, and macOS, including case-insensitive file systems.
 
 ## Installation
 

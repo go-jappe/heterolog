@@ -4,6 +4,8 @@
 
 heterologは、ログを確実に届けたいGoのアプリケーションのためのログライブラリです。1回のログ呼出しで、標準出力・ファイル・Slack・OpenSearch・Loki・CloudWatch Logs・ClickHouseのうち複数の出力先へ同時に記録します。ログサーバーに届かないときは、ログをローカルのディスクに残し、サーバーが戻ったときに送り直します。アプリケーションを再起動した後も同じです。標準の `log/slog` からも利用できます。
 
+同じ仕組みでトレースとメトリクスも送れるほか、稼働中のログレベルの変更、ログファイルの暗号化、停止したアプリケーションのログの復旧など、運用のための機能も備えています。
+
 - モジュールパス: `github.com/go-jappe/heterolog`
 - Go 1.27.3以降が必要です
 - ライセンス: [MIT License](LICENSE)
@@ -46,19 +48,26 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 
 ## 特長
 
-- 出力先: stdout、file、Slack、OpenSearch、Loki、CloudWatch Logs、ClickHouse。自由に組み合わせられます。
-- 保証の異なる3種類のロガー: 同期（errorを返す）、非同期（best effort）、Delivery（出力先ごとの結果を返す）。
-- `log/slog` のハンドラー。
-- ログファイルのローテーション、圧縮（gzip・zstd・lz4・xz）、保持、S3またはBackblaze B2などのS3互換のストレージへのアップロード。
-- ログファイル・failure archive・トレースとメトリクスのファイルの、公開鍵による暗号化（任意）。プロセスは読める鍵を持たず、秘密鍵を持つCLIで復号します。spoolは、オフラインの複製に対して対称鍵で暗号化できます。
-- 送れなかったログを保存するローカルのspool。自動で送り直し、`Retry-After` には再起動後も従います。
-- 空き容量の閾値、任意のメモリ逼迫の監視器、`drop`・`degrade` の方針による過負荷の保護。
-- コードでの設定、または `HETEROLOG_` 環境変数と環境設定ファイルからの設定。
-- 稼働中のログレベルとサンプリングの変更。コードまたはトークンで保護したHTTP APIから行い、そのAPIは使っている設定と、プロセス・出力先・spool・ディスクの状態（注意付き）も返し、これらのブラウザ画面も提供します。
-- トレース: spanを、OTLP/HTTPの受信先、OpenSearch（Trace Analytics用）、ClickHouse（OpenTelemetry Collectorと同じ表）、file、stdoutへ、まとめて再試行付きで送る `Tracer` と、OpenTelemetry SDK用のexporter。送れなかったspanは、ログと同じspoolとfailure archiveへ渡します。ロガーも自分の処理をspanとして記録できます。
-- メトリクス: counter、gauge、histogramを、OTLP/HTTPの受信先、VictoriaMetrics、file、stdoutへ、同じ再試行、spool、failure archive付きで送る `Meter`。
-- 停止中のアプリケーションのログファイルを復旧するCLI。
-- Linux・Windows・macOSで、大文字小文字を区別しないファイルシステムも含めて試験しています。
+**中心の機能**
+
+- **複数の出力先へ同時に記録**: stdout、file、Slack、OpenSearch、Loki、CloudWatch Logs、ClickHouseを自由に組み合わせられます。
+- **送れなかったログを失わない**: 一時的な失敗はローカルのspoolに保存し、自動で送り直します。`Retry-After` には再起動後も従います。届いたか分からないログは、二重送信も削除もせずに人の確認へ回します。
+- **用途に合わせた3種類のロガー**: 同期（errorを返す）、非同期（best effort）、Delivery（出力先ごとの結果を返す）。
+- **`log/slog` から使える**: 標準のハンドラーとして組み込めます。
+- **設定はコードか環境変数で**: `HETEROLOG_` で始まる環境変数と環境設定ファイルから読めます。何も設定しなければstdoutだけに書きます。
+
+**運用・周辺の機能**
+
+- **稼働中のレベルとサンプリングの変更**: コードから、またはトークンで保護したHTTP APIから、再起動なしで変えられます。
+- **状態の確認**: 同じAPIが、使っている設定と、プロセス・出力先・spool・ディスクの状態を注意付きで返します。ブラウザ画面からも見られます。
+- **ログファイル**: ローテーション、圧縮（gzip・zstd・lz4・xz）、保持、S3またはS3互換のストレージへのアップロード。
+- **暗号化（任意）**: ログファイル・failure archive・トレースとメトリクスのファイルを公開鍵で暗号化し、秘密鍵を持つCLIで復号します。spoolは対称鍵で暗号化できます。
+- **過負荷の保護**: 空き容量の閾値、任意のメモリ逼迫の監視、`drop`・`degrade` の方針。
+- **トレース**: spanをOTLP/HTTP、OpenSearch（Trace Analytics用）、ClickHouse、file、stdoutへ送ります。OpenTelemetry SDKのexporterとしても使えます。
+- **メトリクス**: counter、gauge、histogramをOTLP/HTTP、VictoriaMetrics、file、stdoutへ送ります。
+  トレースとメトリクスも、送れなかった分はログと同じspoolとfailure archiveで扱います。
+- **復旧CLI**: 停止したアプリケーションのログファイルを復旧します。
+- **実機での試験**: Linux・Windows・macOSで、大文字小文字を区別しないファイルシステムも含めて試験しています。
 
 ## インストール
 
