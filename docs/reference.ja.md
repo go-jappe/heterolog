@@ -762,7 +762,7 @@ go build -o log-recovery ./cmd/log-recovery
 ```
 
 - `--target` はログ生成時と同じ識別子にします。英数字で始まる英数字・ハイフン・アンダースコア・ドットを使用でき、パス区切りやWindowsの予約名は使用できません。
-- CLIの環境設定項目は [.env.example](../.env.example)、復旧対象や操作手順は [手動ログ復旧](manual-log-recovery.txt) を参照してください。
+- CLIの環境設定項目は [.env.example](../.env.example)、復旧対象や操作手順は [手動ログ復旧](manual-log-recovery.txt) を参照してください。扱うファイルと行わない処理の一覧は [README](../README.ja.md#停止したアプリケーションのログの復旧) にあります。
 - `--logger` で設定を選びます。`sync`・`async`・`delivery` はそのloggerのファイル、`telemetry` はtraceとmetricsの送り先（`otlp`・`opensearch`・`clickhouse`・`victoriametrics`）のfailure archiveです。`--scope` でファイルの系列を選びます。loggerでは `file-logger` と `log-backend-failure-archive`、telemetryでは `telemetry-failure-archive`、`all`（既定）は選んだ設定のすべての系列です。設定にない系列を選ぶと、引数の誤り（終了コード2）です。
 - CLIは明示した環境設定を読み込みます。読み込んだ設定に `--target` を反映した後、アプリケーションの設定全体の検証（保存先ディレクトリの重複と所有権、upload対象、failure storeの構成、timeout階層（`must_fit` など）、memory healthの閾値）を行います。不整合がある場合は、復旧処理を始める前に設定エラー（`invalid config: ...`、終了コード1）で終了し、保存先のディレクトリやファイルを作成・変更しません。
 - 認証情報を含み得る値（`*_HEADERS` のHTTP header、`*_S3_DESTINATIONS` の一覧）が不正な場合、設定エラーはkeyと種類だけを示し、値は表示文にも `errors.As` で取り出せるerrorにも含めません。

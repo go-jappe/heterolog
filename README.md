@@ -66,7 +66,7 @@ The trade-off is that delivery uses the application's own CPU, memory, and netwo
 - **Traces**: send spans to an OTLP/HTTP receiver, OpenSearch (for its Trace Analytics), ClickHouse, a file, or stdout, also as an exporter for the OpenTelemetry SDK.
 - **Metrics**: send counters, gauges, and histograms to an OTLP/HTTP receiver, VictoriaMetrics, a file, or stdout.
   Spans and metrics that could not be sent use the same spool and failure archive as logs.
-- **Recovery CLI**: recovers the log files of a stopped application.
+- **Recovery CLI**: compresses and uploads the log files and failure archives that a stopped application left.
 - **Tested on real systems**: Linux, Windows, and macOS, including case-insensitive file systems.
 
 ## Installation
@@ -406,14 +406,32 @@ See [Shutdown](docs/reference.md#shutdown) for details.
 
 ## Recovering logs of a stopped application
 
-The repository also has a CLI that recovers the log files of a stopped application, with the same environment configuration as the application:
+The repository also has a CLI that finishes the work on the files that a stopped application left, with the same environment configuration as the application:
 
 ```sh
 go build -o log-recovery ./cmd/log-recovery
 ./log-recovery --target my-service --application-stopped --env-file /path/to/logging.env
+./log-recovery --target my-service --application-stopped --env-file /path/to/logging.env --logger telemetry
 ```
 
-See [Log recovery CLI](docs/reference.md#log-recovery-cli) for its checks and options, and [manual log recovery](docs/manual-log-recovery.txt) (in Japanese) for what it recovers and how to operate it. It handles encrypted files as they are; the [log-decrypt CLI](docs/reference.md#log-decrypt-cli) reads them.
+It handles these files:
+
+- The log files of the `file` output of a logger, including its dedicated internal log, and their compressed files (`--scope file-logger`).
+- The failure archives (`.jsonl`) of the log destinations OpenSearch, Loki, CloudWatch Logs, and ClickHouse (`--scope log-backend-failure-archive`).
+- With `--logger telemetry`, the failure archives of the trace and metric destinations (`--scope telemetry-failure-archive`).
+
+For these files, it does what the running application would do, with the current settings:
+
+- It compresses the files that are not compressed yet, including the latest one, which the stopped application no longer writes.
+- It uploads the compressed files to object storage, continuing from the saved checkpoints, and deletes the uploaded files as configured. It also finishes deletions that were left pending.
+
+It does not do the following:
+
+- Resend the records in the spools, or the compressed files kept after a failed upload.
+- Send the records of a failure archive to their destination again.
+- Delete old files by age, count, or size, or process `.preserved` files.
+
+`--logger` selects one configuration (`sync` by default), so run the CLI once for each configuration that you use. Stop every application that shares the directories first: `--application-stopped` confirms that you did, and the CLI does not check it. See [Log recovery CLI](docs/reference.md#log-recovery-cli) for its checks and options, and [manual log recovery](docs/manual-log-recovery.txt) (in Japanese) for the details of each step. It handles encrypted files as they are; the [log-decrypt CLI](docs/reference.md#log-decrypt-cli) reads them.
 
 ## Testing
 

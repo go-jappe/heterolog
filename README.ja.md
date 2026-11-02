@@ -66,7 +66,7 @@ heterologは、ログを確実に届けたいGoのアプリケーションのた
 - **トレース**: spanをOTLP/HTTP、OpenSearch（Trace Analytics用）、ClickHouse、file、stdoutへ送ります。OpenTelemetry SDKのexporterとしても使えます。
 - **メトリクス**: counter、gauge、histogramをOTLP/HTTP、VictoriaMetrics、file、stdoutへ送ります。
   トレースとメトリクスも、送れなかった分はログと同じspoolとfailure archiveで扱います。
-- **復旧CLI**: 停止したアプリケーションのログファイルを復旧します。
+- **復旧CLI**: 停止したアプリケーションが残したログファイルとfailure archiveを圧縮し、uploadします。
 - **実機での試験**: Linux・Windows・macOSで、大文字小文字を区別しないファイルシステムも含めて試験しています。
 
 ## インストール
@@ -406,14 +406,32 @@ tel.Meter().Counter("orders_total").Add(ctx, 1, heterolog.ObserverAttr{Key: "reg
 
 ## 停止したアプリケーションのログの復旧
 
-停止したアプリケーションのログファイルを、アプリケーションと同じ環境設定で復旧するCLIも同梱しています。
+停止したアプリケーションが残したファイルの処理を、アプリケーションと同じ環境設定で終わらせるCLIも同梱しています。
 
 ```sh
 go build -o log-recovery ./cmd/log-recovery
 ./log-recovery --target my-service --application-stopped --env-file /path/to/logging.env
+./log-recovery --target my-service --application-stopped --env-file /path/to/logging.env --logger telemetry
 ```
 
-検証の内容と指定方法は[ログ復旧CLI](docs/reference.ja.md#ログ復旧cli)を、何を復旧するかと運用の手順は[手動でのログ復旧](docs/manual-log-recovery.txt)を参照してください。暗号化したファイルはそのまま扱います。読むのは[log-decrypt CLI](docs/reference.ja.md#log-decrypt-cli)です。
+扱うファイルは次のとおりです。
+
+- loggerの `file` 出力のログファイル（専用internalログを含む）と、その圧縮済みファイル（`--scope file-logger`）。
+- ログの出力先OpenSearch・Loki・CloudWatch Logs・ClickHouseのfailure archive（`.jsonl`）（`--scope log-backend-failure-archive`）。
+- `--logger telemetry` では、traceとmetricsの送り先のfailure archive（`--scope telemetry-failure-archive`）。
+
+これらのファイルに、動いているアプリケーションと同じ処理を、今の設定で行います。
+
+- まだ圧縮していないファイルを圧縮します。停止したアプリケーションがもう書かない、最新のファイルも含みます。
+- 圧縮したファイルを、保存済みのcheckpointの続きからobject storageへuploadし、設定に従ってupload済みのファイルを削除します。途中で止まった削除も終えます。
+
+次のことは行いません。
+
+- spoolのrecordや、uploadに失敗して残した圧縮ファイルを送り直すこと。
+- failure archiveのrecordを、送り先へ送り直すこと。
+- 期間・世代数・容量で古いファイルを削除することと、`.preserved` のファイルを処理すること。
+
+`--logger` で設定を一つ選ぶため（既定は `sync`）、使っている設定ごとに一回ずつ実行してください。先に、同じディレクトリを使うアプリケーションをすべて止めてください。`--application-stopped` はその確認で、CLIは確かめません。検証の内容と指定方法は[ログ復旧CLI](docs/reference.ja.md#ログ復旧cli)を、各処理の詳細は[手動でのログ復旧](docs/manual-log-recovery.txt)を参照してください。暗号化したファイルはそのまま扱います。読むのは[log-decrypt CLI](docs/reference.ja.md#log-decrypt-cli)です。
 
 ## テスト
 
