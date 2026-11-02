@@ -15,6 +15,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/config"
 	"github.com/go-jappe/heterolog/internal/domain/target"
 	infralogrecovery "github.com/go-jappe/heterolog/internal/infrastructure/logrecovery"
+	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -42,9 +43,10 @@ func parseOptions(args []string, output io.Writer) (options, error) {
 	flags.SetOutput(output)
 	flags.StringVar(&opts.target, "target", "", "Application storage identifier (required; letters, digits, dots, hyphens, underscores)")
 	flags.StringVar(&opts.envFile, "env-file", "", "Environment file to load (default: HETEROLOG_ENV_PATH or .env)")
-	flags.StringVar(&loggerInput, "logger", "sync", "Logger configuration to use: sync, async, delivery")
-	flags.StringVar(&scopeInput, "scope", string(infralogrecovery.RecoveryScopeAll), fmt.Sprintf("File series to recover: %s, %s, %s",
-		infralogrecovery.RecoveryScopeFileLogger, infralogrecovery.RecoveryScopeLogBackendFailureArchive, infralogrecovery.RecoveryScopeAll))
+	flags.StringVar(&loggerInput, "logger", "sync", "Configuration to use: sync, async, delivery (loggers), or telemetry (traces and metrics)")
+	flags.StringVar(&scopeInput, "scope", string(infralogrecovery.RecoveryScopeAll), fmt.Sprintf("File series to recover: %s, %s (loggers), %s (telemetry), or %s",
+		infralogrecovery.RecoveryScopeFileLogger, infralogrecovery.RecoveryScopeLogBackendFailureArchive,
+		infralogrecovery.RecoveryScopeTelemetryFailureArchive, infralogrecovery.RecoveryScopeAll))
 	flags.BoolVar(&opts.applicationStopped, "application-stopped", false, "Confirm that all applications sharing the selected directories are stopped")
 	flags.BoolVar(&opts.json, "json", false, "Print detailed recovery results as JSON")
 	flags.BoolVar(&opts.recovery.Retry, "retry", false, "Retry failed recovery operations; graceful shutdown waits for accepted work to complete")
@@ -52,6 +54,9 @@ func parseOptions(args []string, output io.Writer) (options, error) {
 	flags.Usage = func() {
 		fmt.Fprintln(output, "Usage: log-recovery --target <application-id> --application-stopped [options]")
 		fmt.Fprintln(output, "\nLoad the application's environment configuration and run one recovery pass.")
+		fmt.Fprintln(output, "It compresses and uploads the files of the selected configuration, and deletes the uploaded ones, as the application would:")
+		fmt.Fprintln(output, "the log files of the file output and the failure archives of the log destinations (loggers),")
+		fmt.Fprintln(output, "or the failure archives of the trace and metric destinations (telemetry).")
 		fmt.Fprintln(output, "With --retry, failed operations are retried after a delay and progress is written to stderr.")
 		fmt.Fprintln(output, "The first Ctrl+C or SIGTERM requests graceful shutdown; the second requests forced shutdown.")
 		fmt.Fprintln(output, "Stop all applications and other recovery CLIs sharing the selected directories before running this command.")
@@ -83,8 +88,17 @@ func parseOptions(args []string, output io.Writer) (options, error) {
 	opts.recovery.LoggerContract = contract
 	opts.recovery.Scope = infralogrecovery.RecoveryScope(scopeInput)
 	if !opts.recovery.Scope.IsValid() {
-		return opts, fmt.Errorf("invalid --scope %q: choose %s, %s, or %s", scopeInput,
-			infralogrecovery.RecoveryScopeFileLogger, infralogrecovery.RecoveryScopeLogBackendFailureArchive, infralogrecovery.RecoveryScopeAll)
+		return opts, fmt.Errorf("invalid --scope %q: choose %s, %s, %s, or %s", scopeInput,
+			infralogrecovery.RecoveryScopeFileLogger, infralogrecovery.RecoveryScopeLogBackendFailureArchive,
+			infralogrecovery.RecoveryScopeTelemetryFailureArchive, infralogrecovery.RecoveryScopeAll)
+	}
+	if infralogrecovery.CheckScopeOwner(contract, opts.recovery.Scope) != nil {
+		choices := fmt.Sprintf("%s, %s, or %s", infralogrecovery.RecoveryScopeFileLogger,
+			infralogrecovery.RecoveryScopeLogBackendFailureArchive, infralogrecovery.RecoveryScopeAll)
+		if contract == storageowner.Telemetry {
+			choices = fmt.Sprintf("%s or %s", infralogrecovery.RecoveryScopeTelemetryFailureArchive, infralogrecovery.RecoveryScopeAll)
+		}
+		return opts, fmt.Errorf("invalid --scope %q for --logger %s: choose %s", scopeInput, loggerInput, choices)
 	}
 	var emptyEnvFile, explicitRetryInterval bool
 	flags.Visit(func(f *flag.Flag) {
@@ -107,7 +121,8 @@ func parseOptions(args []string, output io.Writer) (options, error) {
 	return opts, nil
 }
 
-// parseLoggerContractはCLIの指定を、pkg/loggerのlogger分類へ変換します。
+// parseLoggerContractはCLIの指定を、保存先の所有者（pkg/loggerのlogger分類と、
+// storageowner.Telemetry）へ変換します。
 func parseLoggerContract(input string) (pkglogger.LoggerContractKind, error) {
 	switch input {
 	case "sync":
@@ -116,8 +131,10 @@ func parseLoggerContract(input string) (pkglogger.LoggerContractKind, error) {
 		return pkglogger.LoggerContractAsyncBestEffort, nil
 	case "delivery":
 		return pkglogger.LoggerContractDelivery, nil
+	case "telemetry":
+		return storageowner.Telemetry, nil
 	default:
-		return "", fmt.Errorf("invalid --logger %q: choose sync, async, or delivery", input)
+		return "", fmt.Errorf("invalid --logger %q: choose sync, async, delivery, or telemetry", input)
 	}
 }
 

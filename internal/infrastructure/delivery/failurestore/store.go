@@ -118,7 +118,7 @@ func New[T any](ctx context.Context, cfg Config, opts Options[T]) (*Store[T], er
 	opts.Meter = observer.EnsureMeter(opts.Meter)
 	report := opts.Report
 	s := &Store[T]{backend: opts.Backend, operation: opts.Operation, encode: opts.Codec.Encode, clock: opts.Clock}
-	cfg.Store = ownArchiveUploadStorage(cfg.Store)
+	cfg.Store = OwnArchiveUploadStorage(cfg.Store)
 	uploadSpools, err := prepareArchiveUpload(cfg.Store)
 	if err != nil {
 		return nil, err
@@ -212,10 +212,11 @@ func (s *Store[T]) Shutdown(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// ownArchiveUploadStorageは、failure archiveの圧縮fileを送れなかった場合に保存するspoolと
+// OwnArchiveUploadStorageは、failure archiveの圧縮fileを送れなかった場合に保存するspoolと
 // archiveの所有者を、設定にかかわらずstorageowner.Telemetryにします。同じprocessのloggerの
-// 保存先とぶつからないようにするためです。
-func ownArchiveUploadStorage(cfg pkgdurable.FailureStoreConfig) pkgdurable.FailureStoreConfig {
+// 保存先とぶつからないようにするためです。停止中のfailure archiveを手動復旧するときも、
+// 同じ保存先を使うためにこの関数を通します。
+func OwnArchiveUploadStorage(cfg pkgdurable.FailureStoreConfig) pkgdurable.FailureStoreConfig {
 	upload := &cfg.DurableStoreConfig.FileArchiveConfig.ObjectStorageUploadConfig
 	upload.CompressedLogFileUploadFailureStore.DurableStoreConfig.FileArchiveConfig.LoggerContract = storageowner.Telemetry.String()
 	if upload.CompressedLogFileUploadSpool != nil {

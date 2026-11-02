@@ -1,9 +1,12 @@
 package logrecovery
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-jappe/heterolog/internal/infrastructure/logfile"
+	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
 
@@ -45,24 +48,51 @@ const (
 	// 未圧縮.jsonl、その圧縮済みファイル、圧縮完了後の元ログ削除待ちファイルを含みます。
 	// 圧縮ログのobject storage送信失敗を保存するarchiveは、この対象には含みません。
 	RecoveryScopeLogBackendFailureArchive RecoveryScope = "log-backend-failure-archive"
-	// RecoveryScopeAllはFileLoggerのログ系列と、ログbackend送信失敗archiveの両方を対象にします。
+	// RecoveryScopeTelemetryFailureArchiveは、NewTelemetryのtraceとmetricsの送り先
+	// （otlp・opensearch・clickhouse・victoriametrics）への送信失敗を、filesystemの
+	// retryable/permanentへ保存したJSONL archiveの系列を対象にします。含むファイルは
+	// RecoveryScopeLogBackendFailureArchiveと同じです。所有者がstorageowner.Telemetryの
+	// 場合だけ選べます。
+	RecoveryScopeTelemetryFailureArchive RecoveryScope = "telemetry-failure-archive"
+	// RecoveryScopeAllは、選んだ所有者のすべての系列を対象にします。loggerではFileLoggerの
+	// ログ系列とログbackend送信失敗archive、Telemetryではtraceとmetricsの送信失敗archiveです。
 	RecoveryScopeAll RecoveryScope = "all"
 )
 
+// ErrRecoveryScopeNotOwnedは、選んだ所有者が持たない系列を復旧対象に選んだことを表します。
+var ErrRecoveryScopeNotOwned = errors.New("recovery scope is not owned by the selected configuration")
+
 // IsValidは指定可能な復旧対象かを返します。空値の既定値への変換はRecoverが行います。
+// 所有者との組み合わせはCheckScopeOwnerで確かめます。
 func (s RecoveryScope) IsValid() bool {
 	switch s {
-	case RecoveryScopeFileLogger, RecoveryScopeLogBackendFailureArchive, RecoveryScopeAll:
+	case RecoveryScopeFileLogger, RecoveryScopeLogBackendFailureArchive, RecoveryScopeTelemetryFailureArchive, RecoveryScopeAll:
 		return true
 	default:
 		return false
 	}
 }
 
-// Optionsは手動復旧で読むlogger設定と、復旧対象ファイルの生成元を選びます。
+// CheckScopeOwnerは、ownerの保存先にscopeの系列があるかを確かめます。loggerの契約は
+// FileLoggerのログ系列とログbackend送信失敗archiveを、storageowner.Telemetryはtraceと
+// metricsの送信失敗archiveを持ちます。RecoveryScopeAllはどの所有者にも使えます。
+func CheckScopeOwner(owner pkglogger.LoggerContractKind, scope RecoveryScope) error {
+	if scope == RecoveryScopeAll {
+		return nil
+	}
+	telemetry := owner == storageowner.Telemetry
+	if telemetry != (scope == RecoveryScopeTelemetryFailureArchive) {
+		return fmt.Errorf("%w: %q has no %q files", ErrRecoveryScopeNotOwned, owner, scope)
+	}
+	return nil
+}
+
+// Optionsは手動復旧で読む設定と、復旧対象ファイルの生成元を選びます。
 // ゼロ値はsync loggerの設定と全復旧対象を指定します。
 type Options struct {
-	// LoggerContractはsync・async best-effort・deliveryのどの設定を読むかを指定します。
+	// LoggerContractは、保存先の所有者で、どの設定を読むかを指定します。sync・async
+	// best-effort・deliveryはそのloggerの設定を、storageowner.TelemetryはNewTelemetryの
+	// traceとmetricsの設定を読みます。
 	LoggerContract pkglogger.LoggerContractKind
 	Scope          RecoveryScope
 	// Retryは失敗した対象を、同じStoreと処理状態を保持して再試行します。

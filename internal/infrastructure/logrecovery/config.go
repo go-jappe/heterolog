@@ -4,18 +4,26 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/go-jappe/heterolog/internal/infrastructure/delivery/failurestore"
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	loggerdurable "github.com/go-jappe/heterolog/internal/infrastructure/logger/durable"
+	metricsdelivery "github.com/go-jappe/heterolog/internal/infrastructure/metrics"
+	"github.com/go-jappe/heterolog/internal/infrastructure/metrics/victoriametrics"
 	"github.com/go-jappe/heterolog/internal/infrastructure/spool/compressedlog"
+	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
+	"github.com/go-jappe/heterolog/internal/infrastructure/traces"
+	tracesclickhouse "github.com/go-jappe/heterolog/internal/infrastructure/traces/clickhouse"
+	tracesopensearch "github.com/go-jappe/heterolog/internal/infrastructure/traces/opensearch"
 	"github.com/go-jappe/heterolog/pkg/clock"
 	pkgfsstore "github.com/go-jappe/heterolog/pkg/fsstore"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 	"github.com/go-jappe/heterolog/pkg/logger/durable"
 	"github.com/go-jappe/heterolog/pkg/objectstorage"
+	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
-// Configsは、手動復旧が系列を選ぶための、変換済みのlogger設定です。設定の変換は、選んだ
-// loggerの種類の分だけ行います。
+// Configsは、手動復旧が系列を選ぶための、変換済みのloggerとTelemetryの設定です。設定の
+// 変換は、選んだ所有者の分だけ行います。
 type Configs struct {
 	// Targetは、保存先の識別子に使う設定のtargetです。
 	Target string
@@ -23,6 +31,8 @@ type Configs struct {
 	Logger   func() (pkglogger.LoggerConfig, error)
 	Async    func() (pkglogger.AsyncBestEffortMultiLoggerConfig, error)
 	Delivery func() (pkglogger.DeliveryLoggerConfig, error)
+	// Telemetryは、NewTelemetryへ渡すtraceとmetricsの設定を作ります。
+	Telemetry func() pkgtelemetry.Config
 }
 
 type recoverySpec struct {
@@ -65,6 +75,8 @@ func recoverySpecs(configs Configs, opts Options) ([]recoverySpec, error) {
 			return nil, err
 		}
 		return deliveryRecoverySpecs(mapped, opts.Scope), nil
+	case storageowner.Telemetry:
+		return telemetryRecoverySpecs(configs.Telemetry(), opts.Scope), nil
 	default:
 		return nil, fmt.Errorf("invalid recovery logger contract %q", opts.LoggerContract)
 	}
@@ -95,7 +107,8 @@ func logRecoverySpecs(cfg pkglogger.LoggerConfig, scope RecoveryScope) []recover
 	}
 	add := func(backend pkglogger.LogOutputDestination, failure durable.FailureStoreConfig) {
 		if outputEnabled(cfg.LogOutputDestinations, backend) && slices.Contains(failure.DurableType, durable.DurableTypeFileArchive) {
-			specs = append(specs, failureArchiveSpec(string(backend), loggerdurable.NewFileArchiveConfigAdapter(failure.DurableStoreConfig.FileArchiveConfig)))
+			specs = append(specs, failureArchiveSpec(logBackendFailureArchiveName(string(backend)),
+				loggerdurable.NewFileArchiveConfigAdapter(failure.DurableStoreConfig.FileArchiveConfig)))
 		}
 	}
 	if cfg.OpenSearch != nil {
@@ -135,8 +148,14 @@ func fileUploadEnabled(upload objectstorage.LogFileUploadConfig, layout pkgfssto
 		layout.IsSeparateDebugLogsEnabled && upload.Debug.Enabled)
 }
 
-func failureArchiveSpec(backend string, cfg logfilelifecycle.FailureArchiveRunnerConfigProvider) recoverySpec {
-	spec := recoverySpec{name: string(RecoveryScopeLogBackendFailureArchive) + "/" + backend,
+// logBackendFailureArchiveNameは、ログbackendの送信失敗archiveの結果に表示する系列名です。
+func logBackendFailureArchiveName(backend string) string {
+	return string(RecoveryScopeLogBackendFailureArchive) + "/" + backend
+}
+
+// failureArchiveSpecは、nameの系列として、送信失敗archiveのretryable/permanentを復旧します。
+func failureArchiveSpec(name string, cfg logfilelifecycle.FailureArchiveRunnerConfigProvider) recoverySpec {
+	spec := recoverySpec{name: name,
 		newLifecycles: func(runtimes compressedlog.RootRuntimes, reporter logfilelifecycle.RunReporter, options ...logfilelifecycle.RecoveryOption) ([]*logfilelifecycle.DirectoryLifecycle, error) {
 			return logfilelifecycle.NewFailureArchiveRecovery(logfilelifecycle.FailureArchiveOptions{Config: cfg, Clock: clock.NewUTCClock(), Reporter: reporter, SpoolRuntimes: runtimes}, options...)
 		}}
@@ -169,7 +188,7 @@ func deliveryRecoverySpecs(cfg pkglogger.DeliveryLoggerConfig, scope RecoverySco
 	add := func(backend pkglogger.LogOutputDestination, failure durable.DeliveryFailureStoreConfig) {
 		if outputEnabled(cfg.LogOutputDestinations, backend) && slices.Contains(failure.DurableType, durable.DurableTypeFileArchive) {
 			adapter := loggerdurable.NewDeliveryDurableStoreConfigAdapter(failure.FileArchiveConfig)
-			specs = append(specs, failureArchiveSpec(string(backend), adapter.FileArchiveConfig()))
+			specs = append(specs, failureArchiveSpec(logBackendFailureArchiveName(string(backend)), adapter.FileArchiveConfig()))
 		}
 	}
 	if cfg.OpenSearch != nil {
@@ -203,4 +222,44 @@ func deliveryFileSpec(name string, cfg *pkglogger.DeliveryFileLoggerConfig) reco
 		spec.checkpointDirectory = runnerConfig.ArchiveCheckpointConfig.Directory
 	}
 	return spec
+}
+
+// telemetryRecoverySpecsは、NewTelemetryの設定から、traceとmetricsの送り先のうち、
+// failure archiveへ保存するものを選びます。通常の起動と同じく、送り先に選んでいない
+// 設定と、failure storeを使わない設定は所有者ではありません。fileとstdoutの送り先は
+// failure storeを持たず、fileもrotationしないため、復旧対象はありません。
+func telemetryRecoverySpecs(cfg pkgtelemetry.Config, scope RecoveryScope) []recoverySpec {
+	if scope != RecoveryScopeAll && scope != RecoveryScopeTelemetryFailureArchive {
+		return nil
+	}
+	var specs []recoverySpec
+	add := func(backend string, failure pkgtelemetry.FailureStoreConfig) {
+		if !failure.Enabled() || !slices.Contains(failure.Store.DurableType, durable.DurableTypeFileArchive) {
+			return
+		}
+		// 通常の起動と同じ所有者の保存先を使い、uploadできなかった圧縮fileをloggerの保存先へ
+		// 混ぜません。
+		store := failurestore.OwnArchiveUploadStorage(failure.Store)
+		specs = append(specs, failureArchiveSpec(string(RecoveryScopeTelemetryFailureArchive)+"/"+backend,
+			loggerdurable.NewFileArchiveConfigAdapter(store.DurableStoreConfig.FileArchiveConfig)))
+	}
+	for _, exporter := range cfg.Traces.Exporters {
+		switch exporter {
+		case pkgtelemetry.TraceExporterOTLP:
+			add(traces.OTLPBackendName, cfg.Traces.OTLP.FailureStore)
+		case pkgtelemetry.TraceExporterOpenSearch:
+			add(tracesopensearch.BackendName, cfg.Traces.OpenSearch.FailureStore)
+		case pkgtelemetry.TraceExporterClickHouse:
+			add(tracesclickhouse.BackendName, cfg.Traces.ClickHouse.FailureStore)
+		}
+	}
+	for _, exporter := range cfg.Metrics.Exporters {
+		switch exporter {
+		case pkgtelemetry.MetricExporterOTLP:
+			add(metricsdelivery.OTLPBackendName, cfg.Metrics.OTLP.FailureStore)
+		case pkgtelemetry.MetricExporterVictoriaMetrics:
+			add(victoriametrics.BackendName, cfg.Metrics.VictoriaMetrics.FailureStore)
+		}
+	}
+	return specs
 }

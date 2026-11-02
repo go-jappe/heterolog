@@ -1,5 +1,6 @@
-// Package logrecoveryは、停止中のアプリケーションのログファイルを手動復旧します。
-// 通常loggerを生成せず、writer・周期runner・spool再送・purgeを起動しません。
+// Package logrecoveryは、停止中のアプリケーションのログファイルと、traceとmetricsの
+// 送信失敗archiveを手動復旧します。通常のloggerとTelemetryを生成せず、writer・周期runner・
+// spool再送・purgeを起動しません。
 package logrecovery
 
 import (
@@ -19,8 +20,9 @@ import (
 var (
 	// ErrInvalidRecoveryTargetは、復旧対象のtargetが保存先の識別子として使えないことを表します。
 	ErrInvalidRecoveryTarget = errors.New("invalid recovery target")
-	// ErrNoConfiguredLogFilesは、選択したlogger設定とscopeに復旧対象のログ系列がないことを表します。
-	// fileやfailure archiveを出力先・退避先に選んでいない設定で返します。
+	// ErrNoConfiguredLogFilesは、選択した設定とscopeに復旧対象の系列がないことを表します。
+	// fileやfailure archiveを出力先・退避先に選んでいない設定で返します。Telemetryでは、
+	// traceやmetricsを有効にしていないか、failure archiveを使う送り先がない設定です。
 	ErrNoConfiguredLogFiles = errors.New("no configured log files")
 )
 
@@ -106,6 +108,9 @@ func Recover(ctx context.Context, configs Configs, opts Options) (report Report,
 	}
 	if !opts.Scope.IsValid() {
 		return fail(fmt.Errorf("invalid recovery scope %q", opts.Scope))
+	}
+	if err := CheckScopeOwner(opts.LoggerContract, opts.Scope); err != nil {
+		return fail(err)
 	}
 	specs, err := recoverySpecs(configs, opts)
 	if err != nil {

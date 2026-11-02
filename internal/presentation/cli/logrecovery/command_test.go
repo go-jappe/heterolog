@@ -20,6 +20,7 @@ import (
 	"github.com/go-jappe/heterolog/internal/config"
 	configruntime "github.com/go-jappe/heterolog/internal/config/runtime"
 	infralogrecovery "github.com/go-jappe/heterolog/internal/infrastructure/logrecovery"
+	"github.com/go-jappe/heterolog/internal/infrastructure/storageowner"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
 )
@@ -92,6 +93,12 @@ func TestInvalidArgumentsHaveNoConfigurationOrRecoveryEffects(t *testing.T) {
 		{"false stop acknowledgement", validArgs("--application-stopped=false"), "--application-stopped is required"},
 		{"unknown logger", validArgs("--logger", "invalid"), `invalid --logger "invalid"`},
 		{"unknown scope", validArgs("--scope", "spool"), `invalid --scope "spool"`},
+		{"telemetry scope for a logger", validArgs("--scope", "telemetry-failure-archive"),
+			`invalid --scope "telemetry-failure-archive" for --logger sync: choose file-logger, log-backend-failure-archive, or all`},
+		{"file logger scope for the telemetry", validArgs("--logger", "telemetry", "--scope", "file-logger"),
+			`invalid --scope "file-logger" for --logger telemetry: choose telemetry-failure-archive or all`},
+		{"log backend scope for the telemetry", validArgs("--logger", "telemetry", "--scope", "log-backend-failure-archive"),
+			`invalid --scope "log-backend-failure-archive" for --logger telemetry`},
 		{"empty env file", validArgs("--env-file="), "--env-file must name a nonempty path"},
 		{"whitespace env file", validArgs("--env-file", " \t"), "--env-file must name a nonempty path"},
 		{"unexpected positional argument", validArgs("stray"), "unexpected positional arguments: stray"},
@@ -120,22 +127,29 @@ func TestInvalidArgumentsHaveNoConfigurationOrRecoveryEffects(t *testing.T) {
 }
 
 func TestRunForwardsConfigurationAndSelectedOptionsOnce(t *testing.T) {
+	type scopeOption struct {
+		input string
+		value infralogrecovery.RecoveryScope
+	}
+	loggerScopes := []scopeOption{
+		{"file-logger", infralogrecovery.RecoveryScopeFileLogger},
+		{"log-backend-failure-archive", infralogrecovery.RecoveryScopeLogBackendFailureArchive},
+		{"all", infralogrecovery.RecoveryScopeAll},
+	}
 	for _, logger := range []struct {
 		input    string
 		contract pkglogger.LoggerContractKind
+		scopes   []scopeOption
 	}{
-		{"sync", pkglogger.LoggerContractSync},
-		{"async", pkglogger.LoggerContractAsyncBestEffort},
-		{"delivery", pkglogger.LoggerContractDelivery},
-	} {
-		for _, scope := range []struct {
-			input string
-			value infralogrecovery.RecoveryScope
-		}{
-			{"file-logger", infralogrecovery.RecoveryScopeFileLogger},
-			{"log-backend-failure-archive", infralogrecovery.RecoveryScopeLogBackendFailureArchive},
+		{"sync", pkglogger.LoggerContractSync, loggerScopes},
+		{"async", pkglogger.LoggerContractAsyncBestEffort, loggerScopes},
+		{"delivery", pkglogger.LoggerContractDelivery, loggerScopes},
+		{"telemetry", storageowner.Telemetry, []scopeOption{
+			{"telemetry-failure-archive", infralogrecovery.RecoveryScopeTelemetryFailureArchive},
 			{"all", infralogrecovery.RecoveryScopeAll},
-		} {
+		}},
+	} {
+		for _, scope := range logger.scopes {
 			t.Run(logger.input+"/"+scope.input, func(t *testing.T) {
 				loadCalls, recoveryCalls := 0, 0
 				ctx := context.WithValue(context.Background(), struct{}{}, "test context")

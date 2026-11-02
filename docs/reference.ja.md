@@ -529,7 +529,7 @@ req.Header.Set("traceparent", observer.SpanContextFromContext(ctx).TraceParent()
 - 送り直しを許す理由（429・502・503・504、応答を受け取れなかった失敗、開いたcircuit breaker）で失敗したspanは、activeのspoolへ入れ、spoolのworkerが再起動後も含めて送り直します。workerはrecordをspanに戻し、通常の送信と同じ要求、送り直し、分割、circuit breakerで送ります。`OTLP.RetryMaxDelay` より長い `Retry-After` は、ログの出力先と同じく、`Replay.Worker.MaxRetryAfter` までの範囲で、出力先全体の期限として守ります。
 - ログと異なり、接続が切れた場合など、結果の分からないspanは、quarantineへ移さずに送り直します。欠落より重複を優先するためです。そのため、送り直したspanが2回届くことがあります。そのspanは同じtrace IDとspan IDを持ちます。
 - 受信側がほかのステータスで拒否したspanはdeadに、部分的な成功を返した要求のspanは、どれが受け付けられたか分からないためquarantineに残します。どちらも送り直さず、error handlerへ知らせます。
-- `DurableTypeFileArchive` では、ログと同じローテーション、圧縮、保持期間、object storageへのuploadで、spanをfailure archiveへ追記します。uploadできなかった圧縮fileを残すspoolとarchiveは、設定にかかわらず、loggerの契約の代わりに `telemetry` が所有するため、loggerのディレクトリと共有しません。`DurableTypeNone` で `EnableDegrade` なら、spanをstdoutへ書きます。
+- `DurableTypeFileArchive` では、ログと同じローテーション、圧縮、保持期間、object storageへのuploadで、spanをfailure archiveへ追記します。uploadできなかった圧縮fileを残すspoolとarchiveは、設定にかかわらず、loggerの契約の代わりに `telemetry` が所有するため、loggerのディレクトリと共有しません。停止したアプリケーションが残したarchiveは、[ログ復旧CLI](#ログ復旧cli)の `--logger telemetry` で圧縮・uploadします。`DurableTypeNone` で `EnableDegrade` なら、spanをstdoutへ書きます。
 - `FailureStore.MaxAge` は、spoolのものを送り直す期間の上限で、spoolに入れた失敗の時刻から数えます。上限を過ぎたものは、古いものを拒否する受信先のために、送らずにdeadとして残します。既定の0なら、いつのものでも送り直します。
 - storeの過負荷の扱い（ディスクの空き容量、activeのspoolの大きさ、メモリの逼迫に対する `drop`・`degrade`）は、ログと同じです。
 - storeの内部ログの通知先（`HandlerConfig`）は使いません。storeのerrorと警告は、`WithTelemetryErrorHandler` で渡した関数へ渡します。
@@ -763,6 +763,7 @@ go build -o log-recovery ./cmd/log-recovery
 
 - `--target` はログ生成時と同じ識別子にします。英数字で始まる英数字・ハイフン・アンダースコア・ドットを使用でき、パス区切りやWindowsの予約名は使用できません。
 - CLIの環境設定項目は [.env.example](../.env.example)、復旧対象や操作手順は [手動ログ復旧](manual-log-recovery.txt) を参照してください。
+- `--logger` で設定を選びます。`sync`・`async`・`delivery` はそのloggerのファイル、`telemetry` はtraceとmetricsの送り先（`otlp`・`opensearch`・`clickhouse`・`victoriametrics`）のfailure archiveです。`--scope` でファイルの系列を選びます。loggerでは `file-logger` と `log-backend-failure-archive`、telemetryでは `telemetry-failure-archive`、`all`（既定）は選んだ設定のすべての系列です。設定にない系列を選ぶと、引数の誤り（終了コード2）です。
 - CLIは明示した環境設定を読み込みます。読み込んだ設定に `--target` を反映した後、アプリケーションの設定全体の検証（保存先ディレクトリの重複と所有権、upload対象、failure storeの構成、timeout階層（`must_fit` など）、memory healthの閾値）を行います。不整合がある場合は、復旧処理を始める前に設定エラー（`invalid config: ...`、終了コード1）で終了し、保存先のディレクトリやファイルを作成・変更しません。
 - 認証情報を含み得る値（`*_HEADERS` のHTTP header、`*_S3_DESTINATIONS` の一覧）が不正な場合、設定エラーはkeyと種類だけを示し、値は表示文にも `errors.As` で取り出せるerrorにも含めません。
 - 環境設定で `HETEROLOG_LOG_TYPE`・`HETEROLOG_ASYNC_LOG_TYPE`・`HETEROLOG_DELIVERY_LOG_TYPE` を省略または空にした場合、出力先は通常・非同期・Deliveryとも標準出力だけです。fileやSlackなどは明示した場合だけ有効になり、Slackのトークンなど必要な認証情報がなければ設定エラーになります。

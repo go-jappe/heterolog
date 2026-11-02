@@ -19,6 +19,7 @@ import (
 	logfilelifecycle "github.com/go-jappe/heterolog/internal/infrastructure/logfile/lifecycle"
 	"github.com/go-jappe/heterolog/internal/testutil"
 	pkglogger "github.com/go-jappe/heterolog/pkg/logger"
+	pkgtelemetry "github.com/go-jappe/heterolog/pkg/telemetry"
 )
 
 func loadRecoveryTestConfig(t *testing.T, overrides map[string]string) config.AppConfig {
@@ -172,9 +173,10 @@ func TestDirectoryReportPreservesIndividualFailurePaths(t *testing.T) {
 // testConfigsは、bootstrap.RecoverLogsと同じく、cfgを変換するConfigsを返します。
 func testConfigs(cfg config.AppConfig) Configs {
 	return Configs{
-		Target:   cfg.RuntimeConfig.Target,
-		Logger:   func() (pkglogger.LoggerConfig, error) { return config.MapLoggerConfig(cfg) },
-		Async:    func() (pkglogger.AsyncBestEffortMultiLoggerConfig, error) { return config.MapAsyncLoggerConfig(cfg) },
-		Delivery: func() (pkglogger.DeliveryLoggerConfig, error) { return config.MapDeliveryLoggerConfig(cfg) },
+		Target:    cfg.RuntimeConfig.Target,
+		Logger:    func() (pkglogger.LoggerConfig, error) { return config.MapLoggerConfig(cfg) },
+		Async:     func() (pkglogger.AsyncBestEffortMultiLoggerConfig, error) { return config.MapAsyncLoggerConfig(cfg) },
+		Delivery:  func() (pkglogger.DeliveryLoggerConfig, error) { return config.MapDeliveryLoggerConfig(cfg) },
+		Telemetry: func() pkgtelemetry.Config { return config.MapTelemetryConfig(cfg) },
 	}
 }

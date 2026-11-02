@@ -1,8 +1,9 @@
 停止中アプリケーションのログを手動で復旧する
 
 このCLIは、アプリケーションと同じ.env設定を読み込み、選択したloggerの
-ログファイルに対する復旧処理を実行します。既定では1回実行して終了し、
---retryを指定した場合は失敗した処理を時間を置いて再試行します。
+ログファイル、またはtraceとmetricsのfailure archiveに対する復旧処理を実行します。
+既定では1回実行して終了し、--retryを指定した場合は失敗した処理を時間を置いて
+再試行します。
 通常のアプリケーション起動とは独立したコマンドです。
 
 実行前の停止確認
@@ -25,6 +26,10 @@ FileLoggerがfilesystemへ直接書いたログ系列を復旧する例:
 非同期loggerのログbackend送信失敗archiveを復旧し、結果をJSONで出力する例:
 
   ./log-recovery --target service --application-stopped --env-file .env --logger async --scope log-backend-failure-archive --json
+
+traceとmetricsの送り先への送信失敗archiveを復旧する例:
+
+  ./log-recovery --target service --application-stopped --env-file .env --logger telemetry
 
 失敗した処理を5秒間隔で再試行し、完了まで状況を表示する例:
 
@@ -50,10 +55,12 @@ flagと設定の対応
     読み込んだ設定は--targetを反映した後にアプリケーションと同じ設定全体の検証（config.ValidateApplicationConfig）を受けます。
     不整合があれば復旧を始める前に設定error（終了code 1、invalid config: ...）で終了し、保存先には触れません。
 
-  --logger sync|async|delivery
-    復旧対象として使用するlogger設定。既定値はsyncです。
-    複数のloggerを処理する場合は、同じdirectoryを共有しないかを確認した上で、
-    loggerごとに順番に実行してください。
+  --logger sync|async|delivery|telemetry
+    復旧対象として使用する設定。sync・async・deliveryはそのloggerの設定を、
+    telemetryはtraceとmetricsの設定（HETEROLOG_TRACES_*・HETEROLOG_METRICS_*）を使います。
+    既定値はsyncです。
+    複数の設定を処理する場合は、同じdirectoryを共有しないかを確認した上で、
+    設定ごとに順番に実行してください。
 
   --scope file-logger|log-backend-failure-archive|all
     file-loggerはFileLoggerがfilesystemへ直接書いたdefault/error/debugと、
@@ -61,10 +68,19 @@ flagと設定の対応
     log-backend-failure-archiveはOpenSearch/Loki/CloudWatch Logs/ClickHouseへの通常ログ送信に
     失敗したログをfilesystemのretryable/permanentへ保存するJSONL archiveの系列です。
     .jsonlとその圧縮済みファイルを含みます。backendからログを取得する処理ではありません。
-    allは両方を選択します。既定値はallです。
+    telemetry-failure-archiveはtraceとmetricsの送り先（otlp・opensearch・clickhouse・
+    victoriametrics）への送信に失敗したspanとmetricsを、filesystemのretryable/permanentへ
+    保存するJSONL archiveの系列です。含むファイルはlog-backend-failure-archiveと同じです。
+    traceやmetricsを有効にし、送り先に選び、failure archiveを退避先に選んだものだけが
+    対象です。traceとmetricsのfile出力はrotation・圧縮・uploadをしないため、対象外です。
+    allは、選んだ設定のすべての系列を選択します。loggerではfile-loggerと
+    log-backend-failure-archive、telemetryではtelemetry-failure-archiveです。既定値はallです。
+    選んだ設定にない系列（--logger telemetryとfile-loggerなど）を指定すると、
+    引数の不備として終了します。
     圧縮ログのobject storage upload失敗を保存したarchiveは、この復旧対象に含みません。
     結果のscopeも同じ生成元の名前を使い、専用internalログはfile-logger/internal、
-    backend別のarchiveはlog-backend-failure-archive/opensearchなどと表示します。
+    backend別のarchiveはlog-backend-failure-archive/opensearch、
+    telemetry-failure-archive/otlp_tracesなどと表示します。
 
   --json
     directoryごとの走査件数、圧縮・受付・削除の対象ファイル、
@@ -129,8 +145,10 @@ object storageの同じobjectを上書きしたりすることはありません
 
 保存期限・容量制限によるarchiveのpurgeは行いません。
 record spoolと圧縮ログupload用spoolのreplayは、どちらも対象外です。
+traceとmetricsのspoolからの再送も行いません。
 .preservedファイルの処理も行いません。
-JSONLのfailure archiveから元のログbackendへrecordを再送する機能もありません。
+JSONLのfailure archiveから元のログbackendや、traceとmetricsの送り先へrecordを
+再送する機能もありません。
 復旧後のupload設定に従うファイル削除と、既存のdelete-pendingの完了は対象です。
 --retryを省略すると復旧の走査を1回実行して終了します。errorが残った場合は
 原因を確認し、必要に応じて再度実行してください。--retryも通常の周期runnerや
@@ -163,7 +181,7 @@ signalの受付側はprocessを直ちに終了せず、CLIの終了処理を通�
 
   0   成功、またはhelp表示。
   1   設定・復旧・結果出力の失敗。一部のdirectoryだけ完了した場合も含みます。
-  2   引数の不備、targetの不正、停止確認flagの不足。
+  2   引数の不備、targetの不正、停止確認flagの不足、設定にない--scopeの指定。
   130 SIGINT/SIGTERMなどによる終了要求。安全な終了待機を終えた場合と、打ち切った場合を含みます。
 
 errorは結果にも含め、処理全体のerrorは標準error出力にも表示します。
