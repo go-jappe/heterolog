@@ -92,7 +92,8 @@ type spanContextKey struct{}
 // ContextWithSpanContext returns a copy of ctx that carries sc. The Tracer of
 // heterolog.NewTelemetry starts a span as a child of the span context in ctx,
 // so pass the span context of an incoming request, read with
-// ParseTraceParent, to continue its trace. An invalid sc is not stored.
+// ParseTraceParent, to continue its trace. Logs written with the returned
+// context carry the trace and span IDs of sc. An invalid sc is not stored.
 func ContextWithSpanContext(ctx context.Context, sc SpanContext) context.Context {
 	if ctx == nil {
 		ctx = context.Background()

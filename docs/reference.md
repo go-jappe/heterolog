@@ -40,6 +40,7 @@ err := runtime.Info(ctx, "job completed", jobID.Int(42))
 ### Metadata keys
 
 - `request_id`, `trace_id`, and `span_id` are treated as log metadata when their values are strings.
+- A logging call that does not give `trace_id` and `span_id` takes them from its context: from the span of the OpenTelemetry SDK if there is one, and otherwise from the span context of `pkg/observer`, which `observer.ContextWithSpanContext` and the spans of the `Tracer` of `NewTelemetry` set.
 - Numbers, booleans, objects, and other values keep their type and are stored as regular structured fields.
 - When the same key is given more than once, only the last value is used, and it is classified by its type.
 - These rules also apply to top-level `slog` attributes.

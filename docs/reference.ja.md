@@ -40,6 +40,7 @@ err := runtime.Info(ctx, "job completed", jobID.Int(42))
 ### メタデータのキー
 
 - `request_id`、`trace_id`、`span_id` は、値が文字列の場合にログのメタデータとして扱います。
+- `trace_id` と `span_id` を指定しないログの呼び出しでは、contextから値を得ます。OpenTelemetry SDKのspanがあればその値を、なければ `pkg/observer` のspan contextの値を使います。このspan contextは、`observer.ContextWithSpanContext` と、`NewTelemetry` の `Tracer` のspanが設定します。
 - 数値・真偽値・オブジェクトなどは型を保って、通常の構造化フィールドへ保存します。
 - 同じキーを複数回指定した場合は最後の値だけを使い、その値の型で分類します。
 - これらの規則は `slog` のトップレベル属性にも適用します。
