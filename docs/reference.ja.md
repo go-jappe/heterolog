@@ -192,8 +192,23 @@ Cloud Loggingはほかの2つの形式から重大度を読み取れないため
 - `severity` は、`DEBUG`、`INFO`、`WARNING`（WARN）、`ERROR`、`CRITICAL`（FATAL）のどれかです。
 - `time` は常にUTCです。タイムゾーンと時刻の表示形式の設定は使いません。
 - アプリケーションの属性は `fields` の下に置くため、`severity` などの項目を上書きしません。
-- トレースIDは、`logging.googleapis.com/trace` ではなく `trace_id` に書きます。`logging.googleapis.com/trace` にはプロジェクトIDが必要なためです。そのため、Cloud Loggingはこのログを Cloud Trace に関連付けません。
+- ログのトレースIDとスパンIDは、下で説明するCloud Traceとの関連付けをしない場合、`trace_id` と `span_id` に書きます。
 - この形式を使うのは、標準出力への出力のログです。`degrade` ポリシーで標準出力へ退避したログ、シャットダウンの途中経過を知らせる標準エラーへのメッセージ、標準出力へ書くスパンとメトリクスは、それぞれの形式のままです。
+
+リクエストのログをCloud TraceとCloud Runのリクエストログに関連付けるには、次のようにします。
+
+1. `HETEROLOG_STDOUT_GOOGLE_CLOUD_PROJECT_ID`（コードでは `GoogleCloudProjectID`）にプロジェクトのIDを設定します。すると、トレースIDを `projects/PROJECT_ID/traces/TRACE_ID` の形で `logging.googleapis.com/trace` に、スパンIDを `logging.googleapis.com/spanId` に書きます。
+2. リクエストのトレースをcontextに入れます。Cloud Runは、受け取るリクエストに `traceparent` ヘッダーを設定します。
+
+   ```go
+   if sc, err := observer.ParseTraceParent(r.Header.Get("traceparent")); err == nil {
+       ctx = observer.ContextWithSpanContext(ctx, sc)
+   }
+   ```
+
+3. そのcontextをログの呼び出しに渡します（`logger.InfoContext(ctx, "message")` など）。`logger.Info("message")` のように別のcontextを使う呼び出しには、トレースIDが付きません。
+
+これはログをトレースに関連付けるだけで、Cloud Traceへは何も送りません。リクエストのトレースはCloud Runが作るため、表示できるトレースがあるかどうかは、そのリクエストのサンプリングによります。アプリケーションのスパンを送る方法は、[トレースの送信](#トレースの送信)を見てください。
 
 ### 稼働中の設定変更
 

@@ -15,6 +15,7 @@ type StdoutLoggerConfigProvider interface {
 	Handler() handler.ConfigProvider
 	UseOpenTelemetryFormat() bool      // OpenTelemetry準拠のログ形式を使用する
 	UseGoogleCloudLoggingFormat() bool // Google Cloud Loggingが読むログ形式を使用する
+	GoogleCloudProjectID() string      // ログをCloud Traceへ関連付けるproject ID
 }
 
 // outputFormatConfigProviderは、出力形式を決めるための設定です。通常のloggerとDelivery loggerの
@@ -24,6 +25,7 @@ type outputFormatConfigProvider interface {
 	LogBody() LogBodyConfigProvider
 	UseOpenTelemetryFormat() bool
 	UseGoogleCloudLoggingFormat() bool
+	GoogleCloudProjectID() string
 }
 
 type RuntimeConfigProvider interface {

@@ -230,7 +230,7 @@ func newFormatterFromConfig(
 	otelResource resource.OtelLogResourceProvider,
 ) (formatter.Formatter, error) {
 	if config.UseGoogleCloudLoggingFormat() {
-		return formatter.GoogleCloudLoggingFormatter{}, nil
+		return formatter.GoogleCloudLoggingFormatter{ProjectID: config.GoogleCloudProjectID()}, nil
 	}
 	timestampFormatter, err := NewConfiguredTimestampFormatter(
 		config.UseOpenTelemetryFormat(),

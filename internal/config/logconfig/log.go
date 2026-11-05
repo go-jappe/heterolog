@@ -279,6 +279,7 @@ type StdoutConfig struct {
 	HandlerConfig                   internalerror.RoutingConfig
 	OpenTelemetryFormatEnabled      bool
 	GoogleCloudLoggingFormatEnabled bool
+	GoogleCloudProjectID            string
 }
 
 type DeliveryStdoutConfig struct {
@@ -288,6 +289,7 @@ type DeliveryStdoutConfig struct {
 	HandlerConfig                   internalerror.RoutingConfig
 	OpenTelemetryFormatEnabled      bool
 	GoogleCloudLoggingFormatEnabled bool
+	GoogleCloudProjectID            string
 }
 
 type FileConfig struct {

@@ -192,8 +192,23 @@ Cloud Logging cannot read the severity from the other two formats, so on Google 
 - `severity` is `DEBUG`, `INFO`, `WARNING` (for WARN), `ERROR`, or `CRITICAL` (for FATAL).
 - `time` is always in UTC. The time zone and date format settings are not used.
 - The attributes of the application are under `fields`, so they cannot overwrite `severity` or the other items.
-- The trace ID is written as `trace_id`, not as `logging.googleapis.com/trace`, because that item needs the project ID. Cloud Logging therefore does not link these logs to Cloud Trace.
+- The trace and span IDs of a log are written as `trace_id` and `span_id`, unless you link the logs to Cloud Trace as described below.
 - The format applies to the logs of the stdout output. Logs moved to stdout by the `degrade` policy, shutdown progress messages on stderr, and spans and metrics written to stdout keep their own form.
+
+To link the logs of a request to Cloud Trace and to the request log of Cloud Run:
+
+1. Set `HETEROLOG_STDOUT_GOOGLE_CLOUD_PROJECT_ID` (`GoogleCloudProjectID` in code) to the ID of the project. The trace ID is then written as `logging.googleapis.com/trace`, in the form `projects/PROJECT_ID/traces/TRACE_ID`, and the span ID as `logging.googleapis.com/spanId`.
+2. Put the trace of the request in the context. Cloud Run sets the `traceparent` header of incoming requests:
+
+   ```go
+   if sc, err := observer.ParseTraceParent(r.Header.Get("traceparent")); err == nil {
+       ctx = observer.ContextWithSpanContext(ctx, sc)
+   }
+   ```
+
+3. Pass that context to the logging calls, as in `logger.InfoContext(ctx, "message")`. A call that uses another context, such as `logger.Info("message")`, has no trace ID.
+
+This links logs to traces and does not send anything to Cloud Trace. Cloud Run creates the traces of requests by itself, so whether a request has a trace to show depends on its sampling. To send the spans of your application, see [Sending traces](#sending-traces).
 
 ### Changing settings while running
 

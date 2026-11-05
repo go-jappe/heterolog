@@ -140,7 +140,7 @@ logger.InfoContext(ctx, "service started")
 - `HETEROLOG_TARGET` is the name of the application in file and directory names. By default, log files go under `$XDG_STATE_HOME` (or `~/.local/state`) on Linux and the BSDs (`/var/log` when running as root), `~/Library/Logs` on macOS, and `%LOCALAPPDATA%` on Windows. This example writes `my-service/logs/my-service_<date>_1.log` there, and ERROR and DEBUG logs to files of their own.
 - Settings that you leave out use their defaults, so the file only needs what differs. [.env.example](.env.example) lists every key (its comments are in Japanese). Its values are a sample configuration and differ from the defaults in places.
 - Without any settings, every logger writes to stdout only. Other destinations are used only when you select them, and missing credentials are reported as errors instead of being filled in.
-- On Google Cloud, such as Cloud Run, set `HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT=true` so that Cloud Logging can read the severity of each log. See [Stdout format](docs/reference.md#stdout-format).
+- On Google Cloud, such as Cloud Run, set `HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT=true` so that Cloud Logging can read the severity of each log. [Stdout format](docs/reference.md#stdout-format) also explains how to link the logs to Cloud Trace.
 - The settings are checked when they are loaded, and all problems are reported together.
 - A variable set in the environment overrides the same key in the file. The process environment is not modified, and no other file is read.
 

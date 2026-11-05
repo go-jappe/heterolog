@@ -128,3 +128,40 @@ func TestGoogleCloudLoggingFormatterKeepsSeverityWhenFieldsCannotBeEncoded(t *te
 		t.Fatalf("line = %q, want the reason in fields_error", line)
 	}
 }
+
+// project IDがあれば、Cloud Loggingがtraceへ関連付ける特別な項目へIDを書くことを確かめます。
+func TestGoogleCloudLoggingFormatterLinksTraceWithProjectID(t *testing.T) {
+	t.Parallel()
+
+	line := GoogleCloudLoggingFormatter{ProjectID: "my-project"}.Format(&logging.LogEntry{
+		Level:   pkglogger.LogLevelInfo,
+		Message: "event",
+		TraceID: "0af7651916cd43dd8448eb211c80319c",
+		SpanID:  "b7ad6b7169203331",
+	})
+
+	got := decodeGoogleCloudLine(t, line)
+	if want := "projects/my-project/traces/0af7651916cd43dd8448eb211c80319c"; got["logging.googleapis.com/trace"] != want {
+		t.Errorf("trace = %v, want %q", got["logging.googleapis.com/trace"], want)
+	}
+	if want := "b7ad6b7169203331"; got["logging.googleapis.com/spanId"] != want {
+		t.Errorf("spanId = %v, want %q", got["logging.googleapis.com/spanId"], want)
+	}
+	for _, key := range []string{"trace_id", "span_id"} {
+		if _, ok := got[key]; ok {
+			t.Errorf("line = %q, want no %s", line, key)
+		}
+	}
+}
+
+func TestGoogleCloudLoggingFormatterWithProjectIDOmitsTraceWithoutTraceID(t *testing.T) {
+	t.Parallel()
+
+	line := GoogleCloudLoggingFormatter{ProjectID: "my-project"}.Format(&logging.LogEntry{
+		Level:   pkglogger.LogLevelInfo,
+		Message: "event",
+	})
+	if strings.Contains(line, "logging.googleapis.com") {
+		t.Fatalf("line = %q, want no trace items", line)
+	}
+}

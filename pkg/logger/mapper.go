@@ -437,6 +437,12 @@ type StdoutLoggerConfig struct {
 	// takes precedence over UseOpenTelemetryFormat. The time is in UTC, whatever
 	// TimeConfig and LogLineDateFormat say.
 	UseGoogleCloudLoggingFormat bool
+	// GoogleCloudProjectID links the logs to Cloud Trace when
+	// UseGoogleCloudLoggingFormat is set: the trace and span IDs of a log are
+	// written as the logging.googleapis.com/trace and
+	// logging.googleapis.com/spanId fields. When it is empty, they are written
+	// as trace_id and span_id, which Cloud Logging does not link.
+	GoogleCloudProjectID string
 }
 
 type DeliveryStdoutLoggerConfig struct {
@@ -447,6 +453,8 @@ type DeliveryStdoutLoggerConfig struct {
 	UseOpenTelemetryFormat bool
 	// UseGoogleCloudLoggingFormat has the same meaning as in StdoutLoggerConfig.
 	UseGoogleCloudLoggingFormat bool
+	// GoogleCloudProjectID has the same meaning as in StdoutLoggerConfig.
+	GoogleCloudProjectID string
 }
 
 type SlackLoggerConfig struct {

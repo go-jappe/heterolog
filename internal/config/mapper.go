@@ -933,6 +933,7 @@ func NewStdoutLoggerConfig(a *AppConfig) *logger.StdoutLoggerConfig {
 		},
 		UseOpenTelemetryFormat:      a.Logger.StdoutConfig.OpenTelemetryFormatEnabled,
 		UseGoogleCloudLoggingFormat: a.Logger.StdoutConfig.GoogleCloudLoggingFormatEnabled,
+		GoogleCloudProjectID:        a.Logger.StdoutConfig.GoogleCloudProjectID,
 	}
 }
 
@@ -972,6 +973,7 @@ func NewAsyncStdoutLoggerConfig(a *AppConfig) *logger.StdoutLoggerConfig {
 		},
 		UseOpenTelemetryFormat:      a.AsyncBestEffortMultiLoggerConfig.StdoutConfig.OpenTelemetryFormatEnabled,
 		UseGoogleCloudLoggingFormat: a.AsyncBestEffortMultiLoggerConfig.StdoutConfig.GoogleCloudLoggingFormatEnabled,
+		GoogleCloudProjectID:        a.AsyncBestEffortMultiLoggerConfig.StdoutConfig.GoogleCloudProjectID,
 	}
 }
 
@@ -999,6 +1001,7 @@ func NewDeliveryStdoutLoggerConfig(a *AppConfig) *logger.DeliveryStdoutLoggerCon
 		},
 		UseOpenTelemetryFormat:      a.DeliveryLogger.DeliveryStdoutConfig.OpenTelemetryFormatEnabled,
 		UseGoogleCloudLoggingFormat: a.DeliveryLogger.DeliveryStdoutConfig.GoogleCloudLoggingFormatEnabled,
+		GoogleCloudProjectID:        a.DeliveryLogger.DeliveryStdoutConfig.GoogleCloudProjectID,
 	}
 }
 

@@ -43,6 +43,7 @@ func NewDeliveryFallbackConfigAdapter(cfg logger.DeliveryStdoutLoggerConfig) con
 		HandlerConfig:               cfg.HandlerConfig,
 		UseOpenTelemetryFormat:      cfg.UseOpenTelemetryFormat,
 		UseGoogleCloudLoggingFormat: cfg.UseGoogleCloudLoggingFormat,
+		GoogleCloudProjectID:        cfg.GoogleCloudProjectID,
 	})
 }
 
@@ -69,6 +70,10 @@ func (a configAdapter) UseOpenTelemetryFormat() bool {
 
 func (a configAdapter) UseGoogleCloudLoggingFormat() bool {
 	return a.cfg.UseGoogleCloudLoggingFormat
+}
+
+func (a configAdapter) GoogleCloudProjectID() string {
+	return a.cfg.GoogleCloudProjectID
 }
 
 type runtimeConfigAdapter struct {

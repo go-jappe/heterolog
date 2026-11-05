@@ -114,6 +114,7 @@ func TestLoadConfigKeepsFileStdoutSlackContractsSeparated(t *testing.T) {
 		"HETEROLOG_DELIVERY_STDOUT_LOGGER_DEBUG_HANDLER=slack",
 		"HETEROLOG_ENABLE_STDOUT_OTEL_FORMAT=false",
 		"HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT=true",
+		"HETEROLOG_STDOUT_GOOGLE_CLOUD_PROJECT_ID=contract-project",
 
 		"HETEROLOG_SLACK_LOG_LEVEL=DEBUG",
 		"HETEROLOG_SLACK_API_KEY=sync-token",
@@ -723,6 +724,7 @@ var fileStdoutSlackSharedEnvKeys = map[string]string{
 	"HETEROLOG_LOG_STDOUT_ERROR_RATE":                     "sync and async stdout loggers share the stdout sampling settings",
 	"HETEROLOG_ENABLE_STDOUT_OTEL_FORMAT":                 "every stdout logger shares the OpenTelemetry output format",
 	"HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT": "every stdout logger shares the Google Cloud Logging output format",
+	"HETEROLOG_STDOUT_GOOGLE_CLOUD_PROJECT_ID":            "every stdout logger shares the Google Cloud project ID",
 }
 
 // assertFileStdoutSlackLoadedEnvLinesは、契約試験が与えた全てのkeyについて、値が対応する
@@ -810,6 +812,11 @@ func fileStdoutSlackLoadedFields(cfg AppConfig) map[string]fileStdoutSlackLoaded
 			sync.StdoutConfig.GoogleCloudLoggingFormatEnabled,
 			async.StdoutConfig.GoogleCloudLoggingFormatEnabled,
 			delivery.DeliveryStdoutConfig.GoogleCloudLoggingFormatEnabled,
+		),
+		"HETEROLOG_STDOUT_GOOGLE_CLOUD_PROJECT_ID": field(contractEnvString,
+			sync.StdoutConfig.GoogleCloudProjectID,
+			async.StdoutConfig.GoogleCloudProjectID,
+			delivery.DeliveryStdoutConfig.GoogleCloudProjectID,
 		),
 
 		"HETEROLOG_SLACK_LOG_LEVEL":                    field(contractEnvLogLevel, sync.SlackConfig.LogLevel),

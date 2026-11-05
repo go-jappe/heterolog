@@ -18,9 +18,10 @@ func TestNotificationTargetPrefersGoogleCloudLoggingFormat(t *testing.T) {
 		TimeConfig:                  pkglogger.TimeConfig{IsLocalTimeEnabled: true, TimeZone: "Invalid/Zone"},
 		UseOpenTelemetryFormat:      true,
 		UseGoogleCloudLoggingFormat: true,
+		GoogleCloudProjectID:        "my-project",
 	}), nil)
 	require.NoError(t, err)
-	require.IsType(t, formatter.GoogleCloudLoggingFormatter{}, target.formatter)
+	require.Equal(t, formatter.GoogleCloudLoggingFormatter{ProjectID: "my-project"}, target.formatter)
 }
 
 func TestDeliveryFallbackConfigAdapterKeepsGoogleCloudLoggingFormat(t *testing.T) {
@@ -28,6 +29,8 @@ func TestDeliveryFallbackConfigAdapterKeepsGoogleCloudLoggingFormat(t *testing.T
 
 	adapter := NewDeliveryFallbackConfigAdapter(pkglogger.DeliveryStdoutLoggerConfig{
 		UseGoogleCloudLoggingFormat: true,
+		GoogleCloudProjectID:        "my-project",
 	})
 	require.True(t, adapter.UseGoogleCloudLoggingFormat())
+	require.Equal(t, "my-project", adapter.GoogleCloudProjectID())
 }

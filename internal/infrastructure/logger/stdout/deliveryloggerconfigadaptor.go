@@ -45,6 +45,10 @@ func (a deliveryConfigAdapter) UseGoogleCloudLoggingFormat() bool {
 	return a.cfg.UseGoogleCloudLoggingFormat
 }
 
+func (a deliveryConfigAdapter) GoogleCloudProjectID() string {
+	return a.cfg.GoogleCloudProjectID
+}
+
 type deliveryRuntimeConfigAdapter struct {
 	AppNameConfig string
 	IsDebugConfig bool
@@ -76,6 +80,7 @@ type DeliveryStdoutLoggerConfigProvider interface {
 	Handler() handler.ConfigProvider
 	UseOpenTelemetryFormat() bool      // OpenTelemetry準拠のログ形式を使用する
 	UseGoogleCloudLoggingFormat() bool // Google Cloud Loggingが読むログ形式を使用する
+	GoogleCloudProjectID() string      // ログをCloud Traceへ関連付けるproject ID
 }
 
 type DeliveryRuntimeConfigProvider interface {

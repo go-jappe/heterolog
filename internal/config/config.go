@@ -2485,6 +2485,7 @@ func loadStdoutBaseConfig(env pkgenv.Lookup) (logconfig.StdoutConfig, error) {
 		},
 		OpenTelemetryFormatEnabled:      enableStdoutOtelFormat,
 		GoogleCloudLoggingFormatEnabled: enableStdoutGoogleCloudLoggingFormat,
+		GoogleCloudProjectID:            env.GetEnvString("HETEROLOG_STDOUT_GOOGLE_CLOUD_PROJECT_ID", ""),
 	}, errors.Join(environmentErrors...)
 }
 
@@ -2504,6 +2505,7 @@ func loadDeliveryStdoutConfig(env pkgenv.Lookup) (logconfig.DeliveryStdoutConfig
 		ErrorTraceDepthDebugMode:        logconfig.DefaultErrorTraceDepthDebugMode,
 		OpenTelemetryFormatEnabled:      enableStdoutOtelFormat,
 		GoogleCloudLoggingFormatEnabled: enableStdoutGoogleCloudLoggingFormat,
+		GoogleCloudProjectID:            env.GetEnvString("HETEROLOG_STDOUT_GOOGLE_CLOUD_PROJECT_ID", ""),
 		HandlerConfig: internalerror.RoutingConfig{
 			OnErrorConfig: env.GetEnvSliceString("HETEROLOG_DELIVERY_STDOUT_LOGGER_ERROR_HANDLER", nil),
 			OnWarnConfig:  env.GetEnvSliceString("HETEROLOG_DELIVERY_STDOUT_LOGGER_WARN_HANDLER", nil),
