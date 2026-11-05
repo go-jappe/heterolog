@@ -37,20 +37,7 @@ func NewNotificationTarget(
 	if err := sampling.ValidateSamplingConfigProviderFor(logger.LogOutputStdout, config.Sampling()); err != nil {
 		return nil, fmt.Errorf("stdout notification target sampling config: %w", err)
 	}
-	timestampFormatter, err := NewConfiguredTimestampFormatter(
-		config.UseOpenTelemetryFormat(),
-		config.Time().EnableLocalTime(),
-		config.Time().TimeZone(),
-		config.LogBody().LogLineDateFormat(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	logFormatter, err := NewConfiguredFormatter(
-		config.UseOpenTelemetryFormat(),
-		otelResource,
-		timestampFormatter,
-	)
+	logFormatter, err := newFormatterFromConfig(config, otelResource)
 	if err != nil {
 		return nil, err
 	}

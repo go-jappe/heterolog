@@ -2457,6 +2457,10 @@ func loadStdoutBaseConfig(env pkgenv.Lookup) (logconfig.StdoutConfig, error) {
 	if enableStdoutOtelFormatErr != nil {
 		environmentErrors = append(environmentErrors, enableStdoutOtelFormatErr)
 	}
+	enableStdoutGoogleCloudLoggingFormat, enableStdoutGoogleCloudLoggingFormatErr := env.GetEnvBool("HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT", logconfig.DefaultGoogleCloudLoggingFormatEnabledForStdout)
+	if enableStdoutGoogleCloudLoggingFormatErr != nil {
+		environmentErrors = append(environmentErrors, enableStdoutGoogleCloudLoggingFormatErr)
+	}
 	logLevel, logLevelErr := loadLogLevel(
 		env.GetEnvString("HETEROLOG_STDOUT_LOG_LEVEL", logconfig.DefaultStdoutLogLevel.String()),
 		"HETEROLOG_STDOUT_LOG_LEVEL",
@@ -2479,7 +2483,8 @@ func loadStdoutBaseConfig(env pkgenv.Lookup) (logconfig.StdoutConfig, error) {
 			SamplingWarnRate:         logStdoutWarnRate,
 			SamplingErrorRate:        logStdoutErrorRate,
 		},
-		OpenTelemetryFormatEnabled: enableStdoutOtelFormat,
+		OpenTelemetryFormatEnabled:      enableStdoutOtelFormat,
+		GoogleCloudLoggingFormatEnabled: enableStdoutGoogleCloudLoggingFormat,
 	}, errors.Join(environmentErrors...)
 }
 
@@ -2489,11 +2494,16 @@ func loadDeliveryStdoutConfig(env pkgenv.Lookup) (logconfig.DeliveryStdoutConfig
 	if enableStdoutOtelFormatErr != nil {
 		environmentErrors = append(environmentErrors, enableStdoutOtelFormatErr)
 	}
+	enableStdoutGoogleCloudLoggingFormat, enableStdoutGoogleCloudLoggingFormatErr := env.GetEnvBool("HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT", logconfig.DefaultGoogleCloudLoggingFormatEnabledForStdout)
+	if enableStdoutGoogleCloudLoggingFormatErr != nil {
+		environmentErrors = append(environmentErrors, enableStdoutGoogleCloudLoggingFormatErr)
+	}
 	return logconfig.DeliveryStdoutConfig{
-		LogLineDateFormat:          logconfig.LogLineDateFormat,
-		ErrorTraceDepth:            logconfig.DefaultErrorTraceDepth,
-		ErrorTraceDepthDebugMode:   logconfig.DefaultErrorTraceDepthDebugMode,
-		OpenTelemetryFormatEnabled: enableStdoutOtelFormat,
+		LogLineDateFormat:               logconfig.LogLineDateFormat,
+		ErrorTraceDepth:                 logconfig.DefaultErrorTraceDepth,
+		ErrorTraceDepthDebugMode:        logconfig.DefaultErrorTraceDepthDebugMode,
+		OpenTelemetryFormatEnabled:      enableStdoutOtelFormat,
+		GoogleCloudLoggingFormatEnabled: enableStdoutGoogleCloudLoggingFormat,
 		HandlerConfig: internalerror.RoutingConfig{
 			OnErrorConfig: env.GetEnvSliceString("HETEROLOG_DELIVERY_STDOUT_LOGGER_ERROR_HANDLER", nil),
 			OnWarnConfig:  env.GetEnvSliceString("HETEROLOG_DELIVERY_STDOUT_LOGGER_WARN_HANDLER", nil),

@@ -169,6 +169,31 @@ An example is in [Sending logs to several destinations](../README.md#sending-log
 - A logger disabled with `HETEROLOG_ENABLE_LOGGING=false` or the like cannot be constructed, and `ErrEnvLoggerDisabled` is returned.
 - Loggers constructed from the environment do not trace by themselves. Construct a `Telemetry` with `env.NewTelemetry(ctx)`, which reads `HETEROLOG_ENABLE_TRACES` and `HETEROLOG_TRACES_*` (see [Sending traces](#sending-traces)), and pass its `Tracer` as an additional option, as in `env.New(ctx, heterolog.WithObservers(tel.Tracer(), nil))`. A spool enabled with `HETEROLOG_USE_MEMORY_PRESSURE_*` judges memory pressure with `HETEROLOG_MEMORY_CRITICAL_RATIO`, `HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB` and `HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITS` unless `WithMemoryPressureMonitor` is passed.
 
+### Stdout format
+
+The stdout output writes INFO and below to stdout and WARN and above to stderr, in one of three formats:
+
+| Format | Setting in code | Environment variable | Default |
+| --- | --- | --- | --- |
+| Plain text | Neither setting below | `HETEROLOG_ENABLE_STDOUT_OTEL_FORMAT=false` | `DefaultConfig` |
+| OpenTelemetry JSON | `UseOpenTelemetryFormat` | `HETEROLOG_ENABLE_STDOUT_OTEL_FORMAT=true` | `LoadEnvConfig` |
+| Google Cloud Logging JSON | `UseGoogleCloudLoggingFormat` | `HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT=true` | None |
+
+The environment variables apply to all three loggers. The settings in code are in the `Stdout` of each configuration. The Google Cloud Logging format takes precedence over the OpenTelemetry format, so setting its variable alone is enough.
+
+Cloud Logging cannot read the severity from the other two formats, so on Google Cloud, such as Cloud Run, their logs have no severity. The Google Cloud Logging format writes each log as one line of JSON:
+
+```json
+{"severity":"ERROR","message":"payment failed","time":"2026-11-05T01:02:03.456Z","request_id":"r-1","error":"timeout","fields":{"order":"o-1"}}
+```
+
+- Cloud Logging reads `severity` and `time` into the log entry, and shows `message` as the text of the entry. The other items stay in `jsonPayload`.
+- `severity` is `DEBUG`, `INFO`, `WARNING` (for WARN), `ERROR`, or `CRITICAL` (for FATAL).
+- `time` is always in UTC. The time zone and date format settings are not used.
+- The attributes of the application are under `fields`, so they cannot overwrite `severity` or the other items.
+- The trace ID is written as `trace_id`, not as `logging.googleapis.com/trace`, because that item needs the project ID. Cloud Logging therefore does not link these logs to Cloud Trace.
+- The format applies to the logs of the stdout output. Logs moved to stdout by the `degrade` policy, shutdown progress messages on stderr, and spans and metrics written to stdout keep their own form.
+
 ### Changing settings while running
 
 The level and sampling of each output of a synchronous or asynchronous logger can change while the application runs, in code or through an HTTP API.

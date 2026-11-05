@@ -113,6 +113,7 @@ func TestLoadConfigKeepsFileStdoutSlackContractsSeparated(t *testing.T) {
 		"HETEROLOG_DELIVERY_STDOUT_LOGGER_INFO_HANDLER=file",
 		"HETEROLOG_DELIVERY_STDOUT_LOGGER_DEBUG_HANDLER=slack",
 		"HETEROLOG_ENABLE_STDOUT_OTEL_FORMAT=false",
+		"HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT=true",
 
 		"HETEROLOG_SLACK_LOG_LEVEL=DEBUG",
 		"HETEROLOG_SLACK_API_KEY=sync-token",
@@ -712,15 +713,16 @@ func assertFileStdoutSlackStrings(t *testing.T, name string, got, want []string)
 
 // fileStdoutSlackSharedEnvKeysは、この契約試験の中で複数のLoggerContractKindに効くkeyです。
 var fileStdoutSlackSharedEnvKeys = map[string]string{
-	"HETEROLOG_STDOUT_LOG_LEVEL":                    "sync and async stdout loggers share the stdout runtime settings",
-	"HETEROLOG_ENABLE_LOG_STDOUT_SAMPLING":          "sync and async stdout loggers share the stdout sampling settings",
-	"HETEROLOG_ENABLE_LOGGING_STDOUT_BY_REQUEST_ID": "sync and async stdout loggers share the stdout sampling settings",
-	"HETEROLOG_LOG_STDOUT_REQUEST_ID_RATE":          "sync and async stdout loggers share the stdout sampling settings",
-	"HETEROLOG_LOG_STDOUT_DEBUG_RATE":               "sync and async stdout loggers share the stdout sampling settings",
-	"HETEROLOG_LOG_STDOUT_INFO_RATE":                "sync and async stdout loggers share the stdout sampling settings",
-	"HETEROLOG_LOG_STDOUT_WARN_RATE":                "sync and async stdout loggers share the stdout sampling settings",
-	"HETEROLOG_LOG_STDOUT_ERROR_RATE":               "sync and async stdout loggers share the stdout sampling settings",
-	"HETEROLOG_ENABLE_STDOUT_OTEL_FORMAT":           "every stdout logger shares the OpenTelemetry output format",
+	"HETEROLOG_STDOUT_LOG_LEVEL":                          "sync and async stdout loggers share the stdout runtime settings",
+	"HETEROLOG_ENABLE_LOG_STDOUT_SAMPLING":                "sync and async stdout loggers share the stdout sampling settings",
+	"HETEROLOG_ENABLE_LOGGING_STDOUT_BY_REQUEST_ID":       "sync and async stdout loggers share the stdout sampling settings",
+	"HETEROLOG_LOG_STDOUT_REQUEST_ID_RATE":                "sync and async stdout loggers share the stdout sampling settings",
+	"HETEROLOG_LOG_STDOUT_DEBUG_RATE":                     "sync and async stdout loggers share the stdout sampling settings",
+	"HETEROLOG_LOG_STDOUT_INFO_RATE":                      "sync and async stdout loggers share the stdout sampling settings",
+	"HETEROLOG_LOG_STDOUT_WARN_RATE":                      "sync and async stdout loggers share the stdout sampling settings",
+	"HETEROLOG_LOG_STDOUT_ERROR_RATE":                     "sync and async stdout loggers share the stdout sampling settings",
+	"HETEROLOG_ENABLE_STDOUT_OTEL_FORMAT":                 "every stdout logger shares the OpenTelemetry output format",
+	"HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT": "every stdout logger shares the Google Cloud Logging output format",
 }
 
 // assertFileStdoutSlackLoadedEnvLinesは、契約試験が与えた全てのkeyについて、値が対応する
@@ -803,6 +805,11 @@ func fileStdoutSlackLoadedFields(cfg AppConfig) map[string]fileStdoutSlackLoaded
 			sync.StdoutConfig.OpenTelemetryFormatEnabled,
 			async.StdoutConfig.OpenTelemetryFormatEnabled,
 			delivery.DeliveryStdoutConfig.OpenTelemetryFormatEnabled,
+		),
+		"HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT": field(contractEnvBool,
+			sync.StdoutConfig.GoogleCloudLoggingFormatEnabled,
+			async.StdoutConfig.GoogleCloudLoggingFormatEnabled,
+			delivery.DeliveryStdoutConfig.GoogleCloudLoggingFormatEnabled,
 		),
 
 		"HETEROLOG_SLACK_LOG_LEVEL":                    field(contractEnvLogLevel, sync.SlackConfig.LogLevel),

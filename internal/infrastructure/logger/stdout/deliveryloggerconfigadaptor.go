@@ -41,6 +41,10 @@ func (a deliveryConfigAdapter) UseOpenTelemetryFormat() bool {
 	return a.cfg.UseOpenTelemetryFormat
 }
 
+func (a deliveryConfigAdapter) UseGoogleCloudLoggingFormat() bool {
+	return a.cfg.UseGoogleCloudLoggingFormat
+}
+
 type deliveryRuntimeConfigAdapter struct {
 	AppNameConfig string
 	IsDebugConfig bool
@@ -70,7 +74,8 @@ type DeliveryStdoutLoggerConfigProvider interface {
 	Runtime() DeliveryRuntimeConfigProvider
 	LogBody() LogBodyConfigProvider
 	Handler() handler.ConfigProvider
-	UseOpenTelemetryFormat() bool // OpenTelemetry準拠のログ形式を使用する
+	UseOpenTelemetryFormat() bool      // OpenTelemetry準拠のログ形式を使用する
+	UseGoogleCloudLoggingFormat() bool // Google Cloud Loggingが読むログ形式を使用する
 }
 
 type DeliveryRuntimeConfigProvider interface {

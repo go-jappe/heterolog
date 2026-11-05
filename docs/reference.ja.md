@@ -169,6 +169,31 @@ reportの宛先ごとの結果は、次のいずれかです。
 - `HETEROLOG_ENABLE_LOGGING=false` などで無効にしたロガーは作れず、`ErrEnvLoggerDisabled` を返します。
 - 環境設定から作ったロガーは、それだけではトレースを記録しません。`HETEROLOG_ENABLE_TRACES` と `HETEROLOG_TRACES_*` を読む `env.NewTelemetry(ctx)` で `Telemetry` を作り（[トレースの送信](#トレースの送信)を参照）、その `Tracer` を `env.New(ctx, heterolog.WithObservers(tel.Tracer(), nil))` のように追加のoptionとして渡します。`HETEROLOG_USE_MEMORY_PRESSURE_*` で有効にしたspoolは、`WithMemoryPressureMonitor` を渡さなければ、`HETEROLOG_MEMORY_CRITICAL_RATIO`・`HETEROLOG_MIN_AVAILABLE_MEMORY_BYTES_MB`・`HETEROLOG_MEMORY_CRITICAL_CONSECUTIVE_HITS` でメモリ逼迫を判定します。
 
+### 標準出力の形式
+
+標準出力への出力は、INFO以下を標準出力に、WARN以上を標準エラーに、次の3つの形式のどれかで書きます。
+
+| 形式 | コードでの設定 | 環境変数 | 既定にしているもの |
+| --- | --- | --- | --- |
+| plain text | 下の2つの設定をどちらも使わない | `HETEROLOG_ENABLE_STDOUT_OTEL_FORMAT=false` | `DefaultConfig` |
+| OpenTelemetryのJSON | `UseOpenTelemetryFormat` | `HETEROLOG_ENABLE_STDOUT_OTEL_FORMAT=true` | `LoadEnvConfig` |
+| Google Cloud LoggingのJSON | `UseGoogleCloudLoggingFormat` | `HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT=true` | なし |
+
+環境変数は3つのロガーすべてに効きます。コードでの設定は、それぞれの設定の `Stdout` にあります。Google Cloud Loggingの形式はOpenTelemetryの形式より優先するため、その環境変数だけを設定すれば切り替わります。
+
+Cloud Loggingはほかの2つの形式から重大度を読み取れないため、Cloud RunなどGoogle Cloudの上では、それらの形式のログは重大度なしで表示されます。Google Cloud Loggingの形式は、各ログを1行のJSONで書きます。
+
+```json
+{"severity":"ERROR","message":"payment failed","time":"2026-11-05T01:02:03.456Z","request_id":"r-1","error":"timeout","fields":{"order":"o-1"}}
+```
+
+- Cloud Loggingは `severity` と `time` をログエントリの項目として読み取り、`message` をエントリの本文として表示します。ほかの項目は `jsonPayload` に残ります。
+- `severity` は、`DEBUG`、`INFO`、`WARNING`（WARN）、`ERROR`、`CRITICAL`（FATAL）のどれかです。
+- `time` は常にUTCです。タイムゾーンと時刻の表示形式の設定は使いません。
+- アプリケーションの属性は `fields` の下に置くため、`severity` などの項目を上書きしません。
+- トレースIDは、`logging.googleapis.com/trace` ではなく `trace_id` に書きます。`logging.googleapis.com/trace` にはプロジェクトIDが必要なためです。そのため、Cloud Loggingはこのログを Cloud Trace に関連付けません。
+- この形式を使うのは、標準出力への出力のログです。`degrade` ポリシーで標準出力へ退避したログ、シャットダウンの途中経過を知らせる標準エラーへのメッセージ、標準出力へ書くスパンとメトリクスは、それぞれの形式のままです。
+
 ### 稼働中の設定変更
 
 同期・非同期のロガーの出力先ごとのログレベルとサンプリングは、アプリケーションの稼働中に、コードまたはHTTP APIから変更できます。

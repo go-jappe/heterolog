@@ -39,9 +39,10 @@ func NewDeliveryFallbackConfigAdapter(cfg logger.DeliveryStdoutLoggerConfig) con
 			Target:   cfg.RuntimeConfig.Target,
 			LogLevel: logger.LogLevelDebug,
 		},
-		LogBodyConfig:          cfg.LogBodyConfig,
-		HandlerConfig:          cfg.HandlerConfig,
-		UseOpenTelemetryFormat: cfg.UseOpenTelemetryFormat,
+		LogBodyConfig:               cfg.LogBodyConfig,
+		HandlerConfig:               cfg.HandlerConfig,
+		UseOpenTelemetryFormat:      cfg.UseOpenTelemetryFormat,
+		UseGoogleCloudLoggingFormat: cfg.UseGoogleCloudLoggingFormat,
 	})
 }
 
@@ -64,6 +65,10 @@ func (a configAdapter) Handler() handler.ConfigProvider {
 
 func (a configAdapter) UseOpenTelemetryFormat() bool {
 	return a.cfg.UseOpenTelemetryFormat
+}
+
+func (a configAdapter) UseGoogleCloudLoggingFormat() bool {
+	return a.cfg.UseGoogleCloudLoggingFormat
 }
 
 type runtimeConfigAdapter struct {

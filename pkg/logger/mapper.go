@@ -432,6 +432,11 @@ type StdoutLoggerConfig struct {
 	SamplingConfig         SamplingConfig
 	HandlerConfig          handler.HandlerConfig
 	UseOpenTelemetryFormat bool
+	// UseGoogleCloudLoggingFormat writes each log as one line of JSON that
+	// Google Cloud Logging reads, with the severity, message and time fields. It
+	// takes precedence over UseOpenTelemetryFormat. The time is in UTC, whatever
+	// TimeConfig and LogLineDateFormat say.
+	UseGoogleCloudLoggingFormat bool
 }
 
 type DeliveryStdoutLoggerConfig struct {
@@ -440,6 +445,8 @@ type DeliveryStdoutLoggerConfig struct {
 	LogBodyConfig          LogBodyConfig
 	HandlerConfig          handler.HandlerConfig
 	UseOpenTelemetryFormat bool
+	// UseGoogleCloudLoggingFormat has the same meaning as in StdoutLoggerConfig.
+	UseGoogleCloudLoggingFormat bool
 }
 
 type SlackLoggerConfig struct {

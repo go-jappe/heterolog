@@ -190,20 +190,7 @@ func NewStdoutLogger(
 		return nil, fmt.Errorf("stdout logger sampling config: %w", err)
 	}
 
-	timestampFormatter, err := NewConfiguredTimestampFormatter(
-		config.UseOpenTelemetryFormat(),
-		config.Time().EnableLocalTime(),
-		config.Time().TimeZone(),
-		config.LogBody().LogLineDateFormat(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	logFormatter, err := NewConfiguredFormatter(
-		config.UseOpenTelemetryFormat(),
-		otelResource,
-		timestampFormatter,
-	)
+	logFormatter, err := newFormatterFromConfig(config, otelResource)
 	if err != nil {
 		return nil, err
 	}
@@ -235,6 +222,27 @@ var (
 	// timestamp formatterが渡されていないことを表します。
 	ErrTimestampFormatterRequired = stderrors.New("timestamp formatter is not initialized")
 )
+
+// newFormatterFromConfigは、設定が選んだ出力形式のformatterを作ります。Google Cloud Logging形式は
+// OpenTelemetry形式より優先し、plain-textの時刻設定とresourceを使いません。
+func newFormatterFromConfig(
+	config outputFormatConfigProvider,
+	otelResource resource.OtelLogResourceProvider,
+) (formatter.Formatter, error) {
+	if config.UseGoogleCloudLoggingFormat() {
+		return formatter.GoogleCloudLoggingFormatter{}, nil
+	}
+	timestampFormatter, err := NewConfiguredTimestampFormatter(
+		config.UseOpenTelemetryFormat(),
+		config.Time().EnableLocalTime(),
+		config.Time().TimeZone(),
+		config.LogBody().LogLineDateFormat(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return NewConfiguredFormatter(config.UseOpenTelemetryFormat(), otelResource, timestampFormatter)
+}
 
 // NewConfiguredFormatterはstdoutの出力形式に対応する、構築済みformatterを返します。
 // OpenTelemetry形式にはresource、plain text形式には初期化済みtimestampFormatterが必須です。

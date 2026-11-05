@@ -140,6 +140,7 @@ logger.InfoContext(ctx, "service started")
 - `HETEROLOG_TARGET` は、ファイルやディレクトリの名前に使うアプリケーションの名前です。ログファイルの既定の保存先は、LinuxとBSDでは `$XDG_STATE_HOME`（なければ `~/.local/state`。rootで動く場合は `/var/log`）、macOSでは `~/Library/Logs`、Windowsでは `%LOCALAPPDATA%` の下です。この例では、そこに `my-service/logs/my-service_<日付>_1.log` を作り、ERRORとDEBUGのログは別のファイルに書きます。
 - 省略した設定には既定値を使うため、ファイルには変えたい項目だけを書けば足ります。すべてのキーは [.env.example](.env.example) にあります（コメントは日本語です）。その値は設定の一例で、既定値と異なる項目があります。
 - 何も設定しなければ、すべてのロガーは標準出力だけに書きます。ほかの出力先は選んだ場合だけ使い、足りない認証情報は補わずにエラーとして報告します。
+- Cloud RunなどGoogle Cloudの上では、`HETEROLOG_ENABLE_STDOUT_GOOGLE_CLOUD_LOGGING_FORMAT=true` にすると、Cloud Loggingが各ログの重大度を読み取れます。詳しくは [標準出力の形式](docs/reference.ja.md#標準出力の形式) を見てください。
 - 設定は読み込み時に検証し、見つかった問題をまとめて返します。
 - 環境変数に設定した値は、ファイルの同じキーより優先します。プロセスの環境変数は変更せず、ほかのファイルも読みません。
 

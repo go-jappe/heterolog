@@ -53,20 +53,7 @@ func NewDeliveryStdoutLogger(
 	_, span := tracer.StartSpan(ctx, SpanStdoutLoggerCreate)
 	defer span.End()
 
-	timestampFormatter, err := NewConfiguredTimestampFormatter(
-		config.UseOpenTelemetryFormat(),
-		config.Time().EnableLocalTime(),
-		config.Time().TimeZone(),
-		config.LogBody().LogLineDateFormat(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	logFormatter, err := NewConfiguredFormatter(
-		config.UseOpenTelemetryFormat(),
-		otelResource,
-		timestampFormatter,
-	)
+	logFormatter, err := newFormatterFromConfig(config, otelResource)
 	if err != nil {
 		return nil, err
 	}

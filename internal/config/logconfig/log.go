@@ -181,6 +181,8 @@ const (
 	// stdout
 	// stdout出力ログをotel準拠のjsonにする
 	DefaultOTelFormatEnabledForStdout = true
+	// stdout出力ログをGoogle Cloud Loggingが読むjsonにする（otel準拠のjsonより優先します）
+	DefaultGoogleCloudLoggingFormatEnabledForStdout = false
 
 	// ログに記述する時刻のタイムゾーン設定
 	// 未設定時は公開APIのDefaultConfigと同じくUTCで記録します。ローカル時刻は
@@ -269,21 +271,23 @@ type ClockConfig struct {
 }
 
 type StdoutConfig struct {
-	LogLevel                   logger.LogLevel
-	LogLineDateFormat          string
-	ErrorTraceDepth            int // 将来的に出力先ごとに値を変える可能性あるが現在は同じ
-	ErrorTraceDepthDebugMode   int // 将来的に出力先ごとに値を変える可能性あるが現在は同じ
-	SamplingConfig             SamplingConfig
-	HandlerConfig              internalerror.RoutingConfig
-	OpenTelemetryFormatEnabled bool
+	LogLevel                        logger.LogLevel
+	LogLineDateFormat               string
+	ErrorTraceDepth                 int // 将来的に出力先ごとに値を変える可能性あるが現在は同じ
+	ErrorTraceDepthDebugMode        int // 将来的に出力先ごとに値を変える可能性あるが現在は同じ
+	SamplingConfig                  SamplingConfig
+	HandlerConfig                   internalerror.RoutingConfig
+	OpenTelemetryFormatEnabled      bool
+	GoogleCloudLoggingFormatEnabled bool
 }
 
 type DeliveryStdoutConfig struct {
-	LogLineDateFormat          string
-	ErrorTraceDepth            int // 将来的に出力先ごとに値を変える可能性あるが現在は同じ
-	ErrorTraceDepthDebugMode   int // 将来的に出力先ごとに値を変える可能性あるが現在は同じ
-	HandlerConfig              internalerror.RoutingConfig
-	OpenTelemetryFormatEnabled bool
+	LogLineDateFormat               string
+	ErrorTraceDepth                 int // 将来的に出力先ごとに値を変える可能性あるが現在は同じ
+	ErrorTraceDepthDebugMode        int // 将来的に出力先ごとに値を変える可能性あるが現在は同じ
+	HandlerConfig                   internalerror.RoutingConfig
+	OpenTelemetryFormatEnabled      bool
+	GoogleCloudLoggingFormatEnabled bool
 }
 
 type FileConfig struct {
