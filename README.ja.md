@@ -109,7 +109,7 @@ func main() {
 }
 ```
 
-既定では、INFOのログを標準出力へ、WARNとERRORのログを標準エラーへ記録し、日時はUTCです。グローバルなロガーにする場合は `slog.SetDefault(logger)` を呼びます。`slog` と各出力先はそれぞれ別にレベルで絞り込むため、DEBUGのログを書くには両方のレベルを下げます（[slogの利用](docs/reference.ja.md#slogの利用)を参照）。
+既定では、INFOのログを標準出力へ、WARNとERRORのログを標準エラーへ記録し、日時はUTCです。グローバルなロガーにする場合は `slog.SetDefault(logger)` を呼びます。`slog` と各出力先はそれぞれ別にレベルで絞り込むため、DEBUGのログを書くには両方のレベルを下げます（[slogの利用](docs/reference.ja.md#slogの利用)を参照）。`slog` 経由のログでは、レベル、メッセージ、時刻が構造化フィールドにも入るため、出力の中で重複します。これも同じ節で説明しています。
 
 ## 複数の出力先へ送る
 

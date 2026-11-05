@@ -70,6 +70,26 @@ logger := slog.New(heterolog.NewSlogHandler(runtime, &slog.HandlerOptions{
 
 - `WithAttrs`、`WithGroup`、`LogValuer`、`LevelVar`、`ReplaceAttr` に対応しています。
 - slog属性はJSON相当の値に正規化して構造化フィールドへ保存します。同じキーが重複する場合は後の値を採用します。
+- slog経由のログでは、レベル、メッセージ、時刻が重複します。構造化フィールドにslogのレコード全体（`level`、`msg`、`time`。`AddSource` を使うと `source` も）が入るため、どの形式と出力先でも、これらの値が出力に2回現れます。通常のAPIでは重複しません。たとえば `logger.Info("started", "user", "a")` は、標準出力のGoogle Cloud Loggingの形式では次のように書かれます。
+
+  ```json
+  {"severity":"INFO","message":"started","time":"2026-11-05T00:01:05.516700399Z","fields":{"level":"INFO","msg":"started","time":"2026-11-05T00:01:05.516700399Z","user":"a"}}
+  ```
+
+- フィールドの `time` は、出力先の時刻の設定によらず、プロセスのローカルタイムゾーンの時刻です。
+- `time` と `level` をフィールドから外すには、`ReplaceAttr` で取り除きます。ログ自体のレベルと時刻は残ります。`msg` はこの方法では外せません。取り除くと、ログの本文も空になるためです。
+
+  ```go
+  logger := slog.New(heterolog.NewSlogHandler(runtime, &slog.HandlerOptions{
+      ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+          if len(groups) == 0 && (attr.Key == slog.TimeKey || attr.Key == slog.LevelKey) {
+              return slog.Attr{}
+          }
+          return attr
+      },
+  }))
+  ```
+
 - `ReplaceAttr` によるメッセージの置換・削除はバックエンドの本文にも反映します。削除した本文は空文字、文字列以外へ変換した本文はJSON表現になります。配送レベルと発生時刻は元Recordの値を保ちます。
 
 ## ロガーと終了処理
@@ -191,7 +211,7 @@ Cloud Loggingはほかの2つの形式から重大度を読み取れないため
 - Cloud Loggingは `severity` と `time` をログエントリの項目として読み取り、`message` をエントリの本文として表示します。ほかの項目は `jsonPayload` に残ります。
 - `severity` は、`DEBUG`、`INFO`、`WARNING`（WARN）、`ERROR`、`CRITICAL`（FATAL）のどれかです。
 - `time` は常にUTCです。タイムゾーンと時刻の表示形式の設定は使いません。
-- アプリケーションの属性は `fields` の下に置くため、`severity` などの項目を上書きしません。
+- アプリケーションの属性は `fields` の下に置くため、`severity` などの項目を上書きしません。slog経由のログでは、`level`、`msg`、`time` もここに入ります（[slogの利用](#slogの利用)を見てください）。
 - ログのトレースIDとスパンIDは、下で説明するCloud Traceとの関連付けをしない場合、`trace_id` と `span_id` に書きます。
 - この形式を使うのは、標準出力への出力のログです。`degrade` ポリシーで標準出力へ退避したログ、シャットダウンの途中経過を知らせる標準エラーへのメッセージ、標準出力へ書くスパンとメトリクスは、それぞれの形式のままです。
 

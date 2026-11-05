@@ -22,13 +22,16 @@ var _ slog.Handler = (*SlogHandler)(nil)
 //
 // Attributes follow slog.JSONHandler's encoding and ReplaceAttr behavior. The
 // complete slog record, including time, level, msg and optional source, is
-// available in the destination's structured fields. Duplicate keys retain their
-// last value. The original record level determines backend routing, and its
-// original time is also used as the backend event time. ReplaceAttr changes the
-// structured fields and the backend's message, but not routing or event time.
-// A removed message becomes empty; a non-string message uses its JSON encoding.
-// String-valued top-level request_id, trace_id and span_id become event metadata.
-// Non-string values remain ordinary structured fields alongside any context IDs.
+// available in the destination's structured fields, so the level, message and
+// time of a log appear twice in its output. ReplaceAttr can remove time and
+// level from the fields, but removing msg also empties the message. Duplicate
+// keys retain their last value. The original record level determines backend
+// routing, and its original time is also used as the backend event time.
+// ReplaceAttr changes the structured fields and the backend's message, but not
+// routing or event time. A removed message becomes empty; a non-string message
+// uses its JSON encoding. String-valued top-level request_id, trace_id and
+// span_id become event metadata. Non-string values remain ordinary structured
+// fields alongside any context IDs.
 //
 // slog.Logger discards errors returned by Handler.Handle. Use the native logging
 // API for returned errors, or NewDelivery for per-destination delivery reports.

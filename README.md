@@ -109,7 +109,7 @@ func main() {
 }
 ```
 
-By default, INFO logs are written to standard output and WARN and ERROR logs to standard error, with timestamps in UTC. To use it as the global logger, call `slog.SetDefault(logger)`. `slog` and each output filter by level separately, so to write DEBUG logs, lower both levels (see [Using slog](docs/reference.md#using-slog)).
+By default, INFO logs are written to standard output and WARN and ERROR logs to standard error, with timestamps in UTC. To use it as the global logger, call `slog.SetDefault(logger)`. `slog` and each output filter by level separately, so to write DEBUG logs, lower both levels (see [Using slog](docs/reference.md#using-slog)). The level, message, and time of a log written through `slog` also appear in its structured fields, so they are repeated in the output; the same section explains this.
 
 ## Sending logs to several destinations
 

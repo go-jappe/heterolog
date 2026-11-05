@@ -70,6 +70,26 @@ logger := slog.New(heterolog.NewSlogHandler(runtime, &slog.HandlerOptions{
 
 - `WithAttrs`, `WithGroup`, `LogValuer`, `LevelVar`, and `ReplaceAttr` are supported.
 - slog attributes are normalized to JSON-equivalent values and stored as structured fields. When a key appears more than once, the later value is used.
+- A log written through slog repeats its level, message, and time. Its structured fields hold the whole slog record, `level`, `msg`, and `time`, and `source` with `AddSource`, so these values appear twice in the output of every format and destination. The regular API does not add them. For example, `logger.Info("started", "user", "a")` in the Google Cloud Logging format of stdout writes:
+
+  ```json
+  {"severity":"INFO","message":"started","time":"2026-11-05T00:01:05.516700399Z","fields":{"level":"INFO","msg":"started","time":"2026-11-05T00:01:05.516700399Z","user":"a"}}
+  ```
+
+- The `time` in the fields is in the local time zone of the process, whatever the time settings of the output say.
+- To leave `time` and `level` out of the fields, remove them with `ReplaceAttr`. The log keeps its own level and time. `msg` cannot be left out this way, because removing it also empties the message of the log.
+
+  ```go
+  logger := slog.New(heterolog.NewSlogHandler(runtime, &slog.HandlerOptions{
+      ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+          if len(groups) == 0 && (attr.Key == slog.TimeKey || attr.Key == slog.LevelKey) {
+              return slog.Attr{}
+          }
+          return attr
+      },
+  }))
+  ```
+
 - Replacing or removing the message with `ReplaceAttr` also changes the message sent to backends. A removed message becomes an empty string, and a message replaced by a non-string value becomes its JSON representation. The level and time of the original record are kept.
 
 ## Loggers and shutdown
@@ -191,7 +211,7 @@ Cloud Logging cannot read the severity from the other two formats, so on Google 
 - Cloud Logging reads `severity` and `time` into the log entry, and shows `message` as the text of the entry. The other items stay in `jsonPayload`.
 - `severity` is `DEBUG`, `INFO`, `WARNING` (for WARN), `ERROR`, or `CRITICAL` (for FATAL).
 - `time` is always in UTC. The time zone and date format settings are not used.
-- The attributes of the application are under `fields`, so they cannot overwrite `severity` or the other items.
+- The attributes of the application are under `fields`, so they cannot overwrite `severity` or the other items. Logs written through slog also have `level`, `msg`, and `time` there; see [Using slog](#using-slog).
 - The trace and span IDs of a log are written as `trace_id` and `span_id`, unless you link the logs to Cloud Trace as described below.
 - The format applies to the logs of the stdout output. Logs moved to stdout by the `degrade` policy, shutdown progress messages on stderr, and spans and metrics written to stdout keep their own form.
 
